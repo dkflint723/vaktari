@@ -18,4 +18,12 @@
     <ProjectReference Include="..\Vaktari.Core\Vaktari.Core.csproj" />
   </ItemGroup>
 
+
+  <!-- The Recycle Bin's purge is reached only through a sweep or an Empty, and
+       the state worth testing — a recycled payload holding a read-only file —
+       cannot be arranged through the public surface. -->
+  <ItemGroup>
+    <InternalsVisibleTo Include="Vaktari.Windows.Tests" />
+  </ItemGroup>
+
 </Project>

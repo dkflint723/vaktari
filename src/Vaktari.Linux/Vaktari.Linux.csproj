@@ -9,4 +9,13 @@
     <ProjectReference Include="..\Vaktari.Core\Vaktari.Core.csproj" />
   </ItemGroup>
 
+
+  <!-- The launcher's terminal list and the search backend's binary are probed
+       from the machine, so the interesting states — a terminal that refuses to
+       start, an index that is switched off — cannot be reached from a test by
+       asking politely. Both are replaceable through an internal seam. -->
+  <ItemGroup>
+    <InternalsVisibleTo Include="Vaktari.Linux.Tests" />
+  </ItemGroup>
+
 </Project>

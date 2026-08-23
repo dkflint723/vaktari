@@ -33,6 +33,17 @@ public sealed class LinuxLauncher : IApplicationLauncher
     private IReadOnlyList<TerminalOption>? _terminals;
 
     /// <summary>
+    /// Stands in for detection.
+    ///
+    /// The state that mattered — a detected terminal that refuses to start —
+    /// cannot be produced on a real machine on request, and it is the only
+    /// state in which OpenTerminal used to recurse into itself until the stack
+    /// ran out. A list of names that are not programs reproduces it exactly.
+    /// </summary>
+    internal void UseTerminals(IReadOnlyList<TerminalOption> terminals)
+        => _terminals = terminals;
+
+    /// <summary>
     /// Probed once. This is read while a context menu is built, on the UI
     /// thread, and a PATH walk per candidate is what makes a menu feel slow.
     /// </summary>
@@ -108,20 +119,47 @@ public sealed class LinuxLauncher : IApplicationLauncher
 
     public void OpenTerminal(string directory, TerminalOption terminal)
     {
+        if (Spawn(directory, terminal)) return;
+
+        // **Not OpenTerminal(directory), which is where this recursed.** That
+        // overload picks Terminals.FirstOrDefault() and calls straight back
+        // here; the list is cached for the life of the process, so a preferred
+        // terminal that refuses to start produced the same choice every time
+        // and the two methods called each other until the stack ran out — F4
+        // took the whole application down with it. WindowsLauncher carries the
+        // same note, having been given this fix already; the Linux copy never
+        // was, and there was no test project here to notice.
+        //
+        // The remaining candidates, tried once each, then the one that needs no
+        // detection at all.
+        foreach (var other in Terminals)
+        {
+            if (other.Id == terminal.Id) continue;
+
+            if (Spawn(directory, other)) return;
+        }
+
+        // xterm without a working-directory flag still lands in the right place
+        // through the shell.
+        if (TrySpawn("xterm", "-e", "cd " + directory + " && $SHELL")) return;
+
+        // Said out loud. A terminal that never opens and never explains reads
+        // as the key doing nothing at all.
+        Console.Error.WriteLine(
+            $"[vaktari] no terminal would start for {directory} — "
+            + $"tried {Terminals.Count} detected and xterm");
+    }
+
+    /// <summary>One candidate, the way it asks to be started.</summary>
+    private static bool Spawn(string directory, TerminalOption terminal)
+    {
+        if (terminal.UsesWorkingDirectory) return TrySpawnIn(directory, terminal.Command);
+
         var args = terminal.Arguments
             .Select(a => a.Replace("{dir}", directory, StringComparison.Ordinal))
             .ToArray();
 
-        if (terminal.UsesWorkingDirectory)
-        {
-            if (TrySpawnIn(directory, terminal.Command)) return;
-        }
-        else if (TrySpawn(terminal.Command, args))
-        {
-            return;
-        }
-
-        OpenTerminal(directory);
+        return TrySpawn(terminal.Command, args);
     }
 
     private static bool TrySpawnIn(string directory, string exe)

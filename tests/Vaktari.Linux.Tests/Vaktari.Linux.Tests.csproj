@@ -1,0 +1,36 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <IsPackable>false</IsPackable>
+
+    <!-- The same switches the other test projects carry, and for the same
+         reason: Directory.Build.props turns the trim, AOT and single-file
+         analysers on for everything the application ships, and a test project
+         ships nothing. See Vaktari.Core.Tests for the full note. -->
+    <IsAotCompatible>false</IsAotCompatible>
+    <EnableTrimAnalyzer>false</EnableTrimAnalyzer>
+    <EnableAotAnalyzer>false</EnableAotAnalyzer>
+    <EnableSingleFileAnalyzer>false</EnableSingleFileAnalyzer>
+    <PublishTrimmed>false</PublishTrimmed>
+
+    <!-- Vaktari.Linux is annotated [SupportedOSPlatform("linux")] throughout.
+         This project exercises it, so it claims the same platform rather than
+         sprinkling suppressions over every call. Tests that need a real Linux
+         filesystem check at run time and skip elsewhere; the rest are ordinary
+         logic and run anywhere, which is what lets them be written and run on
+         a Windows machine before CI ever sees them. -->
+    <SupportedOSPlatform>linux</SupportedOSPlatform>
+    <NoWarn>$(NoWarn);CA1416</NoWarn>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.NET.Test.Sdk" Version="17.11.1" />
+    <PackageReference Include="xunit" Version="2.9.2" />
+    <PackageReference Include="xunit.runner.visualstudio" Version="2.8.2" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="../../src/Vaktari.Linux/Vaktari.Linux.csproj" />
+  </ItemGroup>
+
+</Project>

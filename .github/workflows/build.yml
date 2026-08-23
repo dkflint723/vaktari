@@ -90,8 +90,16 @@ jobs:
       # After the Debug build (which is where the analysers run) and before the
       # publish, so a broken assumption fails in seconds rather than after a
       # 55-second AOT link.
+      # Core AND Linux. Not the whole solution: Vaktari.Windows.Tests drives
+      # the shell and the registry, and fails wholesale here — which is why this
+      # job has always named its projects rather than the .slnx. The Linux
+      # project was added when an audit found four faults in Vaktari.Linux that
+      # nothing anywhere was testing; naming it here is what stops that
+      # recurring.
       - name: Test
-        run: dotnet test tests/Vaktari.Core.Tests --configuration Debug
+        run: |
+          dotnet test tests/Vaktari.Core.Tests --configuration Debug
+          dotnet test tests/Vaktari.Linux.Tests --configuration Debug
 
       - name: Publish
         run: |

@@ -7,6 +7,7 @@
   </Folder>
   <Folder Name="/tests/">
     <Project Path="tests/Vaktari.Core.Tests/Vaktari.Core.Tests.csproj" />
+    <Project Path="tests/Vaktari.Linux.Tests/Vaktari.Linux.Tests.csproj" />
     <Project Path="tests/Vaktari.Ui.Tests/Vaktari.Ui.Tests.csproj" />
     <Project Path="tests/Vaktari.Windows.Tests/Vaktari.Windows.Tests.csproj" />
   </Folder>

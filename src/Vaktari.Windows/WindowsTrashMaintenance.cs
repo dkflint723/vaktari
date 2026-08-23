@@ -196,10 +196,28 @@ public sealed class WindowsTrashMaintenance : ITrashMaintenance
     /// policy sweep is by definition selective. One code path for both means
     /// the dangerous one is the one that gets exercised every time.
     /// </summary>
-    private static bool Purge(RecycleEntry entry)
+    internal static bool Purge(RecycleEntry entry)
     {
         try
         {
+            // **Before the delete, because a read-only file refuses to be
+            // deleted and .NET removes what it can BEFORE throwing.** Recycle a
+            // cloned git repository - git writes its pack files read-only - and
+            // emptying the bin destroyed everything up to the first pack file,
+            // then threw, leaving the $I metadata intact. The entry still
+            // listed, still advertised its original size, and Restore handed
+            // back a gutted folder. The application reported "removed 0".
+            //
+            // Worse unattended: the hourly sweep reaches this same method, so
+            // with an age or size policy on, the half-destruction happened with
+            // no user action at all. And a single read-only FILE could never be
+            // purged, so Empty would never actually empty the bin.
+            //
+            // WindowsFileOperations.Delete has cleared the tree first since the
+            // day the same fault was found there; this is that same routine,
+            // not a second copy of it.
+            WindowsFileOperations.ClearReadOnlyTree(entry.PayloadPath);
+
             if (entry.IsDirectory) Directory.Delete(entry.PayloadPath, recursive: true);
             else File.Delete(entry.PayloadPath);
 
@@ -209,9 +227,16 @@ public sealed class WindowsTrashMaintenance : ITrashMaintenance
         }
         catch (Exception e) when (e is IOException or UnauthorizedAccessException)
         {
-            // A locked or protected item stays. Reporting fewer removals than
-            // expected is right; failing the sweep over one file is not.
-            Quiet.Swallowed("trash", e);
+            // A locked item stays and the sweep carries on - failing the whole
+            // sweep over one file would be worse. But said out loud rather than
+            // filed under Quiet: by the time this is reached the payload may be
+            // PARTLY deleted, and "removed 0" over a silently gutted item is the
+            // most misleading answer this class can give. XdgTrashMaintenance
+            // has printed for this case all along.
+            Console.Error.WriteLine(
+                $"[vaktari] trash: could not remove '{entry.PayloadPath}' - {e.Message.Trim()}"
+                + " (what it held may now be incomplete)");
+
             return false;
         }
     }

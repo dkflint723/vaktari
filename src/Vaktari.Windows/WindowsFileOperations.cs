@@ -202,7 +202,13 @@ public sealed class WindowsFileOperations : IFileOperations
     /// <see cref="Descend"/> gives — and the delete removes the link rather
     /// than what is behind it, so what is behind it is not its business.
     /// </summary>
-    private static void ClearReadOnlyTree(string path)
+    /// <summary>
+    /// Internal so the Recycle Bin's own purge uses this rather than growing a
+    /// second copy. One rule in one place: a duplicate that drifts is how the
+    /// bin came to half-destroy read-only payloads while this path handled them
+    /// correctly.
+    /// </summary>
+    internal static void ClearReadOnlyTree(string path)
     {
         ClearReadOnly(path);
 

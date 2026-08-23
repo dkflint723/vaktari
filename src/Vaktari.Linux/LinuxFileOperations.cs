@@ -161,22 +161,34 @@ public sealed class LinuxFileOperations : IFileOperations
 
                 var created = new List<string>();
 
+                // Where each named item actually landed, and where a renamed
+                // folder sends its contents. Both exist because a target is a
+                // guess until the conflict at it has been settled.
+                var landings = new List<(string Source, string Target)>();
+                var redirects = new List<(string From, string To)>();
+
                 foreach (var item in plan)
                 {
                     handle.Token.ThrowIfCancellationRequested();
                     await handle.WaitIfPausedAsync().ConfigureAwait(false);
 
-                    var target = item.Target;
+                    var target = Redirect(item.Target, redirects);
 
                     if (File.Exists(target) || Directory.Exists(target))
                     {
                         switch (await onConflict(new FileConflict(item.Source, target)).ConfigureAwait(false))
                         {
                             case ConflictResolution.Skip:
+                                // Nothing landed, so nothing is recorded — an
+                                // undo that "put back" a file the user asked to
+                                // leave alone would move the bystander sitting
+                                // at that name instead.
                                 handle.ItemFinished();
                                 continue;
                             case ConflictResolution.KeepBoth:
-                                target = XdgTrash.Deduplicate(target);
+                                var kept = XdgTrash.Deduplicate(target);
+                                if (item.IsDirectory) redirects.Add((target, kept));
+                                target = kept;
                                 break;
                             case ConflictResolution.Cancel:
                                 throw new OperationCanceledException();
@@ -199,6 +211,12 @@ public sealed class LinuxFileOperations : IFileOperations
                     }
 
                     created.Add(target);
+
+                    // Only the items the user named, and the place they really
+                    // went — not destination + name, which is true only when
+                    // nothing was renamed or skipped along the way.
+                    if (item.IsRoot) landings.Add((item.Source, target));
+
                     handle.ItemFinished();
                 }
 
@@ -213,8 +231,8 @@ public sealed class LinuxFileOperations : IFileOperations
 
                 // Copies are not undoable: undoing one means deleting files,
                 // and an undo that deletes is not a safe default.
-                if (move && created.Count > 0)
-                    Remember(new UndoMove(sources, destination));
+                if (move && landings.Count > 0)
+                    Remember(new UndoMove(landings));
 
                 handle.Complete();
             }
@@ -239,7 +257,7 @@ public sealed class LinuxFileOperations : IFileOperations
             if (Directory.Exists(full))
             {
                 var root = Path.Combine(destination, name);
-                plan.Add(new PlannedItem(full, root, 0, IsDirectory: true));
+                plan.Add(new PlannedItem(full, root, 0, IsDirectory: true, IsRoot: true));
 
                 foreach (var dir in Directory.EnumerateDirectories(full, "*", SearchOption.AllDirectories))
                     plan.Add(new PlannedItem(dir, Path.Combine(root, Path.GetRelativePath(full, dir)), 0, true));
@@ -254,7 +272,8 @@ public sealed class LinuxFileOperations : IFileOperations
             else if (File.Exists(full))
             {
                 plan.Add(new PlannedItem(
-                    full, Path.Combine(destination, name), new FileInfo(full).Length, false));
+                    full, Path.Combine(destination, name), new FileInfo(full).Length,
+                    IsDirectory: false, IsRoot: true));
             }
         }
 
@@ -279,8 +298,40 @@ public sealed class LinuxFileOperations : IFileOperations
         }
     }
 
+    /// <summary>
+    /// <paramref name="IsRoot"/> marks the items the user actually named, as
+    /// opposed to everything found underneath them. Only those are undone, so
+    /// only those need their landing site recorded.
+    /// </summary>
     private readonly record struct PlannedItem(
-        string Source, string Target, long Length, bool IsDirectory);
+        string Source, string Target, long Length, bool IsDirectory, bool IsRoot = false);
+
+    /// <summary>
+    /// Carries a renamed folder down to everything planned inside it.
+    ///
+    /// **"Keep both" renames the folder; the plan still points its contents at
+    /// the old name.** BuildPlan fixes every descendant's target against the
+    /// original folder name before any conflict is known about, so without this
+    /// the new folder is created empty while the tree merges into the one the
+    /// user asked to keep separate — and on a move, that is the source
+    /// disappearing into a folder they were trying not to touch.
+    ///
+    /// The same routine as WindowsFileOperations.Redirect, which has had it
+    /// since the day the same fault was found there.
+    /// </summary>
+    private static string Redirect(string target, List<(string From, string To)> redirects)
+    {
+        foreach (var (from, to) in redirects)
+        {
+            if (string.Equals(target, from, PathRules.Comparison)) return to;
+
+            var prefix = from + Path.DirectorySeparatorChar;
+            if (target.StartsWith(prefix, PathRules.Comparison))
+                target = to + target[from.Length..];
+        }
+
+        return target;
+    }
 
     /// <summary>
     /// Something that can be put back. Undoing returns what would redo it —
@@ -319,27 +370,42 @@ public sealed class LinuxFileOperations : IFileOperations
         }
     }
 
+    /// <summary>
+    /// Puts moved items back where they came from.
+    ///
+    /// **Takes where they LANDED, not where they were sent.** This used to
+    /// reconstruct the landing site as destination + name, which is only true
+    /// when nothing was renamed or skipped on the way. Move notes.txt into a
+    /// folder that already has one and answer "Keep both": the file lands as
+    /// "notes (1).txt", the undo computed "notes.txt", found the pre-existing
+    /// bystander sitting there, and moved THAT out — under the name of a file
+    /// it had nothing to do with. Answering "Skip" was worse still: the item
+    /// the user explicitly refused to move was the one undo relocated.
+    ///
+    /// Carrying the pairs also fixes the redo. Reconstructing a second time
+    /// found nothing to put back, so Ctrl+Y after a bad undo quietly did
+    /// nothing while the pane refreshed as though it had worked.
+    /// </summary>
     private sealed class UndoMove(
-        IReadOnlyList<string> sources, string destination) : IUndoable
+        IReadOnlyList<(string Source, string Target)> landings) : IUndoable
     {
         public ValueTask<IUndoable?> UndoAsync(CancellationToken ct)
         {
-            var undone = new List<string>();
+            var undone = new List<(string Source, string Target)>();
 
-            foreach (var source in sources)
+            foreach (var (source, moved) in landings)
             {
-                var name = Path.GetFileName(Path.GetFullPath(source));
-                var moved = Path.Combine(destination, name);
-
                 if (!File.Exists(moved) && !Directory.Exists(moved)) continue;
 
                 XdgTrash.MoveAcrossDevices(moved, source);
-                undone.Add(source);
+
+                // Reversed for the redo: putting it back means moving it from
+                // where it now is to where it had landed.
+                undone.Add((moved, source));
             }
 
-            // Forward again: the same sources into the same destination.
             return ValueTask.FromResult<IUndoable?>(
-                undone.Count > 0 ? new UndoMove(undone, destination) : null);
+                undone.Count > 0 ? new UndoMove(undone) : null);
         }
     }
 }
