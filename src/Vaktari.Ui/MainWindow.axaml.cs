@@ -838,7 +838,21 @@ public partial class MainWindow : Window
             // mistake is picking the folder the archive was extracted INTO
             // rather than the theme inside it, and the difference is invisible
             // until nothing happens.
-            if (Vaktari.Core.FileSystem.FreedesktopIconTheme.FromFolder(path) is null)
+            //
+            // Off the UI thread, and said out loud while it happens. A theme
+            // nobody has read before is never cached — that is what makes it a
+            // new choice — so this is the one check that always pays the full
+            // 2.8–3.1 seconds, and it used to pay it with the dialog frozen.
+            // The read leaves a cache behind, so the launch after this one
+            // opens with the icons already right.
+            model.IconThemeStatus = "Reading that theme…";
+
+            var read = await Task.Run(
+                () => Vaktari.Core.FileSystem.FreedesktopIconTheme.FromFolder(path));
+
+            model.IconThemeStatus = "";
+
+            if (read is null)
             {
                 model.IconThemeFolder = "";
                 var leaf = Path.GetFileName(path.TrimEnd(Path.DirectorySeparatorChar));

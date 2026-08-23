@@ -89,12 +89,25 @@ public sealed partial class SettingsViewModel : ObservableObject
         // the listing quietly used the drawn set — which is the same invisible
         // failure the browse-time check exists to prevent, reached by the other
         // route.
-        if (_iconThemeFolder.Length > 0
-            && Core.FileSystem.FreedesktopIconTheme.FromFolder(_iconThemeFolder) is null)
+        //
+        // **In two halves, because the whole question is expensive.** Reading a
+        // theme enumerates it and everything it inherits — 2.8–3.1 seconds for
+        // Papirus-Dark on the machine that reported it — and asking it here
+        // meant the dialog did not appear until it was answered. What "moved or
+        // deleted" actually needs is two existence checks, and those are free;
+        // whether the folder still READS as a theme is asked behind the dialog
+        // and reported if the answer turns out to be no.
+        if (_iconThemeFolder.Length > 0)
         {
-            _iconThemeProblem =
-                $"That folder is no longer an icon theme — it may have been moved or deleted. "
-                + "Pick another from the list, or Vaktari's own icons.";
+            if (!Directory.Exists(_iconThemeFolder)
+                || !File.Exists(Path.Combine(_iconThemeFolder, "index.theme")))
+            {
+                _iconThemeProblem = ThemeGone;
+            }
+            else
+            {
+                ThemeVerification = Verify(_iconThemeFolder);
+            }
         }
 
         // Built from the disk once the chosen folder is known, so the list
@@ -293,6 +306,41 @@ public sealed partial class SettingsViewModel : ObservableObject
     /// sentence.
     /// </summary>
     [ObservableProperty] private string _iconThemeProblem = "";
+
+    private const string ThemeGone =
+        "That folder is no longer an icon theme — it may have been moved or deleted. "
+        + "Pick another from the list, or Vaktari's own icons.";
+
+    private const string ThemeUnreadable =
+        "That folder no longer reads as an icon theme. If it keeps its icons as links to "
+        + "another theme, that other theme may have been removed. Pick another from the "
+        + "list, or Vaktari's own icons.";
+
+    /// <summary>
+    /// Whether a folder reads as a theme. A seam, so a test can ask the
+    /// question without a quarter of a gigabyte of icons on disk — and so the
+    /// slow half can be held open long enough to prove the dialog did not wait
+    /// for it.
+    /// </summary>
+    internal static Func<string, bool> ReadsAsTheme { get; set; } =
+        folder => Core.FileSystem.FreedesktopIconTheme.FromFolder(folder) is not null;
+
+    /// <summary>
+    /// The check running behind the dialog, for tests to await. Completed when
+    /// there was nothing to check.
+    /// </summary>
+    internal Task ThemeVerification { get; private set; } = Task.CompletedTask;
+
+    private Task Verify(string folder)
+        => Task.Run(() => ReadsAsTheme(folder))
+            .ContinueWith(
+                answered =>
+                {
+                    if (answered is { Status: TaskStatus.RanToCompletion, Result: false })
+                        Avalonia.Threading.Dispatcher.UIThread.Post(
+                            () => IconThemeProblem = ThemeUnreadable);
+                },
+                TaskScheduler.Default);
 
     public bool HasIconThemeProblem => IconThemeProblem.Length > 0;
 
