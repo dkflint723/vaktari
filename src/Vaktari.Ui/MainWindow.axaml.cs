@@ -1188,8 +1188,61 @@ public partial class MainWindow : Window
     /// </summary>
     private double _zoomTravel;
 
+    /// <summary>
+    /// A strip that scrolls sideways and not down takes the wheel.
+    ///
+    /// **The toolkit does not do this, and the tab strip proved it.** A vertical
+    /// wheel over the tabs did nothing whatever: the ScrollViewer there has its
+    /// vertical axis disabled, so there was no vertical scrolling to perform and
+    /// the horizontal axis was never offered the gesture. What made that
+    /// survivable was the theme's stepper arrows — which are exactly the bulky
+    /// machinery the strip has just stopped drawing. Removing them without this
+    /// would have left dragging a three-pixel line as the only way to reach a
+    /// tab that had scrolled out.
+    ///
+    /// Wheeling away from you goes right, which is the direction the same
+    /// gesture moves a horizontal strip everywhere else.
+    /// </summary>
+    private static bool ScrolledSideways(PointerWheelEventArgs e)
+    {
+        if (e.Delta.Y == 0) return false;
+
+        foreach (var visual in (e.Source as Visual)?.GetVisualAncestors()
+                 ?? Array.Empty<Visual>())
+        {
+            if (visual is not ScrollViewer viewer) continue;
+            if (viewer.VerticalScrollBarVisibility
+                != Avalonia.Controls.Primitives.ScrollBarVisibility.Disabled) continue;
+
+            // Nothing hidden means nothing to reach, and claiming the gesture
+            // then would stop it doing whatever it would otherwise have done.
+            if (viewer.Extent.Width <= viewer.Viewport.Width) return false;
+
+            // A notch is 1.0 and moves about the width of a short tab. A
+            // trackpad's fractions scale down from the same figure rather than
+            // needing an accumulator, because a partial scroll is meaningful
+            // where a partial zoom step is not.
+            var moved = Math.Clamp(
+                viewer.Offset.X - (e.Delta.Y * 64), 0, viewer.Extent.Width - viewer.Viewport.Width);
+
+            viewer.Offset = viewer.Offset.WithX(moved);
+
+            return true;
+        }
+
+        return false;
+    }
+
     private void OnWheelAnywhere(object? sender, PointerWheelEventArgs e)
     {
+        // Before the zoom test, because a strip that scrolls sideways wants the
+        // plain wheel and zoom wants it only with Control held.
+        if (!e.KeyModifiers.HasFlag(KeyModifiers.Control) && ScrolledSideways(e))
+        {
+            e.Handled = true;
+            return;
+        }
+
         if (!e.KeyModifiers.HasFlag(KeyModifiers.Control) || e.Delta.Y == 0) return;
 
         // Claimed even when the accumulator has not tripped yet: releasing it
@@ -1656,8 +1709,19 @@ public partial class MainWindow : Window
     /// for this drop alone and has no original to preserve, so copying would
     /// leave a duplicate behind for nobody.
     ///
-    /// Off the UI thread: unpacking is somebody else's code reading an archive,
-    /// and a large one would otherwise freeze the window mid-gesture.
+    /// **On the thread that received the drop, and that is not a detail.** This
+    /// used to run on the thread pool, to keep a large archive from freezing the
+    /// window mid-gesture, and it cost the feature: what a drag hands over is a
+    /// COM object belonging to the apartment that received it, and reading it
+    /// from anywhere else fails every file in the drop. Worse, the pool work
+    /// began only after the drop handler had returned, by which time the source
+    /// is entitled to have taken the object away — so the same drag that
+    /// Offers had just accepted refused everything a moment later.
+    ///
+    /// That is what "nothing came out of that archive" was: not an empty
+    /// archive, but every entry refused, silently, in the wrong apartment.
+    /// The window is held for the length of the unpack instead, which is what
+    /// the bounds in VirtualFileDrop are for.
     /// </summary>
     private bool TakeVirtual(IDataTransfer data, PaneViewModel pane, string destination)
     {
@@ -1665,35 +1729,98 @@ public partial class MainWindow : Window
 
         pane.Status = "taking the files out of the archive…";
 
-        _ = Task.Run(() =>
+        IReadOnlyList<string> taken;
+
+        try
         {
-            IReadOnlyList<string> taken;
+            taken = virtualDrop.Take(data);
+        }
+        catch (Exception ex)
+        {
+            pane.Status = $"could not take those out of the archive: {ex.Message}";
+            return true;
+        }
+
+        if (taken.Count == 0)
+        {
+            pane.Status = "nothing came out of that archive";
+            return true;
+        }
+
+        pane.PasteIntoFolder(destination, taken, move: true);
+
+        return true;
+    }
+
+    /// <summary>
+    /// Where rescued drops are staged. Under our own name inside the temporary
+    /// directory, so a crash leaves something recognisable rather than litter,
+    /// and so the operating system clears it eventually even if we do not.
+    /// </summary>
+    private static string DropStagingRoot()
+        => Path.Combine(Path.GetTempPath(), "Vaktari", "drops");
+
+    /// <summary>
+    /// What the drag actually handed over, and whether it was still there when
+    /// it did.
+    ///
+    /// **Written because a failure said "Could not find file" about a path the
+    /// drop had just been given.** Dragging out of 7-Zip does not hand over the
+    /// archive's contents: it extracts them to a temporary folder of its own
+    /// and hands over paths into that. The copy those paths feed runs after the
+    /// drop returns, so there are two quite different explanations for a file
+    /// that is not there — 7-Zip cleaned up before we read it, or 7-Zip had not
+    /// finished writing it when the drop completed — and the fix differs. This
+    /// says which, at the one instant that separates them.
+    ///
+    /// Bounded: a drag of a large tree should not be turned into a long walk by
+    /// the thing reporting on it.
+    /// </summary>
+    private static void ReportDroppedPaths(IReadOnlyList<string> paths)
+    {
+        Console.Error.WriteLine($"[vaktari] drop: {paths.Count} path(s) handed over");
+
+        for (var i = 0; i < paths.Count && i < 8; i++)
+        {
+            var path = paths[i];
+
+            if (File.Exists(path))
+            {
+                Console.Error.WriteLine($"[vaktari] drop:   file present · {path}");
+                continue;
+            }
+
+            if (!Directory.Exists(path))
+            {
+                Console.Error.WriteLine($"[vaktari] drop:   ALREADY GONE · {path}");
+                continue;
+            }
+
+            // A folder is the case that matters: the failure named a file
+            // inside one, so the question is whether the contents had been
+            // written yet, not whether the folder existed.
+            var files = 0;
+            var bytes = 0L;
 
             try
             {
-                taken = virtualDrop.Take(data);
-            }
-            catch (Exception ex)
-            {
-                Dispatcher.UIThread.Post(() =>
-                    pane.Status = $"could not take those out of the archive: {ex.Message}");
-
-                return;
-            }
-
-            Dispatcher.UIThread.Post(() =>
-            {
-                if (taken.Count == 0)
+                foreach (var inside in Directory.EnumerateFiles(
+                             path, "*", SearchOption.AllDirectories))
                 {
-                    pane.Status = "nothing came out of that archive";
-                    return;
+                    files++;
+                    try { bytes += new FileInfo(inside).Length; } catch { }
+                    if (files >= 2_000) break;
                 }
+            }
+            catch (Exception e) when (e is IOException or UnauthorizedAccessException)
+            {
+                Console.Error.WriteLine($"[vaktari] drop:   folder unreadable · {path}");
+                continue;
+            }
 
-                pane.PasteIntoFolder(destination, taken, move: true);
-            });
-        });
-
-        return true;
+            Console.Error.WriteLine(
+                $"[vaktari] drop:   folder with {files} file(s), {bytes} bytes · {path}");
+        }
     }
 
     private void OnDragLeave(object? sender, DragEventArgs e) => HighlightDropTarget(null);
@@ -1750,6 +1877,31 @@ public partial class MainWindow : Window
         }
 
         var paths = dropped.Paths;
+
+        ReportDroppedPaths(paths);
+
+        // **Before this handler returns, because after it returns the files may
+        // not exist.** Dragging out of an archive hands over a path into the
+        // archiver's own temporary folder, and the archiver deletes it the
+        // moment the drop is over — measured at 541 files and 8,985,809 bytes
+        // present at the drop, and the whole folder gone by the time the copy
+        // ran. See DropStaging.
+        var rescue = Input.DropStaging.Rescue(
+            paths, Path.GetTempPath(), Path.Combine(DropStagingRoot(), Guid.NewGuid().ToString("N")[..12]));
+
+        if (rescue.Rescued)
+        {
+            Console.Error.WriteLine(
+                $"[vaktari] drop: rescued {rescue.Bytes} bytes from the temporary folder "
+                + "before the source could clear it");
+
+            paths = rescue.Paths;
+
+            // Moved out of our own staging folder rather than copied, so
+            // nothing is left behind. What the user asked of the ORIGINAL is
+            // already satisfied: the archive still holds it either way.
+            move = true;
+        }
 
         if (target is not null)
             pane.PasteIntoFolder(target, paths, move);

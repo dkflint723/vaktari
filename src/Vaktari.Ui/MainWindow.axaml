@@ -529,6 +529,61 @@
           <ScrollViewer HorizontalScrollBarVisibility="Auto"
                         VerticalScrollBarVisibility="Disabled"
                         ClipToBounds="True">
+            <!-- The theme's own scrollbar is built for a document, and over a
+                 row of tabs it reads as machinery: a bright thumb the height of
+                 a button, with a stepper arrow at each end, painted across the
+                 tab labels the moment the pointer nears it.
+
+                 Pared back to the one part that says anything — a thin muted
+                 line showing how far along the strip you are — pinned to the
+                 bottom edge rather than floating over the text. The steppers go
+                 because a tab strip is dragged and wheeled, not stepped a
+                 pixel at a time, and each arrow costs more width than it earns.
+
+                 Scoped to this ScrollViewer, so listings and panels keep the
+                 ordinary scrollbar people expect on a scrolling surface. -->
+            <ScrollViewer.Styles>
+              <Style Selector="ScrollBar:horizontal">
+                <Setter Property="Height" Value="3"/>
+                <Setter Property="MinHeight" Value="3"/>
+                <Setter Property="Margin" Value="0,0,0,1"/>
+                <Setter Property="Background" Value="Transparent"/>
+                <Setter Property="VerticalAlignment" Value="Bottom"/>
+                <Setter Property="Opacity" Value="0.55"/>
+              </Style>
+
+              <!-- Slightly present while actually being used, and still nothing
+                   like a control. -->
+              <Style Selector="ScrollBar:horizontal:pointerover">
+                <Setter Property="Height" Value="5"/>
+                <Setter Property="MinHeight" Value="5"/>
+                <Setter Property="Opacity" Value="0.9"/>
+              </Style>
+
+              <!-- Both steppers and both page-buttons: none of them belong on a
+                   strip this size. -->
+              <Style Selector="ScrollBar:horizontal /template/ RepeatButton">
+                <Setter Property="IsVisible" Value="False"/>
+                <Setter Property="Width" Value="0"/>
+                <Setter Property="MinWidth" Value="0"/>
+              </Style>
+
+              <Style Selector="ScrollBar:horizontal /template/ Border">
+                <Setter Property="Background" Value="Transparent"/>
+                <Setter Property="BorderThickness" Value="0"/>
+              </Style>
+
+              <Style Selector="ScrollBar:horizontal /template/ Thumb">
+                <Setter Property="Background" Value="{DynamicResource ViewDimText}"/>
+                <Setter Property="BorderThickness" Value="0"/>
+                <Setter Property="CornerRadius" Value="2"/>
+                <Setter Property="MinHeight" Value="3"/>
+              </Style>
+
+              <Style Selector="ScrollBar:horizontal /template/ Thumb:pointerover">
+                <Setter Property="Background" Value="{DynamicResource ViewDimText}"/>
+              </Style>
+            </ScrollViewer.Styles>
           <StackPanel Orientation="Horizontal">
           <TabStrip ItemsSource="{Binding Tabs}" SelectedItem="{Binding ActiveTab}">
             <TabStrip.Styles>
