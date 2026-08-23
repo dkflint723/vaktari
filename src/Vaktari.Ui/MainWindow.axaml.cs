@@ -41,11 +41,46 @@ public partial class MainWindow : Window
     ///
     /// Called after the settings are applied, and again when they are saved.
     /// </summary>
+    /// <summary>
+    /// The chosen theme, applied when it is ready rather than before the window
+    /// is allowed to open. <see cref="Thumbnails.IconThemeInstall"/> carries the
+    /// measurements and what changes on screen as a result.
+    /// </summary>
     private static void InstallIconTheme(IPlatform platform)
-        => Thumbnails.IconLoader.Provider =
-            Vaktari.Core.FileSystem.FreedesktopIconTheme.FromFolder(
-                AppSettings.Current.General.IconThemeFolder)
-            ?? platform.Icons;
+    {
+        // Before anything reads a theme. A null folder disables caching, which
+        // means paying the build on every launch rather than only the first.
+        Vaktari.Core.FileSystem.FreedesktopIconTheme.IndexCacheFolder =
+            Path.Combine(JsonSessionStore.DefaultDirectory(), "icon-index");
+
+        Thumbnails.IconThemeInstall.Begin(
+            AppSettings.Current.General.IconThemeFolder,
+            platform.Icons,
+            folder => Vaktari.Core.FileSystem.FreedesktopIconTheme.FromCache(folder),
+            folder => Vaktari.Core.FileSystem.FreedesktopIconTheme.FromFolder(folder),
+            UseIconProvider);
+    }
+
+    /// <summary>
+    /// Marshals to the UI thread itself rather than asking the caller to. The
+    /// first call arrives on it and the second does not, and a Post from the UI
+    /// thread would defer the platform's icons past first paint for no reason.
+    /// </summary>
+    private static void UseIconProvider(Vaktari.Core.FileSystem.IIconThemeProvider? provider)
+    {
+        if (!Dispatcher.UIThread.CheckAccess())
+        {
+            Dispatcher.UIThread.Post(() => UseIconProvider(provider));
+            return;
+        }
+
+        Thumbnails.IconLoader.Provider = provider;
+
+        // Resolved paths and drawables belong to whatever was in place before.
+        // On the first call there are none; on the swap they are the shell's,
+        // and every one of them is now the wrong picture.
+        Thumbnails.IconLoader.Invalidate();
+    }
     private readonly JsonSessionStore _store;
 
     // Preferences, as distinct from the session. Read before it, because the

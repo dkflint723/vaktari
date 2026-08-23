@@ -9,6 +9,27 @@ Newest first. Dates are the day the tag was cut. Versions follow
 [Status](README.md#status): there has been no stable release, and the numbers
 should not be trusted for compatibility yet.
 
+## [0.9.8] — 2026-08-23
+
+### Changed
+
+- **Vaktari opens roughly six times faster when you use an icon theme.**
+  Choosing one made every launch read the whole theme before the window was
+  allowed to appear — and a theme is not a small thing: Papirus-Dark falls back
+  to Papirus behind it, a quarter of a gigabyte across some fifty thousand
+  files. Measured on the machine that reported it, reading them took 2.8–3.1
+  seconds while every icon lookup afterwards took none at all, and a launch that
+  should have taken 300 ms took 1,750.
+
+  The reading is now remembered between launches, so an ordinary start pays
+  about twenty milliseconds for it and the icons are right from the first frame.
+  Only the first launch after choosing a theme, or after replacing one, reads it
+  the long way — and that one no longer blocks the window: it opens on your
+  desktop's own icons and changes to the theme once, a moment later.
+
+  If a theme's folder is replaced or edited, what was remembered is discarded
+  and read again, so an updated theme shows up rather than the old one.
+
 ## [0.9.7] — 2026-08-17
 
 ### Added

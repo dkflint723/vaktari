@@ -71,6 +71,19 @@ public sealed class FreedesktopIconTheme : IIconThemeProvider
     }
 
     /// <summary>
+    /// Where built indexes are kept between launches, or null to keep none.
+    ///
+    /// A passthrough so that the cache itself stays internal: this is the only
+    /// thing outside Core that needs to say anything about it, and where
+    /// per-user state lives is not a fact Core is entitled to know.
+    /// </summary>
+    public static string? IndexCacheFolder
+    {
+        get => IconIndexCache.Folder;
+        set => IconIndexCache.Folder = value;
+    }
+
+    /// <summary>
     /// Reads a folder somebody downloaded and extracted, or null if it does not
     /// look like an icon theme.
     ///
@@ -78,8 +91,28 @@ public sealed class FreedesktopIconTheme : IIconThemeProvider
     /// parent is the root.** That is the shape of every theme archive: extract
     /// Papirus and you get a folder called Papirus with index.theme inside it,
     /// which is what a person will point at.
+    ///
+    /// Builds the index if there is none cached, which takes seconds on a large
+    /// theme — see <see cref="FromCache"/> for the launch that must not.
     /// </summary>
     public static FreedesktopIconTheme? FromFolder(string? folder, IIconNaming? naming = null)
+        => Read(folder, naming, cachedOnly: false);
+
+    /// <summary>
+    /// The same theme, but only when reading it is already paid for — every
+    /// directory in its chain present in <see cref="IconIndexCache"/>. Null
+    /// otherwise, which is the caller's cue to build it off the UI thread.
+    ///
+    /// **This is what stops the icons changing under you.** Building the index
+    /// takes seconds, so it cannot happen before the window opens; but a launch
+    /// that opens on the platform's icons and swaps to the theme a beat later
+    /// is visibly wrong for that beat. A cache turns the ordinary launch — every
+    /// one after the first — back into something a window can wait for.
+    /// </summary>
+    public static FreedesktopIconTheme? FromCache(string? folder, IIconNaming? naming = null)
+        => Read(folder, naming, cachedOnly: true);
+
+    private static FreedesktopIconTheme? Read(string? folder, IIconNaming? naming, bool cachedOnly)
     {
         // **Nullable, and that is not defensive padding — it shipped as a
         // crash.** A settings file written by an earlier version has no
@@ -122,6 +155,12 @@ public sealed class FreedesktopIconTheme : IIconThemeProvider
             // that is itself only another name. One line of chain covers every
             // depth of that.
             var theme = new FreedesktopIconTheme(name, [parent], naming, VariantBase(parent, name));
+
+            // Every directory in the chain, or none of them. A theme half out
+            // of cache would answer for the names its variant covers and stay
+            // silent about the rest — icons missing rather than late, and
+            // missing for as long as the process runs.
+            if (cachedOnly && !theme.WarmFromCache()) return null;
 
             // **index.theme is still not proof that a theme WORKS.** A
             // structural check would pass a folder that resolves nothing at
@@ -270,6 +309,11 @@ public sealed class FreedesktopIconTheme : IIconThemeProvider
     private Dictionary<string, List<string>> IndexOf(string themeDir)
         => _indexes.GetOrAdd(themeDir, dir =>
         {
+            // Before the scan, because the scan is the entire cost. See
+            // IconIndexCache for what is remembered and how it is known to
+            // still be true.
+            if (IconIndexCache.Load(dir) is { } remembered) return remembered;
+
             var map = new Dictionary<string, List<string>>(StringComparer.OrdinalIgnoreCase);
 
             try
@@ -299,8 +343,37 @@ public sealed class FreedesktopIconTheme : IIconThemeProvider
 
             AddAliases(dir, map);
 
+            IconIndexCache.Save(dir, map);
+
             return map;
         });
+
+    /// <summary>
+    /// Loads every directory this theme searches from cache, or answers false
+    /// having loaded none of it.
+    ///
+    /// The same <c>Path.Combine(root, theme)</c> and the same existence test
+    /// <see cref="Search"/> uses, because a key formed any other way would warm
+    /// a directory the search never asks for and leave the one it does.
+    /// </summary>
+    private bool WarmFromCache()
+    {
+        foreach (var theme in _searchOrder)
+        {
+            foreach (var root in _roots)
+            {
+                var themeDir = Path.Combine(root, theme);
+
+                if (!Directory.Exists(themeDir)) continue;
+
+                if (IconIndexCache.Load(themeDir) is not { } remembered) return false;
+
+                _indexes[themeDir] = remembered;
+            }
+        }
+
+        return true;
+    }
 
     /// <summary>
     /// Folds in what the theme's symbolic links meant.
