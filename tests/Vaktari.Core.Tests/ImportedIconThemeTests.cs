@@ -15,6 +15,14 @@ namespace Vaktari.Core.Tests;
 /// Built here rather than shipped as a fixture: a real theme is tens of
 /// thousands of files, and what needs proving is the reading, not the theme.
 /// </summary>
+/// <summary>
+/// Shares the icon-index collection because reading a theme now WRITES a cache,
+/// and where it writes is a static. Run alongside the cache tests, this class
+/// drops its own cache files into whichever folder those tests are asserting
+/// about — which is how it was found: two of them failed intermittently, and
+/// only when the whole suite ran.
+/// </summary>
+[Collection("icon index cache")]
 public sealed class ImportedIconThemeTests : IDisposable
 {
     private readonly string _root;

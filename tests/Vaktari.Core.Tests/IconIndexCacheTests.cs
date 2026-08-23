@@ -211,9 +211,45 @@ public sealed class IconIndexCacheTests : IDisposable
         var dir = Theme("Papirus");
         IconIndexCache.Save(dir, MapOf(("folder", Path.Combine(dir, "48x48", "places", "folder.svg"))));
 
-        var file = Directory.GetFiles(_cache).Single();
+        var file = Directory.GetFiles(_cache, "*.idx").Single();
         File.WriteAllText(file, "vaktari-icon-index 1\nnot a theme\n");
 
         Assert.Null(IconIndexCache.Load(dir));
+    }
+
+    /// <summary>
+    /// **Nothing half-written is left behind when the rename fails.**
+    ///
+    /// Found as a flaky test rather than reasoned about: the cache folder
+    /// occasionally held two files where it should hold one, and the second was
+    /// a staging file whose rename into place had failed. That happens on a real
+    /// machine when something — a virus scanner, most often — opens a file the
+    /// instant it is written. It matters beyond the litter: a failed rename
+    /// means no cache at all, silently, and every launch afterwards pays the
+    /// seconds the cache exists to avoid.
+    ///
+    /// The failure is forced here rather than waited for. Holding the
+    /// destination open with no sharing is exactly what the scanner does, and
+    /// it makes a test that passed by luck into one that passes by construction.
+    /// </summary>
+    [Fact]
+    public void A_rename_that_cannot_happen_leaves_no_half_written_file_behind()
+    {
+        var dir = Theme("Papirus");
+        var icon = Path.Combine(dir, "48x48", "places", "folder.svg");
+
+        IconIndexCache.Save(dir, MapOf(("folder", icon)));
+
+        var written = Directory.GetFiles(_cache, "*.idx").Single();
+
+        using (new FileStream(written, FileMode.Open, FileAccess.Read, FileShare.None))
+        {
+            // Cannot replace the file it is holding, and must not leave the
+            // half-written one behind either.
+            IconIndexCache.Save(dir, MapOf(("folder", icon)));
+        }
+
+        Assert.Empty(Directory.GetFiles(_cache, "*.writing"));
+        Assert.Single(Directory.GetFiles(_cache, "*.idx"));
     }
 }

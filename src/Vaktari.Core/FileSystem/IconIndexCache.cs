@@ -109,7 +109,13 @@ internal static class IconIndexCache
             // dies mid-write leaves the previous cache rather than half of a
             // new one. A half-written cache would read as a valid map with
             // missing entries, which is worse than none.
-            var temporary = file + ".writing";
+            //
+            // **Uniquely named, and cleaned up whatever happens.** A fixed name
+            // was left behind whenever the rename failed — which it does, on a
+            // machine where a virus scanner opens a newly written file before
+            // anyone else can touch it. The cache then silently never appeared
+            // and every launch paid the full rebuild, with nothing to say why.
+            var temporary = $"{file}.{Guid.NewGuid():N}.writing";
 
             using (var writer = new StreamWriter(temporary, append: false, Encoding.UTF8))
             {
@@ -140,11 +146,64 @@ internal static class IconIndexCache
                 }
             }
 
-            File.Move(temporary, file, overwrite: true);
+            try
+            {
+                // Two tries. A scanner's hold on a file it has just seen written
+                // is brief, and losing the cache to it means paying seconds on
+                // every launch from here on.
+                try
+                {
+                    File.Move(temporary, file, overwrite: true);
+                }
+                catch (IOException)
+                {
+                    Thread.Sleep(50);
+                    File.Move(temporary, file, overwrite: true);
+                }
+            }
+            catch (Exception e) when (e is IOException or UnauthorizedAccessException)
+            {
+                // Said out loud rather than swallowed: silence here reads
+                // exactly like a cache that works, and the only symptom is a
+                // launch that stays slow forever.
+                Console.Error.WriteLine(
+                    $"[vaktari] icon index: could not be kept — {e.Message.Trim()}");
+
+                throw;
+            }
         }
         catch (Exception e) when (e is IOException or UnauthorizedAccessException or ArgumentException)
         {
             // No cache, and the next launch pays what this one did.
+        }
+        finally
+        {
+            // Whatever happened, nothing half-written is left lying about. This
+            // is what a fixed temporary name got wrong: a failed rename left the
+            // file behind, and the next attempt wrote over the same litter.
+            Sweep(stagingFor: themeDir);
+        }
+    }
+
+    /// <summary>
+    /// Removes any half-written file for this theme. Cheap, and bounded to the
+    /// one theme's own name so a cache being written by another window is left
+    /// alone.
+    /// </summary>
+    private static void Sweep(string stagingFor)
+    {
+        if (Folder is null) return;
+
+        try
+        {
+            var prefix = Path.GetFileName(FileFor(stagingFor));
+
+            foreach (var litter in Directory.EnumerateFiles(Folder, prefix + ".*.writing"))
+                try { File.Delete(litter); } catch { }
+        }
+        catch (Exception e) when (e is IOException or UnauthorizedAccessException or ArgumentException)
+        {
+            // Litter that cannot be swept is litter; it is not a reason to fail.
         }
     }
 
