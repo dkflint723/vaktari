@@ -106,41 +106,76 @@ public sealed class PathCompleter
         }
     }
 
+    /// <summary>
+    /// Both spellings. Windows accepts either and people type either — a path
+    /// pasted from a shell script arrives with forward slashes, one copied from
+    /// Explorer with backslashes — and reading only one of them made Tab do
+    /// nothing at all for every ordinary Windows path.
+    /// </summary>
+    private static readonly char[] Separators = ['/', '\\'];
+
+    private static bool IsSeparator(char c) => c is '/' or '\\';
+
     /// <summary>Splits into the folder to search and the fragment to match.</summary>
     private static (string Directory, string Partial) Split(string text)
     {
         var path = Expand(text);
 
+        if (path.Length == 0) return ("", "");
+
         // A trailing separator means "inside this folder", not "a folder whose
         // name is empty" — so everything in it is a candidate.
-        if (path.EndsWith('/')) return (path, "");
+        if (IsSeparator(path[^1])) return (path, "");
 
-        var slash = path.LastIndexOf('/');
+        var slash = path.LastIndexOfAny(Separators);
         if (slash < 0) return ("", path);
 
-        var directory = slash == 0 ? "/" : path[..slash];
+        var directory = slash == 0 ? path[..1] : path[..slash];
+
+        // **"C:" is not a folder.** A bare drive letter means wherever this
+        // process happens to be on that drive, so completing in it would offer
+        // the contents of somewhere nobody named. PathVariables makes the same
+        // point about typing one.
+        if (directory.Length == 2 && directory[1] == ':' && char.IsLetter(directory[0]))
+            directory += Path.DirectorySeparatorChar;
+
         return (directory, path[(slash + 1)..]);
     }
 
+    /// <summary>
+    /// Rejoins in the spelling the directory already uses, so completing a path
+    /// typed with backslashes does not hand back a mix of the two.
+    /// </summary>
     private static string Join(string directory, string name)
     {
-        var joined = directory.EndsWith('/') ? directory + name : $"{directory}/{name}";
+        var separator = Style(directory);
+
+        var joined = IsSeparator(directory[^1])
+            ? directory + name
+            : directory + separator + name;
 
         // Trailing separator, so the next Tab completes inside it rather than
         // re-matching the folder just chosen.
-        return joined + "/";
+        return joined + separator;
     }
 
-    private static string Expand(string text)
+    private static char Style(string directory)
     {
-        if (text == "~" || text.StartsWith("~/", StringComparison.Ordinal))
-        {
-            var home = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
-            return home + text[1..];
-        }
+        var at = directory.LastIndexOfAny(Separators);
 
-        return text;
+        return at >= 0 ? directory[at] : Path.DirectorySeparatorChar;
     }
+
+    /// <summary>
+    /// The same expansion the path bar navigates with.
+    ///
+    /// **It used to be a second, poorer copy that knew only about `~`**, so
+    /// `%LOCALAPPDATA%\GOG.com` completed nothing while typing it and pressing
+    /// Enter went to exactly the right place — the box appearing to not
+    /// understand a path it understood perfectly well. One expander, so the two
+    /// cannot drift apart again.
+    /// </summary>
+    private static string Expand(string text) => PathVariables.Expand(text);
 
     private static string CommonPrefix(List<string> values)
     {

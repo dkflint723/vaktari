@@ -86,7 +86,14 @@ public sealed partial class PaneViewModel
         if (IsLoading || generation != _generation || CurrentPath != watchedPath) return;
 
         // Direct children only — nothing nested is on screen.
-        if (Path.GetDirectoryName(change.Path) != watchedPath) return;
+        //
+        // Compared as PATHS, not as strings. LoadListingAsync normalises what it
+        // is given, so the two spellings should already agree — but this is the
+        // line that silently discarded every event when they did not, and the
+        // watcher is the one place where being wrong is invisible rather than
+        // loud. Same is what the rest of the application compares paths with.
+        if (!Vaktari.Core.FileSystem.PathRules.Same(
+                Path.GetDirectoryName(change.Path), watchedPath)) return;
 
         switch (change.Kind)
         {
@@ -180,9 +187,6 @@ public sealed partial class PaneViewModel
 
     private async Task AddOrUpdateAsync(string path, int generation)
     {
-        var name = Path.GetFileName(path);
-        if (!ShowHidden && name.StartsWith('.')) return;
-
         FileEntry? entry;
 
         try
@@ -201,6 +205,27 @@ public sealed partial class PaneViewModel
         }
 
         if (entry is not { } value) return;
+
+        // **Asked of the entry, not of its name.** This was `name.StartsWith('.')`
+        // — the freedesktop rule — while what governs the listing is the
+        // provider's own: Windows excludes by the Hidden and System attributes
+        // and treats a leading dot as an ordinary visible file. The two
+        // disagreed in both directions on Windows, and the listing lost either
+        // way.
+        //
+        // A dotfile another program wrote — `.editorconfig` from an extraction,
+        // `.env` from a terminal — never appeared until F5, and a rename INTO a
+        // dotted name removed the row outright, because the removal lands and
+        // the re-add was dropped. In the other direction Word's hidden
+        // `~$Report.docx` was let in, into a listing defined to exclude it,
+        // where it also skewed the item count and survived every filter and
+        // re-sort because it had been inserted into _all as well.
+        //
+        // Hidden OR System, because that is exactly what the Windows
+        // enumeration excludes; the flags carry them separately. Asking the
+        // entry means there is one rule again rather than two that agree only
+        // on Linux.
+        if (!ShowHidden && (value.IsHidden || (value.Flags & EntryFlags.System) != 0)) return;
 
         await Dispatcher.UIThread.InvokeAsync(() =>
         {

@@ -1852,6 +1852,28 @@ public sealed partial class PaneViewModel : ObservableObject, IDisposable
     {
         if (string.IsNullOrEmpty(path)) return;
 
+        // **Normalised HERE, once, because everything downstream compares
+        // against it as a string.** A path with a trailing separator is the same
+        // folder and a different string, and the folder watcher decides whether
+        // an event belongs on screen with
+        // `Path.GetDirectoryName(change.Path) != watchedPath` — a comparison
+        // GetDirectoryName can never satisfy, since it never returns a trailing
+        // separator. Navigating to `C:\Users\me\Downloads\` therefore killed
+        // live updates outright: a finished download, a file deleted from a
+        // terminal, a rename by another program — none of it appeared until F5.
+        //
+        // Reachable by typing one by hand, and now reachable far more easily:
+        // Tab-completion ends every offer with a separator, and Tab only
+        // started working on Windows paths in this same change.
+        //
+        // Normalising the argument rather than the property, because the same
+        // string is handed to StartWatching and to the version-control refresh
+        // further down — fixing only CurrentPath would leave those two comparing
+        // a normalised value against a raw one, which is the same bug moved.
+        path = VirtualPaths.IsVirtual(path)
+            ? path
+            : Vaktari.Core.FileSystem.PathRules.Normalise(path);
+
         // Cancelling the previous navigation is what stops a dead network path
         // from wedging the pane. It is not an optimisation.
         _cts?.Cancel();
