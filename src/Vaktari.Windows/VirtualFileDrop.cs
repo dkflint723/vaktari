@@ -67,10 +67,24 @@ public sealed partial class VirtualFileDrop : IVirtualFileDrop
 
     public IReadOnlyList<string> Take(object dataTransfer, CancellationToken token = default)
     {
-        if (Native(dataTransfer) is not { } data) return [];
+        // **Said out loud from here down.** Every failure in this method used to
+        // be swallowed, so a drop where the shell refused all of it arrived as
+        // "nothing came out of that archive" with nothing, anywhere, saying
+        // why — and the COM conversation cannot be reproduced in a test, so the
+        // log is the only instrument there is.
+        if (Native(dataTransfer) is not { } data)
+        {
+            Console.Error.WriteLine("[vaktari] drop: no native data object behind that drag");
+            return [];
+        }
 
         var names = Names(data);
-        if (names.Count == 0) return [];
+
+        if (names.Count == 0)
+        {
+            Console.Error.WriteLine("[vaktari] drop: the drag names no files");
+            return [];
+        }
 
         // One folder per drop, so two drags of the same name do not fight and
         // what a cancelled drop leaves behind can be recognised.
@@ -81,6 +95,7 @@ public sealed partial class VirtualFileDrop : IVirtualFileDrop
 
         var taken = new List<string>(names.Count);
         var written = 0L;
+        var refused = 0;
 
         for (var i = 0; i < names.Count && i < MaxItems; i++)
         {
@@ -105,9 +120,21 @@ public sealed partial class VirtualFileDrop : IVirtualFileDrop
             catch (Exception e) when (e is COMException or IOException or UnauthorizedAccessException)
             {
                 // One entry the shell will not hand over is not a reason to
-                // lose the rest of the drop.
+                // lose the rest of the drop — but it is a reason to say which,
+                // and why. An HRESULT names the fault exactly where a message
+                // does not: 0x8001010E is this being asked from the wrong
+                // thread, which no amount of retrying will fix.
+                refused++;
+
+                if (refused <= 5)
+                    Console.Error.WriteLine($"[vaktari] drop: '{names[i]}' refused — {Fault(e)}");
             }
         }
+
+        Console.Error.WriteLine(
+            $"[vaktari] drop: took {taken.Count} of {names.Count}"
+            + (refused > 0 ? $", {refused} refused" : "")
+            + $" · {written} bytes · apartment={Apartment()}");
 
         // Only the roots, or a tree would be copied flat into the destination.
         return Roots(folder, taken);
@@ -223,6 +250,29 @@ public sealed partial class VirtualFileDrop : IVirtualFileDrop
             if (owned && unknown != IntPtr.Zero) Marshal.Release(unknown);
         }
     }
+
+    /// <summary>
+    /// What went wrong, with the HRESULT where there is one. A COM failure's
+    /// message is often a generic sentence; the number is the part that
+    /// identifies it.
+    /// </summary>
+    private static string Fault(Exception e)
+        => e is COMException com
+            ? $"0x{com.HResult:X8} {com.Message.Trim()}"
+            : $"{e.GetType().Name}: {e.Message.Trim()}";
+
+    /// <summary>
+    /// Which apartment this ran in. A shell data object belongs to the thread
+    /// that received the drop, and asking it from anywhere else is the failure
+    /// that looks like an archive refusing every file in it.
+    /// </summary>
+    private static string Apartment()
+        => Thread.CurrentThread.GetApartmentState() switch
+        {
+            ApartmentState.STA => "STA",
+            ApartmentState.MTA => "MTA — wrong for a drop",
+            _ => "unknown",
+        };
 
     private static bool Describes(IDataObject data) =>
         Available(data, DescriptorW) || Available(data, DescriptorA);
