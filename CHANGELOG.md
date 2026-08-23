@@ -9,6 +9,59 @@ Newest first. Dates are the day the tag was cut. Versions follow
 [Status](README.md#status): there has been no stable release, and the numbers
 should not be trusted for compatibility yet.
 
+## [0.9.10] — 2026-08-23
+
+### Fixed
+
+- **Dragging files out of 7-Zip works.** It failed every time, naming a file it
+  had just been given. 7-Zip does not hand over an archive's contents — it
+  extracts them to a temporary folder of its own and deletes that folder the
+  instant the drop finishes, which was before Vaktari had finished copying.
+  Vaktari now takes the files while the drop is still happening.
+
+- **The path box completes Windows paths.** Pressing Tab did nothing for a path
+  like `%LOCALAPPDATA%\GOG.com\Galaxy`, while pressing Enter went straight
+  there. Completion understood neither `%VARIABLES%` nor backslashes, so on
+  Windows it silently offered nothing for any path at all.
+
+- **A folder keeps updating itself when its path ends in a separator.** Files
+  appearing, disappearing or being renamed by other programs went unnoticed
+  until F5 — and completing a path with Tab produced exactly such a path.
+
+- **Files other programs create are shown, and hidden ones stay hidden.** On
+  Windows a dotfile written by another program did not appear until F5, renaming
+  something to a dotted name made its row vanish, and hidden files that Word and
+  Office leave behind while a document is open were shown when they should not
+  have been.
+
+- **Emptying the Recycle Bin no longer part-destroys read-only items.** A
+  recycled folder holding read-only files — a cloned git repository is the
+  common case — was emptied as far as the first one, then stopped, leaving the
+  entry listed at its original size and restoring only the remains. Vaktari
+  reported removing nothing. Such an item could never be removed at all, so
+  emptying never finished the job.
+
+- **Linux: "Keep both" on a folder puts the contents in the new folder.** They
+  went into the folder you asked to keep separate, leaving the new one empty —
+  and on a move, that emptied the original.
+
+- **Linux: undo puts back what actually moved.** After answering "Keep both" or
+  "Skip", undo moved the wrong file — including files that were never part of
+  what you did, and the very file you had chosen to leave alone.
+
+- **Linux: `F4` no longer closes Vaktari** when the terminal it tries first
+  refuses to start. It now tries the others.
+
+- **Linux: search says "no results" only when there are none.** With KDE's
+  search tool installed but no index built, every search reported nothing found
+  rather than looking through the folder.
+
+### Changed
+
+- **The tab strip's scrollbar is a thin line** at the bottom edge instead of a
+  full-height bar with arrows painted across the tab names, and **the mouse
+  wheel now scrolls the tabs**, which it never did before.
+
 ## [0.9.9] — 2026-08-23
 
 ### Changed
