@@ -9,6 +9,25 @@ Newest first. Dates are the day the tag was cut. Versions follow
 [Status](README.md#status): there has been no stable release, and the numbers
 should not be trusted for compatibility yet.
 
+## [0.9.9] — 2026-08-23
+
+### Changed
+
+- **Choosing an icon theme no longer freezes the Settings window.** Browsing to
+  a theme folder checked it there and then, and checking means reading the whole
+  theme — around three seconds for a large one, with the dialog locked and
+  nothing on screen to say why. It now reads in the background and says
+  *Reading that theme…* while it does, and what it reads is kept, so the next
+  launch opens with those icons already in place.
+
+- **Opening Settings no longer stops to re-read the theme you already chose.**
+  The check is there to notice a theme folder that has been moved or deleted,
+  and noticing that takes no time at all. Only the deeper question — whether the
+  folder still works as a theme — now waits behind the dialog, and it speaks up
+  only if the answer turns out to be no. When it does, it names the likely
+  cause: a theme keeps most of its icons as links to another theme, and that
+  other theme having been removed is what usually breaks it.
+
 ## [0.9.8] — 2026-08-23
 
 ### Changed
