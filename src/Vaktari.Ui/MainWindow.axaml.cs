@@ -747,8 +747,11 @@ public partial class MainWindow : Window
             return;
         }
 
+        // The throwing one: the dialog counts what it renamed and stops at the
+        // first refusal, which it can only do if a refusal reaches it.
         var model = new BatchRenameViewModel(entries,
-            (entry, name) => pane.RenameAsync(entry, name));
+            (entry, name) => pane.RenameOrThrowAsync(entry, name),
+            pane.Entries);
 
         new BatchRenameWindow(model).ShowDialog(this);
     }

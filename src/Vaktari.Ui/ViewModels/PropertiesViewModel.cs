@@ -82,18 +82,35 @@ public sealed partial class PropertiesViewModel : ObservableObject
 
         try
         {
+            var skipped = 0;
+            Exception? first = null;
+
             foreach (var path in _paths)
             {
-                await _access.SetAccessAsync(
+                var outcome = await _access.SetAccessAsync(
                     path, toggles, ApplyRecursively, progress, CancellationToken.None)
                     .ConfigureAwait(false);
+
+                skipped += outcome.Skipped;
+                first ??= outcome.FirstFailure;
             }
 
             // Read back rather than trusting what we sent — the filesystem may
             // have refused part of it, and showing the request as if it were
             // the result would be a lie.
             await LoadAccessAsync(_paths[0], CanRecurse).ConfigureAwait(false);
-            await Dispatcher.UIThread.InvokeAsync(() => AccessStatus = "applied");
+
+            // **"applied" only when it was.** A recursive apply skips whatever
+            // it cannot write, and saying so is the whole point of a
+            // permissions dialog: a tree where every child belongs to another
+            // user used to look exactly like one where the change took.
+            await Dispatcher.UIThread.InvokeAsync(() =>
+                AccessStatus = skipped == 0
+                    ? "applied"
+                    : first is null
+                        ? $"applied, but {skipped:N0} item(s) would not change"
+                        : $"applied, but {skipped:N0} item(s) would not change — "
+                          + Vaktari.Core.FileSystem.Failures.Describe(first, "change all of those"));
         }
         catch (Exception ex)
         {

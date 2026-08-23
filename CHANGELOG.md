@@ -56,6 +56,48 @@ should not be trusted for compatibility yet.
   search tool installed but no index built, every search reported nothing found
   rather than looking through the folder.
 
+- **A folder you have no permission to open says so** instead of showing as
+  empty. Both platforms.
+
+- **Copying or moving a folder on Linux no longer follows the links inside it.**
+  A link to another folder was treated as that folder: copying duplicated
+  everything behind it, and *moving* emptied it.
+
+- **Two file operations at once keep their progress bar.** Starting a second one
+  hid the bar for the first and left Cancel doing nothing while it was still
+  running.
+
+- **Dragging to another drive on Linux copies rather than moves.** Every path
+  there shares the root "/", so the "same drive?" test always said yes and a
+  plain drag to a USB stick or a network share moved the files.
+
+- **Grouping by kind shows the whole extension.** It showed "XT" for .txt and
+  "S" for .cs, and filed every single-letter extension under "No extension".
+
+- **Batch rename reports what it could not do.** Failures were counted as
+  successes, so a rename that changed nothing said it had changed everything.
+  It also now spots a name already taken by a file that is not part of the
+  batch, which the preview never checked.
+
+- **A cut in Explorer pastes as a move**, and a cut in Vaktari moves when pasted
+  in Explorer. Windows' own cut marker was neither read nor written.
+
+- **Restoring from the Recycle Bin names things properly.** A second copy of a
+  folder called `my.project` came back as `my (1).project`, and a second
+  `.bashrc` as ` (1).bashrc`.
+
+- **Emptying the Recycle Bin and the recents and bin listings no longer freeze
+  the window** while they work.
+
+- **Applying permissions down a tree on Linux says how much it could not
+  change**, rather than reporting success over a tree that refused everything.
+
+- **A failed network mount on Linux says why**, in the words of the tool that
+  tried, instead of always blaming credentials.
+
+- **The preview pane cannot be overwritten by a slower, older preview** when you
+  move through files quickly.
+
 ### Changed
 
 - **The tab strip's scrollbar is a thin line** at the bottom edge instead of a

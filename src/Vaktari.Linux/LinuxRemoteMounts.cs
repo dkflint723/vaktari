@@ -158,7 +158,7 @@ public sealed partial class LinuxRemoteMounts : IRemoteMounts
 
         // gio drives the same gvfs backends the desktop uses, so a share mounted
         // here appears in Nautilus and Dolphin too, and vice versa.
-        var code = await Task.Run(() => RunGio(uri, ct), ct).ConfigureAwait(false);
+        var (code, error) = await Task.Run(() => RunGio(uri, ct), ct).ConfigureAwait(false);
 
         // Poll rather than parse: gio's output format is not a contract, but a
         // new directory appearing under the mount root is.
@@ -172,9 +172,7 @@ public sealed partial class LinuxRemoteMounts : IRemoteMounts
             await Task.Delay(250, ct).ConfigureAwait(false);
         }
 
-        throw new IOException(code == 0
-            ? "the mount did not appear — it may need credentials"
-            : "could not mount; if it needs a password, connect once from your file manager so the desktop stores it");
+        throw new IOException(Explain(code, error));
     }
 
     public async Task<bool> UnmountAsync(RemoteMount mount, CancellationToken ct)
@@ -185,16 +183,65 @@ public sealed partial class LinuxRemoteMounts : IRemoteMounts
             throw new InvalidOperationException(
                 "this is a KDE connection — disconnect it from the Plasma network panel");
 
-        var code = await Task.Run(() => RunGioArgs(["mount", "-u", mount.Path], ct), ct)
+        var (code, _) = await Task.Run(() => RunGioArgs(["mount", "-u", mount.Path], ct), ct)
                              .ConfigureAwait(false);
 
         return code == 0;
     }
 
-    private static int RunGio(string uri, CancellationToken ct)
+    private static (int Code, string Error) RunGio(string uri, CancellationToken ct)
         => RunGioArgs(["mount", uri], ct);
 
-    private static int RunGioArgs(string[] args, CancellationToken ct)
+    /// <summary>
+    /// What to tell somebody whose mount did not happen.
+    ///
+    /// gio's own words when it gave any, because it knows whether the host was
+    /// unreachable, the share missing or the password wrong. The credentials
+    /// hint is kept only when gio's message actually points that way.
+    /// </summary>
+    private static string Explain(int code, string error)
+    {
+        if (error.Length == 0)
+            return code == 0
+                ? "the mount did not appear - it may need credentials"
+                : "could not mount, and gio gave no reason";
+
+        var authentication = error.Contains("password", StringComparison.OrdinalIgnoreCase)
+                             || error.Contains("permission", StringComparison.OrdinalIgnoreCase)
+                             || error.Contains("authentication", StringComparison.OrdinalIgnoreCase)
+                             || error.Contains("credential", StringComparison.OrdinalIgnoreCase);
+
+        return authentication
+            ? error + " - connect once from your desktop's own file manager so it stores the password"
+            : error;
+    }
+
+    /// <summary>
+    /// gio prefixes its complaints with the tool name and the URI, neither of
+    /// which the person who just typed that URI needs repeating back.
+    /// </summary>
+    private static string Tidy(string error)
+    {
+        var line = error
+            .Split('\n', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+            .LastOrDefault(l => l.Length > 0) ?? "";
+
+        // "gio: smb://host/share: Failed to mount ..." - keep the last part.
+        var parts = line.Split(": ", StringSplitOptions.RemoveEmptyEntries);
+
+        return parts.Length > 1 ? parts[^1].Trim() : line;
+    }
+
+    /// <summary>
+    /// Runs gio and returns both its exit code and what it wrote to stderr.
+    ///
+    /// **The message was captured and thrown away.** Every failure — a host
+    /// that does not resolve, a share that does not exist, gvfs not installed —
+    /// was reported as "if it needs a password, connect once from your file
+    /// manager", which is advice for exactly one of them and misleading for the
+    /// rest. gio's own sentence is the useful one.
+    /// </summary>
+    private static (int Code, string Error) RunGioArgs(string[] args, CancellationToken ct)
     {
         try
         {
@@ -208,7 +255,7 @@ public sealed partial class LinuxRemoteMounts : IRemoteMounts
             foreach (var arg in args) info.ArgumentList.Add(arg);
 
             using var process = Process.Start(info);
-            if (process is null) return -1;
+            if (process is null) return (-1, "");
 
             // Concurrently — sequential drains deadlock if the child fills the
             // stream we are not reading yet, and the timeout below never runs.
@@ -220,16 +267,24 @@ public sealed partial class LinuxRemoteMounts : IRemoteMounts
             if (!process.WaitForExit(20_000))
             {
                 try { process.Kill(entireProcessTree: true); } catch (Exception ex) { Quiet.Swallowed("mounts", ex); }
-                return -1;
+                return (-1, "it did not answer within twenty seconds");
             }
 
             Task.WaitAll(new Task[] { stdout, stderr }, 5_000);
 
-            return process.ExitCode;
+            return (process.ExitCode, Tidy(stderr.IsCompletedSuccessfully ? stderr.Result : ""));
         }
-        catch
+        catch (System.ComponentModel.Win32Exception e)
         {
-            return -1;
+            // gio itself is not there. Distinguished from gio running and
+            // failing, because the answer is completely different.
+            Quiet.Swallowed("mounts", e);
+            return (-1, "gvfs does not appear to be installed");
+        }
+        catch (Exception e)
+        {
+            Quiet.Swallowed("mounts", e);
+            return (-1, "");
         }
     }
 }

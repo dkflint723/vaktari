@@ -75,9 +75,21 @@ public sealed partial class PaneViewModel
             var bitmap = await Thumbnails.ThumbnailLoader
                 .LoadAsync(entry.FullPath, 512, ct).ConfigureAwait(false);
 
+            // **Re-checked after every await, and again inside the dispatch.**
+            // Arrowing down a folder of photos starts a load per row and
+            // cancels the one before, but a load already past its own last
+            // cancellation check still returned a bitmap — and InvokeAsync only
+            // QUEUES the assignment, so a stale image could be posted after the
+            // current one had already been shown. The picture on screen then
+            // belonged to a file the selection had moved off.
+            ct.ThrowIfCancellationRequested();
+
             if (bitmap is not null)
             {
-                await Dispatcher.UIThread.InvokeAsync(() => PreviewImage = bitmap);
+                await Dispatcher.UIThread.InvokeAsync(() =>
+                {
+                    if (!ct.IsCancellationRequested) PreviewImage = bitmap;
+                });
                 return;
             }
 
@@ -87,7 +99,13 @@ public sealed partial class PaneViewModel
             if (entry.Length is > 0 and < 8_000_000 && LooksTextual(entry.Name))
             {
                 var text = await ReadHeadAsync(entry.FullPath, 4000, ct).ConfigureAwait(false);
-                await Dispatcher.UIThread.InvokeAsync(() => PreviewText = text);
+
+                ct.ThrowIfCancellationRequested();
+
+                await Dispatcher.UIThread.InvokeAsync(() =>
+                {
+                    if (!ct.IsCancellationRequested) PreviewText = text;
+                });
             }
         }
         catch (OperationCanceledException)
@@ -95,7 +113,13 @@ public sealed partial class PaneViewModel
         }
         catch (Exception ex)
         {
-            await Dispatcher.UIThread.InvokeAsync(() => PreviewDetail = ex.Message);
+            await Dispatcher.UIThread.InvokeAsync(() =>
+            {
+                // A failure for a file nobody is looking at any more is not
+                // worth putting on screen over the one they are.
+                if (!ct.IsCancellationRequested)
+                    PreviewDetail = Core.FileSystem.Failures.Describe(ex, "preview that");
+            });
         }
     }
 

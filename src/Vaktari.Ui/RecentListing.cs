@@ -77,7 +77,22 @@ public static class RecentListing
     {
         if (store is null) yield break;
 
-        var kind = VirtualPaths.KindOf(path);
+        // **On a pool thread, and the old comment here was wrong about that.**
+        // It claimed the caller's ConfigureAwait(false) put this work on the
+        // pool; it does not. An async iterator runs on the CALLER's thread
+        // until it reaches a genuine suspension, and `await Task.CompletedTask`
+        // never suspends - so every stat call below happened on the UI thread
+        // while the window sat still. Task.Run is the same shape
+        // XdgTrashMaintenance.SweepAsync already uses, and it also satisfies
+        // the CS1998 the old line was really there for.
+        var entries = await Task.Run(
+            () => Gather(store, VirtualPaths.KindOf(path), ct), ct).ConfigureAwait(false);
+
+        yield return entries;
+    }
+
+    private static List<FileEntry> Gather(IRecentStore store, RecentKind kind, CancellationToken ct)
+    {
         var entries = new List<FileEntry>(Show);
 
         foreach (var recent in store.Recent(kind, Show))
@@ -87,14 +102,7 @@ public static class RecentListing
             if (Build(recent) is { } entry) entries.Add(entry);
         }
 
-        yield return entries;
-
-        // Required, not vestigial: an `async IAsyncEnumerable` method with no
-        // await is CS1998, and this project builds with warnings as errors. The
-        // work here is synchronous stat calls, which is fine — the caller
-        // consumes this with ConfigureAwait(false) on a pool thread. Deleting
-        // this line breaks the build.
-        await Task.CompletedTask;
+        return entries;
     }
 
     /// <summary>
@@ -130,6 +138,17 @@ public static class RecentListing
     {
         if (trash is null) yield break;
 
+        // Off the caller's thread for the same reason as above, and it matters
+        // more here: trash.List() walks every volume's bin and reads a metadata
+        // file per item, so a full Recycle Bin froze the window for as long as
+        // that took.
+        var entries = await Task.Run(() => GatherTrash(trash, ct), ct).ConfigureAwait(false);
+
+        yield return entries;
+    }
+
+    private static List<FileEntry> GatherTrash(ITrashMaintenance trash, CancellationToken ct)
+    {
         var entries = new List<FileEntry>();
 
         foreach (var item in trash.List())
@@ -145,9 +164,7 @@ public static class RecentListing
             entries.Add(new FileEntry(name, item.OriginalPath, item.Size, item.Deleted, flags));
         }
 
-        yield return entries;
-
-        await Task.CompletedTask;
+        return entries;
     }
 
     private static FileEntry? Build(RecentEntry recent)

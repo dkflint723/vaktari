@@ -21,10 +21,16 @@ public static class Grouping
         GroupMode.Name => NameBand(entry.Name),
         GroupMode.Size => entry.IsDirectory ? "Folders" : SizeBand(entry.Length),
         GroupMode.Modified => DateBand(entry.LastWriteTime, now),
+        // **Extension is already dot-free**, so slicing a character off it was
+        // slicing off a character of the name: .txt grouped under "XT", .cs
+        // under "S". The > 1 guard hid the other half - a one-letter extension
+        // such as .c had nothing left after the slice, so every C file grouped
+        // as "No extension". CompareGroups and the Kind sort beside it have
+        // always read Extension as it really is; only this label disagreed.
         GroupMode.Kind => entry.IsDirectory
             ? "Folders"
-            : entry.Extension.Length > 1
-                ? entry.Extension[1..].ToString().ToUpperInvariant()
+            : entry.Extension.Length > 0
+                ? entry.Extension.ToString().ToUpperInvariant()
                 : "No extension",
         _ => "",
     };

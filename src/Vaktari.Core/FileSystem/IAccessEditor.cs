@@ -24,10 +24,28 @@ public interface IAccessEditor
     /// from chmod. Without it, a recursive 644 makes every directory in the
     /// tree untraversable, which is a genuinely destructive footgun.
     /// </summary>
-    ValueTask SetAccessAsync(
+    /// <returns>
+    /// How many entries could NOT be changed, and the first reason why.
+    ///
+    /// **Returned rather than swallowed.** A recursive apply skips whatever it
+    /// cannot write and used to report "applied" regardless, so a tree where
+    /// every child belonged to another user looked exactly like one where the
+    /// change took — which is the worst possible answer for a permissions
+    /// dialog to give.
+    /// </returns>
+    ValueTask<AccessOutcome> SetAccessAsync(
         string path,
         IReadOnlyList<AccessToggle> toggles,
         bool recursive,
         IProgress<int>? progress,
         CancellationToken ct);
+}
+
+/// <summary>
+/// What a recursive apply could not do. <see cref="Skipped"/> zero means every
+/// entry took the change.
+/// </summary>
+public readonly record struct AccessOutcome(int Skipped, Exception? FirstFailure)
+{
+    public static readonly AccessOutcome Complete = new(0, null);
 }

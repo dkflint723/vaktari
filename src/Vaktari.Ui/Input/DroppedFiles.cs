@@ -57,17 +57,24 @@ public static class DroppedFileReader
     internal static DroppedFiles Decide(
         IReadOnlyList<string> offered, IReadOnlyList<string> formats, string destination, bool copying)
     {
+        // **PathRules.Same, not ==.** On Windows these compared case-sensitively,
+        // so dropping a file back into the folder it already lives in was only
+        // recognised when the destination happened to be spelled exactly the
+        // way the path was - a breadcrumb reading one case and a listing
+        // another was enough to let a pointless self-move go ahead. Same also
+        // absorbs a trailing separator and both separator spellings, which is
+        // why it is what the rest of the application compares paths with.
         var usable = copying
             ? offered
             : offered
-                .Where(p => p != destination
-                            && !string.Equals(
-                                Path.GetDirectoryName(p), destination, StringComparison.Ordinal))
+                .Where(p => !Core.FileSystem.PathRules.Same(p, destination)
+                            && !Core.FileSystem.PathRules.Same(
+                                Path.GetDirectoryName(p), destination))
                 .ToList();
 
         // A folder cannot be copied into itself whichever key is held: the
         // destination would be inside the thing being read.
-        usable = usable.Where(p => p != destination).ToList();
+        usable = usable.Where(p => !Core.FileSystem.PathRules.Same(p, destination)).ToList();
 
         if (usable.Count > 0) return new DroppedFiles(usable, "");
 

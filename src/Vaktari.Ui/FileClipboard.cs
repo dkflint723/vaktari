@@ -34,6 +34,23 @@ public static class FileClipboard
     private static readonly DataFormat<byte[]> KdeCutFormat =
         DataFormat.CreateBytesPlatformFormat("application/x-kde-cutselection");
 
+    /// <summary>
+    /// How Windows says cut, and the reason a cut in Explorer used to paste
+    /// here as a copy.
+    ///
+    /// Two desktop conventions were handled — GNOME's verb line and KDE's
+    /// marker — and Windows' own was not, so the file stayed where it was and a
+    /// second copy appeared. A DWORD: 2 is DROPEFFECT_MOVE, 1 is
+    /// DROPEFFECT_COPY. CreateBytesPlatformFormat resolves to
+    /// RegisterClipboardFormatW here, which is the same mechanism
+    /// VirtualFileDrop registers its shell formats through.
+    /// </summary>
+    private static readonly DataFormat<byte[]> WindowsDropEffect =
+        DataFormat.CreateBytesPlatformFormat("Preferred DropEffect");
+
+    private const int DropEffectCopy = 1;
+    private const int DropEffectMove = 2;
+
     public static async Task SetAsync(
         IClipboard clipboard,
         IStorageProvider storage,
@@ -64,6 +81,12 @@ public static class FileClipboard
         // text/uri-list, and Avalonia handles that serialisation itself.
         var first = new DataTransferItem();
         first.Set(GnomeFormat, Encoding.UTF8.GetBytes(gnome.ToString()));
+
+        // Written unconditionally, both ways round, so a cut made HERE moves
+        // when pasted in Explorer rather than quietly copying there too.
+        first.Set(
+            WindowsDropEffect,
+            BitConverter.GetBytes(action == ClipboardAction.Cut ? DropEffectMove : DropEffectCopy));
 
         if (action == ClipboardAction.Cut)
             first.Set(KdeCutFormat, "1"u8.ToArray());
@@ -109,6 +132,13 @@ public static class FileClipboard
         // check it before defaulting to copy.
         var kdeCut = await data.TryGetValueAsync(KdeCutFormat).ConfigureAwait(false);
         var cut = kdeCut is { Length: > 0 } && kdeCut[0] == (byte)'1';
+
+        // Windows' turn. OR-ed into the same decision rather than branching, so
+        // there is still one place that decides cut versus copy.
+        var effect = await data.TryGetValueAsync(WindowsDropEffect).ConfigureAwait(false);
+
+        if (effect is { Length: >= 4 }
+            && (BitConverter.ToInt32(effect, 0) & DropEffectMove) != 0) cut = true;
 
         var files = await data.TryGetFilesAsync().ConfigureAwait(false);
         var fromFiles = (files ?? [])

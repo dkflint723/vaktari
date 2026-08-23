@@ -16,11 +16,17 @@ public sealed partial class BatchRenameViewModel : ObservableObject
     private readonly IReadOnlyList<FileEntry> _entries;
     private readonly Func<FileEntry, string, Task> _rename;
 
+    /// <summary>The whole folder, so the preview can see the files that are
+    /// NOT being renamed and would be collided with.</summary>
+    private readonly IReadOnlyList<FileEntry>? _folder;
+
     public BatchRenameViewModel(
-        IReadOnlyList<FileEntry> entries, Func<FileEntry, string, Task> rename)
+        IReadOnlyList<FileEntry> entries, Func<FileEntry, string, Task> rename,
+        IReadOnlyList<FileEntry>? folder = null)
     {
         _entries = entries;
         _rename = rename;
+        _folder = folder;
 
         Pattern = entries.Count > 0
             ? Path.GetFileNameWithoutExtension(entries[0].Name) + " ###"
@@ -68,7 +74,7 @@ public sealed partial class BatchRenameViewModel : ObservableObject
             CaseSensitive = CaseSensitive,
             KeepExtension = KeepExtension,
             StartAt = StartAt,
-        });
+        }, _folder);
 
         Preview.Clear();
         foreach (var row in plan) Preview.Add(row);
@@ -110,7 +116,11 @@ public sealed partial class BatchRenameViewModel : ObservableObject
             }
             catch (Exception ex)
             {
-                Summary = $"stopped after {done}: {ex.Message}";
+                // Worded the way the status bar words a failure, rather than
+                // handing back a .NET exception message.
+                Summary = $"stopped after {done}: "
+                    + Core.FileSystem.Failures.Describe(ex, "rename that");
+                CanApply = true;
                 return;
             }
         }

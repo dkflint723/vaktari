@@ -200,7 +200,15 @@ public sealed class LinuxFileOperations : IFileOperations
                     handle.ItemStarted(item.Source);
                     Directory.CreateDirectory(Path.GetDirectoryName(target)!);
 
-                    if (item.IsDirectory)
+                    if (item.IsLink)
+                    {
+                        // Reproduced, not followed: the link is the thing being
+                        // copied. Moving one deletes the link and leaves what it
+                        // pointed at exactly where it was.
+                        CopyLink(item.Source, target);
+                        if (move) File.Delete(item.Source);
+                    }
+                    else if (item.IsDirectory)
                     {
                         Directory.CreateDirectory(target);
                     }
@@ -224,7 +232,9 @@ public sealed class LinuxFileOperations : IFileOperations
                 // cancelled move never deletes a folder it hasn't emptied.
                 if (move)
                 {
-                    foreach (var source in sources.Where(Directory.Exists).Reverse())
+                    // A link to a directory is not a directory to empty and
+                    // remove - Directory.Exists says yes to both.
+                    foreach (var source in sources.Where(p => Directory.Exists(p) && !IsLink(p)).Reverse())
                         if (Directory.Exists(source) && !Directory.EnumerateFileSystemEntries(source).Any())
                             Directory.Delete(source);
                 }
@@ -254,20 +264,27 @@ public sealed class LinuxFileOperations : IFileOperations
             var full = Path.GetFullPath(source);
             var name = Path.GetFileName(full);
 
-            if (Directory.Exists(full))
+            // **Before the directory test, because a link to a directory
+            // answers to both.** SearchOption.AllDirectories follows symlinks,
+            // so a linked folder was descended into and its TARGET's contents
+            // copied out - and on a move, deleted from the real folder
+            // afterwards. Copying a home directory holding a link to a photo
+            // library duplicated the library; moving one emptied it.
+            if (IsLink(full))
+            {
+                plan.Add(new PlannedItem(
+                    full, Path.Combine(destination, name), 0,
+                    IsDirectory: false, IsRoot: true, IsLink: true));
+            }
+            else if (Directory.Exists(full))
             {
                 var root = Path.Combine(destination, name);
                 plan.Add(new PlannedItem(full, root, 0, IsDirectory: true, IsRoot: true));
 
-                foreach (var dir in Directory.EnumerateDirectories(full, "*", SearchOption.AllDirectories))
-                    plan.Add(new PlannedItem(dir, Path.Combine(root, Path.GetRelativePath(full, dir)), 0, true));
-
-                foreach (var file in Directory.EnumerateFiles(full, "*", SearchOption.AllDirectories))
-                {
-                    var length = new FileInfo(file).Length;
+                foreach (var (path, isDirectory, isLink, length) in Descend(full, ct))
                     plan.Add(new PlannedItem(
-                        file, Path.Combine(root, Path.GetRelativePath(full, file)), length, false));
-                }
+                        path, Path.Combine(root, Path.GetRelativePath(full, path)),
+                        length, isDirectory, IsRoot: false, IsLink: isLink));
             }
             else if (File.Exists(full))
             {
@@ -278,6 +295,90 @@ public sealed class LinuxFileOperations : IFileOperations
         }
 
         return plan;
+    }
+
+    /// <summary>
+    /// Whether a path is a symbolic link, asked without following it. The same
+    /// question LinuxFileSystemProvider.ToFlags asks to set EntryFlags.Symlink.
+    /// </summary>
+    private static bool IsLink(string path)
+    {
+        try
+        {
+            return (File.GetAttributes(path) & FileAttributes.ReparsePoint) != 0;
+        }
+        catch (Exception e) when (e is IOException or UnauthorizedAccessException)
+        {
+            return false;
+        }
+    }
+
+    /// <summary>
+    /// Makes the same link somewhere else, target text and all.
+    ///
+    /// The target is reproduced VERBATIM, relative links included: rewriting
+    /// one to an absolute path would silently change what it means, and a
+    /// relative link is usually relative on purpose.
+    /// </summary>
+    private static void CopyLink(string source, string target)
+    {
+        var pointsAt = new FileInfo(source).LinkTarget ?? new DirectoryInfo(source).LinkTarget;
+
+        if (pointsAt is null) return;
+        if (File.Exists(target) || Directory.Exists(target)) return;
+
+        // Which call is decided by what the link points at, since that is what
+        // the link itself records.
+        if (Directory.Exists(source)) Directory.CreateSymbolicLink(target, pointsAt);
+        else File.CreateSymbolicLink(target, pointsAt);
+    }
+
+    /// <summary>
+    /// Everything under a folder, with links as leaves.
+    ///
+    /// Hand-rolled rather than SearchOption.AllDirectories, which follows links
+    /// and walks out of the tree it was asked about - into a photo library, or
+    /// round a loop. WindowsFileOperations.Descend exists for the same reason
+    /// and this is its twin.
+    /// </summary>
+    private static IEnumerable<(string Path, bool IsDirectory, bool IsLink, long Length)> Descend(
+        string root, CancellationToken ct)
+    {
+        var pending = new Stack<string>();
+        pending.Push(root);
+
+        while (pending.Count > 0)
+        {
+            ct.ThrowIfCancellationRequested();
+
+            var folder = pending.Pop();
+
+            IEnumerable<FileSystemInfo> children;
+            try { children = new DirectoryInfo(folder).EnumerateFileSystemInfos(); }
+            catch (Exception e) when (e is IOException or UnauthorizedAccessException)
+            {
+                continue;
+            }
+
+            foreach (var child in children)
+            {
+                ct.ThrowIfCancellationRequested();
+
+                if ((child.Attributes & FileAttributes.ReparsePoint) != 0)
+                {
+                    yield return (child.FullName, false, true, 0);
+                }
+                else if (child is DirectoryInfo)
+                {
+                    yield return (child.FullName, true, false, 0);
+                    pending.Push(child.FullName);
+                }
+                else
+                {
+                    yield return (child.FullName, false, false, ((FileInfo)child).Length);
+                }
+            }
+        }
     }
 
     private static async Task CopyFileAsync(string source, string target, OperationHandle handle)
@@ -304,7 +405,8 @@ public sealed class LinuxFileOperations : IFileOperations
     /// only those need their landing site recorded.
     /// </summary>
     private readonly record struct PlannedItem(
-        string Source, string Target, long Length, bool IsDirectory, bool IsRoot = false);
+        string Source, string Target, long Length, bool IsDirectory,
+        bool IsRoot = false, bool IsLink = false);
 
     /// <summary>
     /// Carries a renamed folder down to everything planned inside it.

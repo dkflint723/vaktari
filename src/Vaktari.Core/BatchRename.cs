@@ -53,20 +53,42 @@ public sealed record RenamePreview(
 /// </summary>
 public static class BatchRename
 {
+    /// <param name="folder">Everything in the folder, so a planned name can be
+    /// checked against files that are NOT being renamed. Empty keeps the old
+    /// behaviour of checking only within the batch — which was all this ever
+    /// did, because the set of bystanders was declared and never filled.</param>
     public static IReadOnlyList<RenamePreview> Plan(
-        IReadOnlyList<FileEntry> entries, BatchRenameOptions options)
+        IReadOnlyList<FileEntry> entries, BatchRenameOptions options,
+        IReadOnlyList<FileEntry>? folder = null)
     {
         var results = new List<RenamePreview>(entries.Count);
 
+        // **Compared the way the filesystem compares them.** Ordinal here would
+        // flag renaming "readme" to "README" as a collision on Windows, where it
+        // is a legitimate case-fix, and would miss a genuine "A.txt"/"a.txt"
+        // clash. The executors already compare case-insensitively on Windows,
+        // so an Ordinal preview disagreed with what would actually happen.
+        var names = StringComparer.FromComparison(PathRules.Comparison);
+
         // Names being taken by this very batch, so two files cannot be planned
         // onto the same target.
-        var claimed = new HashSet<string>(StringComparer.Ordinal);
+        var claimed = new HashSet<string>(names);
+
+        var selected = entries.Select(e => e.Name).ToHashSet(names);
 
         // Names already on disk that are NOT part of the selection: renaming
         // onto one of those would overwrite a bystander.
-        var untouched = new HashSet<string>(StringComparer.Ordinal);
+        //
+        // **This set was declared, checked, and never filled**, so the check
+        // below could never fire: renaming three files onto a name a fourth
+        // file already had previewed as fine, and the rename then failed at the
+        // filesystem — or, worse, on a platform that overwrites, did not.
+        var untouched = new HashSet<string>(names);
 
-        var selected = entries.Select(e => e.Name).ToHashSet(StringComparer.Ordinal);
+        if (folder is not null)
+            foreach (var entry in folder)
+                if (!selected.Contains(entry.Name))
+                    untouched.Add(entry.Name);
 
         var counter = options.StartAt;
 

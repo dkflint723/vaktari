@@ -1356,8 +1356,12 @@ public sealed partial class ShellViewModel : ObservableObject
     {
         if (string.IsNullOrWhiteSpace(path)) return;
 
+        // PathRules.Same, like the two other places in this file that ask the
+        // same question. An ordinal compare opens a second tab on the same
+        // folder for a difference of case or a trailing separator - and its
+        // doc comment names duplicate-tab detection as the reason it exists.
         var existing = ActiveGroup.Tabs.FirstOrDefault(
-            t => string.Equals(t.CurrentPath, path, StringComparison.Ordinal));
+            t => Core.FileSystem.PathRules.Same(t.CurrentPath, path));
 
         if (existing is not null)
         {
@@ -1432,29 +1436,59 @@ public sealed partial class ShellViewModel : ObservableObject
 
     // ---- operations ----------------------------------------------------
 
+    /// <summary>
+    /// Everything currently running, newest last.
+    ///
+    /// **One slot was not enough, and the second operation took it.** Nothing
+    /// serialises these: each Copy, Move or Trash starts its own handle
+    /// immediately, the conflict prompt is an inline bar rather than a modal so
+    /// the window stays usable, and every pane and tab reports into the same
+    /// shell. Paste a large folder and then press Delete on something else: the
+    /// trash finishes in milliseconds, its completion cleared ActiveOperation
+    /// without checking whether it still owned it, and the transfer bar vanished
+    /// while the copy was still running - taking Cancel with it, since
+    /// CancelOperation only ever reached ActiveOperation.
+    /// </summary>
+    private readonly List<IOperationHandle> _running = [];
+
     private void OnOperationStarted(object? sender, IOperationHandle handle)
     {
+        _running.Add(handle);
         ActiveOperation = handle;
 
         handle.Progressed += (_, p) =>
             Avalonia.Threading.Dispatcher.UIThread.Post(() =>
+            {
+                // Only the operation the bar is showing may write to it, or a
+                // quick background one overwrites the foreground one's numbers.
+                if (!ReferenceEquals(ActiveOperation, handle)) return;
+
                 OperationStatus = p.ItemsTotal <= 1 && p.BytesTotal == 0
                     ? p.CurrentItem ?? ""
-                    : $"{p.ItemsDone}/{p.ItemsTotal}  {ByteSize.Format(p.BytesDone)}/{ByteSize.Format(p.BytesTotal)}  {p.CurrentItem}");
+                    : $"{p.ItemsDone}/{p.ItemsTotal}  {ByteSize.Format(p.BytesDone)}/{ByteSize.Format(p.BytesTotal)}  {p.CurrentItem}";
+            });
 
         _ = handle.Completion.ContinueWith(_ =>
             Avalonia.Threading.Dispatcher.UIThread.Post(() =>
             {
+                _running.Remove(handle);
+
                 // A failure stays on screen; only success clears silently.
                 if (handle.State == OperationState.Failed && handle.Error is { } error)
                 {
-                    OperationStatus = $"failed: {error.Message}";
+                    // Described the way the rest of the application describes a
+                    // failure, rather than handing back a .NET exception message.
+                    OperationStatus = "failed: " + Core.FileSystem.Failures.Describe(error, "finish that");
                 }
-                else
+                else if (ReferenceEquals(ActiveOperation, handle))
                 {
                     OperationStatus = "";
-                    ActiveOperation = null;
                 }
+
+                // The bar follows whatever is still going, and only empties when
+                // nothing is.
+                if (ReferenceEquals(ActiveOperation, handle))
+                    ActiveOperation = _running.Count > 0 ? _running[^1] : null;
             }), TaskScheduler.Default);
     }
 

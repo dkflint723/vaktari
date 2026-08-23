@@ -55,7 +55,8 @@ public sealed class WindowsTrashMaintenance : ITrashMaintenance
         // Something has taken the name back since. Restore beside it rather
         // than over it: the file being restored is the one the user asked for,
         // and the one in the way is one they may not know is there.
-        if (File.Exists(target) || Directory.Exists(target)) target = Deduplicate(target);
+        if (File.Exists(target) || Directory.Exists(target))
+            target = Deduplicate(target, entry.IsDirectory);
 
         var parent = Path.GetDirectoryName(target);
         if (!string.IsNullOrEmpty(parent)) Directory.CreateDirectory(parent);
@@ -79,11 +80,15 @@ public sealed class WindowsTrashMaintenance : ITrashMaintenance
     /// situation, and the same rule WindowsFileOperations uses when a copy
     /// collides. A restore should not invent a naming convention of its own.
     /// </summary>
-    private static string Deduplicate(string path)
+    private static string Deduplicate(string path, bool isDirectory)
     {
-        var directory = Path.GetDirectoryName(path) ?? "";
-        var stem = Path.GetFileNameWithoutExtension(path);
-        var extension = Path.GetExtension(path);
+        var directory = PathRules.Parent(path) ?? "";
+
+        // **The same split the copy path uses.** This one did not know about
+        // folders or dotfiles, so restoring a second copy of `my.project` gave
+        // `my (1).project`, and a second `.bashrc` gave ` (1).bashrc` - a name
+        // with nothing before the suffix at all.
+        var (stem, extension) = PathRules.SplitLeaf(PathRules.LeafName(path), isDirectory);
 
         for (var n = 1; n < 10_000; n++)
         {
@@ -101,9 +106,19 @@ public sealed class WindowsTrashMaintenance : ITrashMaintenance
     /// </summary>
     public ValueTask<TrashSweepResult> SweepAsync(TrashSettings policy, CancellationToken ct)
     {
+        // The "nothing to do" answer stays synchronous — it touches no disk,
+        // and the hourly timer asks it far more often than it acts.
         if (!policy.DeleteOldFiles && !policy.LimitSize)
             return ValueTask.FromResult(TrashSweepResult.Nothing);
 
+        // Everything past here reads metadata files and deletes payloads, on a
+        // timer, with the window in front of somebody. Same shape as the Linux
+        // twin's SweepAsync.
+        return new(Task.Run(() => Sweep(policy, ct), ct));
+    }
+
+    private static TrashSweepResult Sweep(TrashSettings policy, CancellationToken ct)
+    {
         var entries = RecycleBin.List();
 
         var removed = 0;
@@ -148,12 +163,12 @@ public sealed class WindowsTrashMaintenance : ITrashMaintenance
             }
         }
 
-        return ValueTask.FromResult(new TrashSweepResult
+        return new TrashSweepResult
         {
             Removed = removed,
             BytesFreed = freed,
             OverLimit = overLimit,
-        });
+        };
     }
 
     /// <summary>The size the bin is allowed, as a share of the system volume.</summary>
@@ -174,19 +189,28 @@ public sealed class WindowsTrashMaintenance : ITrashMaintenance
         }
     }
 
+    /// <summary>
+    /// **On a pool thread, as the Linux twin has always been.** This was
+    /// ValueTask.FromResult around the whole walk, so every await of it
+    /// completed synchronously and the deletion ran on the UI thread — a full
+    /// bin froze the window, and the Dispatcher.InvokeAsync calls in
+    /// PaneViewModel.EmptyTrashAsync could not do the job their comment claims
+    /// because there was never a suspension for them to resume after.
+    /// </summary>
     public ValueTask<TrashSweepResult> EmptyAsync(CancellationToken ct)
-    {
-        var removed = 0;
-        long freed = 0;
-
-        foreach (var entry in RecycleBin.List())
+        => new(Task.Run(() =>
         {
-            ct.ThrowIfCancellationRequested();
-            if (Purge(entry)) { removed++; freed += entry.Size; }
-        }
+            var removed = 0;
+            long freed = 0;
 
-        return ValueTask.FromResult(new TrashSweepResult { Removed = removed, BytesFreed = freed });
-    }
+            foreach (var entry in RecycleBin.List())
+            {
+                ct.ThrowIfCancellationRequested();
+                if (Purge(entry)) { removed++; freed += entry.Size; }
+            }
+
+            return new TrashSweepResult { Removed = removed, BytesFreed = freed };
+        }, ct));
 
     /// <summary>
     /// Deletes one entry for good: payload first, then its metadata.

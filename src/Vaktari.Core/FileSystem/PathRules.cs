@@ -78,6 +78,31 @@ public static class PathRules
     /// on Windows <c>C:</c> means "the current directory on drive C", which is a
     /// different place entirely.
     /// </summary>
+    /// <summary>
+    /// Splits a leaf name into the part a suffix goes after, and the extension
+    /// that follows it.
+    ///
+    /// **A folder name is atomic, and so is a dotfile.** `my.project` has no
+    /// `.project` extension to preserve - Explorer copies it to
+    /// `my.project - Copy`, not `my - Copy.project` - and `.bashrc` is a name
+    /// beginning with a dot rather than a bare extension, so restoring a second
+    /// one produced ` (1).bashrc` with nothing in front of it.
+    ///
+    /// Here rather than in either caller because both the copy path and the
+    /// restore path need the same answer, and they had drifted: one knew about
+    /// folders and the other did not.
+    /// </summary>
+    public static (string Stem, string Extension) SplitLeaf(string leaf, bool isDirectory)
+    {
+        if (isDirectory || leaf.Length == 0) return (leaf, "");
+
+        // A leading dot belongs to the name. Only a LATER dot starts an
+        // extension, which is the same rule FileEntry.Extension applies.
+        var dot = leaf.LastIndexOf('.');
+
+        return dot <= 0 ? (leaf, "") : (leaf[..dot], leaf[dot..]);
+    }
+
     public static string Normalise(string? path)
     {
         if (string.IsNullOrEmpty(path)) return "";

@@ -1,6 +1,8 @@
 using System.Globalization;
 using System.Text;
 
+using Vaktari.Core.FileSystem;
+
 namespace Vaktari.Linux;
 
 /// <summary>
@@ -70,7 +72,7 @@ public static class XdgTrash
         // If something has taken the original name in the meantime, don't
         // clobber it — restore alongside instead.
         if (File.Exists(target) || Directory.Exists(target))
-            target = Deduplicate(target);
+            target = Deduplicate(target, Directory.Exists(source));
 
         Directory.CreateDirectory(Path.GetDirectoryName(target)!);
         MoveAcrossDevices(source, target);
@@ -144,11 +146,18 @@ public static class XdgTrash
     private static string DecodePath(string encoded)
         => string.Join("/", encoded.Split('/').Select(Uri.UnescapeDataString));
 
-    internal static string Deduplicate(string path)
+    /// <summary>
+    /// A free name beside <paramref name="path"/>.
+    ///
+    /// The kind matters: see PathRules.SplitLeaf. A folder called `my.photos`
+    /// has no `.photos` extension to keep, and a dotfile is a name that starts
+    /// with a dot rather than a bare extension - splitting either on the last
+    /// dot produced `my (1).photos` and ` (1).bashrc`.
+    /// </summary>
+    internal static string Deduplicate(string path, bool isDirectory = false)
     {
-        var dir = Path.GetDirectoryName(path)!;
-        var stem = Path.GetFileNameWithoutExtension(path);
-        var ext = Path.GetExtension(path);
+        var dir = PathRules.Parent(path)!;
+        var (stem, ext) = PathRules.SplitLeaf(PathRules.LeafName(path), isDirectory);
 
         for (var i = 1; i < 10_000; i++)
         {

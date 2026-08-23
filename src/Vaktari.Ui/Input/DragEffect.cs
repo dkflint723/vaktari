@@ -41,22 +41,16 @@ public static class DragEffect
     /// letter, and treating two unrelated shares as one volume would move files
     /// across a network on a plain drag.
     /// </summary>
+    /// <summary>
+    /// **Was Path.GetPathRoot, which is a no-op on Linux.** Every absolute path
+    /// there has the root "/", so this always answered "same volume" and a
+    /// plain drag to a USB stick or a network mount MOVED the files - the one
+    /// case that should copy and leave the original where it is. Volumes.Same
+    /// keeps the root comparison on Windows, where a drive letter really is the
+    /// volume, and compares mount points elsewhere.
+    /// </summary>
     private static bool SameVolume(string a, string b)
-    {
-        try
-        {
-            var left = Path.GetPathRoot(Path.GetFullPath(a));
-            var right = Path.GetPathRoot(Path.GetFullPath(b));
-
-            if (string.IsNullOrEmpty(left) || string.IsNullOrEmpty(right)) return false;
-
-            return string.Equals(left, right, Comparison);
-        }
-        catch (Exception e) when (e is ArgumentException or PathTooLongException or NotSupportedException)
-        {
-            return false;
-        }
-    }
+        => Vaktari.Core.FileSystem.Volumes.Same(a, b);
 
     private static StringComparison Comparison =>
         OperatingSystem.IsWindows() ? StringComparison.OrdinalIgnoreCase : StringComparison.Ordinal;

@@ -467,12 +467,8 @@ public sealed class WindowsFileOperations : IFileOperations
         var directory = PathRules.Parent(target);
         if (directory is null) return target;
 
-        // A folder name is atomic. `my.project` has no `.project` extension to
-        // preserve, and Explorer copies it to `my.project - Copy` rather than
-        // the `my - Copy.project` that splitting on the last dot would produce.
-        var leaf = PathRules.LeafName(target);
-        var stem = isDirectory ? leaf : Path.GetFileNameWithoutExtension(leaf);
-        var extension = isDirectory ? "" : Path.GetExtension(leaf);
+        // See PathRules.SplitLeaf for why a folder - and a dotfile - is atomic.
+        var (stem, extension) = PathRules.SplitLeaf(PathRules.LeafName(target), isDirectory);
 
         var candidate = Path.Combine(directory, $"{stem} - Copy{extension}");
 

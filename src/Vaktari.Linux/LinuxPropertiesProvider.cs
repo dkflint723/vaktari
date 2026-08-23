@@ -172,7 +172,7 @@ public sealed class LinuxPropertiesProvider : IPropertiesProvider, IAccessEditor
         return value.ToString("D3");
     }
 
-    public async ValueTask SetAccessAsync(
+    public async ValueTask<AccessOutcome> SetAccessAsync(
         string path,
         IReadOnlyList<AccessToggle> toggles,
         bool recursive,
@@ -193,14 +193,16 @@ public sealed class LinuxPropertiesProvider : IPropertiesProvider, IAccessEditor
         if (mode.HasFlag(UnixFileMode.GroupRead)) directoryMode |= UnixFileMode.GroupExecute;
         if (mode.HasFlag(UnixFileMode.OtherRead)) directoryMode |= UnixFileMode.OtherExecute;
 
-        await Task.Run(() =>
+        return await Task.Run(() =>
         {
             var isDirectory = Directory.Exists(path);
             File.SetUnixFileMode(path, isDirectory ? directoryMode : mode);
 
-            if (!recursive || !isDirectory) return;
+            if (!recursive || !isDirectory) return AccessOutcome.Complete;
 
             var done = 0;
+            var skipped = 0;
+            Exception? first = null;
 
             foreach (var child in Directory.EnumerateFileSystemEntries(
                          path, "*", SearchOption.AllDirectories))
@@ -212,15 +214,22 @@ public sealed class LinuxPropertiesProvider : IPropertiesProvider, IAccessEditor
                     File.SetUnixFileMode(
                         child, Directory.Exists(child) ? directoryMode : mode);
                 }
-                catch
+                catch (Exception e) when (e is IOException or UnauthorizedAccessException)
                 {
-                    // A single unwritable entry must not abort the whole tree.
+                    // A single unwritable entry must not abort the whole tree -
+                    // but it must not be forgotten either, which is what
+                    // reporting "applied" over a tree that refused every child
+                    // amounted to.
+                    skipped++;
+                    first ??= e;
                 }
 
                 if (++done % 200 == 0) progress?.Report(done);
             }
 
             progress?.Report(done);
+
+            return new AccessOutcome(skipped, first);
         }, ct).ConfigureAwait(false);
     }
 

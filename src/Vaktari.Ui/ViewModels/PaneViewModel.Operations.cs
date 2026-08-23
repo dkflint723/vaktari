@@ -288,15 +288,35 @@ public sealed partial class PaneViewModel
         if (SelectedEntry is { } entry) RenameRequested?.Invoke(this, entry);
     }
 
-    public async Task RenameAsync(FileEntry entry, string newName)
+    /// <summary>
+    /// Renames, and says so by throwing.
+    ///
+    /// **Split out because a caller that needs to STOP cannot use the
+    /// swallowing one.** Batch rename wrapped its call in a try/catch and
+    /// counted successes, but the method it called caught everything itself and
+    /// returned normally — so the catch was unreachable, every refusal counted
+    /// as a success, and a batch that renamed nothing reported renaming all of
+    /// it.
+    /// </summary>
+    public async Task RenameOrThrowAsync(FileEntry entry, string newName)
     {
         if (_ops is null) return;
 
+        await _ops.RenameAsync(entry.FullPath, newName, CancellationToken.None)
+                  .ConfigureAwait(false);
+
+        await Dispatcher.UIThread.InvokeAsync(() => _ = RefreshAsync());
+    }
+
+    /// <summary>
+    /// The same, for callers with nowhere to report a failure — the inline
+    /// rename in the listing is fire-and-forget and needs the status line.
+    /// </summary>
+    public async Task RenameAsync(FileEntry entry, string newName)
+    {
         try
         {
-            await _ops.RenameAsync(entry.FullPath, newName, CancellationToken.None)
-                      .ConfigureAwait(false);
-            await Dispatcher.UIThread.InvokeAsync(() => _ = RefreshAsync());
+            await RenameOrThrowAsync(entry, newName).ConfigureAwait(false);
         }
         catch (Exception ex)
         {

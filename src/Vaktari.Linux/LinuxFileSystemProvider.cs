@@ -78,7 +78,19 @@ public sealed class LinuxFileSystemProvider : IFileSystemProvider
             new System.IO.EnumerationOptions
             {
                 RecurseSubdirectories = false,
-                IgnoreInaccessible = true,
+
+                // **False, so a folder you cannot read says so.** With this
+                // true, the BCL swallows the access denial on the ROOT handle
+                // and the enumeration simply ends: the listing came back empty,
+                // IsEmpty was true, and the pane drew "this folder is empty"
+                // over somebody else's account data. Failures.Describe has said
+                // "you do not have permission to open that folder" all along
+                // and could never be reached for the one case it names.
+                //
+                // Nothing else is suppressed by turning it off: with
+                // RecurseSubdirectories false, the root is the only directory
+                // handle opened.
+                IgnoreInaccessible = false,
                 // We filter hidden ourselves — on Linux "hidden" is a leading dot,
                 // which System.IO's AttributesToSkip does not model.
                 AttributesToSkip = 0,
