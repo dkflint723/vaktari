@@ -1826,6 +1826,23 @@
                             <Image th:RowIcon.Entry="{Binding}" th:RowIcon.Size="48"
                                    Stretch="Uniform"/>
                           </Panel>
+                          <!-- Same mark, same words as the details row — it
+                               was details-only, so switching view silently
+                               hid the one warning about two names that read
+                               identically. Right-docked so it survives a long
+                               name; the name ellipsizes, the warning does not. -->
+                          <TextBlock DockPanel.Dock="Right" Text="look-alike"
+                                     Margin="6,0,2,0" VerticalAlignment="Center"
+                                     FontSize="{DynamicResource FontSizeTiny}"
+                                     Foreground="{DynamicResource AccentColour}"
+                                     ToolTip.Tip="Another name here differs only by spacing or capitals.">
+                            <TextBlock.IsVisible>
+                              <MultiBinding Converter="{x:Static vm:FileConverters.Confusable}">
+                                <Binding Path="FullPath"/>
+                                <Binding Path="$parent[ListBox].((vm:PaneViewModel)DataContext).Confusable"/>
+                              </MultiBinding>
+                            </TextBlock.IsVisible>
+                          </TextBlock>
                           <!-- The icon docks, the name takes what is left. In
                                the StackPanel this replaced, the name was
                                measured with infinite width and its ellipsis
@@ -1925,6 +1942,26 @@
                             <TextBlock th:RowVcs.Entry="{Binding}"
                                        FontSize="{DynamicResource FontSizeSmall}"
                                        FontWeight="Bold"/>
+                          </Border>
+                          <!-- The look-alike mark, tile edition. A tile has no
+                               row to append the word to, so it borrows the VCS
+                               badge's geometry in the opposite corner — filled,
+                               because it can sit on a thumbnail, and "≈"
+                               because that is the claim: nearly the same. The
+                               tooltip carries the words. -->
+                          <Border HorizontalAlignment="Left" VerticalAlignment="Top"
+                                  Background="{DynamicResource AccentColour}"
+                                  CornerRadius="3" Padding="5,0" Margin="2,2,0,0"
+                                  ToolTip.Tip="Another name here differs only by spacing or capitals.">
+                            <Border.IsVisible>
+                              <MultiBinding Converter="{x:Static vm:FileConverters.Confusable}">
+                                <Binding Path="FullPath"/>
+                                <Binding Path="$parent[ListBox].((vm:PaneViewModel)DataContext).Confusable"/>
+                              </MultiBinding>
+                            </Border.IsVisible>
+                            <TextBlock Text="&#x2248;" FontWeight="Bold"
+                                       FontSize="{DynamicResource FontSizeSmall}"
+                                       Foreground="{DynamicResource ViewBackground}"/>
                           </Border>
                         </Panel>
                         <TextBlock Text="{Binding Name}" TextAlignment="Center"

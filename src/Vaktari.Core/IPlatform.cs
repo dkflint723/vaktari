@@ -71,6 +71,13 @@ public interface IPlatform
     IShellMenuProvider? ShellMenu => null;
 
     /// <summary>
+    /// Makes this platform's kind of shortcut — a .lnk on Windows, a symlink on
+    /// Linux. Null on a platform with no such idea, and the gestures that use
+    /// it (Ctrl+Shift+drag, the right-drag menu) simply do not offer it there.
+    /// </summary>
+    Vaktari.Core.FileSystem.IShortcutMaker? Shortcuts => null;
+
+    /// <summary>
     /// Takes files a drop offers that are not on disk — the contents of an
     /// archive, dragged straight out of 7-Zip or Explorer's zip view. Null
     /// where the desktop has no such notion, which is every desktop but

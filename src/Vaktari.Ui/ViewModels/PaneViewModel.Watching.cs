@@ -183,6 +183,11 @@ public sealed partial class PaneViewModel
         }
 
         UpdateCountStatus();
+
+        // A row arriving or leaving can create or dissolve a look-alike pair —
+        // the second "notes .txt" appearing is precisely when the mark earns
+        // its keep, and the watcher is how that row arrives without a reload.
+        RefreshConfusable();
     }
 
     private async Task AddOrUpdateAsync(string path, int generation)
@@ -246,6 +251,11 @@ public sealed partial class PaneViewModel
             }
 
             UpdateCountStatus();
+
+        // A row arriving or leaving can create or dissolve a look-alike pair —
+        // the second "notes .txt" appearing is precisely when the mark earns
+        // its keep, and the watcher is how that row arrives without a reload.
+        RefreshConfusable();
         });
     }
 }

@@ -86,6 +86,33 @@ public sealed class ExplorerConventionTests
     /// Dragging onto a place on another disk therefore did something materially
     /// different from what Windows would have done, and said nothing about it.
     /// </summary>
+    /// <summary>
+    /// **Ctrl+Shift is a chord, not a pair of fallbacks.** Read as two
+    /// modifiers it fell through to Ctrl's copy; Explorer has meant "create a
+    /// shortcut here" by it for thirty years. It wins over volume and origin
+    /// alike — a deliberate chord outranks every default.
+    /// </summary>
+    [Fact]
+    public void Control_and_shift_together_mean_a_shortcut()
+    {
+        Assert.Equal(
+            DragIntent.Link,
+            DragEffect.For(control: true, shift: true, internalDrag: true, [OnC], AlsoC));
+
+        Assert.Equal(
+            DragIntent.Link,
+            DragEffect.For(control: true, shift: true, internalDrag: false, [OnC], OnD));
+
+        // And the chord's halves keep their own meanings.
+        Assert.Equal(
+            DragIntent.Copy,
+            DragEffect.For(control: true, shift: false, internalDrag: true, [OnC], AlsoC));
+
+        Assert.Equal(
+            DragIntent.Move,
+            DragEffect.For(control: false, shift: true, internalDrag: true, [OnC], OnD));
+    }
+
     [WindowsFact]
     public void An_unmodified_drag_moves_within_a_drive_and_copies_between_them()
     {

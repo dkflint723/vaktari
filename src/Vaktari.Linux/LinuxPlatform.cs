@@ -64,5 +64,8 @@ public sealed class LinuxPlatform : IPlatform
     /// </summary>
     public IIconThemeProvider? Icons { get; }
 
+    /// <summary>Symbolic links, which are what a shortcut is here.</summary>
+    public IShortcutMaker? Shortcuts { get; } = new LinuxShortcuts();
+
     public ITrashMaintenance? TrashMaintenance { get; } = new XdgTrashMaintenance();
 }

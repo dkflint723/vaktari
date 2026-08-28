@@ -1,7 +1,7 @@
 namespace Vaktari.Ui.Input;
 
-/// <summary>What an unmodified drag means.</summary>
-public enum DragIntent { Copy, Move }
+/// <summary>What a drag means, modifiers considered.</summary>
+public enum DragIntent { Copy, Move, Link }
 
 /// <summary>
 /// Copy or move, when nothing was held down.
@@ -20,6 +20,10 @@ public static class DragEffect
     public static DragIntent For(
         bool control, bool shift, bool internalDrag, IReadOnlyList<string> sources, string destination)
     {
+        // Both together is Explorer's "create shortcut here", and it has to be
+        // read before either alone — a chord is not a pair of fallbacks.
+        if (control && shift) return DragIntent.Link;
+
         if (control) return DragIntent.Copy;
         if (shift) return DragIntent.Move;
 

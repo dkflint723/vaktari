@@ -219,6 +219,7 @@ public partial class MainWindow : Window
         // that there is no such thing.
         ViewModels.PaneViewModel.ShellMenu = platform.ShellMenu;
         _virtualDrop = platform.VirtualFileDrop;
+        _shortcuts = platform.Shortcuts;
 
         // Logged at startup, not when the settings dialog opens. The count only
         // appeared on opening the dialog, which made "no line printed" mean two
@@ -371,6 +372,16 @@ public partial class MainWindow : Window
         // runs before the ListBox handles the press for selection — otherwise
         // the first click on an inactive side only moves focus.
         AddHandler(PointerPressedEvent, OnPointerPressedAnywhere, RoutingStrategies.Tunnel);
+
+        // A right-drag ends in a right-button release, and a release is how a
+        // context menu opens. Tunnelled so the suppression wins everywhere.
+        AddHandler(ContextRequestedEvent, (_, e) =>
+        {
+            if (!_suppressContextMenu) return;
+
+            _suppressContextMenu = false;
+            e.Handled = true;
+        }, RoutingStrategies.Tunnel);
         AddHandler(PointerMovedEvent, OnPointerMovedAnywhere, RoutingStrategies.Tunnel);
         AddHandler(PointerReleasedEvent, (_, _) => EndBand(), RoutingStrategies.Tunnel);
 
@@ -675,7 +686,14 @@ public partial class MainWindow : Window
                         || e.KeyModifiers.HasFlag(KeyModifiers.Shift);
         _bandKept = null;
 
-        _dragSource = properties.IsLeftButtonPressed && _bandList is null
+        // **The right button drags too**, which is Explorer's oldest answer to
+        // "did I just move that or copy it": drag with the right button and a
+        // menu asks at the drop. Only from a row — a right press on empty
+        // space keeps meaning the background menu.
+        _dragRight = properties.PointerUpdateKind == PointerUpdateKind.RightButtonPressed
+                     && EntryAt(e.Source) is not null;
+
+        _dragSource = (properties.IsLeftButtonPressed && _bandList is null) || _dragRight
             ? PaneAt(e.Source)
             : null;
         _dragTrigger = _dragSource is null ? null : e;
@@ -1368,10 +1386,13 @@ public partial class MainWindow : Window
 
         if (_dragging || _dragSource is null) return;
 
-        if (!e.GetCurrentPoint(this).Properties.IsLeftButtonPressed)
+        var held = e.GetCurrentPoint(this).Properties;
+
+        if (!(_dragRight ? held.IsRightButtonPressed : held.IsLeftButtonPressed))
         {
             _dragSource = null;
             _dragTrigger = null;
+            _dragRight = false;
             return;
         }
 
@@ -1660,6 +1681,12 @@ public partial class MainWindow : Window
 
         _dragging = true;
         _internalDrag = true;
+        _rightDragInFlight = _dragRight;
+
+        // The release that ends this drag is a right-button release, and a
+        // right-button release is how context menus open. Armed here, consumed
+        // by the tunnelled ContextRequested handler.
+        if (_dragRight) _suppressContextMenu = true;
 
         try
         {
@@ -1681,7 +1708,8 @@ public partial class MainWindow : Window
 
             // Not disposed — the drag system takes ownership.
             await DragDrop.DoDragDropAsync(
-                trigger, data, DragDropEffects.Copy | DragDropEffects.Move);
+                trigger, data,
+                DragDropEffects.Copy | DragDropEffects.Move | DragDropEffects.Link);
         }
         catch (Exception ex)
         {
@@ -1691,6 +1719,8 @@ public partial class MainWindow : Window
         {
             _dragging = false;
             _internalDrag = false;
+            _rightDragInFlight = false;
+            _dragRight = false;
             _dragSource = null;
             _dragTrigger = null;
         }
@@ -1702,6 +1732,27 @@ public partial class MainWindow : Window
     /// notion, which is every one but Windows.
     /// </summary>
     private Vaktari.Core.FileSystem.IVirtualFileDrop? _virtualDrop;
+
+    /// <summary>The platform's shortcut writer, or null where the idea does
+    /// not exist — the gestures that use it simply do not offer it then.</summary>
+    private Vaktari.Core.FileSystem.IShortcutMaker? _shortcuts;
+
+    /// <summary>
+    /// True while the drag in flight was started with the RIGHT button, which
+    /// changes what the drop does: nothing, until a menu asks.
+    /// </summary>
+    private bool _rightDragInFlight;
+
+    /// <summary>Armed at the press that may become a right-drag.</summary>
+    private bool _dragRight;
+
+    /// <summary>
+    /// Eats the context menu the right-button RELEASE would otherwise open.
+    /// A right-drag ends in a release like any right-click, and without this
+    /// the source row popped its menu the moment the drop finished — two
+    /// gestures answering one another.
+    /// </summary>
+    private bool _suppressContextMenu;
 
     private void OnDragOver(object? sender, DragEventArgs e)
     {
@@ -1776,14 +1827,29 @@ public partial class MainWindow : Window
     /// Copy or move. See <see cref="Input.DragEffect"/> for the rule — which is
     /// Windows's, by volume, rather than the one this used to apply.
     /// </summary>
-    private DragDropEffects EffectFor(
-        KeyModifiers modifiers, IReadOnlyList<string> sources, string destination) =>
-        Input.DragEffect.For(
+    private Input.DragIntent IntentFor(
+        KeyModifiers modifiers, IReadOnlyList<string> sources, string destination)
+    {
+        var intent = Input.DragEffect.For(
             modifiers.HasFlag(KeyModifiers.Control),
             modifiers.HasFlag(KeyModifiers.Shift),
-            _internalDrag, sources, destination) == Input.DragIntent.Move
-            ? DragDropEffects.Move
-            : DragDropEffects.Copy;
+            _internalDrag, sources, destination);
+
+        // A platform with no idea of a shortcut must not advertise one on the
+        // cursor and then quietly copy.
+        return intent == Input.DragIntent.Link && _shortcuts is null
+            ? Input.DragIntent.Copy
+            : intent;
+    }
+
+    private DragDropEffects EffectFor(
+        KeyModifiers modifiers, IReadOnlyList<string> sources, string destination)
+        => IntentFor(modifiers, sources, destination) switch
+        {
+            Input.DragIntent.Move => DragDropEffects.Move,
+            Input.DragIntent.Link => DragDropEffects.Link,
+            _ => DragDropEffects.Copy,
+        };
 
     /// <summary>
     /// Writes the drop's virtual files somewhere real and moves them into
@@ -1934,9 +2000,10 @@ public partial class MainWindow : Window
         var target = place ?? FolderRowAt(e.Source);
         var destination = target ?? pane.CurrentPath;
 
-        var move = EffectFor(
-            e.KeyModifiers, Input.DroppedFileReader.Offered(e.DataTransfer), destination)
-            == DragDropEffects.Move;
+        var intent = IntentFor(
+            e.KeyModifiers, Input.DroppedFileReader.Offered(e.DataTransfer), destination);
+
+        var move = intent == Input.DragIntent.Move;
 
         var dropped = Input.DroppedFileReader.Read(e.DataTransfer, destination, !move);
 
@@ -1992,12 +2059,127 @@ public partial class MainWindow : Window
             move = true;
         }
 
-        if (target is not null)
-            pane.PasteIntoFolder(target, paths, move);
-        else
-            pane.PasteInto(paths, move);
+        // Shortcuts, before anything else can spend work: nothing is copied or
+        // moved for a link, and the rescue above never fires for one because
+        // internal drags are not volatile.
+        if (intent == Input.DragIntent.Link && _shortcuts is { } shortcuts)
+        {
+            CreateShortcuts(shortcuts, pane, paths, destination);
+            e.Handled = true;
+            return;
+        }
+
+        // **A right-drag executes nothing.** The whole point of dragging with
+        // the right button is that the drop ASKS — Explorer's oldest answer to
+        // "did I just move that or copy it". The menu holds everything needed
+        // to carry on; letting the drop fall through would decide for the user
+        // the one time they explicitly asked to be consulted.
+        if (_internalDrag && _rightDragInFlight)
+        {
+            ShowRightDropMenu(pane, target, destination, paths, defaultsToMove: move);
+            e.Handled = true;
+            return;
+        }
+
+        Paste(pane, target, paths, move);
 
         e.Handled = true;
+    }
+
+    /// <summary>The one place a drop's files actually go somewhere, so the
+    /// direct path and the right-drag menu cannot drift apart.</summary>
+    private static void Paste(
+        ViewModels.PaneViewModel pane, string? target, IReadOnlyList<string> paths, bool move)
+    {
+        if (target is not null)
+            pane.PasteIntoFolder(target, paths.ToList(), move);
+        else
+            pane.PasteInto(paths.ToList(), move);
+    }
+
+    /// <summary>
+    /// Makes a shortcut per dropped item, and says what happened — including
+    /// the refusal for files that live in somebody's temporary folder, where a
+    /// shortcut would dangle the moment its owner tidies up.
+    /// </summary>
+    private void CreateShortcuts(
+        Vaktari.Core.FileSystem.IShortcutMaker shortcuts,
+        ViewModels.PaneViewModel pane,
+        IReadOnlyList<string> paths,
+        string destination)
+    {
+        var made = 0;
+        var doomed = 0;
+
+        foreach (var path in paths)
+        {
+            if (Input.DropStaging.IsVolatile(path, Path.GetTempPath()))
+            {
+                doomed++;
+                continue;
+            }
+
+            try
+            {
+                shortcuts.CreateShortcut(path, destination);
+                made++;
+            }
+            catch (Exception ex)
+            {
+                pane.Status = Vaktari.Core.FileSystem.Failures.Describe(ex, "make that shortcut");
+                return;
+            }
+        }
+
+        pane.Status = doomed > 0
+            ? $"created {made} shortcut(s) — {doomed} skipped: files inside an archive have no lasting place to point at"
+            : $"created {made} shortcut(s)";
+    }
+
+    /// <summary>
+    /// The right-drag's question, asked where the button was released. The
+    /// default the plain drop would have taken leads and is emphasised, the
+    /// way Explorer bolds its default; closing the menu without choosing is
+    /// the cancel.
+    /// </summary>
+    private void ShowRightDropMenu(
+        ViewModels.PaneViewModel pane,
+        string? target,
+        string destination,
+        IReadOnlyList<string> paths,
+        bool defaultsToMove)
+    {
+        var kept = paths.ToList();
+
+        MenuItem Option(string header, bool emphasised, Action run)
+        {
+            var item = new MenuItem { Header = header };
+
+            if (emphasised) item.FontWeight = Avalonia.Media.FontWeight.Bold;
+
+            item.Click += (_, _) => run();
+            return item;
+        }
+
+        var menu = new MenuFlyout();
+
+        var moveItem = Option("Move here", defaultsToMove, () => Paste(pane, target, kept, move: true));
+        var copyItem = Option("Copy here", !defaultsToMove, () => Paste(pane, target, kept, move: false));
+
+        // Move first when it is the default, copy first otherwise — the
+        // emphasised answer is also the nearest one.
+        if (defaultsToMove) { menu.Items.Add(moveItem); menu.Items.Add(copyItem); }
+        else { menu.Items.Add(copyItem); menu.Items.Add(moveItem); }
+
+        if (_shortcuts is { } shortcuts)
+            menu.Items.Add(Option("Create shortcuts here", false,
+                () => CreateShortcuts(shortcuts, pane, kept, destination)));
+
+        menu.Items.Add(new Separator());
+        menu.Items.Add(Option("Cancel", false, static () => { }));
+
+        // At the pointer, which at this instant is exactly the drop point.
+        menu.ShowAt(this, showAtPointer: true);
     }
 
     // ---- geometry ------------------------------------------------------

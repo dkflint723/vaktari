@@ -137,6 +137,9 @@ public sealed class WindowsPlatform : IPlatform
     /// </summary>
     public IIconThemeProvider? Icons => null;
 
+    /// <summary>.lnk files, written the way Explorer writes them.</summary>
+    public IShortcutMaker? Shortcuts { get; } = new WindowsShortcuts();
+
     /// <summary>
     /// The shell's own per-file icons, for people who would rather see their
     /// desktop's set than the one this application ships.

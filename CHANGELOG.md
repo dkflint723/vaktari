@@ -9,6 +9,30 @@ Newest first. Dates are the day the tag was cut. Versions follow
 [Status](README.md#status): there has been no stable release, and the numbers
 should not be trusted for compatibility yet.
 
+## [0.9.12] — 2026-08-28
+
+### Added
+
+- **Dragging with the right mouse button asks what to do.** Release it over a
+  destination and a menu offers *Move here*, *Copy here*, *Create shortcuts
+  here* and *Cancel*, with what a plain drop would have done shown in bold —
+  Explorer's oldest answer to "did I just move that or copy it". Closing the
+  menu without choosing does nothing.
+
+- **Ctrl+Shift+drag creates shortcuts** — real `.lnk` files on Windows, named
+  the way Explorer names them; symbolic links on Linux. Works for a whole
+  selection at once, and both gestures skip files that live inside an archive's
+  temporary folder, where a shortcut would break within the second.
+
+### Fixed
+
+- **The look-alike mark now actually appears — and in every view.** It shipped
+  in 0.9.7 and never rendered once: the set of colliding names was only
+  computed while a filter was being typed, and an ordinary folder load never
+  goes down that path. It now appears on any plain navigation, updates as files
+  arrive and leave, and shows in the details, compact and icon views alike —
+  the tiles carry a small ≈ badge where the rows carry the word.
+
 ## [0.9.11] — 2026-08-24
 
 ### Added

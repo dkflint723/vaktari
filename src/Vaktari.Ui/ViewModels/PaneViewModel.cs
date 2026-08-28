@@ -1818,14 +1818,7 @@ public sealed partial class PaneViewModel : ObservableObject, IDisposable
         // header available rather than reading a stale map.
         RecomputeGroups(sorted);
 
-        // **Names that differ only by something invisible**, so the rows can
-        // say so. Two files really can sit side by side looking identically
-        // named — one space before the extension is legal, distinct, and
-        // unreadable in any listing including Explorer's.
-        //
-        // Over the WHOLE folder rather than the filtered view: two names
-        // collide whether or not a filter happens to be showing both.
-        Confusable = ConfusableNames.Among(_all.Select(e => (e.FullPath, e.Name)));
+        RefreshConfusable();
 
         Entries.ReplaceAll(sorted);
 
@@ -2135,7 +2128,25 @@ public sealed partial class PaneViewModel : ObservableObject, IDisposable
 
         RecomputeGroups(items);
         Entries.ReplaceAll(items);
+
+        RefreshConfusable();
     }
+
+    /// <summary>
+    /// Recomputes which rows cannot be told apart by eye.
+    ///
+    /// **Assigned here and nowhere inline, because it lived only in ApplyFilter
+    /// and an ordinary navigation never goes there** — a plain folder load
+    /// takes ResortInPlace, so the set stayed at its empty initial value and
+    /// the look-alike mark never rendered for anybody, on any view, since the
+    /// day it shipped. The unit tests all passed: they tested the set, and the
+    /// set was right — nothing asked whether a LISTING ever received it.
+    ///
+    /// Over the WHOLE folder rather than the filtered view: two names collide
+    /// whether or not a filter happens to be showing both.
+    /// </summary>
+    private void RefreshConfusable()
+        => Confusable = ConfusableNames.Among(_all.Select(e => (e.FullPath, e.Name)));
 
 
 
