@@ -9,6 +9,40 @@ Newest first. Dates are the day the tag was cut. Versions follow
 [Status](README.md#status): there has been no stable release, and the numbers
 should not be trusted for compatibility yet.
 
+## [0.9.11] — 2026-08-24
+
+### Added
+
+- **The tab strip shows arrows when tabs overflow.** The wheel scrolls the tabs
+  and the thin line shows where you are, but neither looks clickable — so the
+  strip now grows a small arrow at each end the moment there are more tabs than
+  fit. Click to step, hold to sweep; each arrow dims at its own end of the
+  strip, and both disappear when everything fits. Switching to a tab that had
+  scrolled out of view now also brings it into view.
+
+### Changed
+
+- **Dragging a large archive out of 7-Zip no longer pauses the window.** The
+  files 7-Zip hands over have to be taken before it deletes them, and taking
+  them used to mean copying — for as long as the archive was large. They are
+  now moved instead, which costs nothing regardless of size.
+
+- **Icon caches tidy themselves.** The index kept for a chosen icon theme —
+  sixteen megabytes for a big one — now goes away when its theme does, instead
+  of accumulating forever.
+
+### Fixed
+
+- **Navigating to the folder you are already in leaves it alone.** Spelled with
+  a trailing separator or different capitals, it reloaded the listing and added
+  a Back entry that went nowhere.
+
+- **Linux: "Keep both" on a folder with a dot in its name keeps the whole
+  name** — `my.photos` became `my.photos (1)` rather than `my (1).photos`.
+
+- **The Properties window stops working when closed.** Its folder measurement
+  and checksum used to keep reading the disk after the window was gone.
+
 ## [0.9.10] — 2026-08-23
 
 ### Fixed

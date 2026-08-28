@@ -29,8 +29,13 @@ namespace Vaktari.Ui.Input;
 /// </summary>
 internal static class DropStaging
 {
-    /// <summary>What came back, and whether any of it had to be rescued.</summary>
-    internal sealed record Staged(IReadOnlyList<string> Paths, bool Rescued, long Bytes);
+    /// <summary>
+    /// What came back, and how it was rescued. <paramref name="Moved"/> items
+    /// cost a rename each; <paramref name="CopiedBytes"/> counts only the
+    /// fallback copies, which are the expensive path worth a log line.
+    /// </summary>
+    internal sealed record Staged(
+        IReadOnlyList<string> Paths, bool Rescued, int Moved, long CopiedBytes);
 
     /// <summary>
     /// Whether a path is somewhere its owner is likely to clear up underneath
@@ -59,9 +64,19 @@ internal static class DropStaging
     }
 
     /// <summary>
-    /// Copies any volatile path into <paramref name="stagingRoot"/> and returns
+    /// Takes any volatile path into <paramref name="stagingRoot"/> and returns
     /// the list to paste from. Paths that are not volatile are returned
-    /// untouched, and nothing is copied for them.
+    /// untouched, and nothing is done to them.
+    ///
+    /// **Moved, not copied, wherever a move will go.** This runs inside the
+    /// drop handler on the UI thread — it has to, since the source deletes its
+    /// folder the instant the handler returns — and a copy there froze the
+    /// window for the length of the copy, unboundedly: nothing capped what an
+    /// archive drag could hand over. Both ends live under the temporary
+    /// directory, so a move is a rename — instant at any size. The per-item
+    /// copy remains as the fallback for the cases a rename refuses: a TMP
+    /// redirected to another volume, or a file the source still holds open.
+    /// The files were doomed either way — the owner was about to delete them.
     ///
     /// Never throws: a drop that cannot be rescued should go on to fail the way
     /// it always did, with its own message, rather than take the window with it.
@@ -74,10 +89,11 @@ internal static class DropStaging
         foreach (var path in paths)
             if (IsVolatile(path, temporaryRoot)) { anyVolatile = true; break; }
 
-        if (!anyVolatile) return new Staged(paths, false, 0);
+        if (!anyVolatile) return new Staged(paths, false, 0, 0);
 
         var result = new List<string>(paths.Count);
-        var bytes = 0L;
+        var moved = 0;
+        var copiedBytes = 0L;
         var rescued = false;
 
         foreach (var path in paths)
@@ -99,8 +115,16 @@ internal static class DropStaging
 
                 var landing = Path.Combine(stagingRoot, name);
 
-                if (Directory.Exists(path)) bytes += CopyTree(path, landing);
-                else if (File.Exists(path)) { File.Copy(path, landing, overwrite: true); bytes += Size(landing); }
+                if (Directory.Exists(path))
+                {
+                    if (TryMove(path, landing, directory: true)) moved++;
+                    else copiedBytes += CopyTree(path, landing);
+                }
+                else if (File.Exists(path))
+                {
+                    if (TryMove(path, landing, directory: false)) moved++;
+                    else { File.Copy(path, landing, overwrite: true); copiedBytes += Size(landing); }
+                }
                 else { result.Add(path); continue; }
 
                 result.Add(landing);
@@ -115,7 +139,27 @@ internal static class DropStaging
             }
         }
 
-        return new Staged(result, rescued, bytes);
+        return new Staged(result, rescued, moved, copiedBytes);
+    }
+
+    /// <summary>
+    /// A rename into staging, answered honestly. False means "copy instead",
+    /// not failure — Directory.Move refuses to cross volumes, and either call
+    /// refuses a file its owner still holds open.
+    /// </summary>
+    private static bool TryMove(string path, string landing, bool directory)
+    {
+        try
+        {
+            if (directory) Directory.Move(path, landing);
+            else File.Move(path, landing, overwrite: true);
+
+            return true;
+        }
+        catch (Exception e) when (e is IOException or UnauthorizedAccessException)
+        {
+            return false;
+        }
     }
 
     private static long CopyTree(string from, string to)

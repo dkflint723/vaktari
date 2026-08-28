@@ -1975,9 +1975,14 @@ public partial class MainWindow : Window
 
         if (rescue.Rescued)
         {
+            // The two figures separate a healthy rescue from a degraded one: a
+            // move is a rename and costs nothing, while copied bytes are time
+            // this thread spent frozen — if that number is ever large, the
+            // fallback is being hit and the log says so.
             Console.Error.WriteLine(
-                $"[vaktari] drop: rescued {rescue.Bytes} bytes from the temporary folder "
-                + "before the source could clear it");
+                $"[vaktari] drop: rescued from the temporary folder before the source "
+                + $"could clear it — {rescue.Moved} moved"
+                + (rescue.CopiedBytes > 0 ? $", {rescue.CopiedBytes} bytes copied" : ""));
 
             paths = rescue.Paths;
 

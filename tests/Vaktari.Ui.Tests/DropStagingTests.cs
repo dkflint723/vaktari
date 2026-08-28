@@ -62,8 +62,11 @@ public sealed class DropStagingTests : IDisposable
 
         var staged = DropStaging.Rescue([dropped], _temporary, _staging);
 
-        // The source goes away, as it does in the failure this comes from.
-        Directory.Delete(dropped, recursive: true);
+        // The source goes away, as it does in the failure this comes from. A
+        // delete-if-present, because a same-volume rescue is a MOVE and has
+        // already taken it — which is the point: 7-Zip's cleanup finds nothing
+        // and nobody spent time copying.
+        if (Directory.Exists(dropped)) Directory.Delete(dropped, recursive: true);
 
         Assert.True(staged.Rescued);
         var landing = Assert.Single(staged.Paths);
@@ -71,6 +74,30 @@ public sealed class DropStagingTests : IDisposable
         Assert.True(Directory.Exists(landing));
         Assert.Equal("print('hi')", File.ReadAllText(Path.Combine(landing, "backend.py")));
         Assert.Equal("{}", File.ReadAllText(Path.Combine(landing, "inner", "manifest.json")));
+    }
+
+    /// <summary>
+    /// **On the same volume the rescue is a rename, not a copy.** The rescue
+    /// runs inside the drop handler on the UI thread — it must, or the source
+    /// deletes the files first — and a copy there froze the window for as long
+    /// as the archive was large, with nothing capping it. Both ends live under
+    /// the temporary directory, so a move costs nothing at any size; this is
+    /// the assertion that keeps it one. The per-item copy fallback below the
+    /// move is the SAME CopyTree the rescue always used, exercised by every
+    /// test in this file before the move existed.
+    /// </summary>
+    [Fact]
+    public void A_same_volume_rescue_moves_rather_than_copies()
+    {
+        var dropped = Tree(_temporary, "big-archive");
+
+        var staged = DropStaging.Rescue([dropped], _temporary, _staging);
+
+        Assert.True(staged.Rescued);
+        Assert.Equal(1, staged.Moved);
+        Assert.Equal(0, staged.CopiedBytes);
+        Assert.False(Directory.Exists(dropped), "a move takes the source with it");
+        Assert.True(File.Exists(Path.Combine(staged.Paths[0], "backend.py")));
     }
 
     /// <summary>
@@ -97,7 +124,7 @@ public sealed class DropStagingTests : IDisposable
         File.WriteAllText(file, "contents");
 
         var staged = DropStaging.Rescue([file], _temporary, _staging);
-        File.Delete(file);
+        if (File.Exists(file)) File.Delete(file);
 
         Assert.True(staged.Rescued);
         Assert.Equal("contents", File.ReadAllText(staged.Paths[0]));

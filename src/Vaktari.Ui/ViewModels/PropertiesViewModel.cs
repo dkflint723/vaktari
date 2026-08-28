@@ -139,6 +139,20 @@ public sealed partial class PropertiesViewModel : ObservableObject
 
     private CancellationTokenSource? _hashCts;
 
+    /// <summary>
+    /// Stops whatever is still running when the window goes.
+    ///
+    /// A folder measurement walks the whole tree and a checksum reads the whole
+    /// file, and both carried on after the dialog closed — nothing lands
+    /// anywhere wrong, but a gigabyte of disk reads for a window nobody can see
+    /// is work with no beneficiary, and on a laptop it is battery.
+    /// </summary>
+    public void CancelBackgroundWork()
+    {
+        try { _measureCts?.Cancel(); } catch (ObjectDisposedException) { }
+        try { _hashCts?.Cancel(); } catch (ObjectDisposedException) { }
+    }
+
     [ObservableProperty] private bool _canChecksum;
     [ObservableProperty] private bool _isHashing;
     [ObservableProperty] private string _hashStatus = "";
