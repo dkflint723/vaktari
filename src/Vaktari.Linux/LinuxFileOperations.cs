@@ -186,7 +186,12 @@ public sealed class LinuxFileOperations : IFileOperations
                                 handle.ItemFinished();
                                 continue;
                             case ConflictResolution.KeepBoth:
-                                var kept = XdgTrash.Deduplicate(target);
+                                // The kind travels with the call: a folder name
+                                // is atomic, and without saying so "my.photos"
+                                // kept-both as "my (1).photos". The Windows
+                                // twin has passed it since the same fault was
+                                // found there.
+                                var kept = XdgTrash.Deduplicate(target, item.IsDirectory);
                                 if (item.IsDirectory) redirects.Add((target, kept));
                                 target = kept;
                                 break;

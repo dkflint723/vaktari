@@ -93,6 +93,29 @@ public sealed class MoveConflictTests : IDisposable
     }
 
     /// <summary>
+    /// **A dotted folder name keeps both as a whole name.** The kind was not
+    /// passed to the deduplicator, which split "my.photos" on its last dot and
+    /// named the kept folder "my (1).photos" — a folder has no extension to
+    /// preserve, and PathRules.SplitLeaf has said so since the restore path was
+    /// fixed. This is the call site that was missed.
+    /// </summary>
+    [Fact]
+    public async Task Keeping_both_of_a_dotted_folder_treats_the_name_as_atomic()
+    {
+        Write(Path.Combine(_from, "my.photos", "a.jpg"), "a");
+        Write(Path.Combine(_into, "my.photos", "old.jpg"), "old");
+
+        var ops = new LinuxFileOperations();
+
+        await Run(ops.Move([Path.Combine(_from, "my.photos")], _into, _ => Answer(ConflictResolution.KeepBoth)));
+
+        Assert.True(
+            Directory.Exists(Path.Combine(_into, "my.photos (1)")),
+            "the folder's whole name takes the suffix — not its last dotted segment");
+        Assert.True(File.Exists(Path.Combine(_into, "my.photos (1)", "a.jpg")));
+    }
+
+    /// <summary>
     /// Undo puts back what was moved. Reconstructing the landing from the name
     /// found the bystander instead.
     /// </summary>
