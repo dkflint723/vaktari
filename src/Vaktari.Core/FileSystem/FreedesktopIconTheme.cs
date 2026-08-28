@@ -83,6 +83,10 @@ public sealed class FreedesktopIconTheme : IIconThemeProvider
         set => IconIndexCache.Folder = value;
     }
 
+    /// <summary>Drops cached indexes whose themes are gone — see
+    /// <see cref="IconIndexCache.Prune"/> for what qualifies and why.</summary>
+    public static void PruneIndexCache() => IconIndexCache.Prune();
+
     /// <summary>
     /// Reads a folder somebody downloaded and extracted, or null if it does not
     /// look like an icon theme.

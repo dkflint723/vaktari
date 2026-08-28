@@ -59,6 +59,12 @@ public partial class MainWindow : Window
             folder => Vaktari.Core.FileSystem.FreedesktopIconTheme.FromCache(folder),
             folder => Vaktari.Core.FileSystem.FreedesktopIconTheme.FromFolder(folder),
             UseIconProvider);
+
+        // Housekeeping, once per launch, off the thread. An index is sixteen
+        // megabytes for a big theme and nothing else ever removes one whose
+        // theme was deleted; the active theme's entry records a directory that
+        // exists, so the prune never touches it.
+        _ = Task.Run(Vaktari.Core.FileSystem.FreedesktopIconTheme.PruneIndexCache);
     }
 
     /// <summary>
@@ -1234,6 +1240,81 @@ public partial class MainWindow : Window
         }
 
         return false;
+    }
+
+    /// <summary>
+    /// The tab ScrollViewer the pressed chevron flanks. By tree rather than by
+    /// name, because the strip lives in a template stamped once per pane and a
+    /// name would find only one of them.
+    /// </summary>
+    private static ScrollViewer? TabScrollerFor(object? sender)
+    {
+        for (var visual = sender as Visual; visual is not null; visual = visual.GetVisualParent())
+            if (visual is DockPanel dock)
+                return dock.GetVisualDescendants().OfType<ScrollViewer>().FirstOrDefault();
+
+        return null;
+    }
+
+    private void OnScrollTabsLeft(object? sender, RoutedEventArgs e) => NudgeTabs(sender, -1);
+
+    private void OnScrollTabsRight(object? sender, RoutedEventArgs e) => NudgeTabs(sender, +1);
+
+    private static void NudgeTabs(object? sender, int direction)
+    {
+        if (TabScrollerFor(sender) is not { } scroller) return;
+
+        scroller.Offset = scroller.Offset.WithX(TabStripScroll.Toward(
+            scroller.Offset.X, scroller.Viewport.Width, scroller.Extent.Width, direction));
+    }
+
+    /// <summary>
+    /// Keeps the chevrons truthful. ScrollChanged fires for offset, extent and
+    /// viewport alike, so opening a tab, closing one, resizing the window and
+    /// scrolling all pass through here — there is no state to get stale.
+    /// </summary>
+    private void OnTabStripScrollChanged(object? sender, ScrollChangedEventArgs e)
+    {
+        if (sender is not ScrollViewer scroller) return;
+
+        DockPanel? dock = null;
+        for (var visual = (Visual?)scroller; visual is not null; visual = visual.GetVisualParent())
+            if (visual is DockPanel found) { dock = found; break; }
+
+        if (dock is null) return;
+
+        var overflows = TabStripScroll.Overflows(scroller.Extent.Width, scroller.Viewport.Width);
+
+        foreach (var chevron in dock.GetVisualDescendants().OfType<RepeatButton>())
+        {
+            if (chevron.Classes.Contains("tab-nudge-left"))
+            {
+                chevron.IsVisible = overflows;
+                chevron.IsEnabled = TabStripScroll.CanGoLeft(scroller.Offset.X);
+            }
+            else if (chevron.Classes.Contains("tab-nudge-right"))
+            {
+                chevron.IsVisible = overflows;
+                chevron.IsEnabled = TabStripScroll.CanGoRight(
+                    scroller.Offset.X, scroller.Viewport.Width, scroller.Extent.Width);
+            }
+        }
+    }
+
+    /// <summary>
+    /// Scrolls the tab just selected into view. Ctrl+Tab can land on a tab the
+    /// strip has scrolled past, and a selection you cannot see reads as the
+    /// keystroke doing nothing. Posted, because at selection time the container
+    /// may not have been arranged yet.
+    /// </summary>
+    private void OnTabStripSelectionChanged(object? sender, SelectionChangedEventArgs e)
+    {
+        if (sender is not Avalonia.Controls.Primitives.TabStrip strip
+            || strip.SelectedItem is not { } selected) return;
+
+        Dispatcher.UIThread.Post(
+            () => strip.ContainerFromItem(selected)?.BringIntoView(),
+            DispatcherPriority.Loaded);
     }
 
     private void OnWheelAnywhere(object? sender, PointerWheelEventArgs e)

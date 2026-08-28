@@ -186,6 +186,71 @@ internal static class IconIndexCache
     }
 
     /// <summary>
+    /// Drops cache entries for themes that no longer exist.
+    ///
+    /// **The cache grows and nothing else shrinks it.** An index runs to about
+    /// sixteen megabytes for a large theme, keyed by the theme folder's path —
+    /// so trying a few themes and deleting them leaves their indexes behind
+    /// forever, invisible, in a folder nobody browses. Each file records the
+    /// directory it was built from on its second line; a recorded directory
+    /// that is gone means the entry can never be loaded again and is purely
+    /// dead weight.
+    ///
+    /// Also sweeps stale half-written litter, but only when it is old: a young
+    /// .writing file may belong to a build happening right now in another
+    /// window, and deleting it mid-write is how caches vanish mysteriously.
+    /// </summary>
+    public static void Prune()
+    {
+        if (Folder is null) return;
+
+        try
+        {
+            if (!Directory.Exists(Folder)) return;
+
+            foreach (var file in Directory.EnumerateFiles(Folder, "*.idx"))
+            {
+                try
+                {
+                    string? header, recorded;
+
+                    using (var reader = new StreamReader(file, Encoding.UTF8))
+                    {
+                        header = reader.ReadLine();
+                        recorded = reader.ReadLine();
+                    }
+
+                    // A file this reader cannot even begin to parse will never
+                    // be loaded either; it is litter with the wrong name.
+                    if (header != Header
+                        || string.IsNullOrEmpty(recorded)
+                        || !Directory.Exists(recorded))
+                        File.Delete(file);
+                }
+                catch (Exception e) when (e is IOException or UnauthorizedAccessException)
+                {
+                    // Held open — likely being written or read this instant.
+                    // It will still be here next launch.
+                }
+            }
+
+            foreach (var litter in Directory.EnumerateFiles(Folder, "*.writing"))
+            {
+                try
+                {
+                    if (File.GetLastWriteTimeUtc(litter) < DateTime.UtcNow.AddHours(-1))
+                        File.Delete(litter);
+                }
+                catch (Exception e) when (e is IOException or UnauthorizedAccessException) { }
+            }
+        }
+        catch (Exception e) when (e is IOException or UnauthorizedAccessException)
+        {
+            // A cache that cannot be tidied is a cache that still works.
+        }
+    }
+
+    /// <summary>
     /// Removes any half-written file for this theme. Cheap, and bounded to the
     /// one theme's own name so a cache being written by another window is left
     /// alone.

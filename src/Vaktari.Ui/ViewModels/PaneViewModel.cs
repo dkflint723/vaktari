@@ -1061,11 +1061,14 @@ public sealed partial class PaneViewModel : ObservableObject, IDisposable
         // settled. Clicking a place you are already viewing looked like the
         // folder briefly changed. Refreshing on purpose is F5's job; a
         // navigation to where you already are is not a request to refresh.
-        if (IsLoaded && !IsLoading
-            && string.Equals(CurrentPath, path, StringComparison.Ordinal))
+        // PathRules.Same, not Ordinal: CurrentPath is normalised on load, so a
+        // navigation spelled with a trailing separator or the other case is the
+        // same place — compared ordinally it reloaded anyway AND pushed a
+        // history entry whose Back went nowhere.
+        if (IsLoaded && !IsLoading && PathRules.Same(CurrentPath, path))
             return;
 
-        if (!string.IsNullOrEmpty(CurrentPath) && CurrentPath != path)
+        if (!string.IsNullOrEmpty(CurrentPath) && !PathRules.Same(CurrentPath, path))
         {
             _back.Push(CurrentPath);
             _forward.Clear();

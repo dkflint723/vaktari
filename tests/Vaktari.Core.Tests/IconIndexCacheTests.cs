@@ -218,6 +218,62 @@ public sealed class IconIndexCacheTests : IDisposable
     }
 
     /// <summary>
+    /// **Pruning drops entries whose themes are gone, and only those.** An
+    /// index is sixteen megabytes for a big theme and nothing else ever removes
+    /// one after its theme is deleted — the cache folder just grows, invisibly,
+    /// forever.
+    /// </summary>
+    [Fact]
+    public void Pruning_removes_entries_for_deleted_themes_and_keeps_the_rest()
+    {
+        var kept = Theme("Papirus");
+        var doomed = Theme("Tela");
+
+        IconIndexCache.Save(kept, MapOf(("folder", Path.Combine(kept, "48x48", "places", "folder.svg"))));
+        IconIndexCache.Save(doomed, MapOf(("folder", Path.Combine(doomed, "48x48", "places", "folder.svg"))));
+
+        Directory.Delete(doomed, recursive: true);
+
+        IconIndexCache.Prune();
+
+        Assert.Single(Directory.GetFiles(_cache, "*.idx"));
+        Assert.NotNull(IconIndexCache.Load(kept));
+    }
+
+    /// <summary>A file wearing the cache's extension that the reader could
+    /// never load is litter whatever directory it names.</summary>
+    [Fact]
+    public void Pruning_removes_files_that_could_never_be_loaded()
+    {
+        File.WriteAllText(Path.Combine(_cache, "junk.idx"), "not a cache at all\n");
+
+        IconIndexCache.Prune();
+
+        Assert.Empty(Directory.GetFiles(_cache, "*.idx"));
+    }
+
+    /// <summary>
+    /// **Old litter goes; young litter is somebody's build in flight.** A
+    /// .writing file minutes old may be a cache being written in another window
+    /// this instant, and deleting it mid-write is how caches vanish.
+    /// </summary>
+    [Fact]
+    public void Pruning_sweeps_only_stale_half_written_files()
+    {
+        var young = Path.Combine(_cache, "a.idx.111.writing");
+        var stale = Path.Combine(_cache, "b.idx.222.writing");
+
+        File.WriteAllText(young, "in flight");
+        File.WriteAllText(stale, "crash litter");
+        File.SetLastWriteTimeUtc(stale, DateTime.UtcNow.AddHours(-2));
+
+        IconIndexCache.Prune();
+
+        Assert.True(File.Exists(young), "a young staging file may be mid-write elsewhere");
+        Assert.False(File.Exists(stale), "old litter has no writer coming back for it");
+    }
+
+    /// <summary>
     /// **Nothing half-written is left behind when the rename fails.**
     ///
     /// Found as a flaky test rather than reasoned about: the cache folder

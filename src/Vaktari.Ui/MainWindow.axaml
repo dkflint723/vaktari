@@ -209,6 +209,29 @@
                 BorderThickness="0,2,0,0"
                 BorderBrush="{Binding IsActiveGroup, Converter={x:Static vm:FileConverters.ActiveEdge}}">
          <DockPanel>
+          <DockPanel.Styles>
+            <!-- The overflow chevrons. Flat and dim like the strip's own "+",
+                 because they are furniture, not actions — until the tabs
+                 overflow they do not exist at all, and the far end's chevron
+                 dims when there is nothing further that way. -->
+            <Style Selector="RepeatButton.tab-nudge">
+              <Setter Property="Background" Value="Transparent"/>
+              <Setter Property="BorderThickness" Value="0"/>
+              <Setter Property="Foreground" Value="{DynamicResource ViewDimText}"/>
+              <Setter Property="FontSize" Value="{DynamicResource FontSizeLarge}"/>
+              <Setter Property="Padding" Value="7,0,7,4"/>
+              <Setter Property="MinWidth" Value="0"/>
+              <Setter Property="VerticalAlignment" Value="Center"/>
+              <Setter Property="VerticalContentAlignment" Value="Center"/>
+              <Setter Property="Focusable" Value="False"/>
+            </Style>
+            <Style Selector="RepeatButton.tab-nudge:pointerover /template/ ContentPresenter">
+              <Setter Property="Background" Value="{DynamicResource HoverBackground}"/>
+            </Style>
+            <Style Selector="RepeatButton.tab-nudge:disabled">
+              <Setter Property="Opacity" Value="0.3"/>
+            </Style>
+          </DockPanel.Styles>
           <!-- Per-pane, so in a split each side toggles its own chain. Binds
                through this group's ActiveTab rather than the shell's, which
                would only ever be the focused half. -->
@@ -516,6 +539,25 @@
 
           </StackPanel>
 
+          <!-- The obvious way to reach an overflowed tab. The wheel scrolls the
+               strip and the thin line shows where you are, but neither LOOKS
+               clickable — a wheel is invisible until discovered. These exist
+               only while there is somewhere to go: hidden when the tabs fit,
+               dimmed at their own end of travel, so their presence itself says
+               "there are more tabs than you can see". RepeatButtons, so holding
+               one sweeps. Declared after the view buttons, so the right chevron
+               docks against the strip rather than the window edge; not
+               focusable, because Ctrl+Tab is the keyboard's way through tabs
+               and these are pointer furniture. -->
+          <RepeatButton DockPanel.Dock="Left" Classes="tab-nudge tab-nudge-left"
+                        Content="&#x2039;" IsVisible="False"
+                        Click="OnScrollTabsLeft"
+                        AutomationProperties.Name="scroll tabs left" ToolTip.Tip="scroll tabs left"/>
+          <RepeatButton DockPanel.Dock="Right" Classes="tab-nudge tab-nudge-right"
+                        Content="&#x203A;" IsVisible="False"
+                        Click="OnScrollTabsRight"
+                        AutomationProperties.Name="scroll tabs right" ToolTip.Tip="scroll tabs right"/>
+
           <!-- Scrolled, and that is the fix rather than a nicety.
                A horizontal StackPanel measures its children with INFINITE width
                and does not clip, so the strip grew past the space the DockPanel
@@ -528,7 +570,8 @@
                open. Ctrl+T reaches the same command when they scroll out. -->
           <ScrollViewer HorizontalScrollBarVisibility="Auto"
                         VerticalScrollBarVisibility="Disabled"
-                        ClipToBounds="True">
+                        ClipToBounds="True"
+                        ScrollChanged="OnTabStripScrollChanged">
             <!-- The theme's own scrollbar is built for a document, and over a
                  row of tabs it reads as machinery: a bright thumb the height of
                  a button, with a stepper arrow at each end, painted across the
@@ -585,7 +628,8 @@
               </Style>
             </ScrollViewer.Styles>
           <StackPanel Orientation="Horizontal">
-          <TabStrip ItemsSource="{Binding Tabs}" SelectedItem="{Binding ActiveTab}">
+          <TabStrip ItemsSource="{Binding Tabs}" SelectedItem="{Binding ActiveTab}"
+                    SelectionChanged="OnTabStripSelectionChanged">
             <TabStrip.Styles>
               <!-- The active tab takes the *content* colour, so it reads as
                    continuous with the listing beneath it. Inactive tabs stay on
