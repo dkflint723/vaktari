@@ -165,6 +165,7 @@ jobs:
           path: |
             vaktari-linux-x64.tar.gz
             vaktari-linux-x64.tar.gz.sha256
+          retention-days: 2
 
   windows-x64:
     runs-on: windows-latest
@@ -258,6 +259,7 @@ jobs:
           path: |
             dist/*.exe
             dist/*.sha256
+          retention-days: 2
 
   # One job owns the release, rather than each build job racing to create it.
   # Both platforms' assets go up in a single call, so a reader never sees a
