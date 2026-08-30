@@ -1,4 +1,5 @@
 using System.Diagnostics;
+using System.Net.Http;
 using System.Text.Json;
 using Vaktari.Core.FileSystem;
 
@@ -31,24 +32,65 @@ public sealed class ProtonDriveLinks : ILinkSharing
     /// </summary>
     public string LocalRoot { get; set; } = "";
 
-    private readonly Lazy<string?> _binary;
+    private readonly string? _binaryOverride;
+    private string? _binary;
+    private bool _located;
 
     public ProtonDriveLinks(string? binaryOverride = null)
-        => _binary = new(() => binaryOverride ?? Locate());
+        => _binaryOverride = binaryOverride;
 
-    public bool IsAvailable => _binary.Value is not null;
+    /// <summary>
+    /// Found once and remembered — but re-scannable, unlike the Lazy this
+    /// replaced, whose first "not installed" answer stood for the whole run
+    /// and made every install need a restart to notice.
+    /// </summary>
+    /// <summary>Stands in for discovery in tests, which must not depend on
+    /// what the machine running them happens to have installed.</summary>
+    internal Func<string?>? LocateOverride { get; init; }
+
+    private string? Binary
+    {
+        get
+        {
+            if (!_located)
+            {
+                _binary = _binaryOverride ?? (LocateOverride ?? Locate)();
+                _located = true;
+            }
+
+            return _binary;
+        }
+    }
+
+    /// <summary>Re-runs discovery, so an install — Vaktari's own or a copy
+    /// dropped in by hand — takes effect without a restart. Same contract as
+    /// CopypartyShare's rescan.</summary>
+    public void Rescan() => _located = false;
+
+    public bool IsAvailable => Binary is not null;
 
     public string? UnavailableReason => IsAvailable
         ? null
-        : "the Proton Drive CLI is not installed — download it from proton.me/drive/download";
+        : "the Proton Drive CLI is not installed — the Share menu offers to install it";
+
+    private static string BinaryName
+        => OperatingSystem.IsWindows() ? "proton-drive.exe" : "proton-drive";
+
+    /// <summary>Where Vaktari's own install lands. Overridable so the install
+    /// tests write into a temp folder instead of the real one.</summary>
+    internal string? ToolsDirOverride { get; init; }
+
+    private string ToolsDir => ToolsDirOverride ?? Path.Combine(
+        Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+        "vaktari", "tools");
 
     /// <summary>
     /// PATH first — a deliberate install outranks a guess — then the places a
     /// downloaded single binary plausibly lands.
     /// </summary>
-    private static string? Locate()
+    private string? Locate()
     {
-        var name = OperatingSystem.IsWindows() ? "proton-drive.exe" : "proton-drive";
+        var name = BinaryName;
 
         foreach (var dir in (Environment.GetEnvironmentVariable("PATH") ?? "")
                      .Split(Path.PathSeparator, StringSplitOptions.RemoveEmptyEntries))
@@ -63,9 +105,7 @@ public sealed class ProtonDriveLinks : ILinkSharing
 
         string[] candidates =
         [
-            Path.Combine(
-                Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
-                "vaktari", "tools", name),
+            Path.Combine(ToolsDir, name),
             Path.Combine(
                 Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
                 "Programs", "proton-drive", name),
@@ -75,6 +115,119 @@ public sealed class ProtonDriveLinks : ILinkSharing
         ];
 
         return candidates.FirstOrDefault(File.Exists);
+    }
+
+    /// <summary>Stands in for the download in tests, which must never touch
+    /// the network. Takes the URL and the file to write.</summary>
+    internal Func<string, string, CancellationToken, Task>? FetchOverride { get; set; }
+
+    /// <summary>
+    /// Downloads the CLI into Vaktari's tools folder — the same "install is a
+    /// menu click" promise copyparty makes, kept the way a single static
+    /// binary allows: fetch, stage, rename into place.
+    ///
+    /// Staged under a .part name and renamed at the end, so a transfer that
+    /// dies halfway leaves nothing that <see cref="Locate"/> would mistake
+    /// for a working tool. The binary is ~120 MB, hence streamed to disk and
+    /// never held in memory.
+    /// </summary>
+    public async Task<bool> InstallAsync(IProgress<string> progress, CancellationToken ct)
+    {
+        if (IsAvailable) return true;
+
+        if (Grammar.DownloadUrl() is not { } url)
+        {
+            progress.Report("Proton does not publish its CLI for this platform");
+            return false;
+        }
+
+        progress.Report("downloading the Proton Drive CLI…");
+
+        var final = Path.Combine(ToolsDir, BinaryName);
+        var staged = final + ".part";
+
+        try
+        {
+            Directory.CreateDirectory(ToolsDir);
+
+            await (FetchOverride ?? FetchAsync)(url, staged, ct).ConfigureAwait(false);
+
+            // The download is not a program until it can run.
+            if (!OperatingSystem.IsWindows())
+                File.SetUnixFileMode(staged,
+                    UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute
+                    | UnixFileMode.GroupRead | UnixFileMode.OtherRead);
+
+            File.Move(staged, final, overwrite: true);
+            Rescan();
+
+            progress.Report("Proton Drive sharing is ready");
+            return IsAvailable;
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            progress.Report($"could not install the Proton Drive CLI: {ex.Message}");
+
+            try { if (File.Exists(staged)) File.Delete(staged); }
+            catch (Exception e) { Quiet.Swallowed("proton", e); }
+
+            return false;
+        }
+    }
+
+    private static async Task FetchAsync(string url, string destination, CancellationToken ct)
+    {
+        // Same shape and the same patience as the icon-theme fetch: large
+        // file, unknowable connection, and a stall should not hang forever.
+        using var http = new HttpClient { Timeout = TimeSpan.FromMinutes(10) };
+        http.DefaultRequestHeaders.UserAgent.ParseAdd("Vaktari");
+
+        using var response = await http
+            .GetAsync(url, HttpCompletionOption.ResponseHeadersRead, ct)
+            .ConfigureAwait(false);
+
+        response.EnsureSuccessStatusCode();
+
+        await using var network = await response.Content.ReadAsStreamAsync(ct).ConfigureAwait(false);
+        await using var file = File.Create(destination);
+
+        await network.CopyToAsync(file, ct).ConfigureAwait(false);
+    }
+
+    /// <summary>
+    /// Where the Proton Drive app most likely syncs to, for when the setting
+    /// is empty — the app puts "My files" either directly under
+    /// "~/Proton Drive" or one account folder down.
+    ///
+    /// A guess is offered only when it is unambiguous: with two account
+    /// folders there is no right answer, and a wrong drive mapping would make
+    /// links to the wrong account's files. Null sends the person to the
+    /// setting, which always wins over this.
+    /// </summary>
+    public static string? GuessLocalRoot()
+        => GuessLocalRoot(Path.Combine(
+            Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), "Proton Drive"));
+
+    internal static string? GuessLocalRoot(string protonBase)
+    {
+        try
+        {
+            if (!Directory.Exists(protonBase)) return null;
+
+            var direct = Path.Combine(protonBase, "My files");
+            if (Directory.Exists(direct)) return direct;
+
+            var accounts = Directory.EnumerateDirectories(protonBase)
+                .Where(account => Directory.Exists(Path.Combine(account, "My files")))
+                .Take(2)
+                .ToList();
+
+            return accounts.Count == 1 ? Path.Combine(accounts[0], "My files") : null;
+        }
+        catch (Exception e) when (e is IOException or UnauthorizedAccessException)
+        {
+            return null;
+        }
     }
 
     public string? MapToRemote(string localPath)
@@ -165,7 +318,7 @@ public sealed class ProtonDriveLinks : ILinkSharing
         if (StreamOverride is { } fake)
             return await fake(arguments, onLine, ct).ConfigureAwait(false);
 
-        var binary = _binary.Value ?? throw new IOException(UnavailableReason ?? "no CLI");
+        var binary = Binary ?? throw new IOException(UnavailableReason ?? "no CLI");
 
         var info = new ProcessStartInfo(binary)
         {
@@ -206,7 +359,7 @@ public sealed class ProtonDriveLinks : ILinkSharing
     {
         if (RunOverride is { } fake) return await fake(arguments, ct).ConfigureAwait(false);
 
-        var binary = _binary.Value
+        var binary = Binary
             ?? throw new IOException(UnavailableReason ?? "no CLI");
 
         var info = new ProcessStartInfo(binary)
@@ -246,6 +399,23 @@ public sealed class ProtonDriveLinks : ILinkSharing
         /// <summary>The drive's own name for the root, per the CLI docs'
         /// examples ("/my-files/Documents").</summary>
         internal const string RemoteRoot = "/my-files";
+
+        /// <summary>
+        /// Pinned, not "latest": a version that was tested is a version that
+        /// keeps working, and Proton's download paths carry the number.
+        /// </summary>
+        internal const string CliVersion = "0.8.0";
+
+        /// <summary>
+        /// VERIFIED for both platforms — each URL answered 200 with the
+        /// binary's length on 2026-08-29. Null where Proton publishes no CLI.
+        /// </summary>
+        internal static string? DownloadUrl()
+            => OperatingSystem.IsWindows()
+                ? $"https://proton.me/download/drive/cli/{CliVersion}/windows-x64/proton-drive.exe"
+                : OperatingSystem.IsLinux()
+                    ? $"https://proton.me/download/drive/cli/{CliVersion}/linux-x64/proton-drive"
+                    : null;
 
         /// <summary>DOCUMENTED: "sharing set-url" creates the public link;
         /// --json is the CLI's machine-readable switch.</summary>

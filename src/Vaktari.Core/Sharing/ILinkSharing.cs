@@ -35,6 +35,16 @@ public interface ILinkSharing
     string? UnavailableReason { get; }
 
     /// <summary>
+    /// Fetches and installs the tool, so the feature is a menu click rather
+    /// than a hunt through a vendor's site. Same contract as
+    /// <see cref="IFileSharing.InstallAsync"/>: progress lines are for a
+    /// status bar, false means it did not work and a line already said why.
+    /// Never automatic — putting software on someone's machine is something
+    /// they choose.
+    /// </summary>
+    Task<bool> InstallAsync(IProgress<string> progress, CancellationToken ct);
+
+    /// <summary>
     /// Runs the tool's own browser sign-in and waits for it to finish.
     ///
     /// <paramref name="openUrl"/> is called if the tool prints a link rather

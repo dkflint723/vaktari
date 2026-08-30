@@ -218,9 +218,14 @@ public partial class MainWindow : Window
 
         // Same reasoning, different binary: Proton's own CLI, which behaves the
         // same on both targets and carries the encryption itself.
+        // The setting always wins; the guess covers the machine where the
+        // Proton Drive app is installed and nobody has told Vaktari where —
+        // which should cost a click, not a treasure hunt through settings.
         _driveLinks = new Vaktari.Core.Sharing.ProtonDriveLinks
         {
-            LocalRoot = AppSettings.Current.General.ProtonDriveFolder,
+            LocalRoot = AppSettings.Current.General.ProtonDriveFolder is { Length: > 0 } chosen
+                ? chosen
+                : Vaktari.Core.Sharing.ProtonDriveLinks.GuessLocalRoot() ?? "",
         };
         _driveLinkStore = new JsonDriveLinkStore(JsonSessionStore.DefaultDirectory());
 
@@ -934,9 +939,13 @@ public partial class MainWindow : Window
             AppSettings.Apply(model.Result);
 
             // The mapping follows the setting immediately, or a corrected
-            // folder would need a restart to matter.
+            // folder would need a restart to matter. Clearing it falls back
+            // to the guess, the same as startup.
             if (_driveLinks is not null)
-                _driveLinks.LocalRoot = model.Result.General.ProtonDriveFolder;
+                _driveLinks.LocalRoot =
+                    model.Result.General.ProtonDriveFolder is { Length: > 0 } chosen
+                        ? chosen
+                        : Vaktari.Core.Sharing.ProtonDriveLinks.GuessLocalRoot() ?? "";
 
             // Rebuilt on save, or choosing a theme would need a restart — and
             // the resolved-path cache has no theme in its key, so it has to be
@@ -1121,6 +1130,8 @@ public partial class MainWindow : Window
             || Find<MenuItem>(menu.Items, "ProtonShareItem") is not { } share
             || Find<MenuItem>(menu.Items, "ProtonCopyLinkItem") is not { } copy
             || Find<MenuItem>(menu.Items, "ProtonUnshareItem") is not { } unshare
+            || Find<MenuItem>(menu.Items, "ProtonInstallItem") is not { } install
+            || Find<MenuItem>(menu.Items, "ProtonInstallingItem") is not { } installing
             || Find<Separator>(menu.Items, "ShareMethodSeparator") is not { } separatorHost) return;
 
         var entry = (menu.DataContext as ViewModels.PaneGroupViewModel)?.ActiveTab?.SelectedEntry;
@@ -1133,10 +1144,22 @@ public partial class MainWindow : Window
         copy.IsVisible = linkable && existing is not null;
         unshare.IsVisible = linkable && existing is not null;
 
+        // The tool missing is a state of the feature, not its absence: for an
+        // item the drive folder covers, the slot the share row would occupy
+        // offers the install instead, and shows the download's progress row
+        // while it runs.
+        var installable = path is not null && _shell.CanOfferDriveInstall(path);
+        var busy = path is not null && _shell.ShowDriveInstallBusy(path);
+
+        install.IsVisible = installable;
+        installing.IsVisible = busy;
+
         // The submenu earns its place when EITHER way of sharing applies; the
         // rule between them only when both do.
-        shareMenu.IsVisible = linkable || _shell.HasSharingEntry;
-        separatorHost.IsVisible = linkable && _shell.HasSharingEntry;
+        var proton = linkable || installable || busy;
+
+        shareMenu.IsVisible = proton || _shell.HasSharingEntry;
+        separatorHost.IsVisible = proton && _shell.HasSharingEntry;
     }
 
     private void OnProtonShareClicked(object? sender, RoutedEventArgs e)
@@ -1159,11 +1182,21 @@ public partial class MainWindow : Window
             _shell.StopDriveLinkCommand.Execute(link);
     }
 
-    /// <summary>The pane whose menu the clicked item belongs to. Through the
-    /// menu's DataContext, because a popup is not in the pane's visual tree.</summary>
+    private void OnProtonInstallClicked(object? sender, RoutedEventArgs e)
+        => _shell.InstallDriveLinksCommand.Execute(null);
+
+    /// <summary>
+    /// The pane whose menu the clicked item belongs to — read from the item's
+    /// own DataContext, which it inherits from the ContextMenu.
+    ///
+    /// **Not through Parent**, which this used to do: when the Proton rows
+    /// moved inside the Share submenu, their Parent became that submenu rather
+    /// than the ContextMenu, the cast answered null, and every click on them
+    /// did nothing without a word said. Inheritance does not care how deep the
+    /// row sits.
+    /// </summary>
     private static ViewModels.PaneViewModel? PaneFromMenuItem(object? sender)
-        => ((sender as MenuItem)?.Parent as ContextMenu)?.DataContext
-            is ViewModels.PaneGroupViewModel group
+        => (sender as Control)?.DataContext is ViewModels.PaneGroupViewModel group
             ? group.ActiveTab
             : null;
 

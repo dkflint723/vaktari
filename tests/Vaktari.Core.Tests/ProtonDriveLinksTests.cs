@@ -196,15 +196,174 @@ public sealed class ProtonDriveLinksTests
     public void Only_signed_out_refusals_trigger_the_browser(string complaint, bool expected)
         => Assert.Equal(expected, ProtonDriveLinks.LooksSignedOut(complaint));
 
-    /// <summary>No binary, no feature — and a reason the UI can show.</summary>
+    /// <summary>No binary, no feature — and a reason the UI can show. The
+    /// locate seam makes this true whatever the build machine has installed.</summary>
     [Fact]
     public void Without_the_tool_the_feature_says_what_to_install()
     {
-        var links = new ProtonDriveLinks(binaryOverride: null);
+        var links = new ProtonDriveLinks { LocateOverride = () => null };
 
-        // The machine building this may genuinely have the CLI on PATH; only
-        // assert the negative half when it does not.
-        if (!links.IsAvailable)
-            Assert.Contains("proton.me", links.UnavailableReason);
+        Assert.False(links.IsAvailable);
+        Assert.Contains("install", links.UnavailableReason);
     }
+
+    // ---- installing the tool ----------------------------------------------
+
+    /// <summary>The URLs are pinned: a version that was tested is a version
+    /// that keeps working, and both answered 200 when this was written.</summary>
+    [Fact]
+    public void The_download_url_is_the_published_build_for_this_platform()
+    {
+        var url = ProtonDriveLinks.Grammar.DownloadUrl();
+
+        if (OperatingSystem.IsWindows())
+            Assert.Equal(
+                "https://proton.me/download/drive/cli/0.8.0/windows-x64/proton-drive.exe", url);
+        else if (OperatingSystem.IsLinux())
+            Assert.Equal(
+                "https://proton.me/download/drive/cli/0.8.0/linux-x64/proton-drive", url);
+    }
+
+    [Fact]
+    public async Task Installing_lands_the_tool_and_the_feature_comes_alive()
+    {
+        var tools = Directory.CreateTempSubdirectory("vaktari-proton-install").FullName;
+
+        try
+        {
+            var name = OperatingSystem.IsWindows() ? "proton-drive.exe" : "proton-drive";
+            var landed = Path.Combine(tools, name);
+
+            var links = new ProtonDriveLinks
+            {
+                ToolsDirOverride = tools,
+
+                // Discovery sees only the test's folder — the machine's own
+                // installs must not leak in.
+                LocateOverride = () => File.Exists(landed) ? landed : null,
+
+                FetchOverride = (url, destination, _) =>
+                {
+                    Assert.Contains("proton.me", url);
+                    return File.WriteAllBytesAsync(destination, [1, 2, 3]);
+                },
+            };
+
+            Assert.False(links.IsAvailable);
+
+            var lines = new List<string>();
+            var done = await links.InstallAsync(
+                new Immediate(lines.Add), CancellationToken.None);
+
+            Assert.True(done);
+            Assert.True(links.IsAvailable);
+            Assert.True(File.Exists(landed));
+            Assert.Contains(lines, l => l.Contains("ready"));
+        }
+        finally
+        {
+            Directory.Delete(tools, recursive: true);
+        }
+    }
+
+    /// <summary>A dead download says so and leaves nothing that discovery
+    /// would mistake for a working tool.</summary>
+    [Fact]
+    public async Task A_failed_download_reports_and_leaves_nothing_behind()
+    {
+        var tools = Directory.CreateTempSubdirectory("vaktari-proton-fail").FullName;
+
+        try
+        {
+            var links = new ProtonDriveLinks
+            {
+                ToolsDirOverride = tools,
+                LocateOverride = () => null,
+                FetchOverride = (_, _, _) => throw new IOException("the network went away"),
+            };
+
+            var lines = new List<string>();
+            var done = await links.InstallAsync(
+                new Immediate(lines.Add), CancellationToken.None);
+
+            Assert.False(done);
+            Assert.False(links.IsAvailable);
+            Assert.Empty(Directory.GetFiles(tools));
+            Assert.Contains(lines, l => l.Contains("the network went away"));
+        }
+        finally
+        {
+            Directory.Delete(tools, recursive: true);
+        }
+    }
+
+    /// <summary>IProgress without a SynchronizationContext detour, so the
+    /// lines are there when the assert runs.</summary>
+    private sealed class Immediate(Action<string> onLine) : IProgress<string>
+    {
+        public void Report(string value) => onLine(value);
+    }
+
+    // ---- guessing the sync folder -----------------------------------------
+
+    [Fact]
+    public void The_folder_guess_takes_a_direct_my_files()
+    {
+        var home = Directory.CreateTempSubdirectory("vaktari-proton-guess").FullName;
+
+        try
+        {
+            var myFiles = Path.Combine(home, "My files");
+            Directory.CreateDirectory(myFiles);
+
+            Assert.Equal(myFiles, ProtonDriveLinks.GuessLocalRoot(home));
+        }
+        finally
+        {
+            Directory.Delete(home, recursive: true);
+        }
+    }
+
+    [Fact]
+    public void The_folder_guess_descends_into_a_single_account()
+    {
+        var home = Directory.CreateTempSubdirectory("vaktari-proton-guess").FullName;
+
+        try
+        {
+            var myFiles = Path.Combine(home, "me@proton.me", "My files");
+            Directory.CreateDirectory(myFiles);
+
+            Assert.Equal(myFiles, ProtonDriveLinks.GuessLocalRoot(home));
+        }
+        finally
+        {
+            Directory.Delete(home, recursive: true);
+        }
+    }
+
+    /// <summary>Two accounts is no answer at all: a wrong guess links the
+    /// wrong account's files, which is worse than asking.</summary>
+    [Fact]
+    public void Two_accounts_refuse_to_guess()
+    {
+        var home = Directory.CreateTempSubdirectory("vaktari-proton-guess").FullName;
+
+        try
+        {
+            Directory.CreateDirectory(Path.Combine(home, "one@proton.me", "My files"));
+            Directory.CreateDirectory(Path.Combine(home, "two@proton.me", "My files"));
+
+            Assert.Null(ProtonDriveLinks.GuessLocalRoot(home));
+        }
+        finally
+        {
+            Directory.Delete(home, recursive: true);
+        }
+    }
+
+    [Fact]
+    public void No_proton_folder_no_guess()
+        => Assert.Null(ProtonDriveLinks.GuessLocalRoot(
+            Path.Combine(Path.GetTempPath(), "vaktari-no-such-folder")));
 }

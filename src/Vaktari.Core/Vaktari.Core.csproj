@@ -23,6 +23,10 @@
          buffer, and that the position it reports is truthful — and both were
          wrong in ways no archive fixture caught. -->
     <InternalsVisibleTo Include="Vaktari.Core.Tests" />
+    <!-- The UI's tests need the Proton locate seam for the same reason: a
+         test of "the tool is not installed" must not change its answer when
+         the machine running it installs the tool. -->
+    <InternalsVisibleTo Include="Vaktari.Ui.Tests" />
   </ItemGroup>
 
   <ItemGroup>

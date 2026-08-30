@@ -345,6 +345,59 @@ public sealed partial class ShellViewModel : ObservableObject
             Vaktari.Core.FileSystem.PathRules.Same(l.LocalPath, path));
 
     /// <summary>
+    /// The install row's gate: the item WOULD be linkable if only the tool
+    /// were installed. Location first, on purpose — outside the drive folder
+    /// there is nothing to offer installing FOR, and a person with no Proton
+    /// Drive at all never sees the entry.
+    /// </summary>
+    public bool CanOfferDriveInstall(string path)
+        => !IsInstallingDriveLinks
+           && _links is { IsAvailable: false } links
+           && links.MapToRemote(path) is not null;
+
+    /// <summary>The disabled "installing…" row, for the same items, while the
+    /// download runs — the state that must never look like the feature left.</summary>
+    public bool ShowDriveInstallBusy(string path)
+        => IsInstallingDriveLinks
+           && _links is { } links
+           && links.MapToRemote(path) is not null;
+
+    [ObservableProperty] private bool _isInstallingDriveLinks;
+
+    /// <summary>
+    /// Installs the link tool on request — the same shape as the copyparty
+    /// install, for the same reason: putting software on someone's machine is
+    /// something they chose by clicking an entry that says so, never a side
+    /// effect of trying to share.
+    /// </summary>
+    [RelayCommand]
+    private async Task InstallDriveLinksAsync()
+    {
+        if (_links is null || _links.IsAvailable || IsInstallingDriveLinks) return;
+
+        IsInstallingDriveLinks = true;
+
+        var pane = ActiveTab;
+        var progress = new Progress<string>(line =>
+        {
+            if (pane is not null) pane.Status = line;
+        });
+
+        try
+        {
+            await _links.InstallAsync(progress, CancellationToken.None).ConfigureAwait(true);
+        }
+        catch (Exception ex)
+        {
+            if (pane is not null) pane.Status = $"install failed: {ex.Message}";
+        }
+        finally
+        {
+            IsInstallingDriveLinks = false;
+        }
+    }
+
+    /// <summary>
     /// Creates the link, remembers it, and puts the URL straight on the
     /// clipboard — the click means "get me the thing I send to a friend", and
     /// making them find a copy button afterwards would be a second errand.

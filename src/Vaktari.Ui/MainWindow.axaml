@@ -1095,6 +1095,15 @@
                           IsVisible="False" Click="OnProtonCopyLinkClicked"/>
                 <MenuItem x:Name="ProtonUnshareItem" Header="Stop sharing via Proton Drive"
                           IsVisible="False" Click="OnProtonUnshareClicked"/>
+                <!-- The same install-is-a-menu-click promise copyparty makes,
+                     one entry down. Shown only for items inside the drive
+                     folder: outside it there is nothing the tool would be
+                     installed FOR, and someone without Proton Drive at all
+                     never sees this. -->
+                <MenuItem x:Name="ProtonInstallItem" Header="Install Proton Drive sharing"
+                          IsVisible="False" Click="OnProtonInstallClicked"/>
+                <MenuItem x:Name="ProtonInstallingItem" Header="Installing Proton Drive sharing…"
+                          IsEnabled="False" IsVisible="False"/>
                 <Separator x:Name="ShareMethodSeparator" IsVisible="False"/>
                 <!-- **Flat, like the Proton rows above it: one row per thing
                      that can happen, never a second hover.** Wrapping these in
