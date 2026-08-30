@@ -289,6 +289,122 @@ public sealed partial class ShellViewModel : ObservableObject
 
     public bool HasShares => Shares.Count > 0;
 
+    // ---- drive links -------------------------------------------------------
+
+    private ILinkSharing? _links;
+    private Action<IReadOnlyList<DriveLink>>? _saveLinks;
+
+    /// <summary>
+    /// Links Vaktari has created, oldest first. In the sidebar beside the
+    /// copyparty shares and for the same reason: something you are sharing
+    /// must never be something you have to remember.
+    /// </summary>
+    public ObservableCollection<DriveLink> DriveLinks { get; } = new();
+
+    public bool HasDriveLinks => DriveLinks.Count > 0;
+
+    /// <summary>The SHARING sidebar section shows when either kind exists.</summary>
+    public bool HasAnySharing => HasShares || HasDriveLinks;
+
+    /// <summary>
+    /// Wires the link provider and what it remembers. The saver is handed in
+    /// rather than the store, so the shell stays ignorant of files — the same
+    /// arrangement the session has.
+    /// </summary>
+    public void UseDriveLinks(
+        ILinkSharing? links,
+        IReadOnlyList<DriveLink> remembered,
+        Action<IReadOnlyList<DriveLink>> save)
+    {
+        _links = links;
+        _saveLinks = save;
+
+        DriveLinks.Clear();
+        foreach (var link in remembered) DriveLinks.Add(link);
+
+        DriveLinks.CollectionChanged += (_, _) =>
+        {
+            OnPropertyChanged(nameof(HasDriveLinks));
+            OnPropertyChanged(nameof(HasAnySharing));
+        };
+
+        OnPropertyChanged(nameof(HasDriveLinks));
+        OnPropertyChanged(nameof(HasAnySharing));
+    }
+
+    /// <summary>Whether the menu may offer a link for this path at all.</summary>
+    public bool CanLinkShare(string path)
+        => _links is { IsAvailable: true } && _links.MapToRemote(path) is not null;
+
+    /// <summary>The link already covering this path, if Vaktari made one.</summary>
+    public DriveLink? LinkFor(string path)
+        => DriveLinks.FirstOrDefault(l =>
+            Vaktari.Core.FileSystem.PathRules.Same(l.LocalPath, path));
+
+    /// <summary>
+    /// Creates the link, remembers it, and puts the URL straight on the
+    /// clipboard — the click means "get me the thing I send to a friend", and
+    /// making them find a copy button afterwards would be a second errand.
+    /// </summary>
+    public async Task CreateDriveLinkAsync(string path)
+    {
+        if (_links is not { } links || ActiveTab is not { } pane) return;
+
+        pane.Status = "creating the Proton Drive link…";
+
+        try
+        {
+            var link = await Task.Run(
+                () => links.CreateLinkAsync(path, CancellationToken.None)).ConfigureAwait(true);
+
+            // Re-sharing replaces the remembered row rather than stacking a
+            // duplicate: one item, one row, one kill switch.
+            if (LinkFor(path) is { } previous) DriveLinks.Remove(previous);
+
+            DriveLinks.Add(link);
+            _saveLinks?.Invoke(DriveLinks.ToList());
+
+            CopyTextRequested?.Invoke(this, link.Url);
+            pane.Status = "link copied — anyone with it can open the file";
+        }
+        catch (Exception ex)
+        {
+            pane.Status = Vaktari.Core.FileSystem.Failures.Describe(ex, "create that link");
+        }
+    }
+
+    [RelayCommand]
+    private async Task StopDriveLinkAsync(DriveLink? link)
+    {
+        if (link is null || _links is not { } links) return;
+
+        var pane = ActiveTab;
+
+        try
+        {
+            await Task.Run(
+                () => links.RevokeAsync(link, CancellationToken.None)).ConfigureAwait(true);
+
+            DriveLinks.Remove(link);
+            _saveLinks?.Invoke(DriveLinks.ToList());
+
+            if (pane is not null) pane.Status = $"no longer sharing {link.Label}";
+        }
+        catch (Exception ex)
+        {
+            // The row STAYS on failure: a link that might still work must keep
+            // its kill switch visible.
+            if (pane is not null)
+                pane.Status = Vaktari.Core.FileSystem.Failures.Describe(ex, "remove that link");
+        }
+    }
+
+    [RelayCommand]
+    private void CopyDriveLink(DriveLink? link)
+    {
+        if (link is not null) CopyTextRequested?.Invoke(this, link.Url);
+    }
+
     public bool CanShare => _sharing?.IsAvailable == true;
 
     /// <summary>A backend exists for this platform, but is not installed yet.</summary>
@@ -358,6 +474,7 @@ public sealed partial class ShellViewModel : ObservableObject
         foreach (var share in _sharing?.Active ?? []) Shares.Add(share);
 
         OnPropertyChanged(nameof(HasShares));
+        OnPropertyChanged(nameof(HasAnySharing));
     }
 
     /// <summary>

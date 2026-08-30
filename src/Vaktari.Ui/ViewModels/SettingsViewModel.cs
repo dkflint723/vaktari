@@ -82,6 +82,7 @@ public sealed partial class SettingsViewModel : ObservableObject
             ?? AvailableFonts[0];
         _useSystemIcons = current.General.UseSystemIcons;
         _iconThemeFolder = current.General.IconThemeFolder;
+        _protonDriveFolder = current.General.ProtonDriveFolder;
 
         // **Checked on the way in, not only when it was chosen.** A theme
         // folder that has since been moved, renamed or deleted would otherwise
@@ -305,6 +306,13 @@ public sealed partial class SettingsViewModel : ObservableObject
     /// report "that folder was not what I needed" is a lot of ceremony for a
     /// sentence.
     /// </summary>
+    /// <summary>
+    /// Where the Proton Drive sync folder is, for the link-sharing gestures. A
+    /// typed path rather than a picker for v1: it is set once, and the person
+    /// who moved their sync folder to D: knows exactly where it went.
+    /// </summary>
+    [ObservableProperty] private string _protonDriveFolder = "";
+
     [ObservableProperty] private string _iconThemeProblem = "";
 
     private const string ThemeGone =
@@ -977,6 +985,7 @@ public sealed partial class SettingsViewModel : ObservableObject
                 PreferredTerminal = SelectedTerminal?.Id ?? "",
                 UseSystemIcons = UseSystemIcons,
                 IconThemeFolder = IconThemeFolder,
+                ProtonDriveFolder = ProtonDriveFolder.Trim(),
             },
 
             // Also guarded: `with` on a null record throws, so saving would have

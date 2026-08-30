@@ -1009,7 +1009,8 @@
                  right-click selects the row under the pointer first — the
                  entries are there whenever the click was on something.
             -->
-            <ContextMenu x:DataType="vm:PaneGroupViewModel" Closed="OnListingMenuClosed">
+            <ContextMenu x:DataType="vm:PaneGroupViewModel" Closed="OnListingMenuClosed"
+                         Opening="OnListingMenuOpening">
               <!-- **Every row here that has a key binding prints it.** Ten did
                    and none said so, which left the keyboard route discoverable
                    only by reading the source — and an entry nobody knows is
@@ -1064,6 +1065,17 @@
                                 </Style>
                               </MenuItem.Styles>
                             </MenuItem>
+              <!-- Proton links. Hidden by default; OnListingMenuOpening shows
+                   the pair that applies — share, or copy-and-stop — because
+                   whether an item CAN be linked (inside the drive folder, CLI
+                   present) and whether it already IS are per-item questions a
+                   static binding cannot ask. -->
+              <MenuItem x:Name="ProtonShareItem" Header="Share via Proton Drive"
+                        IsVisible="False" Click="OnProtonShareClicked"/>
+              <MenuItem x:Name="ProtonCopyLinkItem" Header="Copy Proton Drive link"
+                        IsVisible="False" Click="OnProtonCopyLinkClicked"/>
+              <MenuItem x:Name="ProtonUnshareItem" Header="Stop sharing via Proton Drive"
+                        IsVisible="False" Click="OnProtonUnshareClicked"/>
               <!-- Gated with the block ABOVE it, not the one below. Open and
                    Open with are the only entries up there and both need a
                    selection, so without this the menu opened with a rule as its
@@ -2494,7 +2506,7 @@
                 <!-- Active shares. Deliberately always visible while running:
                      a folder open to the network must never be something you
                      have to remember. -->
-                <StackPanel IsVisible="{Binding HasShares}" Margin="0,8,0,12">
+                <StackPanel IsVisible="{Binding HasAnySharing}" Margin="0,8,0,12">
                   <TextBlock Text="SHARING" Margin="12,0,12,6"
                              FontSize="{DynamicResource FontSizeTiny}"
                              FontWeight="Medium" LetterSpacing="1.1"
@@ -2516,6 +2528,42 @@
                                     FontSize="{DynamicResource FontSizeTiny}"
                                     AutomationProperties.Name="copy the address" ToolTip.Tip="copy the address"
                                     Command="{Binding $parent[Window].((vm:ShellViewModel)DataContext).CopyShareUrlCommand}"
+                                    CommandParameter="{Binding}"/>
+                            <StackPanel>
+                              <TextBlock Text="{Binding Label}"
+                                         FontSize="{DynamicResource FontSizeBase}"
+                                         TextTrimming="CharacterEllipsis"/>
+                              <TextBlock Text="{Binding Url}"
+                                         FontSize="{DynamicResource FontSizeTiny}"
+                                         Foreground="{DynamicResource ViewDimText}"
+                                         TextTrimming="CharacterEllipsis"/>
+                            </StackPanel>
+                          </DockPanel>
+                        </Border>
+                      </DataTemplate>
+                    </ItemsControl.ItemTemplate>
+                  </ItemsControl>
+
+                  <!-- Proton links, under the served folders. Same row, same
+                       kill switch — a link that outlives the app is MORE worth
+                       keeping in sight than a server that dies with it. -->
+                  <ItemsControl ItemsSource="{Binding DriveLinks}">
+                    <ItemsControl.ItemTemplate>
+                      <DataTemplate x:DataType="sh:DriveLink">
+                        <Border Margin="8,2" Padding="6,4" CornerRadius="4"
+                                Background="{DynamicResource HoverBackground}">
+                          <DockPanel>
+                            <Button DockPanel.Dock="Right" Content="&#x2715;" Padding="4,0"
+                                    Background="Transparent" BorderThickness="0"
+                                    FontSize="{DynamicResource FontSizeTiny}"
+                                    AutomationProperties.Name="stop sharing this link" ToolTip.Tip="stop sharing this link"
+                                    Command="{Binding $parent[Window].((vm:ShellViewModel)DataContext).StopDriveLinkCommand}"
+                                    CommandParameter="{Binding}"/>
+                            <Button DockPanel.Dock="Right" Content="copy" Padding="6,0"
+                                    Background="Transparent" BorderThickness="0"
+                                    FontSize="{DynamicResource FontSizeTiny}"
+                                    AutomationProperties.Name="copy the link" ToolTip.Tip="copy the link"
+                                    Command="{Binding $parent[Window].((vm:ShellViewModel)DataContext).CopyDriveLinkCommand}"
                                     CommandParameter="{Binding}"/>
                             <StackPanel>
                               <TextBlock Text="{Binding Label}"

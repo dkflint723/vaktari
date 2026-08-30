@@ -107,6 +107,14 @@ public sealed record GeneralSettings
     public string PreferredTerminal { get; init; } = "";
 
     /// <summary>
+    /// Where the Proton Drive sync folder lives on this machine, or empty when
+    /// the user has not said. A setting rather than a detection: the official
+    /// client lets the folder go anywhere (this machine keeps it on D:), and
+    /// guessing wrong would map files to remote paths that do not exist.
+    /// </summary>
+    public string ProtonDriveFolder { get; init; } = "";
+
+    /// <summary>
     /// Dolphin closes the inactive pane. Vaktari keeps it in
     /// RememberedRightPane so reopening the split returns to where it was, and
     /// that difference is deliberate — closing a split should not be a quiet

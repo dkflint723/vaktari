@@ -95,6 +95,8 @@ public partial class MainWindow : Window
     private readonly SettingsState _settings;
 
     private JsonFolderViewStore? _folderViews;
+    private Vaktari.Core.Sharing.ProtonDriveLinks? _driveLinks;
+    private JsonDriveLinkStore? _driveLinkStore;
     private JsonRecentStore? _recents;
     private ITrashMaintenance? _trashMaintenance;
     private DispatcherTimer? _trashTimer;
@@ -214,6 +216,14 @@ public partial class MainWindow : Window
         // IPlatform like the trash and the icon theme do.
         ViewModels.PaneViewModel.Vcs = new Vaktari.Core.Vcs.GitVersionControl();
 
+        // Same reasoning, different binary: Proton's own CLI, which behaves the
+        // same on both targets and carries the encryption itself.
+        _driveLinks = new Vaktari.Core.Sharing.ProtonDriveLinks
+        {
+            LocalRoot = AppSettings.Current.General.ProtonDriveFolder,
+        };
+        _driveLinkStore = new JsonDriveLinkStore(JsonSessionStore.DefaultDirectory());
+
         // From the platform, unlike the one above: what a desktop puts on a
         // context menu is entirely a platform fact, and on Linux the answer is
         // that there is no such thing.
@@ -292,6 +302,10 @@ public partial class MainWindow : Window
         _shell.ReleaseRequested += (_, _) => ReleaseGrownWidth();
         _shell.BatchRenameRequested += (_, _) => ShowBatchRename();
         _shell.UseRemotes(platform.Remotes);
+
+        if (_driveLinks is not null && _driveLinkStore is not null)
+            _shell.UseDriveLinks(
+                _driveLinks, _driveLinkStore.Load(), links => _driveLinkStore.Save(links));
         _shell.UseDiscovery(platform.Discovery);
         _shell.UseProperties(platform.Properties);
 
@@ -918,6 +932,11 @@ public partial class MainWindow : Window
 
             AppSettings.Apply(model.Result);
 
+            // The mapping follows the setting immediately, or a corrected
+            // folder would need a restart to matter.
+            if (_driveLinks is not null)
+                _driveLinks.LocalRoot = model.Result.General.ProtonDriveFolder;
+
             // Rebuilt on save, or choosing a theme would need a restart — and
             // the resolved-path cache has no theme in its key, so it has to be
             // dropped or it keeps serving files from the theme just abandoned.
@@ -1067,6 +1086,68 @@ public partial class MainWindow : Window
     /// it is gone — and each menu owns an STA thread, so never releasing would
     /// leak one per right-click.
     /// </summary>
+    /// <summary>
+    /// Shows whichever Proton entries apply to the item under the menu.
+    ///
+    /// Decided here rather than bound, because the questions are per-item and
+    /// per-machine at once: is the CLI installed, is the path inside the drive
+    /// folder, and did Vaktari already make a link for it. Three hidden items
+    /// cost nothing when the answer is no.
+    /// </summary>
+    private void OnListingMenuOpening(object? sender, System.ComponentModel.CancelEventArgs e)
+    {
+        if (sender is not ContextMenu menu) return;
+
+        MenuItem? share = null, copy = null, unshare = null;
+
+        foreach (var item in menu.Items.OfType<MenuItem>())
+        {
+            if (item.Name == "ProtonShareItem") share = item;
+            else if (item.Name == "ProtonCopyLinkItem") copy = item;
+            else if (item.Name == "ProtonUnshareItem") unshare = item;
+        }
+
+        if (share is null || copy is null || unshare is null) return;
+
+        var entry = (menu.DataContext as ViewModels.PaneGroupViewModel)?.ActiveTab?.SelectedEntry;
+        var path = entry?.FullPath;
+
+        var linkable = path is not null && _shell.CanLinkShare(path);
+        var existing = path is not null ? _shell.LinkFor(path) : null;
+
+        share.IsVisible = linkable && existing is null;
+        copy.IsVisible = linkable && existing is not null;
+        unshare.IsVisible = linkable && existing is not null;
+    }
+
+    private void OnProtonShareClicked(object? sender, RoutedEventArgs e)
+    {
+        if (PaneFromMenuItem(sender)?.SelectedEntry is { } entry)
+            _ = _shell.CreateDriveLinkAsync(entry.FullPath);
+    }
+
+    private void OnProtonCopyLinkClicked(object? sender, RoutedEventArgs e)
+    {
+        if (PaneFromMenuItem(sender)?.SelectedEntry is { } entry
+            && _shell.LinkFor(entry.FullPath) is { } link)
+            _shell.CopyDriveLinkCommand.Execute(link);
+    }
+
+    private void OnProtonUnshareClicked(object? sender, RoutedEventArgs e)
+    {
+        if (PaneFromMenuItem(sender)?.SelectedEntry is { } entry
+            && _shell.LinkFor(entry.FullPath) is { } link)
+            _shell.StopDriveLinkCommand.Execute(link);
+    }
+
+    /// <summary>The pane whose menu the clicked item belongs to. Through the
+    /// menu's DataContext, because a popup is not in the pane's visual tree.</summary>
+    private static ViewModels.PaneViewModel? PaneFromMenuItem(object? sender)
+        => ((sender as MenuItem)?.Parent as ContextMenu)?.DataContext
+            is ViewModels.PaneGroupViewModel group
+            ? group.ActiveTab
+            : null;
+
     private void OnListingMenuClosed(object? sender, RoutedEventArgs e)
     {
         if (sender is not Control { DataContext: PaneGroupViewModel { ActiveTab: { } pane } })

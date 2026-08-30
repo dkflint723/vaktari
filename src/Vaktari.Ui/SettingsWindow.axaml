@@ -406,6 +406,22 @@
 
           <Border Height="1" Background="{DynamicResource SeparatorColour}"/>
 
+          <TextBlock Text="Proton Drive"
+                     FontSize="{DynamicResource FontSizeTiny}"
+                     Foreground="{DynamicResource ViewDimText}"/>
+
+          <StackPanel Spacing="6">
+            <TextBox Text="{Binding ProtonDriveFolder}"
+                     Watermark="the folder the Proton Drive app syncs, e.g. D:\Proton-Drive"
+                     FontSize="{DynamicResource FontSizeSmall}"/>
+            <TextBlock Text="With this set — and the Proton Drive CLI installed and signed in — right-clicking anything inside it offers a public share link, and active links appear under SHARING in the sidebar."
+                       FontSize="{DynamicResource FontSizeTiny}"
+                       Foreground="{DynamicResource ViewDimText}"
+                       TextWrapping="Wrap"/>
+          </StackPanel>
+
+          <Border Height="1" Background="{DynamicResource SeparatorColour}"/>
+
           <TextBlock Text="Status bar"
                      FontSize="{DynamicResource FontSizeTiny}"
                      Foreground="{DynamicResource ViewDimText}"/>
