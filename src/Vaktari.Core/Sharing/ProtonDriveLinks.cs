@@ -195,18 +195,75 @@ public sealed class ProtonDriveLinks : ILinkSharing
     }
 
     /// <summary>
-    /// Where the Proton Drive app most likely syncs to, for when the setting
-    /// is empty — the app puts "My files" either directly under
-    /// "~/Proton Drive" or one account folder down.
+    /// Where the Proton Drive app syncs to, for when the setting is empty.
     ///
-    /// A guess is offered only when it is unambiguous: with two account
-    /// folders there is no right answer, and a wrong drive mapping would make
-    /// links to the wrong account's files. Null sends the person to the
-    /// setting, which always wins over this.
+    /// **The app's own answer first.** The Windows app records every sync
+    /// pair in Mappings.json with the local folder spelled out — including a
+    /// root the user moved to another drive, which no folder-layout guess
+    /// would ever find. Only then the layout heuristic: "My files" directly
+    /// under "~/Proton Drive" or one account folder down, which covers a
+    /// machine whose app predates the mapping file or keeps it elsewhere.
+    ///
+    /// A guess is offered only when it is unambiguous: with two candidate
+    /// roots there is no right answer, and a wrong drive mapping would make
+    /// links to the wrong files. Null sends the person to the setting, which
+    /// always wins over this.
     /// </summary>
     public static string? GuessLocalRoot()
-        => GuessLocalRoot(Path.Combine(
-            Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), "Proton Drive"));
+        => FromMappings(Path.Combine(
+               Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+               "Proton", "Proton Drive", "Mappings.json"))
+           ?? GuessLocalRoot(Path.Combine(
+               Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), "Proton Drive"));
+
+    /// <summary>
+    /// The sync root out of the app's Mappings.json — shape pinned against a
+    /// real install: Mappings[].Local.RootFolderPath carries the folder.
+    ///
+    /// The main sync target is the entry named "My files" (the app names it
+    /// that in every layout seen; other mappings mirror other machines), and
+    /// only a folder that still exists counts — a mapping left behind by an
+    /// unplugged drive must not aim the feature at nothing.
+    /// </summary>
+    internal static string? FromMappings(string mappingsFile)
+    {
+        try
+        {
+            if (!File.Exists(mappingsFile)) return null;
+
+            using var parsed = JsonDocument.Parse(File.ReadAllText(mappingsFile));
+
+            if (!parsed.RootElement.TryGetProperty("Mappings", out var mappings)
+                || mappings.ValueKind != JsonValueKind.Array)
+                return null;
+
+            var roots = new List<string>();
+
+            foreach (var mapping in mappings.EnumerateArray())
+            {
+                if (mapping.TryGetProperty("Local", out var local)
+                    && local.ValueKind == JsonValueKind.Object
+                    && local.TryGetProperty("RootFolderPath", out var path)
+                    && path.ValueKind == JsonValueKind.String
+                    && path.GetString() is { Length: > 0 } root
+                    && Directory.Exists(root))
+                    roots.Add(root);
+            }
+
+            var mine = roots
+                .Where(root => PathRules.LeafName(root)
+                    .Equals("My files", StringComparison.OrdinalIgnoreCase))
+                .ToList();
+
+            if (mine.Count == 1) return mine[0];
+
+            return roots.Count == 1 ? roots[0] : null;
+        }
+        catch (Exception e) when (e is IOException or UnauthorizedAccessException or JsonException)
+        {
+            return null;
+        }
+    }
 
     internal static string? GuessLocalRoot(string protonBase)
     {

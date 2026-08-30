@@ -366,4 +366,126 @@ public sealed class ProtonDriveLinksTests
     public void No_proton_folder_no_guess()
         => Assert.Null(ProtonDriveLinks.GuessLocalRoot(
             Path.Combine(Path.GetTempPath(), "vaktari-no-such-folder")));
+
+    // ---- the app's own mapping file ---------------------------------------
+
+    /// <summary>The shape is the REAL file's, copied from a live install —
+    /// the app records its sync root under Mappings[].Local.RootFolderPath,
+    /// which finds a root moved to another drive that no layout guess would.</summary>
+    [Fact]
+    public void The_mapping_file_names_the_sync_root()
+    {
+        var home = Directory.CreateTempSubdirectory("vaktari-proton-map").FullName;
+
+        try
+        {
+            var root = Path.Combine(home, "Proton-Drive", "My files");
+            Directory.CreateDirectory(root);
+
+            var file = Path.Combine(home, "Mappings.json");
+            File.WriteAllText(file, $$"""
+                {
+                  "Mappings": [
+                    {
+                      "Id": 12,
+                      "Type": 1,
+                      "SyncMethod": 1,
+                      "Status": 1,
+                      "Remote": { "VolumeId": "x", "RootFolderName": null, "RootItemType": 1 },
+                      "Local": {
+                        "VolumeSerialNumber": 250661234,
+                        "RootFolderPath": {{System.Text.Json.JsonSerializer.Serialize(root)}},
+                        "RootFolderId": 5066549580847718,
+                        "InternalVolumeId": 1
+                      }
+                    }
+                  ],
+                  "LatestId": 13
+                }
+                """);
+
+            Assert.Equal(root, ProtonDriveLinks.FromMappings(file));
+        }
+        finally
+        {
+            Directory.Delete(home, recursive: true);
+        }
+    }
+
+    /// <summary>Among several mappings — other computers' mirrors — the one
+    /// named "My files" is the person's own drive.</summary>
+    [Fact]
+    public void Among_several_mappings_my_files_wins()
+    {
+        var home = Directory.CreateTempSubdirectory("vaktari-proton-map").FullName;
+
+        try
+        {
+            var mine = Path.Combine(home, "My files");
+            var mirror = Path.Combine(home, "Laptop");
+            Directory.CreateDirectory(mine);
+            Directory.CreateDirectory(mirror);
+
+            var file = Path.Combine(home, "Mappings.json");
+            File.WriteAllText(file, $$"""
+                {
+                  "Mappings": [
+                    { "Local": { "RootFolderPath": {{System.Text.Json.JsonSerializer.Serialize(mirror)}} } },
+                    { "Local": { "RootFolderPath": {{System.Text.Json.JsonSerializer.Serialize(mine)}} } }
+                  ]
+                }
+                """);
+
+            Assert.Equal(mine, ProtonDriveLinks.FromMappings(file));
+        }
+        finally
+        {
+            Directory.Delete(home, recursive: true);
+        }
+    }
+
+    /// <summary>A mapping whose folder is gone — an unplugged drive — must
+    /// not aim the feature at nothing.</summary>
+    [Fact]
+    public void A_mapping_to_a_missing_folder_does_not_count()
+    {
+        var home = Directory.CreateTempSubdirectory("vaktari-proton-map").FullName;
+
+        try
+        {
+            var file = Path.Combine(home, "Mappings.json");
+            File.WriteAllText(file, """
+                { "Mappings": [ { "Local": { "RootFolderPath": "Q:\\unplugged\\My files" } } ] }
+                """);
+
+            Assert.Null(ProtonDriveLinks.FromMappings(file));
+        }
+        finally
+        {
+            Directory.Delete(home, recursive: true);
+        }
+    }
+
+    [Fact]
+    public void A_damaged_mapping_file_answers_nothing()
+    {
+        var home = Directory.CreateTempSubdirectory("vaktari-proton-map").FullName;
+
+        try
+        {
+            var file = Path.Combine(home, "Mappings.json");
+            File.WriteAllText(file, "{ not json");
+
+            Assert.Null(ProtonDriveLinks.FromMappings(file));
+        }
+        finally
+        {
+            Directory.Delete(home, recursive: true);
+        }
+    }
+
+    [Fact]
+    public void No_mapping_file_no_answer()
+        => Assert.Null(ProtonDriveLinks.FromMappings(
+            Path.Combine(Path.GetTempPath(), "vaktari-no-such", "Mappings.json")));
 }
