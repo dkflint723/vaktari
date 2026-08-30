@@ -445,11 +445,12 @@ public sealed class ProtonDriveLinks : ILinkSharing
     /// <summary>
     /// Every literal the CLI is spoken to with, in one place.
     ///
-    /// **Three of these are documented and two are conjecture**, and the
-    /// distinction is marked on each. Until the conjectured ones are pinned
-    /// against the real binary's own --help, this feature must not be
-    /// described as working — the seam exists precisely so the pinning
-    /// changes five strings and nothing else.
+    /// **All of it is now pinned against the real binary** —
+    /// cli-drive@0.8.0, its own --help, and a live upload → set-url →
+    /// status → remove-url round-trip on 2026-08-29. The conjectures this
+    /// header used to warn about are gone: the removal verb the docs never
+    /// named is "remove-url", and the seam did its job — pinning changed
+    /// strings and nothing else.
     /// </summary>
     internal static class Grammar
     {
@@ -474,16 +475,18 @@ public sealed class ProtonDriveLinks : ILinkSharing
                     ? $"https://proton.me/download/drive/cli/{CliVersion}/linux-x64/proton-drive"
                     : null;
 
-        /// <summary>DOCUMENTED: "sharing set-url" creates the public link;
-        /// --json is the CLI's machine-readable switch.</summary>
+        /// <summary>PINNED live: "sharing set-url" creates or updates the
+        /// public link; --json is a general option the CLI accepts trailing,
+        /// and the answer carries the url under urlAccess.</summary>
         internal static string[] CreateLink(string remote)
             => ["sharing", "set-url", remote, "--json"];
 
-        /// <summary>CONJECTURE — pin against `sharing --help` before trusting.
-        /// The announcement names set-url and invite; the removal verb is not
-        /// in any public text found.</summary>
+        /// <summary>PINNED live: the usage names "sharing remove-url path" —
+        /// not the delete-url this guessed before the binary existed to ask.
+        /// Its --json output is the literal word "undefined"; only the exit
+        /// code says anything.</summary>
         internal static string[] RevokeLink(string remote)
-            => ["sharing", "delete-url", remote, "--json"];
+            => ["sharing", "remove-url", remote, "--json"];
 
         /// <summary>DOCUMENTED: "auth login" runs the browser sign-in and
         /// exits when it completes.</summary>
@@ -519,18 +522,29 @@ public sealed class ProtonDriveLinks : ILinkSharing
                || complaint.Contains("session", StringComparison.OrdinalIgnoreCase);
 
         /// <summary>
-        /// The URL out of a create's output: the --json object's "url", with a
-        /// bare https line as the fallback for a tool that prints plainly.
+        /// The URL out of a create's output.
+        ///
+        /// **The real answer nests it**: set-url --json returns the node's
+        /// whole sharing state, and the link lives at urlAccess.url — a
+        /// top-level read finds nothing, which shipped as "the CLI made the
+        /// link but did not say where it is" against a link that existed.
+        /// So the search walks the WHOLE document for a string property
+        /// named "url", wherever the tool keeps it this version. The https
+        /// line scan stays as the fallback for a tool that prints plainly.
+        ///
+        /// The URL's #fragment is the decryption key — it IS part of the
+        /// link, and anything that trims it hands out a door without the
+        /// handle.
         /// </summary>
         internal static string? ReadUrl(CliResult result)
         {
             foreach (var text in new[] { result.StdOut, result.StdErr })
             {
-                if (TryJsonString(text, "url") is { } fromJson) return fromJson;
+                if (TryJsonUrl(text) is { } fromJson) return fromJson;
 
                 foreach (var line in text.Split('\n', StringSplitOptions.TrimEntries))
-                    if (line.StartsWith("https://", StringComparison.OrdinalIgnoreCase))
-                        return line;
+                    if (ExtractUrl(line) is { } fromLine)
+                        return fromLine;
             }
 
             return null;
@@ -549,7 +563,7 @@ public sealed class ProtonDriveLinks : ILinkSharing
                 : line;
         }
 
-        private static string? TryJsonString(string text, string property)
+        private static string? TryJsonUrl(string text)
         {
             var start = text.IndexOf('{');
             if (start < 0) return null;
@@ -558,15 +572,41 @@ public sealed class ProtonDriveLinks : ILinkSharing
             {
                 using var parsed = JsonDocument.Parse(text[start..]);
 
-                return parsed.RootElement.TryGetProperty(property, out var value)
-                       && value.ValueKind == JsonValueKind.String
-                    ? value.GetString()
-                    : null;
+                return FindUrl(parsed.RootElement);
             }
             catch (JsonException)
             {
                 return null;
             }
+        }
+
+        /// <summary>Depth-first for a string property named "url" — today it
+        /// sits inside urlAccess; a version that moves it stays found.</summary>
+        private static string? FindUrl(JsonElement element)
+        {
+            switch (element.ValueKind)
+            {
+                case JsonValueKind.Object:
+                    foreach (var property in element.EnumerateObject())
+                    {
+                        if (property.NameEquals("url")
+                            && property.Value.ValueKind == JsonValueKind.String)
+                            return property.Value.GetString();
+
+                        if (FindUrl(property.Value) is { } nested) return nested;
+                    }
+
+                    break;
+
+                case JsonValueKind.Array:
+                    foreach (var item in element.EnumerateArray())
+                        if (FindUrl(item) is { } inArray)
+                            return inArray;
+
+                    break;
+            }
+
+            return null;
         }
     }
 }

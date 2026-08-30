@@ -9,6 +9,24 @@ Newest first. Dates are the day the tag was cut. Versions follow
 [Status](README.md#status): there has been no stable release, and the numbers
 should not be trusted for compatibility yet.
 
+## [0.9.16] — 2026-08-29
+
+### Fixed
+
+- **The Proton Drive link now actually reaches your clipboard.** The CLI
+  answers with the node's whole sharing state and keeps the URL nested
+  inside it; 0.9.15 only looked at the top level, so the link was created
+  and then reported as missing — "the CLI made the link but did not say
+  where it is". The parser now finds the URL wherever the answer keeps it,
+  fragment and all (that part is the decryption key). If you hit this,
+  just share the item again: the link already exists, and re-sharing
+  fetches the same URL onto the clipboard.
+
+- **Stop sharing speaks the CLI's real verb.** The removal command is
+  `remove-url`, which Proton's public docs never named — it was a marked
+  guess until now, and every command Vaktari sends has since been pinned
+  against the real binary in a live share round-trip.
+
 ## [0.9.15] — 2026-08-29
 
 ### Changed

@@ -133,18 +133,39 @@ public sealed class ProtonDriveLinksTests
         Assert.False(ran, "nothing should be spoken for a path with no remote twin");
     }
 
+    /// <summary>The verb is remove-url, PINNED against the real CLI's usage
+    /// text — the docs never named it and the first guess (delete-url) was
+    /// wrong. Its output is the literal word "undefined"; only the exit code
+    /// carries the answer, so a quiet zero is success.</summary>
     [Fact]
     public async Task Revoking_speaks_the_removal_verb_for_the_remote_path()
     {
         IReadOnlyList<string>? spoken = null;
-        var links = Fresh(args => { spoken = args; return new(0, "{}", ""); });
+        var links = Fresh(args => { spoken = args; return new(0, "undefined\n", ""); });
 
         await links.RevokeAsync(
             new DriveLink(Local("a.txt"), "/my-files/a.txt", "https://x"), CancellationToken.None);
 
-        Assert.NotNull(spoken);
-        Assert.Equal("sharing", spoken![0]);
-        Assert.Contains("/my-files/a.txt", spoken);
+        Assert.Equal(["sharing", "remove-url", "/my-files/a.txt", "--json"], spoken);
+    }
+
+    /// <summary>
+    /// **The real answer, shape verbatim from a live set-url round-trip**
+    /// (values shortened): the URL nests under urlAccess, where the launch
+    /// parser never looked — a link was made, the person was told it went
+    /// unsaid, and this is the regression test that keeps that fixed. The
+    /// #fragment is the decryption key and must survive whole.
+    /// </summary>
+    [Fact]
+    public async Task The_nested_url_of_the_real_answer_is_found()
+    {
+        var links = Fresh(_ => new(0,
+            """{"protonInvitations":[],"nonProtonInvitations":[],"members":[],"urlAccess":{"uid":"XBKo~8syh","creationTime":"2026-08-30T04:28:33.217Z","role":"viewer","url":"https://drive.proton.me/urls/7MFVKPCTNG#GuCKYKYrEa13","numberOfInitializedDownloads":0,"creatorEmail":"someone@example.com"},"editorsCanShare":false}""",
+            ""));
+
+        var link = await links.CreateLinkAsync(Local("a.txt"), CancellationToken.None);
+
+        Assert.Equal("https://drive.proton.me/urls/7MFVKPCTNG#GuCKYKYrEa13", link.Url);
     }
 
     /// <summary>
