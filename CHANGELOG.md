@@ -9,6 +9,41 @@ Newest first. Dates are the day the tag was cut. Versions follow
 [Status](README.md#status): there has been no stable release, and the numbers
 should not be trusted for compatibility yet.
 
+## [0.9.13] — 2026-08-29
+
+### Added
+
+- **Share a file or folder by Proton Drive link.** For anything inside your
+  Proton Drive folder (point Settings at it), right-click → Share offers
+  *Share via Proton Drive* — the link lands on the clipboard, ready to hand to
+  someone. The same submenu copies or stops an existing link, and every live
+  link is listed in the sidebar's sharing section beside the copyparty
+  shares, with the same ✕ to end it from there. Needs the
+  [Proton Drive CLI](https://proton.me/support/drive-cli) on the machine; when
+  it isn't signed in, Vaktari opens Proton's sign-in page in your browser and
+  finishes the share once you have — your password never passes through
+  Vaktari.
+
+### Changed
+
+- **The right-click menu is regrouped around what people actually reach
+  for.** *Run as administrator* now shows for any executable on a plain
+  right-click — only the admin terminal still wants Shift, which is Explorer's
+  own convention for extended verbs. *Open in new tab* sits at the top instead
+  of under "More". One flat *Share* submenu lists the ways to share, with no
+  submenu behind it. The four transfer rows folded into *Copy to* / *Move to*,
+  where the other pane leads the targets whenever the window is split. And
+  "More" is gone: Scripts and *Add to places* stand under their own names, one
+  visible row each.
+
+- **The hosted Windows entries stopped repeating the menu above them.** The
+  submenu is now called *Windows menu* — named for what it holds — and it no
+  longer re-lists Open, Open with, Cut, Copy, Paste, Delete, Rename,
+  Properties, Copy as path or the Windows share sheet, all of which already
+  sit in Vaktari's own menu with their shortcuts beside them. What only
+  Windows can offer — 7-Zip, Send to, Create shortcut, Restore previous
+  versions and whatever else is installed — stays.
+
 ## [0.9.12] — 2026-08-28
 
 ### Added
