@@ -11,6 +11,16 @@ should not be trusted for compatibility yet.
 
 ## [0.9.15] — 2026-08-29
 
+### Changed
+
+- **Sharing via Proton Drive is one click from nothing.** The separate
+  "Install…" entry is gone: *Share via Proton Drive* now shows for anything
+  in your drive folder whether or not the CLI is on the machine, and the
+  click does whatever is missing in order — downloads Proton's tool
+  (~120 MB, the status bar narrates), opens your browser to sign in the
+  first time, then makes the link and puts it on the clipboard. While the
+  download runs, the row reads "Setting up Proton Drive sharing…".
+
 ### Fixed
 
 - **The Proton Drive folder is now found wherever you actually put it.**

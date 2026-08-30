@@ -335,28 +335,24 @@ public sealed partial class ShellViewModel : ObservableObject
         OnPropertyChanged(nameof(HasAnySharing));
     }
 
-    /// <summary>Whether the menu may offer a link for this path at all.</summary>
+    /// <summary>
+    /// Whether the menu may offer a link for this path at all — a question
+    /// about WHERE the item is, deliberately not about whether the tool is
+    /// installed yet. The row IS the first step: clicking it installs what
+    /// is missing, signs in, and shares, in that order, so the person meets
+    /// one entry that says what they want instead of a setup errand.
+    /// </summary>
     public bool CanLinkShare(string path)
-        => _links is { IsAvailable: true } && _links.MapToRemote(path) is not null;
+        => _links is { } links && links.MapToRemote(path) is not null;
 
     /// <summary>The link already covering this path, if Vaktari made one.</summary>
     public DriveLink? LinkFor(string path)
         => DriveLinks.FirstOrDefault(l =>
             Vaktari.Core.FileSystem.PathRules.Same(l.LocalPath, path));
 
-    /// <summary>
-    /// The install row's gate: the item WOULD be linkable if only the tool
-    /// were installed. Location first, on purpose — outside the drive folder
-    /// there is nothing to offer installing FOR, and a person with no Proton
-    /// Drive at all never sees the entry.
-    /// </summary>
-    public bool CanOfferDriveInstall(string path)
-        => !IsInstallingDriveLinks
-           && _links is { IsAvailable: false } links
-           && links.MapToRemote(path) is not null;
-
-    /// <summary>The disabled "installing…" row, for the same items, while the
-    /// download runs — the state that must never look like the feature left.</summary>
+    /// <summary>The disabled "installing…" row, shown in the share row's
+    /// place while the download runs — the state that must never look like
+    /// the feature left.</summary>
     public bool ShowDriveInstallBusy(string path)
         => IsInstallingDriveLinks
            && _links is { } links
@@ -365,31 +361,33 @@ public sealed partial class ShellViewModel : ObservableObject
     [ObservableProperty] private bool _isInstallingDriveLinks;
 
     /// <summary>
-    /// Installs the link tool on request — the same shape as the copyparty
-    /// install, for the same reason: putting software on someone's machine is
-    /// something they chose by clicking an entry that says so, never a side
-    /// effect of trying to share.
+    /// The install half of the share click. True when the tool is ready to
+    /// use — already present, or fetched just now; false when it could not be
+    /// had, with the status line already saying why.
+    ///
+    /// Downloading on the click is a deliberate departure from the copyparty
+    /// entry's explicit install row: this row says "Share via Proton Drive",
+    /// and fetching the vendor's own tool is part of doing exactly that — the
+    /// click is the consent. What stays non-automatic is everything else:
+    /// nothing downloads before a person asks to share.
     /// </summary>
-    [RelayCommand]
-    private async Task InstallDriveLinksAsync()
+    private async Task<bool> EnsureDriveToolAsync(ILinkSharing links, PaneViewModel pane)
     {
-        if (_links is null || _links.IsAvailable || IsInstallingDriveLinks) return;
+        if (links.IsAvailable) return true;
 
         IsInstallingDriveLinks = true;
 
-        var pane = ActiveTab;
-        var progress = new Progress<string>(line =>
-        {
-            if (pane is not null) pane.Status = line;
-        });
+        var progress = new Progress<string>(line => pane.Status = line);
 
         try
         {
-            await _links.InstallAsync(progress, CancellationToken.None).ConfigureAwait(true);
+            return await links.InstallAsync(progress, CancellationToken.None)
+                .ConfigureAwait(true);
         }
         catch (Exception ex)
         {
-            if (pane is not null) pane.Status = $"install failed: {ex.Message}";
+            pane.Status = $"could not install the Proton Drive CLI: {ex.Message}";
+            return false;
         }
         finally
         {
@@ -405,6 +403,17 @@ public sealed partial class ShellViewModel : ObservableObject
     public async Task CreateDriveLinkAsync(string path)
     {
         if (_links is not { } links || ActiveTab is not { } pane) return;
+
+        if (IsInstallingDriveLinks)
+        {
+            pane.Status = "still downloading the Proton Drive CLI…";
+            return;
+        }
+
+        // One click, whole flow: fetch the tool if it is missing, then the
+        // sign-in retry inside the create opens the browser if needed. The
+        // person asked to share; the steps between are Vaktari's errand.
+        if (!await EnsureDriveToolAsync(links, pane).ConfigureAwait(true)) return;
 
         pane.Status = "creating the Proton Drive link…";
 

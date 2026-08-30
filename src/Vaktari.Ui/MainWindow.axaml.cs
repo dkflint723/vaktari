@@ -1130,36 +1130,28 @@ public partial class MainWindow : Window
             || Find<MenuItem>(menu.Items, "ProtonShareItem") is not { } share
             || Find<MenuItem>(menu.Items, "ProtonCopyLinkItem") is not { } copy
             || Find<MenuItem>(menu.Items, "ProtonUnshareItem") is not { } unshare
-            || Find<MenuItem>(menu.Items, "ProtonInstallItem") is not { } install
             || Find<MenuItem>(menu.Items, "ProtonInstallingItem") is not { } installing
             || Find<Separator>(menu.Items, "ShareMethodSeparator") is not { } separatorHost) return;
 
         var entry = (menu.DataContext as ViewModels.PaneGroupViewModel)?.ActiveTab?.SelectedEntry;
         var path = entry?.FullPath;
 
+        // Linkable is about WHERE the item is, not whether the tool exists —
+        // the share click installs what is missing. The busy row takes the
+        // share row's seat while that download runs.
         var linkable = path is not null && _shell.CanLinkShare(path);
         var existing = path is not null ? _shell.LinkFor(path) : null;
-
-        share.IsVisible = linkable && existing is null;
-        copy.IsVisible = linkable && existing is not null;
-        unshare.IsVisible = linkable && existing is not null;
-
-        // The tool missing is a state of the feature, not its absence: for an
-        // item the drive folder covers, the slot the share row would occupy
-        // offers the install instead, and shows the download's progress row
-        // while it runs.
-        var installable = path is not null && _shell.CanOfferDriveInstall(path);
         var busy = path is not null && _shell.ShowDriveInstallBusy(path);
 
-        install.IsVisible = installable;
+        share.IsVisible = linkable && existing is null && !busy;
+        copy.IsVisible = linkable && existing is not null;
+        unshare.IsVisible = linkable && existing is not null;
         installing.IsVisible = busy;
 
         // The submenu earns its place when EITHER way of sharing applies; the
         // rule between them only when both do.
-        var proton = linkable || installable || busy;
-
-        shareMenu.IsVisible = proton || _shell.HasSharingEntry;
-        separatorHost.IsVisible = proton && _shell.HasSharingEntry;
+        shareMenu.IsVisible = linkable || _shell.HasSharingEntry;
+        separatorHost.IsVisible = linkable && _shell.HasSharingEntry;
     }
 
     private void OnProtonShareClicked(object? sender, RoutedEventArgs e)
@@ -1181,9 +1173,6 @@ public partial class MainWindow : Window
             && _shell.LinkFor(entry.FullPath) is { } link)
             _shell.StopDriveLinkCommand.Execute(link);
     }
-
-    private void OnProtonInstallClicked(object? sender, RoutedEventArgs e)
-        => _shell.InstallDriveLinksCommand.Execute(null);
 
     /// <summary>
     /// The pane whose menu the clicked item belongs to — read from the item's

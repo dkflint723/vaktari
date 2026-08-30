@@ -141,7 +141,7 @@ public sealed class ProtonDriveLinks : ILinkSharing
             return false;
         }
 
-        progress.Report("downloading the Proton Drive CLI…");
+        progress.Report("setting up Proton Drive sharing — downloading the CLI (about 120 MB)…");
 
         var final = Path.Combine(ToolsDir, BinaryName);
         var staged = final + ".part";
