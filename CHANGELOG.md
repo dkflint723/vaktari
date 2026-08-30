@@ -9,6 +9,18 @@ Newest first. Dates are the day the tag was cut. Versions follow
 [Status](README.md#status): there has been no stable release, and the numbers
 should not be trusted for compatibility yet.
 
+## [0.9.15] — 2026-08-29
+
+### Fixed
+
+- **The Proton Drive folder is now found wherever you actually put it.**
+  0.9.14's auto-detection only knew the default location in your user
+  profile, so a sync folder moved to another drive — which the app happily
+  allows — left the whole feature invisible. Vaktari now reads the sync root
+  from the Proton Drive app's own records first, which names the exact
+  folder wherever it lives, and falls back to the old layout guess. The
+  setting still wins over both when filled in.
+
 ## [0.9.14] — 2026-08-29
 
 ### Added
