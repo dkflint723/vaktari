@@ -157,8 +157,66 @@ internal sealed partial class ShellContextMenu : IShellMenu
         var hr = contextMenu.QueryContextMenu(_menu, 0, FirstId, LastId, CmfNormal | CmfExtendedVerbs);
         if (hr < 0) return [];
 
-        return Read(_menu);
+        return Read(_menu, VerbResolver(contextMenu));
     }
+
+    /// <summary>
+    /// Asks the handler for an entry's canonical verb — "open", "cut",
+    /// "properties" — which is the locale-proof identity its label is not.
+    /// Handlers are free to answer nothing, and plenty do; null means "no
+    /// verb", never "no entry".
+    /// </summary>
+    private static Func<uint, string?> VerbResolver(IContextMenu contextMenu)
+        => offset =>
+        {
+            const uint GcsVerbW = 0x00000004;
+            const int Capacity = 256;
+
+            var buffer = Marshal.AllocHGlobal(Capacity * 2);
+
+            try
+            {
+                Marshal.WriteInt16(buffer, 0);
+
+                return contextMenu.GetCommandString(
+                        (IntPtr)offset, GcsVerbW, IntPtr.Zero, buffer, Capacity) == 0
+                    ? Marshal.PtrToStringUni(buffer)
+                    : null;
+            }
+            catch (Exception ex)
+            {
+                // Other people's code: a handler that throws on a question
+                // keeps its entry rather than taking the menu down.
+                Quiet.Swallowed("shell-menu", ex);
+                return null;
+            }
+            finally
+            {
+                Marshal.FreeHGlobal(buffer);
+            }
+        };
+
+    /// <summary>
+    /// The verbs Vaktari already answers natively, filtered out of the hosted
+    /// menu the way Windows 11 filters them out of its own modern one.
+    ///
+    /// **By canonical verb, never by label.** Labels are localized — filtering
+    /// "Copy" would work in English and strip nothing in German — while the
+    /// verb is the handler's own stable name for the action. The list is only
+    /// verbs whose function has a native twin at the TOP of our menu: Open,
+    /// Open with, Cut/Copy/Paste, Copy as path, Delete, Rename, Properties,
+    /// Run as administrator, and the OS share sheet now that Share is ours.
+    /// "Create shortcut" and "Send to" stay: nothing native does what they do.
+    /// </summary>
+    internal static bool IsRedundantVerb(string? verb)
+        => verb is not null && RedundantVerbs.Contains(verb.Trim());
+
+    private static readonly HashSet<string> RedundantVerbs = new(StringComparer.OrdinalIgnoreCase)
+    {
+        "open", "openas", "cut", "copy", "paste", "delete",
+        "properties", "copyaspath", "rename", "runas",
+        "share", "Windows.Share", "Windows.ModernShare",
+    };
 
     /// <summary>
     /// One COM object per pointer, without the unsafe marshaller dance.
@@ -247,7 +305,8 @@ internal sealed partial class ShellContextMenu : IShellMenu
     /// showing it. Bounded in depth: this is other people's data, and a menu
     /// that refers to itself would otherwise recurse until the stack goes.
     /// </summary>
-    private static IReadOnlyList<ShellMenuEntry> Read(IntPtr menu, int depth = 0)
+    private static IReadOnlyList<ShellMenuEntry> Read(
+        IntPtr menu, Func<uint, string?>? verbOf = null, int depth = 0)
     {
         if (depth > 4) return [];
 
@@ -288,8 +347,18 @@ internal sealed partial class ShellContextMenu : IShellMenu
             var label = new string(text, 0, (int)info.cch).Replace("&", "", StringComparison.Ordinal);
             if (label.Length == 0) continue;
 
+            // **Duplicates of our own menu are dropped here**, by verb — the
+            // hosted menu re-lists Open, Cut, Copy, Properties and their kin,
+            // and every one already sits above the "Windows menu" entry with a
+            // shortcut beside it. Only at the TOP level: inside a 7-Zip or
+            // Send-to submenu, a verb collision is coincidence, not redundancy.
+            if (depth == 0
+                && verbOf is not null
+                && IsRedundantVerb(verbOf(info.wID - FirstId)))
+                continue;
+
             var opensSubmenu = info.hSubMenu != IntPtr.Zero;
-            var children = opensSubmenu ? Read(info.hSubMenu, depth + 1) : [];
+            var children = opensSubmenu ? Read(info.hSubMenu, verbOf, depth + 1) : [];
 
             // **A row that opens a submenu has no command of its own.** Windows
             // puts the submenu's identity in wID for a popup, not a command id,

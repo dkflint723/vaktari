@@ -35,11 +35,15 @@ public interface ILinkSharing
     string? UnavailableReason { get; }
 
     /// <summary>
-    /// Whether a signed-in session exists. Asked before offering to create a
-    /// link, so the failure is "sign in first" up front rather than an error
-    /// after the click.
+    /// Runs the tool's own browser sign-in and waits for it to finish.
+    ///
+    /// <paramref name="openUrl"/> is called if the tool prints a link rather
+    /// than opening the browser itself — both behaviours exist in the wild,
+    /// and the difference must not become the user's problem. True when the
+    /// sign-in completed; the session then lives in the operating system's
+    /// credential store and Vaktari holds nothing.
     /// </summary>
-    Task<bool> IsSignedInAsync(CancellationToken ct);
+    Task<bool> SignInAsync(Action<string> openUrl, CancellationToken ct);
 
     /// <summary>
     /// The drive's name for a local path, or null when the path does not live

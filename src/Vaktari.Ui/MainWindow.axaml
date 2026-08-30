@@ -1065,17 +1065,79 @@
                                 </Style>
                               </MenuItem.Styles>
                             </MenuItem>
-              <!-- Proton links. Hidden by default; OnListingMenuOpening shows
-                   the pair that applies — share, or copy-and-stop — because
-                   whether an item CAN be linked (inside the drive folder, CLI
-                   present) and whether it already IS are per-item questions a
-                   static binding cannot ask. -->
-              <MenuItem x:Name="ProtonShareItem" Header="Share via Proton Drive"
-                        IsVisible="False" Click="OnProtonShareClicked"/>
-              <MenuItem x:Name="ProtonCopyLinkItem" Header="Copy Proton Drive link"
-                        IsVisible="False" Click="OnProtonCopyLinkClicked"/>
-              <MenuItem x:Name="ProtonUnshareItem" Header="Stop sharing via Proton Drive"
-                        IsVisible="False" Click="OnProtonUnshareClicked"/>
+              <!-- **The critical verbs live at the top, unburied.** Run as
+                   administrator shows for any executable on a PLAIN
+                   right-click — Explorer never hid it behind Shift, and copying
+                   that gate here meant an ordinary click on an .exe offered no
+                   elevation anywhere visible. Open in new tab earns the same
+                   promotion: it was living in "More" while being one of the
+                   most-used folder actions a file manager has. -->
+              <MenuItem Header="Run as administrator"
+                                      Command="{Binding ActiveTab.RunAsAdministratorCommand}"
+                                      IsVisible="{Binding ActiveTab.CanRunSelectionAsAdministrator}"/>
+              <MenuItem Header="Open in new tab"
+                                      Command="{Binding $parent[Window].((vm:ShellViewModel)DataContext).OpenInNewTabCommand}"
+                                      CommandParameter="{Binding ActiveTab.SelectedEntry}"
+                                      IsVisible="{Binding $parent[Window].((vm:ShellViewModel)DataContext).ShowOpenInNewTabInMenu}"/>
+              <!-- One home for both ways of sharing, instead of Proton entries
+                   at the top level and copyparty three layers under "More".
+                   Which rows show is decided in OnListingMenuOpening, because
+                   the Proton half is per-item. -->
+              <MenuItem x:Name="ShareMenu" Header="Share" IsVisible="False">
+                <!-- Proton links. Hidden by default; OnListingMenuOpening shows
+                     the pair that applies — share, or copy-and-stop — because
+                     whether an item CAN be linked (inside the drive folder, CLI
+                     present) and whether it already IS are per-item questions a
+                     static binding cannot ask. -->
+                <MenuItem x:Name="ProtonShareItem" Header="Share via Proton Drive"
+                          IsVisible="False" Click="OnProtonShareClicked"/>
+                <MenuItem x:Name="ProtonCopyLinkItem" Header="Copy Proton Drive link"
+                          IsVisible="False" Click="OnProtonCopyLinkClicked"/>
+                <MenuItem x:Name="ProtonUnshareItem" Header="Stop sharing via Proton Drive"
+                          IsVisible="False" Click="OnProtonUnshareClicked"/>
+                <Separator x:Name="ShareMethodSeparator" IsVisible="False"/>
+                <!-- **Flat, like the Proton rows above it: one row per thing
+                     that can happen, never a second hover.** Wrapping these in
+                     a "Share x over network" submenu made THREE levels for what
+                     Explorer and Dolphin do in one. Each row carries its own
+                     state gate, and the states cover each other — ready,
+                     missing, installing — so the visible set is never empty
+                     while the platform has a backend at all.
+
+                     The read-only share is the unqualified row because it is
+                     the safe default; the variant says exactly what it adds.
+                     Both name the folder, so which one gets served is visible
+                     before clicking rather than discovered afterwards. -->
+                <MenuItem IsVisible="{Binding $parent[Window].((vm:ShellViewModel)DataContext).CanShare}"
+                          Command="{Binding $parent[Window].((vm:ShellViewModel)DataContext).ShareFolderCommand}">
+                  <MenuItem.Header>
+                    <TextBlock>
+                      <Run Text="Share"/><Run Text=" "/><Run Text="{Binding ActiveTab.ShareTargetLabel}"/><Run Text=" over network"/>
+                    </TextBlock>
+                  </MenuItem.Header>
+                </MenuItem>
+                <MenuItem IsVisible="{Binding $parent[Window].((vm:ShellViewModel)DataContext).CanShare}"
+                          Command="{Binding $parent[Window].((vm:ShellViewModel)DataContext).ShareFolderWritableCommand}">
+                  <MenuItem.Header>
+                    <TextBlock>
+                      <Run Text="Share"/><Run Text=" "/><Run Text="{Binding ActiveTab.ShareTargetLabel}"/><Run Text=" over network, allow uploads"/>
+                    </TextBlock>
+                  </MenuItem.Header>
+                </MenuItem>
+                <!-- No ellipsis, by the rule stated above and on the bin's
+                     Empty button: it promises the entry asks first, and this
+                     one starts the download the moment it is clicked. The
+                     entry already names what it installs, so the label is the
+                     question and the click is the answer. -->
+                <MenuItem Header="Install copyparty to share folders"
+                          IsVisible="{Binding $parent[Window].((vm:ShellViewModel)DataContext).CanInstallSharing}"
+                          Command="{Binding $parent[Window].((vm:ShellViewModel)DataContext).InstallSharingCommand}"/>
+                <!-- Disabled and present, rather than absent: the download is
+                     the one state where somebody is waiting on an answer, and
+                     it is exactly the state that used to show nothing. -->
+                <MenuItem Header="Installing copyparty…" IsEnabled="False"
+                          IsVisible="{Binding $parent[Window].((vm:ShellViewModel)DataContext).IsInstalling}"/>
+              </MenuItem>
               <!-- Gated with the block ABOVE it, not the one below. Open and
                    Open with are the only entries up there and both need a
                    selection, so without this the menu opened with a rule as its
@@ -1137,12 +1199,6 @@
                                 </Style>
                               </MenuItem.Styles>
                             </MenuItem>
-              <MenuItem Header="Copy to other pane"
-                                      Command="{Binding $parent[Window].((vm:ShellViewModel)DataContext).CopyToOtherPaneCommand}"
-                                      IsVisible="{Binding $parent[Window].((vm:ShellViewModel)DataContext).CanTransferToOtherPane}"/>
-              <MenuItem Header="Move to other pane"
-                                      Command="{Binding $parent[Window].((vm:ShellViewModel)DataContext).MoveToOtherPaneCommand}"
-                                      IsVisible="{Binding $parent[Window].((vm:ShellViewModel)DataContext).CanTransferToOtherPane}"/>
               <!-- Rename and the bin are the whole of the block below, and both
                    need a selection outside the trash — so this rule goes with
                    them, or it stacks against the one before New. -->
@@ -1165,32 +1221,6 @@
                    One "New" rather than three top-level entries that all create
                    something.
               -->
-              <!-- **Two entries for one action, and only one is ever shown.**
-                   Most machines have a single terminal, where a submenu holding
-                   one row is a hover that buys nothing; a machine with Warp and
-                   Windows Terminal and a Git Bash needs to be asked which. F4
-                   opens the preferred one either way, so the direct route never
-                   depends on which shape is showing. -->
-              <MenuItem Header="Open terminal here"
-                                      Command="{Binding ActiveTab.OpenTerminalHereCommand}"
-                                      InputGesture="F4"
-                                      IsVisible="{Binding !ActiveTab.HasSeveralTerminals}"/>
-              <MenuItem x:Name="TerminalMenu" Header="Open terminal here"
-                                      ItemsSource="{Binding ActiveTab.Terminals}"
-                                      IsVisible="{Binding ActiveTab.HasSeveralTerminals}">
-                              <MenuItem.ItemTemplate>
-                                <DataTemplate x:DataType="fs:TerminalOption">
-                                  <TextBlock Text="{Binding Name}"/>
-                                </DataTemplate>
-                              </MenuItem.ItemTemplate>
-                              <MenuItem.Styles>
-                                <Style Selector="MenuItem#TerminalMenu > MenuItem" x:DataType="fs:TerminalOption">
-                                  <Setter Property="Command"
-                                          Value="{Binding $parent[Window].((vm:ShellViewModel)DataContext).ActiveTab.OpenTerminalInCommand}"/>
-                                  <Setter Property="CommandParameter" Value="{Binding}"/>
-                                </Style>
-                              </MenuItem.Styles>
-                            </MenuItem>
               <MenuItem Header="New"
                                       IsVisible="{Binding !ActiveTab.IsTrashListing}">
                 <MenuItem Header="New folder"          Command="{Binding ActiveTab.NewFolderCommand}"
@@ -1272,91 +1302,73 @@
                                           Command="{Binding ActiveTab.GroupByKindCommand}"/>
                               </MenuItem>
               </MenuItem>
-              <!--
-                   Everything real but rare. Moved, not deleted: a command that is
-                   one extra hover away is still better than one that no longer
-                   exists, and every entry here had a settings checkbox precisely
-                   because the menu had grown too long to scan.
-              -->
-              <MenuItem Header="More">
-                <MenuItem Header="Open in new tab"
-                                        Command="{Binding $parent[Window].((vm:ShellViewModel)DataContext).OpenInNewTabCommand}"
-                                        CommandParameter="{Binding ActiveTab.SelectedEntry}"
-                                        IsVisible="{Binding $parent[Window].((vm:ShellViewModel)DataContext).ShowOpenInNewTabInMenu}"/>
-                <!-- Two entries because they are two commands: one pins what is
-                     selected, one pins the folder you are looking at. Ctrl+D is
-                     the latter, and had no visible home until now. -->
-                <MenuItem Header="Add selection to places"
-                                        Command="{Binding $parent[Window].((vm:ShellViewModel)DataContext).AddSelectionToPlacesCommand}"
-                                        IsVisible="{Binding $parent[Window].((vm:ShellViewModel)DataContext).ShowAddSelectionToPlaces}"/>
-                <MenuItem Header="Add this folder to places"
-                                        Command="{Binding $parent[Window].((vm:ShellViewModel)DataContext).PinCurrentCommand}"
-                                        InputGesture="Ctrl+D"
-                                        IsVisible="{Binding $parent[Window].((vm:ShellViewModel)DataContext).ShowAddToPlacesInMenu}"/>
-                <MenuItem x:Name="ScriptsMenu" Header="Scripts" ItemsSource="{Binding ActiveTab.Scripts}"
-                                        IsVisible="{Binding ActiveTab.HasScripts}">
-                                <MenuItem.ItemTemplate>
-                                  <DataTemplate x:DataType="core:ScriptCommand">
-                                    <TextBlock Text="{Binding Name}"/>
-                                  </DataTemplate>
-                                </MenuItem.ItemTemplate>
-                                <MenuItem.Styles>
-                                  <Style Selector="MenuItem#ScriptsMenu > MenuItem" x:DataType="core:ScriptCommand">
-                                    <Setter Property="Command"
-                                            Value="{Binding $parent[Window].((vm:ShellViewModel)DataContext).ActiveTab.RunScriptCommand}"/>
-                                    <Setter Property="CommandParameter" Value="{Binding}"/>
-                                  </Style>
-                                </MenuItem.Styles>
-                              </MenuItem>
-                <!-- Says what it is for, because with no scripts installed the
-                     "Scripts" submenu above it is hidden and this row is left
-                     standing on its own, naming a folder nobody has heard of.
-                     No ellipsis: in this window that mark promises the entry
-                     asks before it acts, and this one opens the folder there
-                     and then. -->
-                <MenuItem Header="Add your own scripts"
-                                        Command="{Binding ActiveTab.OpenScriptsFolderCommand}"/>
-                <!-- **One entry for one feature, in whichever of its three
-                     states it is in.** It was two siblings, share and install,
-                     gated on two flags that are BOTH false while the install
-                     runs — so clicking install closed the menu and the next
-                     right-click showed nothing where sharing had been. Nothing
-                     was broken and nothing said so.
-
-                     Gated on there being a backend for this platform at all,
-                     and the three rows inside cover every state that gate
-                     allows, so the popup is never empty. -->
-                <MenuItem IsVisible="{Binding $parent[Window].((vm:ShellViewModel)DataContext).HasSharingEntry}">
-                                <MenuItem.Header>
-                                  <!-- Names the folder, so which one gets served is visible
-                                       before clicking rather than discovered afterwards. -->
-                                  <TextBlock>
-                                    <Run Text="Share"/><Run Text=" "/><Run Text="{Binding ActiveTab.ShareTargetLabel}"/><Run Text=" over network"/>
-                                  </TextBlock>
-                                </MenuItem.Header>
-                                <MenuItem Header="Read-only"
-                                          IsVisible="{Binding $parent[Window].((vm:ShellViewModel)DataContext).CanShare}"
-                                          Command="{Binding $parent[Window].((vm:ShellViewModel)DataContext).ShareFolderCommand}"/>
-                                <MenuItem Header="Allow uploads"
-                                          IsVisible="{Binding $parent[Window].((vm:ShellViewModel)DataContext).CanShare}"
-                                          Command="{Binding $parent[Window].((vm:ShellViewModel)DataContext).ShareFolderWritableCommand}"/>
-                                <!-- No ellipsis, by the rule stated above and on
-                                     the bin's Empty button: it promises the entry
-                                     asks first, and this one starts the download
-                                     the moment it is clicked. The entry already
-                                     names what it installs, so the label is the
-                                     question and the click is the answer. -->
-                                <MenuItem Header="Install copyparty to share folders"
-                                          IsVisible="{Binding $parent[Window].((vm:ShellViewModel)DataContext).CanInstallSharing}"
-                                          Command="{Binding $parent[Window].((vm:ShellViewModel)DataContext).InstallSharingCommand}"/>
-                                <!-- Disabled and present, rather than absent: the
-                                     download is the one state where somebody is
-                                     waiting on an answer, and it is exactly the
-                                     state that used to show nothing. -->
-                                <MenuItem Header="Installing copyparty…" IsEnabled="False"
-                                          IsVisible="{Binding $parent[Window].((vm:ShellViewModel)DataContext).IsInstalling}"/>
-                              </MenuItem>
-              </MenuItem>
+              <!-- **Two entries for one action, and only one is ever shown.**
+                   Most machines have a single terminal, where a submenu holding
+                   one row is a hover that buys nothing; a machine with Warp and
+                   Windows Terminal and a Git Bash needs to be asked which. F4
+                   opens the preferred one either way, so the direct route never
+                   depends on which shape is showing. -->
+              <MenuItem Header="Open terminal here"
+                                      Command="{Binding ActiveTab.OpenTerminalHereCommand}"
+                                      InputGesture="F4"
+                                      IsVisible="{Binding !ActiveTab.HasSeveralTerminals}"/>
+              <MenuItem x:Name="TerminalMenu" Header="Open terminal here"
+                                      ItemsSource="{Binding ActiveTab.Terminals}"
+                                      IsVisible="{Binding ActiveTab.HasSeveralTerminals}">
+                              <MenuItem.ItemTemplate>
+                                <DataTemplate x:DataType="fs:TerminalOption">
+                                  <TextBlock Text="{Binding Name}"/>
+                                </DataTemplate>
+                              </MenuItem.ItemTemplate>
+                              <MenuItem.Styles>
+                                <Style Selector="MenuItem#TerminalMenu > MenuItem" x:DataType="fs:TerminalOption">
+                                  <Setter Property="Command"
+                                          Value="{Binding $parent[Window].((vm:ShellViewModel)DataContext).ActiveTab.OpenTerminalInCommand}"/>
+                                  <Setter Property="CommandParameter" Value="{Binding}"/>
+                                </Style>
+                              </MenuItem.Styles>
+                            </MenuItem>
+              <!-- **"More" is gone, not renamed.** It sat one row above the
+                   hosted "More options" and the pair read as the same drawer
+                   twice; nobody could say which held what. Its residents now
+                   stand here under their own names, each pair collapsing to a
+                   single visible row so the menu did not grow back. -->
+              <MenuItem x:Name="ScriptsMenu" Header="Scripts" ItemsSource="{Binding ActiveTab.Scripts}"
+                                      IsVisible="{Binding ActiveTab.HasScripts}">
+                              <MenuItem.ItemTemplate>
+                                <DataTemplate x:DataType="core:ScriptCommand">
+                                  <TextBlock Text="{Binding Name}"/>
+                                </DataTemplate>
+                              </MenuItem.ItemTemplate>
+                              <MenuItem.Styles>
+                                <Style Selector="MenuItem#ScriptsMenu > MenuItem" x:DataType="core:ScriptCommand">
+                                  <Setter Property="Command"
+                                          Value="{Binding $parent[Window].((vm:ShellViewModel)DataContext).ActiveTab.RunScriptCommand}"/>
+                                  <Setter Property="CommandParameter" Value="{Binding}"/>
+                                </Style>
+                              </MenuItem.Styles>
+                            </MenuItem>
+              <!-- The other half of the Scripts pair: with no scripts installed
+                   the submenu above is hidden and this row stands in its place,
+                   saying what the feature is for and opening the folder that
+                   starts it. No ellipsis: in this window that mark promises the
+                   entry asks before it acts, and this one opens the folder
+                   there and then. -->
+              <MenuItem Header="Add your own scripts"
+                                      Command="{Binding ActiveTab.OpenScriptsFolderCommand}"
+                                      IsVisible="{Binding !ActiveTab.HasScripts}"/>
+              <!-- Two commands, one visible row: pin the selected folder when
+                   there is one, the folder you are looking at otherwise. Both
+                   showing at once — the old behaviour — put "Add selection"
+                   over "Add this folder" and made the reader work out which
+                   acted on what. -->
+              <MenuItem Header="Add to places"
+                                      Command="{Binding $parent[Window].((vm:ShellViewModel)DataContext).AddSelectionToPlacesCommand}"
+                                      IsVisible="{Binding $parent[Window].((vm:ShellViewModel)DataContext).ShowAddSelectionToPlaces}"/>
+              <MenuItem Header="Add this folder to places"
+                                      Command="{Binding $parent[Window].((vm:ShellViewModel)DataContext).PinCurrentCommand}"
+                                      InputGesture="Ctrl+D"
+                                      IsVisible="{Binding $parent[Window].((vm:ShellViewModel)DataContext).ShowAddCurrentToPlaces}"/>
               <!-- Gated on the one entry it introduces. Ungated it drew a rule
                    with nothing under it in every listing that is not the recent
                    one — which is most of them, including every ordinary folder —
@@ -1370,10 +1382,11 @@
                    Vaktari never holds administrator rights itself: these ask
                    the SYSTEM to start a new process elevated, and the system
                    shows its own consent dialog and makes the decision. -->
+              <!-- Only the admin TERMINAL keeps the Shift gate now — it is an
+                   extended verb by Explorer's own convention. Run as
+                   administrator moved to the top of the menu, ungated, where
+                   Explorer keeps it. -->
               <Separator IsVisible="{Binding ActiveTab.ShowAdminEntries}"/>
-              <MenuItem Header="Run as administrator"
-                                      Command="{Binding ActiveTab.RunAsAdministratorCommand}"
-                                      IsVisible="{Binding ActiveTab.CanRunSelectionAsAdministrator}"/>
               <MenuItem Header="Open admin terminal here"
                                       Command="{Binding ActiveTab.OpenAdminTerminalHereCommand}"
                                       IsVisible="{Binding ActiveTab.ShowAdminEntries}"/>
@@ -1394,7 +1407,11 @@
                    machine a turn, and no ordinary right-click should pay for
                    that. Released when the menu closes: the ids are offsets into
                    one live menu and mean nothing afterwards. -->
-              <MenuItem x:Name="ShellMenu" Header="More options"
+              <!-- Named for what it IS, not for how much of it there is:
+                   these rows come from Windows and the applications installed
+                   on it, hosted here. Explorer's "Show more options" said
+                   "more" without saying whose; this says whose. -->
+              <MenuItem x:Name="ShellMenu" Header="Windows menu"
                                       IsVisible="{Binding ActiveTab.HasShellMenu}"
                                       ItemsSource="{Binding ActiveTab.ShellMenuItems}"
                                       SubmenuOpened="OnShellMenuOpening">

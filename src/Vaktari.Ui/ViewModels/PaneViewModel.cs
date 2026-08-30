@@ -195,7 +195,7 @@ public sealed partial class PaneViewModel : ObservableObject, IDisposable
     /// The row that holds the submenu open before there is anything in it.
     ///
     /// **Avalonia will not open a submenu with no items, and draws no chevron
-    /// for one** — so an empty ItemsSource makes "More options" look like a
+    /// for one** — so an empty ItemsSource makes "Windows menu" look like a
     /// plain command and never fire SubmenuOpened, which is the event that
     /// builds the thing. The placeholder is what makes lazy loading possible at
     /// all, not decoration.
@@ -342,8 +342,18 @@ public sealed partial class PaneViewModel : ObservableObject, IDisposable
     /// offering it for every file would be an entry that silently fails on most
     /// of them. This is the set Explorer itself offers it for.
     /// </summary>
+    /// <summary>
+    /// **No longer behind Shift.** Explorer shows "Run as administrator" for
+    /// every executable on a plain right-click; only its EXTENDED verbs hide
+    /// behind Shift. Copying the gate onto this entry meant an ordinary
+    /// right-click on an .exe showed no elevation at all, and the person went
+    /// hunting through submenus for something that looked buried — because it
+    /// was. The admin TERMINAL keeps the Shift gate: that one is an extended
+    /// verb by Explorer's own convention too.
+    /// </summary>
     public bool CanRunSelectionAsAdministrator =>
-        ShowAdminEntries
+        _launcher?.CanElevate == true
+        && !IsTrashListing && !IsRecentListing
         && SelectedEntry is { IsDirectory: false } entry
         && Executable.Contains(Path.GetExtension(entry.FullPath));
 

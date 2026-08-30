@@ -147,6 +147,55 @@ public sealed class ProtonDriveLinksTests
         Assert.Contains("/my-files/a.txt", spoken);
     }
 
+    /// <summary>
+    /// The sign-in flow: the tool prints a link mid-stream, the caller gets it
+    /// opened, and success is the process finishing cleanly — the same
+    /// click-a-link-and-authenticate shape the CLI gives every app.
+    /// </summary>
+    [Fact]
+    public async Task Signing_in_surfaces_the_link_and_reports_completion()
+    {
+        var links = Fresh();
+        var opened = new List<string>();
+
+        links.StreamOverride = (args, onLine, _) =>
+        {
+            Assert.Equal(["auth", "login"], args);
+
+            onLine("Proton Drive CLI");
+            onLine("To continue, open: https://account.proton.me/authorize?code=XYZ in your browser");
+            onLine("Waiting for you to finish…");
+            onLine("Signed in.");
+
+            return Task.FromResult(0);
+        };
+
+        var ok = await links.SignInAsync(url => opened.Add(url), CancellationToken.None);
+
+        Assert.True(ok);
+        Assert.Equal(["https://account.proton.me/authorize?code=XYZ"], opened);
+    }
+
+    [Fact]
+    public async Task An_abandoned_sign_in_reports_failure()
+    {
+        var links = Fresh();
+        links.StreamOverride = (_, _, _) => Task.FromResult(1);
+
+        Assert.False(await links.SignInAsync(_ => { }, CancellationToken.None));
+    }
+
+    /// <summary>The heuristic that turns a refusal into a sign-in: loose on
+    /// purpose, and quiet about everything else.</summary>
+    [Theory]
+    [InlineData("You are not signed in. Run auth login first.", true)]
+    [InlineData("No valid session found", true)]
+    [InlineData("Authentication required", true)]
+    [InlineData("the network is unreachable", false)]
+    [InlineData("no such remote path", false)]
+    public void Only_signed_out_refusals_trigger_the_browser(string complaint, bool expected)
+        => Assert.Equal(expected, ProtonDriveLinks.LooksSignedOut(complaint));
+
     /// <summary>No binary, no feature — and a reason the UI can show.</summary>
     [Fact]
     public void Without_the_tool_the_feature_says_what_to_install()

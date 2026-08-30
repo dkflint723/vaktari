@@ -98,11 +98,20 @@ public sealed class ProtonDriveLinks : ILinkSharing
         return Grammar.RemoteRoot + "/" + relative;
     }
 
-    public async Task<bool> IsSignedInAsync(CancellationToken ct)
+    public async Task<bool> SignInAsync(Action<string> openUrl, CancellationToken ct)
     {
-        var result = await RunAsync(Grammar.SignedInProbe, ct).ConfigureAwait(false);
+        // Streamed rather than buffered: the process does not exit until the
+        // person has finished in the browser, and the link they need is
+        // somewhere in the middle of that output.
+        var exit = await RunStreamingAsync(
+            Grammar.SignIn,
+            line =>
+            {
+                if (Grammar.ExtractUrl(line) is { } url) openUrl(url);
+            },
+            ct).ConfigureAwait(false);
 
-        return Grammar.ReadSignedIn(result);
+        return exit == 0;
     }
 
     public async Task<DriveLink> CreateLinkAsync(string localPath, CancellationToken ct)
@@ -130,6 +139,10 @@ public sealed class ProtonDriveLinks : ILinkSharing
             throw new IOException(Grammar.Complaint(result, "remove the link"));
     }
 
+    /// <summary>Whether a refusal reads as "not signed in" — the one failure
+    /// the caller can fix by running <see cref="SignInAsync"/> and retrying.</summary>
+    public static bool LooksSignedOut(string complaint) => Grammar.LooksSignedOut(complaint);
+
     // ---- the tool itself ---------------------------------------------------
 
     public readonly record struct CliResult(int ExitCode, string StdOut, string StdErr);
@@ -141,6 +154,53 @@ public sealed class ProtonDriveLinks : ILinkSharing
     /// </summary>
     internal Func<IReadOnlyList<string>, CancellationToken, Task<CliResult>>? RunOverride
     { get; set; }
+
+    /// <summary>The streamed twin, for the sign-in flow's tests.</summary>
+    internal Func<IReadOnlyList<string>, Action<string>, CancellationToken, Task<int>>?
+        StreamOverride { get; set; }
+
+    private async Task<int> RunStreamingAsync(
+        IReadOnlyList<string> arguments, Action<string> onLine, CancellationToken ct)
+    {
+        if (StreamOverride is { } fake)
+            return await fake(arguments, onLine, ct).ConfigureAwait(false);
+
+        var binary = _binary.Value ?? throw new IOException(UnavailableReason ?? "no CLI");
+
+        var info = new ProcessStartInfo(binary)
+        {
+            RedirectStandardOutput = true,
+            RedirectStandardError = true,
+            UseShellExecute = false,
+            CreateNoWindow = true,
+        };
+
+        foreach (var argument in arguments) info.ArgumentList.Add(argument);
+
+        using var process = Process.Start(info)
+            ?? throw new IOException("the Proton Drive CLI would not start");
+
+        // A kill on cancel, or an abandoned sign-in leaves a child waiting on a
+        // browser nobody is coming back to.
+        using var cancellation = ct.Register(() =>
+        {
+            try { process.Kill(entireProcessTree: true); } catch (Exception e) { Quiet.Swallowed("proton", e); }
+        });
+
+        async Task Drain(StreamReader reader)
+        {
+            while (await reader.ReadLineAsync(ct).ConfigureAwait(false) is { } line)
+                onLine(line);
+        }
+
+        var stdout = Drain(process.StandardOutput);
+        var stderr = Drain(process.StandardError);
+
+        await process.WaitForExitAsync(ct).ConfigureAwait(false);
+        await Task.WhenAll(stdout, stderr).ConfigureAwait(false);
+
+        return process.ExitCode;
+    }
 
     private async Task<CliResult> RunAsync(IReadOnlyList<string> arguments, CancellationToken ct)
     {
@@ -198,9 +258,38 @@ public sealed class ProtonDriveLinks : ILinkSharing
         internal static string[] RevokeLink(string remote)
             => ["sharing", "delete-url", remote, "--json"];
 
-        /// <summary>CONJECTURE — pin against `auth --help` before trusting.</summary>
-        internal static string[] SignedInProbe
-            => ["auth", "status", "--json"];
+        /// <summary>DOCUMENTED: "auth login" runs the browser sign-in and
+        /// exits when it completes.</summary>
+        internal static string[] SignIn => ["auth", "login"];
+
+        /// <summary>
+        /// A URL out of one line of sign-in chatter. The tool may open the
+        /// browser itself, print a link, or both; a line is a link when it
+        /// carries one, whatever else it says around it.
+        /// </summary>
+        internal static string? ExtractUrl(string line)
+        {
+            var at = line.IndexOf("https://", StringComparison.OrdinalIgnoreCase);
+            if (at < 0) return null;
+
+            var url = line[at..];
+            var end = url.IndexOfAny([' ', '\t', '"', '\'']);
+
+            return end > 0 ? url[..end] : url;
+        }
+
+        /// <summary>
+        /// Whether a refusal reads as "you are not signed in" — the one
+        /// failure Vaktari can fix by itself, by running the sign-in and
+        /// retrying. Matched loosely on purpose: the exact sentence is the
+        /// tool's to change, and a miss only means the user sees the message
+        /// instead of the browser.
+        /// </summary>
+        internal static bool LooksSignedOut(string complaint)
+            => complaint.Contains("sign", StringComparison.OrdinalIgnoreCase)
+               || complaint.Contains("log", StringComparison.OrdinalIgnoreCase)
+               || complaint.Contains("auth", StringComparison.OrdinalIgnoreCase)
+               || complaint.Contains("session", StringComparison.OrdinalIgnoreCase);
 
         /// <summary>
         /// The URL out of a create's output: the --json object's "url", with a
@@ -219,9 +308,6 @@ public sealed class ProtonDriveLinks : ILinkSharing
 
             return null;
         }
-
-        internal static bool ReadSignedIn(CliResult result)
-            => result.ExitCode == 0;
 
         /// <summary>The tool's own sentence when it has one, tidied of its
         /// name — the person just clicked a menu, not a terminal.</summary>

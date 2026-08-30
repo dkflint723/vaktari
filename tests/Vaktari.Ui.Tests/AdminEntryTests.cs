@@ -76,17 +76,28 @@ public sealed class AdminEntryTests
         return pane;
     }
 
+    /// <summary>
+    /// **Run as administrator no longer hides behind Shift.** Explorer shows it
+    /// for every executable on a plain right-click and reserves Shift for its
+    /// EXTENDED verbs; copying the gate onto this entry meant an ordinary
+    /// right-click on an .exe offered no elevation anywhere visible, and the
+    /// person went hunting through submenus for something that was simply
+    /// hidden. The admin TERMINAL keeps the gate — that one is an extended
+    /// verb by the same convention.
+    /// </summary>
     [Fact]
-    public void An_ordinary_right_click_offers_nothing()
+    public void An_ordinary_right_click_on_an_executable_offers_elevation()
     {
         var pane = Pane(new FakeLauncher(true), @"C:\tools\setup.exe");
 
+        Assert.True(pane.CanRunSelectionAsAdministrator);
+
+        // But not the extended section: the admin terminal still wants Shift.
         Assert.False(pane.ShowAdminEntries);
-        Assert.False(pane.CanRunSelectionAsAdministrator);
     }
 
     [Fact]
-    public void Holding_shift_offers_them()
+    public void Holding_shift_adds_the_extended_section()
     {
         var pane = Pane(new FakeLauncher(true), @"C:\tools\setup.exe");
 

@@ -305,7 +305,8 @@ public partial class MainWindow : Window
 
         if (_driveLinks is not null && _driveLinkStore is not null)
             _shell.UseDriveLinks(
-                _driveLinks, _driveLinkStore.Load(), links => _driveLinkStore.Save(links));
+                _driveLinks, _driveLinkStore.Load(), links => _driveLinkStore.Save(links),
+                url => _launcher?.Open(url));
         _shell.UseDiscovery(platform.Discovery);
         _shell.UseProperties(platform.Properties);
 
@@ -1098,16 +1099,29 @@ public partial class MainWindow : Window
     {
         if (sender is not ContextMenu menu) return;
 
-        MenuItem? share = null, copy = null, unshare = null;
-
-        foreach (var item in menu.Items.OfType<MenuItem>())
+        // The Proton entries live inside the Share submenu now, so the walk
+        // has to descend — and it has to see more than MenuItems, because the
+        // rule between the two sharing methods is a Separator. The first
+        // version walked OfType<MenuItem> only, could never find it, and the
+        // early return below silently kept the whole submenu hidden: an eye
+        // test on a machine WITH copyparty is what caught it.
+        static T? Find<T>(IEnumerable<object?> items, string name) where T : Control
         {
-            if (item.Name == "ProtonShareItem") share = item;
-            else if (item.Name == "ProtonCopyLinkItem") copy = item;
-            else if (item.Name == "ProtonUnshareItem") unshare = item;
+            foreach (var item in items.OfType<Control>())
+            {
+                if (item is T match && match.Name == name) return match;
+                if (item is MenuItem parent && Find<T>(parent.Items, name) is { } nested)
+                    return nested;
+            }
+
+            return null;
         }
 
-        if (share is null || copy is null || unshare is null) return;
+        if (Find<MenuItem>(menu.Items, "ShareMenu") is not { } shareMenu
+            || Find<MenuItem>(menu.Items, "ProtonShareItem") is not { } share
+            || Find<MenuItem>(menu.Items, "ProtonCopyLinkItem") is not { } copy
+            || Find<MenuItem>(menu.Items, "ProtonUnshareItem") is not { } unshare
+            || Find<Separator>(menu.Items, "ShareMethodSeparator") is not { } separatorHost) return;
 
         var entry = (menu.DataContext as ViewModels.PaneGroupViewModel)?.ActiveTab?.SelectedEntry;
         var path = entry?.FullPath;
@@ -1118,6 +1132,11 @@ public partial class MainWindow : Window
         share.IsVisible = linkable && existing is null;
         copy.IsVisible = linkable && existing is not null;
         unshare.IsVisible = linkable && existing is not null;
+
+        // The submenu earns its place when EITHER way of sharing applies; the
+        // rule between them only when both do.
+        shareMenu.IsVisible = linkable || _shell.HasSharingEntry;
+        separatorHost.IsVisible = linkable && _shell.HasSharingEntry;
     }
 
     private void OnProtonShareClicked(object? sender, RoutedEventArgs e)

@@ -293,6 +293,7 @@ public sealed partial class ShellViewModel : ObservableObject
 
     private ILinkSharing? _links;
     private Action<IReadOnlyList<DriveLink>>? _saveLinks;
+    private Action<string>? _openUrl;
 
     /// <summary>
     /// Links Vaktari has created, oldest first. In the sidebar beside the
@@ -314,10 +315,12 @@ public sealed partial class ShellViewModel : ObservableObject
     public void UseDriveLinks(
         ILinkSharing? links,
         IReadOnlyList<DriveLink> remembered,
-        Action<IReadOnlyList<DriveLink>> save)
+        Action<IReadOnlyList<DriveLink>> save,
+        Action<string>? openUrl = null)
     {
         _links = links;
         _saveLinks = save;
+        _openUrl = openUrl;
 
         DriveLinks.Clear();
         foreach (var link in remembered) DriveLinks.Add(link);
@@ -354,8 +357,9 @@ public sealed partial class ShellViewModel : ObservableObject
 
         try
         {
-            var link = await Task.Run(
-                () => links.CreateLinkAsync(path, CancellationToken.None)).ConfigureAwait(true);
+            var link = await WithSignInRetryAsync(
+                pane, () => links.CreateLinkAsync(path, CancellationToken.None))
+                .ConfigureAwait(true);
 
             // Re-sharing replaces the remembered row rather than stacking a
             // duplicate: one item, one row, one kill switch.
@@ -373,6 +377,43 @@ public sealed partial class ShellViewModel : ObservableObject
         }
     }
 
+    /// <summary>
+    /// Runs a link operation, treating "you are not signed in" as a step
+    /// rather than a failure: the tool's own browser sign-in is started, any
+    /// link it prints is opened, and the operation is retried once.
+    ///
+    /// **This is the whole sign-in story on purpose.** No credentials dialog,
+    /// no token field, no probe before every call — the person authenticates
+    /// in their browser exactly once, the session lives in the operating
+    /// system's credential store, and from then on the retry never fires.
+    /// </summary>
+    private async Task<T> WithSignInRetryAsync<T>(PaneViewModel pane, Func<Task<T>> operation)
+    {
+        try
+        {
+            return await Task.Run(operation).ConfigureAwait(true);
+        }
+        catch (IOException first) when (
+            _links is { } links
+            && Vaktari.Core.Sharing.ProtonDriveLinks.LooksSignedOut(first.Message))
+        {
+            pane.Status = "signing in to Proton Drive — finish in your browser…";
+
+            var openUrl = _openUrl;
+
+            var signedIn = await Task.Run(() => links.SignInAsync(
+                url => openUrl?.Invoke(url), CancellationToken.None)).ConfigureAwait(true);
+
+            if (!signedIn)
+            {
+                pane.Status = "the sign-in did not complete";
+                throw;
+            }
+
+            return await Task.Run(operation).ConfigureAwait(true);
+        }
+    }
+
     [RelayCommand]
     private async Task StopDriveLinkAsync(DriveLink? link)
     {
@@ -382,8 +423,19 @@ public sealed partial class ShellViewModel : ObservableObject
 
         try
         {
-            await Task.Run(
-                () => links.RevokeAsync(link, CancellationToken.None)).ConfigureAwait(true);
+            if (pane is null)
+            {
+                await Task.Run(
+                    () => links.RevokeAsync(link, CancellationToken.None)).ConfigureAwait(true);
+            }
+            else
+            {
+                await WithSignInRetryAsync<object?>(pane, async () =>
+                {
+                    await links.RevokeAsync(link, CancellationToken.None).ConfigureAwait(false);
+                    return null;
+                }).ConfigureAwait(true);
+            }
 
             DriveLinks.Remove(link);
             _saveLinks?.Invoke(DriveLinks.ToList());
@@ -1041,6 +1093,16 @@ public sealed partial class ShellViewModel : ObservableObject
     /// </summary>
     public bool ShowAddSelectionToPlaces
         => Menu.ShowAddToPlaces && ActiveTab?.HasDirectorySelected == true;
+
+    /// <summary>
+    /// The current-folder row shows only when the selection row does not —
+    /// they are one "Add to places" slot in the menu, and which command fills
+    /// it depends on whether a folder is selected. Both visible at once was
+    /// the old layout's homework: two adjacent rows whose difference the
+    /// reader had to work out.
+    /// </summary>
+    public bool ShowAddCurrentToPlaces
+        => Menu.ShowAddToPlaces && ActiveTab?.HasDirectorySelected != true;
     public bool ShowCopyLocationInMenu => Menu.ShowCopyLocation;
 
     /// <summary>
@@ -1121,6 +1183,7 @@ public sealed partial class ShellViewModel : ObservableObject
         OnPropertyChanged(nameof(ShowOpenInNewTabInMenu));
         OnPropertyChanged(nameof(ShowAddToPlacesInMenu));
         OnPropertyChanged(nameof(ShowAddSelectionToPlaces));
+        OnPropertyChanged(nameof(ShowAddCurrentToPlaces));
         OnPropertyChanged(nameof(ShowCopyLocationInMenu));
 
         // Left and Right, not a Groups collection — this view model has no such
@@ -1359,20 +1422,47 @@ public sealed partial class ShellViewModel : ObservableObject
     /// user already keeps — no separate list to maintain, and pinning a folder
     /// makes it a transfer target for free.
     /// </summary>
-    public IReadOnlyList<PlaceItemViewModel> TransferTargets =>
-        Sidebar.Groups
-            .SelectMany(g => g.Places)
+    /// <summary>
+    /// The destination the other half of a split IS, as the first row of the
+    /// transfer submenus. It was two more top-level entries — four transfer
+    /// rows in a flat run — and folding it here is what let the pair collapse
+    /// to two. Routed by its id in TransferTo, since it has no path of its own
+    /// until the moment it is used.
+    /// </summary>
+    internal const string OtherPaneTargetId = "vaktari:other-pane";
 
-            // An unmounted volume or unreachable share would look like a valid
-            // destination and fail on use.
-            .Where(p => p.IsAvailable && !string.IsNullOrEmpty(p.Path))
+    private static readonly PlaceItemViewModel OtherPaneTarget = new(new Place
+    {
+        Id = OtherPaneTargetId,
+        Label = "The other pane",
+        Path = "",
+        Kind = PlaceKind.Virtual,
+        Icon = "",
+    });
 
-            // Sending a folder into itself is the one destination that is never
-            // meaningful.
-            // PathRules.Same also picks the platform's case rules — two paths
-            // differing only in case are one folder on NTFS and two on ext4.
-            .Where(p => !PathRules.Same(p.Path, ActiveTab?.CurrentPath))
-            .ToList();
+    public IReadOnlyList<PlaceItemViewModel> TransferTargets
+    {
+        get
+        {
+            var targets = Sidebar.Groups
+                .SelectMany(g => g.Places)
+
+                // An unmounted volume or unreachable share would look like a valid
+                // destination and fail on use.
+                .Where(p => p.IsAvailable && !string.IsNullOrEmpty(p.Path))
+
+                // Sending a folder into itself is the one destination that is never
+                // meaningful.
+                // PathRules.Same also picks the platform's case rules — two paths
+                // differing only in case are one folder on NTFS and two on ext4.
+                .Where(p => !PathRules.Same(p.Path, ActiveTab?.CurrentPath))
+                .ToList();
+
+            if (CanTransferToOtherPane) targets.Insert(0, OtherPaneTarget);
+
+            return targets;
+        }
+    }
 
     private void NotifyTransferTargets() => OnPropertyChanged(nameof(TransferTargets));
 
@@ -1390,6 +1480,7 @@ public sealed partial class ShellViewModel : ObservableObject
         OnPropertyChanged(nameof(ShowDuplicateInMenu));
         OnPropertyChanged(nameof(ShowOpenInNewTabInMenu));
         OnPropertyChanged(nameof(ShowAddSelectionToPlaces));
+        OnPropertyChanged(nameof(ShowAddCurrentToPlaces));
         OnPropertyChanged(nameof(CanTransferToOtherPane));
     }
 
@@ -1402,6 +1493,13 @@ public sealed partial class ShellViewModel : ObservableObject
     private void TransferTo(PlaceItemViewModel? place, bool move)
     {
         if (place is null || ActiveTab is not { } source) return;
+
+        // The first row of the submenu is not a folder at all.
+        if (place.Id == OtherPaneTargetId)
+        {
+            TransferToOther(move);
+            return;
+        }
 
         var paths = SelectionOf(source);
         if (paths.Count == 0) { source.Status = "nothing selected"; return; }
