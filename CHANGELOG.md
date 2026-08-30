@@ -9,6 +9,29 @@ Newest first. Dates are the day the tag was cut. Versions follow
 [Status](README.md#status): there has been no stable release, and the numbers
 should not be trusted for compatibility yet.
 
+## [0.9.14] — 2026-08-29
+
+### Added
+
+- **Proton Drive sharing installs itself.** When a file sits inside your
+  Proton Drive folder and the CLI is not on the machine, the Share submenu
+  offers *Install Proton Drive sharing* — one click downloads Proton's own
+  tool into Vaktari's folder and the share entries appear on the next
+  right-click, no restart, no hunting through a vendor site. The same
+  promise the copyparty entry already made, kept for links.
+
+- **The Proton Drive folder finds itself.** With the setting left empty,
+  Vaktari looks where the Proton Drive app puts "My files" — directly under
+  *Proton Drive* in your user folder, or one account folder down. The guess
+  is only taken when it is unambiguous, and the setting always wins over it.
+
+### Fixed
+
+- **The Proton menu entries actually work again.** Moving them inside the
+  Share submenu in 0.9.13 broke how they found their pane, and every click
+  on them did nothing without a word said. They act again, and the new
+  install entries use the corrected route.
+
 ## [0.9.13] — 2026-08-29
 
 ### Added
