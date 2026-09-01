@@ -83,6 +83,15 @@ public sealed partial class PaneViewModel
         // is ["/", "/x", "/x/y"], which is the same three crumbs as before.
         var levels = PathRules.Ancestors(CurrentPath);
 
+        // **The machine sits above the drive.** The crumbs used to top out at
+        // "C:\" with nothing above it, which is where Explorer shows This PC —
+        // and it is the one crumb that makes the other drives reachable without
+        // going to the sidebar.
+        Breadcrumbs.Add(new PathSegment(
+            Core.Naming.ComputerTitle, VirtualPaths.Computer,
+            new RelayCommand(() => Detached(NavigateAsync(VirtualPaths.Computer), "navigate")),
+            false));
+
         for (var i = 0; i < levels.Count; i++)
         {
             var target = levels[i];
@@ -103,9 +112,12 @@ public sealed partial class PaneViewModel
         //
         // Its command opens the path editor: a person who cannot see the middle
         // of the path is the most likely person to want to read or edit it.
+        // Counted from the crumbs actually present, which now include the
+        // machine at the front — inserting at a fixed index would have put the
+        // ellipsis before the drive rather than after it.
         if (levels.Count > 2)
         {
-            Breadcrumbs.Insert(1, PathSegment.Ellipsis(
+            Breadcrumbs.Insert(2, PathSegment.Ellipsis(
                 new RelayCommand(BeginEditPath)));
         }
     }
@@ -128,6 +140,14 @@ public sealed partial class PaneViewModel
         // A path read from disk or from settings is used exactly as written,
         // because a folder whose real name contains a percent sign is legal.
         var typed = PathVariables.Expand(PathText);
+
+        // **Typing the name goes there**, which is how a Windows user reaches
+        // This PC — it was a missing directory before, because the name is not
+        // a path. Matched case-insensitively on both platforms: this is a label
+        // somebody typed, not a filename.
+        if (string.Equals(typed.Trim(), Core.Naming.ComputerTitle, StringComparison.OrdinalIgnoreCase)
+            || string.Equals(typed.Trim(), VirtualPaths.Computer, StringComparison.OrdinalIgnoreCase))
+            return NavigateAsync(VirtualPaths.Computer);
 
         // **A file is a perfectly reasonable thing to paste in here**, and it
         // used to be handed to the directory enumerator, which answered with

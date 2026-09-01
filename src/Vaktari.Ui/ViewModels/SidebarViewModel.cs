@@ -109,6 +109,7 @@ public sealed partial class SidebarViewModel : ObservableObject
         CurrentPath = wanted;
         OnPropertyChanged(nameof(IsRecentFilesCurrent));
         OnPropertyChanged(nameof(IsRecentLocationsCurrent));
+        OnPropertyChanged(nameof(IsComputerCurrent));
     }
 
     private static string Normalise(string? path)
@@ -119,6 +120,14 @@ public sealed partial class SidebarViewModel : ObservableObject
 
     public bool IsRecentFilesCurrent => CurrentPath == VirtualPaths.Files;
     public bool IsRecentLocationsCurrent => CurrentPath == VirtualPaths.Locations;
+
+    /// <summary>What the machine's own listing is called here.</summary>
+    public string ComputerLabel => Vaktari.Core.Naming.ComputerTitle;
+
+    public bool IsComputerCurrent => CurrentPath == VirtualPaths.Computer;
+
+    [RelayCommand]
+    private void OpenComputer() => _onFolderChosen?.Invoke(VirtualPaths.Computer);
 
     [RelayCommand]
     private void OpenRecentFiles() => _onFolderChosen?.Invoke(VirtualPaths.Files);

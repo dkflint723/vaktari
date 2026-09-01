@@ -92,6 +92,13 @@ public static class FileConverters
     public static readonly IValueConverter Modified =
         new FuncValueConverter<DateTimeOffset, string>(value =>
         {
+            // **Nothing, rather than the epoch.** A drive has no meaningful
+            // modified time, and the This PC listing says so by carrying the
+            // epoch — which rendered as "31 Dec 1969" in the column, a date
+            // that reads as real and is not. The trash uses MinValue for a
+            // deletion date it could not parse, which is the same "no answer".
+            if (value <= DateTimeOffset.UnixEpoch) return "";
+
             var local = value.ToLocalTime();
             var now = DateTimeOffset.Now;
 

@@ -179,6 +179,13 @@ public sealed partial class PaneViewModel : ObservableObject, IDisposable
     public static Vaktari.Core.Places.IDiskImages? DiskImages { get; set; }
 
     /// <summary>
+    /// Where the machine's drives come from, for the This PC listing. Static
+    /// like the other providers here; the sidebar holds the same one, which is
+    /// the point — two enumerations of the drives would eventually disagree.
+    /// </summary>
+    public static Vaktari.Core.Places.IPlacesProvider? Places { get; set; }
+
+    /// <summary>
     /// Reads this platform's kind of shortcut, so opening one can follow it.
     /// Static like the other providers here; null where the desktop has no such
     /// indirection to read.
@@ -972,6 +979,17 @@ public sealed partial class PaneViewModel : ObservableObject, IDisposable
     /// True only in the two recent listings, where the rows come from a store
     /// rather than a directory.
     /// </summary>
+    /// <summary>
+    /// The path as a person should see it.
+    ///
+    /// **A virtual listing's path is an internal scheme**, and showing it is a
+    /// leak: hovering the location bar in This PC read "vaktari:computer",
+    /// which is a name for the code's benefit and nobody else's.
+    /// </summary>
+    public string DisplayPath => VirtualPaths.IsVirtual(CurrentPath)
+        ? VirtualPaths.Label(CurrentPath)
+        : CurrentPath;
+
     public bool IsRecentListing => VirtualPaths.IsRecent(CurrentPath);
 
     /// <summary>True in the trash listing, which gates restore and empty.</summary>
@@ -1207,7 +1225,12 @@ public sealed partial class PaneViewModel : ObservableObject, IDisposable
     /// </summary>
     public bool CanGoUp => !string.IsNullOrEmpty(CurrentPath)
                            && !VirtualPaths.IsVirtual(CurrentPath)
-                           && !string.IsNullOrEmpty(_fs.GetParent(CurrentPath));
+
+                           // A drive root goes up to the machine. Without This
+                           // PC there was nowhere above C:\, so Up was disabled
+                           // at the top of every drive by construction.
+                           && (PathRules.IsRoot(CurrentPath)
+                               || !string.IsNullOrEmpty(_fs.GetParent(CurrentPath)));
 
         public async Task NavigateAsync(string path)
     {
@@ -1270,6 +1293,13 @@ public sealed partial class PaneViewModel : ObservableObject, IDisposable
         // that property, but a keyboard shortcut reaches this command directly
         // and would bypass it.
         if (!CanGoUp) return;
+
+        // The top of a drive is not the top of the machine.
+        if (PathRules.IsRoot(CurrentPath))
+        {
+            await NavigateAsync(VirtualPaths.Computer).ConfigureAwait(false);
+            return;
+        }
 
         if (_fs.GetParent(CurrentPath) is { Length: > 0 } parent)
             await NavigateAsync(parent).ConfigureAwait(false);
@@ -1814,6 +1844,7 @@ public sealed partial class PaneViewModel : ObservableObject, IDisposable
             RebuildBreadcrumbs();
             OnPropertyChanged(nameof(IsRecentListing));
             OnPropertyChanged(nameof(IsTrashListing));
+            OnPropertyChanged(nameof(DisplayPath));
             OnPropertyChanged(nameof(Terminals));
             OnPropertyChanged(nameof(HasSeveralTerminals));
             OnPropertyChanged(nameof(CanActOnSelection));
@@ -2190,6 +2221,7 @@ public sealed partial class PaneViewModel : ObservableObject, IDisposable
         var source =
             VirtualPaths.IsRecent(path) ? RecentListing.EnumerateAsync(Recents, path, ct)
             : path == VirtualPaths.Trash ? RecentListing.EnumerateTrashAsync(Trash, ct)
+            : path == VirtualPaths.Computer ? ComputerListing.EnumerateAsync(Places, ct)
             : _fs.EnumerateAsync(path, options, ct);
 
         var sw = Stopwatch.StartNew();

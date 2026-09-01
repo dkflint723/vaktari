@@ -235,6 +235,7 @@ public partial class MainWindow : Window
         ViewModels.PaneViewModel.ShellMenu = platform.ShellMenu;
         ViewModels.PaneViewModel.DiskImages = platform.DiskImages;
         ViewModels.PaneViewModel.Shortcuts = platform.Shortcuts;
+        ViewModels.PaneViewModel.Places = platform.Places;
         _virtualDrop = platform.VirtualFileDrop;
         _shortcuts = platform.Shortcuts;
 

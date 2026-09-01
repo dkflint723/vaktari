@@ -23,9 +23,20 @@ public static class VirtualPaths
     public const string Locations = "vaktari:recent-locations";
     public const string Trash = "vaktari:trash";
 
+    /// <summary>
+    /// Every drive on the machine, in one listing — Explorer's This PC.
+    ///
+    /// **The place a drive root goes UP to.** Without it, C:\ was the top of the
+    /// world: Up was disabled there by construction, the breadcrumbs stopped at
+    /// the drive, and there was nowhere that showed the machine's drives beside
+    /// each other. The sidebar lists them, but a sidebar is not somewhere you
+    /// can sort, select, or open two of in tabs.
+    /// </summary>
+    public const string Computer = "vaktari:computer";
+
     /// <summary>Any listing that is not a directory.</summary>
     public static bool IsVirtual(string? path)
-        => IsRecent(path) || path == Trash;
+        => IsRecent(path) || path == Trash || path == Computer;
 
     /// <summary>
     /// True for a virtual listing. Callers that must check this:
@@ -45,6 +56,7 @@ public static class VirtualPaths
     {
         Files => "Recent files",
         Trash => Core.Naming.BinTitle,
+        Computer => Core.Naming.ComputerTitle,
         _ => "Recent locations",
     };
 }

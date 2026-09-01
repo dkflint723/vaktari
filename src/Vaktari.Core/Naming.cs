@@ -52,6 +52,18 @@ public static class Naming
     public static string BinTitle =>
         BinName.Length == 0 ? BinName : char.ToUpperInvariant(BinName[0]) + BinName[1..];
 
+    /// <summary>
+    /// What the listing of every drive is called.
+    ///
+    /// **Explorer's own words on Windows, and not on Linux.** "This PC" is what
+    /// a Windows user will type into the location bar and look for in the
+    /// sidebar, so using anything else there would be a private name for a
+    /// public idea. The freedesktop desktops have no single agreed term —
+    /// Dolphin says "Devices", Nautilus "Other Locations" — so "This computer"
+    /// is the plain reading, and it is what this application calls it.
+    /// </summary>
+    public static string ComputerTitle => Platform == "windows" ? "This PC" : "This computer";
+
     public static void Adopt(IPlatform platform) => Adopt(platform.BinName, platform.Name);
 
     /// <summary>Separate from the interface overload so a test can set the

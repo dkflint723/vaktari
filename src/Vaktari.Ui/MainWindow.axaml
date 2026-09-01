@@ -937,8 +937,11 @@
                      reveal on purpose: the pointer crosses this strip on the
                      way to the back button and the search box, and a tooltip
                      that fires in transit is noise rather than help. -->
+                <!-- The DISPLAY path, not CurrentPath: a virtual listing's path
+                     is an internal scheme, and the tooltip was showing
+                     "vaktari:computer" to anyone who hovered the bar. -->
                 <ItemsControl DockPanel.Dock="Left" ItemsSource="{Binding ActiveTab.Breadcrumbs}"
-                              ToolTip.Tip="{Binding ActiveTab.CurrentPath}"
+                              ToolTip.Tip="{Binding ActiveTab.DisplayPath}"
                               ToolTip.ShowDelay="1200">
                   <ItemsControl.ItemsPanel>
                     <ItemsPanelTemplate>
@@ -2285,6 +2288,35 @@
                  still want. The places list no longer changes for any reason. -->
 
             <StackPanel>
+
+              <!-- **This PC, above the places.** The sidebar lists the drives
+                   individually, which is not the same thing as somewhere you
+                   can open, sort, select in, or put in a tab — and it is where
+                   a drive root now goes when you press Up. Fixed rather than a
+                   group, like Recent below: it exists whether or not anything
+                   is attached. -->
+              <Button Command="{Binding Sidebar.OpenComputerCommand}"
+                      Background="Transparent" BorderThickness="0"
+                      HorizontalAlignment="Stretch"
+                      HorizontalContentAlignment="Left" Padding="12,7"
+                      Margin="0,6,0,0">
+                <DockPanel>
+                  <Border DockPanel.Dock="Left" Width="3" Margin="0,2,6,2" CornerRadius="2"
+                          Background="{DynamicResource AccentColour}"
+                          IsVisible="{Binding Sidebar.IsComputerCurrent}"/>
+                  <Path DockPanel.Dock="Left" Margin="0,0,9,0"
+                        Width="{DynamicResource IconSize}" Height="{DynamicResource IconSize}" Stretch="Uniform"
+                        VerticalAlignment="Center"
+                        Stroke="{DynamicResource ViewText}"
+                        StrokeThickness="{DynamicResource IconStroke}"
+                        StrokeLineCap="Round" StrokeJoin="Round"
+                        th:SidebarIcon.Token="device-desktop"/>
+                  <TextBlock Text="{Binding Sidebar.ComputerLabel}"
+                             FontSize="{DynamicResource FontSizeBase}"
+                             TextTrimming="CharacterEllipsis"
+                             VerticalAlignment="Center"/>
+                </DockPanel>
+              </Button>
 
               <ItemsControl ItemsSource="{Binding Sidebar.Groups}">
                 <ItemsControl.ItemTemplate>
