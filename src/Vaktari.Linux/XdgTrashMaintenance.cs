@@ -269,9 +269,15 @@ public sealed class XdgTrashMaintenance : ITrashMaintenance
 
             var total = 0L;
 
-            foreach (var file in Directory.EnumerateFiles(path, "*", SearchOption.AllDirectories))
+            // Links reported and not followed: a trashed folder containing a
+            // link to somewhere large would otherwise have that place counted
+            // against the trash's allowance, and a link to an ancestor would
+            // never finish being measured at all.
+            foreach (var found in Vaktari.Core.FileSystem.SafeWalk.Descend(path))
             {
-                try { total += new FileInfo(file).Length; }
+                if (found.IsDirectory || found.IsLink) continue;
+
+                try { total += new FileInfo(found.Path).Length; }
                 catch { /* vanished mid-walk */ }
             }
 

@@ -204,15 +204,30 @@ public sealed class LinuxPropertiesProvider : IPropertiesProvider, IAccessEditor
             var skipped = 0;
             Exception? first = null;
 
-            foreach (var child in Directory.EnumerateFileSystemEntries(
-                         path, "*", SearchOption.AllDirectories))
+            // **A walk that never follows a link out of the tree.** The obvious
+            // version — AllDirectories — descends into linked directories, and
+            // SetUnixFileMode is chmod rather than lchmod, so it follows the
+            // link a second time. A folder holding a link to the user's photo
+            // library, given a recursive 700, quietly rewrote the real library;
+            // a link pointing at an ancestor never finished at all. The copy
+            // engine measured and fixed this for itself and left the rule in
+            // its own file — this is that rule, now shared.
+            foreach (var child in SafeWalk.Descend(path, ct))
             {
                 ct.ThrowIfCancellationRequested();
 
+                // A link's own permissions mean nothing on Linux, and changing
+                // them means changing its target's. Counted as skipped so the
+                // report says the tree was not uniformly applied.
+                if (child.IsLink)
+                {
+                    skipped++;
+                    continue;
+                }
+
                 try
                 {
-                    File.SetUnixFileMode(
-                        child, Directory.Exists(child) ? directoryMode : mode);
+                    File.SetUnixFileMode(child.Path, child.IsDirectory ? directoryMode : mode);
                 }
                 catch (Exception e) when (e is IOException or UnauthorizedAccessException)
                 {
@@ -250,7 +265,15 @@ public sealed class LinuxPropertiesProvider : IPropertiesProvider, IAccessEditor
                     RecurseSubdirectories = true,
                     IgnoreInaccessible = true,
                     AttributesToSkip = 0,
-                });
+                })
+            {
+                // Links counted but not followed: a folder holding a link to
+                // the home directory would otherwise report the size of the
+                // home directory, and one pointing at an ancestor would never
+                // finish being measured.
+                ShouldRecursePredicate = (ref FileSystemEntry entry)
+                    => !entry.Attributes.HasFlag(FileAttributes.ReparsePoint),
+            };
 
             var sinceReport = 0;
 

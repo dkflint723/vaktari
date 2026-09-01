@@ -192,6 +192,15 @@ public sealed class LinuxSearchProvider : ISearchProvider
                 AttributesToSkip = 0,
             })
         {
+            // **Links are not descended into.** Without this a search under a
+            // folder holding a link to the home directory walks the whole home
+            // directory, and one pointing at an ancestor never terminates — the
+            // result cap was the only thing stopping it, by accident rather
+            // than by design. The link itself is still matched and returned;
+            // only the recursion stops.
+            ShouldRecursePredicate = (ref FileSystemEntry entry)
+                => !entry.Attributes.HasFlag(FileAttributes.ReparsePoint),
+
             // A pattern is matched as a pattern; anything else is treated as a
             // substring, which is what people expect when they just type a word.
             ShouldIncludePredicate = glob

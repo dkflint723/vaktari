@@ -2178,11 +2178,16 @@ public partial class MainWindow : Window
 
             try
             {
-                foreach (var inside in Directory.EnumerateFiles(
-                             path, "*", SearchOption.AllDirectories))
+                // Links not followed: a dropped folder holding a link to a huge
+                // tree would otherwise be measured as that tree, and one
+                // pointing at an ancestor would spin until the two-thousand cap
+                // saved it by accident.
+                foreach (var inside in Vaktari.Core.FileSystem.SafeWalk.Descend(path))
                 {
+                    if (inside.IsDirectory || inside.IsLink) continue;
+
                     files++;
-                    try { bytes += new FileInfo(inside).Length; } catch { }
+                    try { bytes += new FileInfo(inside.Path).Length; } catch { }
                     if (files >= 2_000) break;
                 }
             }
