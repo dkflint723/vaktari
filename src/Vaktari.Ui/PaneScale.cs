@@ -168,6 +168,10 @@ public static class PaneScale
         yield return ("ColPathNarrow", Math.Round(120 * fontScale, 1));
         yield return ("ColPathWide", Math.Round(200 * fontScale, 1));
         yield return ("ColPermissions", Math.Round(100 * fontScale, 1));
+        // Wide enough for "DOCX file" and no wider: it is the newest column and
+        // the one that has to justify every pixel, because all of them come out
+        // of the name beside it.
+        yield return ("ColType", Math.Round(110 * fontScale, 1));
         yield return ("ColSize", Math.Round(100 * fontScale, 1));
         yield return ("ColModified", Math.Round(150 * fontScale, 1));
 

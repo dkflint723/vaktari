@@ -29,6 +29,29 @@ public static class AppSettings
     /// a handler reading it sees the new values rather than the old.</summary>
     public static event EventHandler? Changed;
 
+    /// <summary>
+    /// How <see cref="Current"/> reaches the disk. Set once at startup by the
+    /// window that owns the store.
+    ///
+    /// The settings dialog saves through its own Closed handler, which is fine
+    /// for a dialog — but a preference toggled from the listing menu has no
+    /// dialog to close, and a column choice that forgets itself on restart is
+    /// not a preference.
+    /// </summary>
+    public static Action<SettingsState>? Persist { get; set; }
+
+    /// <summary>
+    /// Change one thing, apply it, and write it down. The whole state is
+    /// rebuilt around the change because the graph is immutable records.
+    /// </summary>
+    public static void Update(Func<SettingsState, SettingsState> change)
+    {
+        var next = change(Current);
+
+        Apply(next);
+        Persist?.Invoke(next);
+    }
+
     public static void Apply(SettingsState settings)
     {
         _current = Normalise(settings);

@@ -1565,6 +1565,46 @@
               <Border DockPanel.Dock="Top" Padding="0,4" Background="{DynamicResource ChromeBrush}"
                       BorderThickness="0,1,0,1" BorderBrush="{DynamicResource SeparatorColour}"
                       IsVisible="{Binding IsDetailsView}">
+                <!-- **Which columns to show, where both Explorer and Dolphin
+                     put it: right-click the headings.** On the header rather
+                     than in the listing menu because that is where somebody
+                     reaches for it, and because the listing menu does not need
+                     another row to reach a thing you can already see.
+
+                     The commands are on the shell, not the pane: the choice is
+                     one preference for the whole application, so it binds out
+                     through the Window the way the other application-wide rows
+                     in this file do. OneWay IsChecked plus a Command, never a
+                     TwoWay binding — the same shape as every other tick here.
+
+                     Name has no toggle. Explorer greys it out for the same
+                     reason: a listing of sizes with no names is not a listing
+                     of anything. It is shown ticked and disabled rather than
+                     left out, so the menu says what the columns ARE rather than
+                     only what can be changed about them. -->
+                <Border.ContextMenu>
+                  <ContextMenu>
+                    <MenuItem Header="Name" ToggleType="CheckBox" IsChecked="True" IsEnabled="False"/>
+                    <MenuItem Header="Type"
+                              ToggleType="CheckBox"
+                              IsChecked="{Binding $parent[Window].((vm:ShellViewModel)DataContext).IsTypeColumnShown, Mode=OneWay}"
+                              Command="{Binding $parent[Window].((vm:ShellViewModel)DataContext).ToggleTypeColumnCommand}"/>
+                    <MenuItem Header="Size"
+                              ToggleType="CheckBox"
+                              IsChecked="{Binding $parent[Window].((vm:ShellViewModel)DataContext).IsSizeColumnShown, Mode=OneWay}"
+                              Command="{Binding $parent[Window].((vm:ShellViewModel)DataContext).ToggleSizeColumnCommand}"/>
+                    <MenuItem Header="Modified"
+                              ToggleType="CheckBox"
+                              IsChecked="{Binding $parent[Window].((vm:ShellViewModel)DataContext).IsModifiedColumnShown, Mode=OneWay}"
+                              Command="{Binding $parent[Window].((vm:ShellViewModel)DataContext).ToggleModifiedColumnCommand}"/>
+                    <Separator/>
+                    <!-- Says the other half out loud. A ticked column that is
+                         not on screen looks like a bug, and this is the one
+                         place somebody is looking when they wonder why. -->
+                    <MenuItem Header="A narrow pane drops columns to keep the name readable."
+                              IsEnabled="False"/>
+                  </ContextMenu>
+                </Border.ContextMenu>
                 <!-- Headings sort. The sort state existed, was persisted per
                      tab, and had no control anywhere that could set it. -->
                 <Grid Margin="12,0,18,0">
@@ -1592,6 +1632,20 @@
                              IsVisible="{Binding ShowParentPath}"
                              FontSize="{DynamicResource FontSizeSmall}"
                              Foreground="{DynamicResource ViewDimText}"/>
+                  <!-- Column 3 stood empty in both grids: the slot the old
+                       "info" column left behind. The type column lands in it
+                       without renumbering anything after it, which is the edit
+                       the row template warns goes wrong quietly. -->
+                  <Button Grid.Column="3" Width="{DynamicResource ColType}" Margin="8,0,0,0"
+                          Command="{Binding SortByCommand}" CommandParameter="kind"
+                          IsVisible="{Binding ShowType}"
+                          Background="Transparent" BorderThickness="0" Padding="0"
+                          HorizontalContentAlignment="Left">
+                    <TextBlock FontSize="{DynamicResource FontSizeSmall}"
+                               Foreground="{DynamicResource ViewDimText}">
+                      <Run Text="type"/><Run Text="{Binding KindSortGlyph}"/>
+                    </TextBlock>
+                  </Button>
                   <Button Grid.Column="4" Width="{DynamicResource ColSize}" Command="{Binding SortByCommand}" CommandParameter="size"
                           IsVisible="{Binding ShowSize}"
                           Background="Transparent" BorderThickness="0" Padding="0"
@@ -1792,6 +1846,18 @@
                                    Text="{Binding Converter={x:Static vm:FileConverters.ParentPath}}"
                                    ToolTip.Tip="{Binding Converter={x:Static vm:FileConverters.PathTip}}"
                                    IsVisible="{Binding $parent[ListBox].((vm:PaneViewModel)DataContext).ShowParentPath}"
+                                   FontSize="{DynamicResource FontSizeSmall}"
+                                   Foreground="{DynamicResource ViewDimText}"
+                                   VerticalAlignment="Center" TextTrimming="CharacterEllipsis"/>
+                        <!-- The extension, spelled the way Explorer spells it
+                             when it has nothing better. Synchronous on purpose:
+                             both platforms can name a file's type properly and
+                             both do it per file and asynchronously, which is not
+                             something a column can be filled from while it
+                             scrolls. -->
+                        <TextBlock Grid.Column="3" Width="{DynamicResource ColType}" Margin="8,0,0,0"
+                                   Text="{Binding Converter={x:Static vm:FileConverters.Kind}}"
+                                   IsVisible="{Binding $parent[ListBox].((vm:PaneViewModel)DataContext).ShowType}"
                                    FontSize="{DynamicResource FontSizeSmall}"
                                    Foreground="{DynamicResource ViewDimText}"
                                    VerticalAlignment="Center" TextTrimming="CharacterEllipsis"/>

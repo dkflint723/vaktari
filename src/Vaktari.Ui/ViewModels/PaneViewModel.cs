@@ -969,8 +969,37 @@ public sealed partial class PaneViewModel : ObservableObject, IDisposable
     /// </summary>
     public void RefreshScale() => OnPropertyChanged(nameof(IconScale));
 
-    public bool ShowSize => ViewportWidth >= 340 * TextScale;
-    public bool ShowModified => ViewportWidth >= 520 * TextScale;
+    /// <summary>
+    /// Re-asks which columns to draw. Their visibility mixes this pane's width
+    /// with a global preference, and only the first of those raises anything.
+    /// </summary>
+    public void RefreshColumns() => NotifyColumns();
+
+    // **Two questions, both of which have to say yes.** The width rule was here
+    // first and stays: a column that no longer fits is dropped whatever the
+    // chooser says, because a chosen column crushing the name is worse than an
+    // absent one. The choice is ANDed on top rather than replacing it, and the
+    // settings are phrased so that an untouched installation reads exactly as
+    // it did before there was a chooser.
+    public bool ShowSize =>
+        !Settings.AppSettings.Current.Views.Details.HideSize
+        && ViewportWidth >= 340 * TextScale;
+
+    public bool ShowModified =>
+        !Settings.AppSettings.Current.Views.Details.HideModified
+        && ViewportWidth >= 520 * TextScale;
+
+    /// <summary>
+    /// The type column, off until it is asked for.
+    ///
+    /// **Its own width threshold, and a deliberately generous one.** It sits
+    /// between the name and the size, so every pixel it takes comes out of the
+    /// name — the only column that stretches. Below this width the name is
+    /// already trimming and there is nothing left to give.
+    /// </summary>
+    public bool ShowType =>
+        Settings.AppSettings.Current.Views.Details.ShowType
+        && ViewportWidth >= 620 * TextScale;
     public bool ShowPermissions => ViewportWidth >= 680 * TextScale;
     public bool ShowMetadata =>
         ViewportWidth >= 840 * TextScale && !IsRecentListing && !IsTrashListing;
@@ -1015,6 +1044,7 @@ public sealed partial class PaneViewModel : ObservableObject, IDisposable
     {
         OnPropertyChanged(nameof(ShowSize));
         OnPropertyChanged(nameof(ShowModified));
+        OnPropertyChanged(nameof(ShowType));
         OnPropertyChanged(nameof(ShowPermissions));
         OnPropertyChanged(nameof(ShowMetadata));
         OnPropertyChanged(nameof(ShowParentPath));

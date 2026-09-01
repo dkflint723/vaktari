@@ -41,6 +41,10 @@ public sealed partial class PaneViewModel
 
     public string ModifiedSortGlyph => Glyph(SortField.Modified);
 
+    /// <summary>The arrow over the type column's heading. It had no heading to
+    /// sit on until there was a type column.</summary>
+    public string KindSortGlyph => Glyph(SortField.Kind);
+
     private void NotifySortGlyphs()
     {
         OnPropertyChanged(nameof(IsSortedByName));
@@ -51,6 +55,7 @@ public sealed partial class PaneViewModel
         OnPropertyChanged(nameof(NameSortGlyph));
         OnPropertyChanged(nameof(SizeSortGlyph));
         OnPropertyChanged(nameof(ModifiedSortGlyph));
+        OnPropertyChanged(nameof(KindSortGlyph));
     }
 
     // ---- sorting, reachable from the menu as well as the headers ----------

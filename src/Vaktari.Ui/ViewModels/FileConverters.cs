@@ -85,6 +85,15 @@ public static class FileConverters
         });
 
     /// <summary>
+    /// What kind of thing the row is. Folders say so, and everything else is
+    /// named by its extension, because that is the only answer available
+    /// without asking the platform once per file.
+    /// </summary>
+    public static readonly IValueConverter Kind =
+        new FuncValueConverter<FileEntry, string>(entry =>
+            entry.FullPath is null ? "" : FileKind.Describe(entry));
+
+    /// <summary>
     /// Local time, and compact. The default rendering of a DateTimeOffset is a
     /// full timestamp with a UTC offset — accurate, unreadable in a column, and
     /// wrong for a person looking at their own files.
