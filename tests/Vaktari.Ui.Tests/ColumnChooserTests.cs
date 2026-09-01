@@ -2,83 +2,88 @@ using System.Text.Json;
 using System.Xml.Linq;
 using Avalonia.Headless.XUnit;
 using Vaktari.Core.FileSystem;
-using Vaktari.Core.Settings;
-using Vaktari.Ui.Settings;
+using Vaktari.Core.Session;
 using Vaktari.Ui.ViewModels;
 using Xunit;
 
 namespace Vaktari.Ui.Tests;
 
 /// <summary>
-/// Choosing which columns the details view shows.
+/// Choosing which columns a pane shows.
 ///
 /// **There was no way to turn a column off, and no type column to turn on.**
 /// The only thing that ever hid a column was the pane getting too narrow for
 /// it, which is not a choice — and sorting by type was implemented from the
 /// start with nothing to click, because there was no type heading.
 ///
-/// The two tests that matter most here are the ones this could quietly get
-/// wrong: that an upgrade does not move anybody's columns, and that choosing a
-/// column does not override the width rule keeping the name readable.
+/// **The choice is per pane**, the way sort and grouping are. A reference
+/// listing beside a working one wants different columns, and ticking one on
+/// the left must not move the right. It travels with the tab in the session.
+///
+/// The tests that matter most are the ones this could quietly get wrong: that
+/// a session written before the choice existed restores the old columns, that
+/// one pane's choice stays out of the other, and that choosing a column does
+/// not override the width rule keeping the name readable.
 /// </summary>
-public sealed class ColumnChooserTests : IDisposable
+public sealed class ColumnChooserTests
 {
     private static readonly XNamespace Avalonia = "https://github.com/avaloniaui";
-
-    private readonly SettingsState _before = AppSettings.Current;
-    private readonly Action<SettingsState>? _persist = AppSettings.Persist;
-
-    // Never write a test preference into the real settings file.
-    public ColumnChooserTests() => AppSettings.Persist = null;
-
-    public void Dispose()
-    {
-        AppSettings.Apply(_before);
-        AppSettings.Persist = _persist;
-    }
-
-    private static void Choose(DetailsViewSettings details)
-        => AppSettings.Apply(AppSettings.Current with
-        {
-            Views = AppSettings.Current.Views with { Details = details },
-        });
 
     private static PaneViewModel Pane(double width = 1400)
         => new(new Inert(), null, null) { ViewportWidth = width };
 
+    // ---- per pane, which is the point ---------------------------------------
+
+    [AvaloniaFact]
+    public void Choosing_on_one_pane_leaves_the_other_alone()
+    {
+        var left = Pane();
+        var right = Pane();
+
+        left.ToggleTypeColumnCommand.Execute(null);
+        left.ToggleSizeColumnCommand.Execute(null);
+
+        Assert.True(left.ShowType);
+        Assert.False(left.ShowSize);
+
+        Assert.False(right.ShowType, "the right pane grew a column it never asked for");
+        Assert.True(right.ShowSize, "the right pane lost a column it never touched");
+    }
+
     // ---- the upgrade, which is the half that would go unnoticed -------------
 
     /// <summary>
-    /// **A settings file written before this feature must read as it always
-    /// did.** Deserialization here does not run property initializers — an
-    /// absent key arrives as default(T) — which AppSettings.Apply documents and
-    /// still instruments, having shipped a startup crash that way once. So all
-    /// three of these are phrased to make <c>false</c> mean "what it did
-    /// before", and this reads a settings file with no columns in it at all, to
-    /// prove the phrasing survives the round trip rather than only that the
-    /// record has the right defaults.
+    /// **A session written before this existed must restore the old columns.**
+    /// Deserialization here does not run property initializers — an absent
+    /// key arrives as default(T), which TabState documents for its own scales —
+    /// so all three are phrased to make <c>false</c> mean "what it showed
+    /// before". This reads a session with no column keys at all, through the
+    /// same source-generated context the real store uses, and restores a pane
+    /// from it.
     /// </summary>
-    [Fact]
-    public void A_settings_file_that_never_heard_of_columns_shows_the_old_ones()
+    [AvaloniaFact]
+    public void A_session_that_never_heard_of_columns_restores_the_old_ones()
     {
-        var old = JsonSerializer.Deserialize(
-            "{\"version\":1,\"views\":{\"details\":{\"dateStyle\":\"Relative\"}}}",
-            SettingsJsonContext.Default.SettingsState);
+        var json = "{\"version\":13,\"windows\":[{\"panes\":[{\"tabs\":[{\"path\":\"" +
+                   Path.GetTempPath().Replace("\\", "\\\\") + "\"}]}]}]}";
 
-        Assert.NotNull(old);
+        var session = JsonSerializer.Deserialize(json, SessionJsonContext.Default.SessionState);
 
-        var details = old!.Views.Details;
+        Assert.NotNull(session);
 
-        Assert.False(details.HideSize, "size vanished for everyone who upgraded");
-        Assert.False(details.HideModified, "modified vanished for everyone who upgraded");
-        Assert.False(details.ShowType, "a new column appeared uninvited");
+        var tab = session!.Windows[0].Panes[0].Tabs[0];
+        var pane = Pane();
+
+        pane.RestoreFrom(tab);
+
+        Assert.True(pane.ShowSize, "size vanished for everyone who upgraded");
+        Assert.True(pane.ShowModified, "modified vanished for everyone who upgraded");
+        Assert.False(pane.ShowType, "a new column appeared uninvited");
     }
 
     [AvaloniaFact]
     public void Out_of_the_box_that_means_size_and_modified_and_no_type()
     {
-        Choose(new DetailsViewSettings());
-
         var pane = Pane();
 
         Assert.True(pane.ShowSize);
@@ -86,25 +91,45 @@ public sealed class ColumnChooserTests : IDisposable
         Assert.False(pane.ShowType);
     }
 
-    // ---- the choice ---------------------------------------------------------
+    // ---- it travels with the tab ---------------------------------------------
 
     [AvaloniaFact]
-    public void Turning_a_column_off_turns_it_off()
+    public void The_choice_round_trips_through_the_session()
     {
-        Choose(new DetailsViewSettings { HideSize = true, HideModified = true });
+        var before = Pane();
 
-        var pane = Pane();
+        before.ToggleTypeColumnCommand.Execute(null);
+        before.ToggleModifiedColumnCommand.Execute(null);
 
-        Assert.False(pane.ShowSize);
-        Assert.False(pane.ShowModified);
+        var after = Pane();
+
+        after.RestoreFrom(before.ToTabState());
+
+        Assert.True(after.ShowType);
+        Assert.False(after.ShowModified);
+        Assert.True(after.ShowSize);
     }
 
+    /// <summary>
+    /// **A property ToTabState writes but the shell never marks dirty only
+    /// persists when something else changes first.** Grouping had exactly that
+    /// gap. So this goes through the shell rather than the pane, and asks the
+    /// store whether it heard.
+    /// </summary>
     [AvaloniaFact]
-    public void Turning_type_on_turns_it_on()
+    public void Changing_the_choice_is_worth_saving()
     {
-        Choose(new DetailsViewSettings { ShowType = true });
+        var store = new Listening();
+        var shell = new ShellViewModel(new Inert(), store: store);
 
-        Assert.True(Pane().ShowType);
+        shell.Start(null, Path.GetTempPath());
+
+        var heard = store.Heard;
+
+        shell.ActiveTab!.ToggleTypeColumnCommand.Execute(null);
+
+        Assert.True(store.Heard > heard, "the session store was not told");
+        Assert.True(store.Last!.Windows[0].Panes[0].Tabs[0].ShowType, "it was told, but not the new value");
     }
 
     // ---- the width rule, which the choice must not override -----------------
@@ -118,45 +143,43 @@ public sealed class ColumnChooserTests : IDisposable
     [AvaloniaFact]
     public void A_chosen_column_still_gives_way_in_a_narrow_pane()
     {
-        Choose(new DetailsViewSettings { ShowType = true });
-
         var narrow = Pane(width: 300);
+
+        narrow.ToggleTypeColumnCommand.Execute(null);
 
         Assert.False(narrow.ShowSize, "the width rule stopped applying");
         Assert.False(narrow.ShowModified);
         Assert.False(narrow.ShowType, "a chosen column ignored the width rule");
+
+        // And the tick still says what was chosen, so the menu explains the
+        // gap rather than hiding it.
+        Assert.True(narrow.IsTypeColumnShown);
     }
 
     /// <summary>And room is not a request: the type column stays off in a pane
     /// wide enough for it until somebody asks.</summary>
     [AvaloniaFact]
     public void Room_for_a_column_is_not_a_request_for_it()
-    {
-        Choose(new DetailsViewSettings());
+        => Assert.False(Pane(width: 2400).ShowType);
 
-        Assert.False(Pane(width: 2400).ShowType);
-    }
-
-    // ---- the plumbing that makes the screen follow the setting --------------
+    // ---- the plumbing that makes the screen follow the tick -----------------
 
     /// <summary>
-    /// The visibility is computed from a static, so nothing raises it on its
-    /// own. Miss the fan-out and the setting changes while the screen does not.
+    /// The visibility is computed, so nothing raises it on its own. Miss the
+    /// fan-out and the tick moves while the column does not.
     /// </summary>
     [AvaloniaFact]
-    public void Changing_the_choice_tells_the_pane()
+    public void Toggling_tells_the_view()
     {
         var pane = Pane();
         var raised = new List<string?>();
 
         pane.PropertyChanged += (_, e) => raised.Add(e.PropertyName);
 
-        Choose(new DetailsViewSettings { ShowType = true });
-        pane.RefreshColumns();
+        pane.ToggleTypeColumnCommand.Execute(null);
 
         Assert.Contains(nameof(PaneViewModel.ShowType), raised);
-        Assert.Contains(nameof(PaneViewModel.ShowSize), raised);
-        Assert.Contains(nameof(PaneViewModel.ShowModified), raised);
+        Assert.Contains(nameof(PaneViewModel.IsTypeColumnShown), raised);
     }
 
     /// <summary>Sorting by type was implemented from the start and had nothing
@@ -218,6 +241,28 @@ public sealed class ColumnChooserTests : IDisposable
         Assert.Equal(2, inColumnThree);
     }
 
+    /// <summary>
+    /// The chooser binds to the pane under it, not out through the window. A
+    /// binding that reaches the shell would make the choice global again by
+    /// accident, and nothing else would notice until both panes moved at once.
+    /// </summary>
+    [Fact]
+    public void The_chooser_binds_to_its_own_pane()
+    {
+        var rows = Markup()
+            .Descendants(Avalonia + "MenuItem")
+            .Where(m => ((string?)m.Attribute("Command") ?? "").Contains("ColumnCommand", StringComparison.Ordinal))
+            .ToList();
+
+        Assert.Equal(3, rows.Count);
+
+        foreach (var row in rows)
+        {
+            Assert.DoesNotContain("$parent[Window]", (string?)row.Attribute("Command"));
+            Assert.DoesNotContain("$parent[Window]", (string?)row.Attribute("IsChecked"));
+        }
+    }
+
     private static XDocument Markup()
         => XDocument.Load(Path.Combine(Repo(), "src", "Vaktari.Ui", "MainWindow.axaml"));
 
@@ -229,6 +274,22 @@ public sealed class ColumnChooserTests : IDisposable
             here = Path.GetDirectoryName(here);
 
         return here ?? throw new InvalidOperationException("could not find the repository root");
+    }
+
+    private sealed class Listening : ISessionStore
+    {
+        public int Heard { get; private set; }
+        public SessionState? Last { get; private set; }
+
+        public SessionState? Load() => null;
+
+        public void NotifyChanged(SessionState state)
+        {
+            Heard++;
+            Last = state;
+        }
+
+        public ValueTask FlushAsync(CancellationToken ct) => ValueTask.CompletedTask;
     }
 
     private sealed class Inert : IFileSystemProvider

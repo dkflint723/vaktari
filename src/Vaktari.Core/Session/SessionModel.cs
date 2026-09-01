@@ -67,6 +67,21 @@ public sealed record TabState
     public GroupMode GroupBy { get; init; } = GroupMode.None;
 
     /// <summary>
+    /// Which details columns this tab shows. Per tab for the same reason sort
+    /// and grouping are: a reference listing beside a working one wants
+    /// different columns, and a choice made on one side of a split should not
+    /// move the other.
+    ///
+    /// **Phrased so that false is what the tab did before these existed.**
+    /// An absent key deserialises as default(T) — see the scales above — so a
+    /// session written by an older build reads as size and modified shown,
+    /// type not, which is exactly what it was showing.
+    /// </summary>
+    public bool HideSize { get; init; }
+    public bool HideModified { get; init; }
+    public bool ShowType { get; init; }
+
+    /// <summary>
     /// Back/forward stacks, oldest first. Nobody restores navigation history —
     /// which is exactly why having it is noticeable.
     /// </summary>

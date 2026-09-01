@@ -969,25 +969,39 @@ public sealed partial class PaneViewModel : ObservableObject, IDisposable
     /// </summary>
     public void RefreshScale() => OnPropertyChanged(nameof(IconScale));
 
-    /// <summary>
-    /// Re-asks which columns to draw. Their visibility mixes this pane's width
-    /// with a global preference, and only the first of those raises anything.
-    /// </summary>
-    public void RefreshColumns() => NotifyColumns();
+    // ---- which columns this pane shows ------------------------------------
+    //
+    // **Per pane, the way sort and grouping are.** A reference listing beside
+    // a working one wants different columns, and a choice made on one side of
+    // a split must not move the other. Persisted with the tab, restored with
+    // it, and phrased so that false is what the pane showed before there was a
+    // chooser — an absent session key arrives as default(T).
+
+    [ObservableProperty] private bool _hideSizeColumn;
+    [ObservableProperty] private bool _hideModifiedColumn;
+    [ObservableProperty] private bool _showTypeColumn;
+
+    partial void OnHideSizeColumnChanged(bool value) => NotifyColumns();
+    partial void OnHideModifiedColumnChanged(bool value) => NotifyColumns();
+    partial void OnShowTypeColumnChanged(bool value) => NotifyColumns();
+
+    // The ticks in the chooser. OneWay from these, with the click going through
+    // the commands below — the same shape as every other tick in the menus.
+    public bool IsSizeColumnShown => !HideSizeColumn;
+    public bool IsModifiedColumnShown => !HideModifiedColumn;
+    public bool IsTypeColumnShown => ShowTypeColumn;
+
+    [RelayCommand] private void ToggleSizeColumn() => HideSizeColumn = !HideSizeColumn;
+    [RelayCommand] private void ToggleModifiedColumn() => HideModifiedColumn = !HideModifiedColumn;
+    [RelayCommand] private void ToggleTypeColumn() => ShowTypeColumn = !ShowTypeColumn;
 
     // **Two questions, both of which have to say yes.** The width rule was here
     // first and stays: a column that no longer fits is dropped whatever the
     // chooser says, because a chosen column crushing the name is worse than an
-    // absent one. The choice is ANDed on top rather than replacing it, and the
-    // settings are phrased so that an untouched installation reads exactly as
-    // it did before there was a chooser.
-    public bool ShowSize =>
-        !Settings.AppSettings.Current.Views.Details.HideSize
-        && ViewportWidth >= 340 * TextScale;
+    // absent one. The choice is ANDed on top rather than replacing it.
+    public bool ShowSize => !HideSizeColumn && ViewportWidth >= 340 * TextScale;
 
-    public bool ShowModified =>
-        !Settings.AppSettings.Current.Views.Details.HideModified
-        && ViewportWidth >= 520 * TextScale;
+    public bool ShowModified => !HideModifiedColumn && ViewportWidth >= 520 * TextScale;
 
     /// <summary>
     /// The type column, off until it is asked for.
@@ -997,9 +1011,7 @@ public sealed partial class PaneViewModel : ObservableObject, IDisposable
     /// name — the only column that stretches. Below this width the name is
     /// already trimming and there is nothing left to give.
     /// </summary>
-    public bool ShowType =>
-        Settings.AppSettings.Current.Views.Details.ShowType
-        && ViewportWidth >= 620 * TextScale;
+    public bool ShowType => ShowTypeColumn && ViewportWidth >= 620 * TextScale;
     public bool ShowPermissions => ViewportWidth >= 680 * TextScale;
     public bool ShowMetadata =>
         ViewportWidth >= 840 * TextScale && !IsRecentListing && !IsTrashListing;
@@ -1045,6 +1057,9 @@ public sealed partial class PaneViewModel : ObservableObject, IDisposable
         OnPropertyChanged(nameof(ShowSize));
         OnPropertyChanged(nameof(ShowModified));
         OnPropertyChanged(nameof(ShowType));
+        OnPropertyChanged(nameof(IsSizeColumnShown));
+        OnPropertyChanged(nameof(IsModifiedColumnShown));
+        OnPropertyChanged(nameof(IsTypeColumnShown));
         OnPropertyChanged(nameof(ShowPermissions));
         OnPropertyChanged(nameof(ShowMetadata));
         OnPropertyChanged(nameof(ShowParentPath));
@@ -1934,6 +1949,9 @@ public sealed partial class PaneViewModel : ObservableObject, IDisposable
             ShowHidden = tab.ShowHidden;
             View = tab.View;
             GroupBy = tab.GroupBy;
+            HideSizeColumn = tab.HideSize;
+            HideModifiedColumn = tab.HideModified;
+            ShowTypeColumn = tab.ShowType;
 
             // Guarded: a session written before these existed deserialises as
             // 0, which would restore an invisible pane.
@@ -1964,11 +1982,18 @@ public sealed partial class PaneViewModel : ObservableObject, IDisposable
             try { FontScale = font; IconScale = icon; }
             finally { _swappingScales = false; }
 
+            // **Absent means null here, not empty.** The `= []` on TabState is
+            // decorative for the same reason the scale defaults above are, so a
+            // session without these keys — hand-edited, or from a build that
+            // kept no history — crashed startup in this loop. A session file
+            // must never prevent startup; SessionState says so on itself.
             _back.Clear();
-            foreach (var p in tab.BackStack) _back.Push(p);
+            if (!ReferenceEquals(tab.BackStack, null))
+                foreach (var p in tab.BackStack) _back.Push(p);
 
             _forward.Clear();
-            foreach (var p in tab.ForwardStack) _forward.Push(p);
+            if (!ReferenceEquals(tab.ForwardStack, null))
+                foreach (var p in tab.ForwardStack) _forward.Push(p);
         }
         finally
         {
@@ -1999,6 +2024,9 @@ public sealed partial class PaneViewModel : ObservableObject, IDisposable
         ShowHidden = ShowHidden,
         View = View,
         GroupBy = GroupBy,
+        HideSize = HideSizeColumn,
+        HideModified = HideModifiedColumn,
+        ShowType = ShowTypeColumn,
         // **All three read from `_scales`, including details.** The live
         // `FontScale`/`IconScale` hold whichever layout is ON SCREEN, so writing
         // them into the details slot would have saved the grid's size as the

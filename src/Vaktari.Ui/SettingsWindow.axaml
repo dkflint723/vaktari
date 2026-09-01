@@ -862,7 +862,7 @@
                came true, was rejected here: the bindings live in MainWindow and
                need free keys chosen for each, and until that happens this page
                would still be the thing telling the lie. -->
-          <TextBlock Text="Hiding an entry takes it off the menu without removing the command — but for most of these the menu is the only route. Ctrl+D still adds the current folder to places while Add to places is hidden, and the list view's column headers still sort by name, size or modified while Arrange is. Copy as path still works on ctrl+shift+c. Nothing else here has a shortcut."
+          <TextBlock Text="Hiding an entry takes it off the menu without removing the command — but for most of these the menu is the only route. Ctrl+D still adds the current folder to places while Add to places is hidden, and the list view's column headers still sort by name, type, size or modified while Arrange is. Copy as path still works on ctrl+shift+c. Nothing else here has a shortcut."
                      FontSize="{DynamicResource FontSizeTiny}"
                      Foreground="{DynamicResource ViewDimText}"
                      TextWrapping="Wrap"/>

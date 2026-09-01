@@ -1139,68 +1139,6 @@ public sealed partial class ShellViewModel : ObservableObject
     public bool ShowMoveToInMenu => Menu.ShowMoveTo && ActiveTab?.CanActOnSelection == true;
     public bool ShowSortByInMenu => Menu.ShowSortBy;
 
-    // ---- which columns the details view shows -----------------------------
-    //
-    // **On the shell rather than the pane, because the choice is global.** The
-    // menu's own DataContext is the pane group, so these bind the way the other
-    // application-wide preferences in this menu do — out through the Window —
-    // and one tick answers for every tab and both sides of a split.
-    //
-    // The ticks read the settings directly instead of caching a copy: there is
-    // exactly one source of truth, and a cached bool is how a menu ends up
-    // disagreeing with the thing it describes.
-
-    private static Vaktari.Core.Settings.DetailsViewSettings Columns
-        => Settings.AppSettings.Current.Views.Details;
-
-    public bool IsSizeColumnShown => !Columns.HideSize;
-    public bool IsModifiedColumnShown => !Columns.HideModified;
-    public bool IsTypeColumnShown => Columns.ShowType;
-
-    [RelayCommand]
-    private void ToggleSizeColumn()
-        => SetColumns(c => c with { HideSize = !c.HideSize });
-
-    [RelayCommand]
-    private void ToggleModifiedColumn()
-        => SetColumns(c => c with { HideModified = !c.HideModified });
-
-    [RelayCommand]
-    private void ToggleTypeColumn()
-        => SetColumns(c => c with { ShowType = !c.ShowType });
-
-    private void SetColumns(Func<Vaktari.Core.Settings.DetailsViewSettings,
-                                 Vaktari.Core.Settings.DetailsViewSettings> change)
-    {
-        Settings.AppSettings.Update(state => state with
-        {
-            Views = state.Views with { Details = change(state.Views.Details) },
-        });
-
-        RefreshColumns();
-    }
-
-    /// <summary>
-    /// Tells every pane its columns changed.
-    ///
-    /// The visibility properties are computed from a static, so nothing raises
-    /// them on their own — the same fan-out by hand that the sort glyphs and
-    /// group ticks already need, and for the same reason.
-    /// </summary>
-    public void RefreshColumns()
-    {
-        OnPropertyChanged(nameof(IsSizeColumnShown));
-        OnPropertyChanged(nameof(IsModifiedColumnShown));
-        OnPropertyChanged(nameof(IsTypeColumnShown));
-
-        foreach (var group in new[] { Left, Right })
-        {
-            if (group is null) continue;
-
-            foreach (var tab in group.Tabs) tab.RefreshColumns();
-        }
-    }
-
     public bool ShowDuplicateInMenu => Menu.ShowDuplicate && ActiveTab?.CanActOnSelection == true;
     /// <summary>
     /// Only for a FOLDER. OpenInNewTab opens a directory and quietly does
@@ -1321,9 +1259,6 @@ public sealed partial class ShellViewModel : ObservableObject
         OnPropertyChanged(nameof(CanShowProperties));
         OnPropertyChanged(nameof(ShowMoveToInMenu));
         OnPropertyChanged(nameof(ShowSortByInMenu));
-
-        // The columns are settings too, and the dialog can move them.
-        RefreshColumns();
         OnPropertyChanged(nameof(ShowDuplicateInMenu));
         OnPropertyChanged(nameof(ShowOpenInNewTabInMenu));
         OnPropertyChanged(nameof(ShowAddToPlacesInMenu));
@@ -2159,6 +2094,12 @@ public sealed partial class ShellViewModel : ObservableObject
             case nameof(PaneViewModel.Sort):
             case nameof(PaneViewModel.SortDescending):
             case nameof(PaneViewModel.ShowHidden):
+            // The column choice is per tab and lives in the session. A property
+            // that ToTabState writes but this switch does not list only
+            // persists when something else happens to change first.
+            case nameof(PaneViewModel.HideSizeColumn):
+            case nameof(PaneViewModel.HideModifiedColumn):
+            case nameof(PaneViewModel.ShowTypeColumn):
                 MarkDirty();
                 break;
 

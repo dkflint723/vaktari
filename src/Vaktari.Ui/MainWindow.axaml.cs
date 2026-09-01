@@ -193,11 +193,6 @@ public partial class MainWindow : Window
 
         AppSettings.Apply(_settings);
 
-        // How a preference toggled outside the settings dialog gets written
-        // down. The column chooser lives in the listing menu and has no dialog
-        // to close, and a column choice that forgets itself is not a choice.
-        AppSettings.Persist = _settingsStore.Save;
-
         // **After Apply, and that ordering is the whole of it.** This was
         // written thirty lines above, where AppSettings.Current is still the
         // default record and the chosen folder is therefore always empty — so

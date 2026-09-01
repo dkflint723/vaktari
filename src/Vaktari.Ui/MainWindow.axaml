@@ -1571,11 +1571,12 @@
                      reaches for it, and because the listing menu does not need
                      another row to reach a thing you can already see.
 
-                     The commands are on the shell, not the pane: the choice is
-                     one preference for the whole application, so it binds out
-                     through the Window the way the other application-wide rows
-                     in this file do. OneWay IsChecked plus a Command, never a
-                     TwoWay binding — the same shape as every other tick here.
+                     The choice belongs to THIS pane, the way its sort and
+                     grouping do: a reference listing beside a working one wants
+                     different columns, and ticking one on the left must not
+                     move the right. So it binds straight to the pane under it.
+                     OneWay IsChecked plus a Command, never a TwoWay binding —
+                     the same shape as every other tick here.
 
                      Name has no toggle. Explorer greys it out for the same
                      reason: a listing of sizes with no names is not a listing
@@ -1587,16 +1588,16 @@
                     <MenuItem Header="Name" ToggleType="CheckBox" IsChecked="True" IsEnabled="False"/>
                     <MenuItem Header="Type"
                               ToggleType="CheckBox"
-                              IsChecked="{Binding $parent[Window].((vm:ShellViewModel)DataContext).IsTypeColumnShown, Mode=OneWay}"
-                              Command="{Binding $parent[Window].((vm:ShellViewModel)DataContext).ToggleTypeColumnCommand}"/>
+                              IsChecked="{Binding IsTypeColumnShown, Mode=OneWay}"
+                              Command="{Binding ToggleTypeColumnCommand}"/>
                     <MenuItem Header="Size"
                               ToggleType="CheckBox"
-                              IsChecked="{Binding $parent[Window].((vm:ShellViewModel)DataContext).IsSizeColumnShown, Mode=OneWay}"
-                              Command="{Binding $parent[Window].((vm:ShellViewModel)DataContext).ToggleSizeColumnCommand}"/>
+                              IsChecked="{Binding IsSizeColumnShown, Mode=OneWay}"
+                              Command="{Binding ToggleSizeColumnCommand}"/>
                     <MenuItem Header="Modified"
                               ToggleType="CheckBox"
-                              IsChecked="{Binding $parent[Window].((vm:ShellViewModel)DataContext).IsModifiedColumnShown, Mode=OneWay}"
-                              Command="{Binding $parent[Window].((vm:ShellViewModel)DataContext).ToggleModifiedColumnCommand}"/>
+                              IsChecked="{Binding IsModifiedColumnShown, Mode=OneWay}"
+                              Command="{Binding ToggleModifiedColumnCommand}"/>
                     <Separator/>
                     <!-- Says the other half out loud. A ticked column that is
                          not on screen looks like a bug, and this is the one

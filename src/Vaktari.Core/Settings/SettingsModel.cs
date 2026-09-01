@@ -209,28 +209,9 @@ public sealed record DetailsViewSettings
     /// <summary>AgeConverters renders relative dates today.</summary>
     public DateStyle DateStyle { get; init; } = DateStyle.Relative;
 
-    // **All three are phrased so that `false` is what the application did
-    // before they existed**, which is the only phrasing that survives an
-    // upgrade: a key absent from settings.json arrives as `default(T)` and not
-    // as the declared default, as AppSettings.Apply documents and instruments.
-    // A `HideSize = false` default is therefore true of every settings file
-    // ever written, rather than decorative.
-    //
-    // They gate the column ON TOP OF the width rules that were already there —
-    // a column still drops out of a pane too narrow to hold it, whatever the
-    // choice says, because a chosen column overlapping the name is worse than
-    // an absent one.
-
-    /// <summary>Size is shown unless this says otherwise.</summary>
-    public bool HideSize { get; init; }
-
-    /// <summary>Modified is shown unless this says otherwise.</summary>
-    public bool HideModified { get; init; }
-
-    /// <summary>Type is the one that has to be asked for: there was no such
-    /// column before, so showing it by default would move everyone's
-    /// columns.</summary>
-    public bool ShowType { get; init; }
+    // Column visibility is NOT here. It lives on TabState: a reference listing
+    // beside a working one wants different columns, and a choice made on one
+    // side of a split must not move the other.
 }
 
 /// <summary>
