@@ -482,8 +482,15 @@ public sealed class WindowsFileOperations : IFileOperations
             {
                 // Enumerating first means the progress bar is honest from the
                 // start rather than discovering the total as it goes.
-                var plan = BuildPlan(sources, destination, handle.Token);
+                var unreadable = new List<(string Path, Exception Error)>();
+                var plan = BuildPlan(sources, destination, handle.Token, unreadable);
+
                 handle.Begin(plan.Count, plan.Sum(p => p.Length));
+
+                // Reported before anything is copied: these are folders the
+                // plan could not see into, so nothing beneath them will be
+                // attempted and the person should know which.
+                foreach (var (path, error) in unreadable) handle.ItemFailed(path, error);
 
                 // A folder resolved with KeepBoth lands under a name the plan
                 // did not know about, and every item beneath it was planned
@@ -782,8 +789,22 @@ public sealed class WindowsFileOperations : IFileOperations
     /// source cleanup walks the same order backwards to empty a tree from the
     /// bottom up.
     /// </summary>
-    private static IEnumerable<(string Path, ItemKind Kind, long Length)> Descend(
-        string root, CancellationToken ct)
+    /// <summary>
+    /// Walks a tree for the plan, recording what it could not read.
+    ///
+    /// **An unreadable folder used to end the whole operation**, thrown from
+    /// during planning before a single file had been copied — one protected
+    /// directory anywhere under the selection and nothing happened at all. The
+    /// Linux twin had the opposite fault: it swallowed and carried on, so the
+    /// plan was silently short and the copy reported success having quietly
+    /// left files behind. Neither told anyone.
+    ///
+    /// Now it skips and REPORTS, which is the only honest answer: the rest of
+    /// the tree really can be copied, and the person has to learn which part
+    /// could not be.
+    /// </summary>
+    internal static IEnumerable<(string Path, ItemKind Kind, long Length)> Descend(
+        string root, CancellationToken ct, List<(string Path, Exception Error)>? unreadable = null)
     {
         var pending = new Stack<string>();
         pending.Push(root);
@@ -792,7 +813,21 @@ public sealed class WindowsFileOperations : IFileOperations
         {
             ct.ThrowIfCancellationRequested();
 
-            foreach (var entry in new DirectoryInfo(pending.Pop()).EnumerateFileSystemInfos())
+            var folder = pending.Pop();
+
+            IEnumerable<FileSystemInfo> children;
+
+            try
+            {
+                children = new DirectoryInfo(folder).EnumerateFileSystemInfos();
+            }
+            catch (Exception e) when (e is IOException or UnauthorizedAccessException)
+            {
+                unreadable?.Add((folder, e));
+                continue;
+            }
+
+            foreach (var entry in children)
             {
                 if ((entry.Attributes & FileAttributes.ReparsePoint) != 0)
                 {
@@ -812,7 +847,8 @@ public sealed class WindowsFileOperations : IFileOperations
     }
 
     private static List<PlannedItem> BuildPlan(
-        IReadOnlyList<string> sources, string destination, CancellationToken ct)
+        IReadOnlyList<string> sources, string destination, CancellationToken ct,
+        List<(string Path, Exception Error)>? unreadable = null)
     {
         var plan = new List<PlannedItem>();
 
@@ -833,7 +869,7 @@ public sealed class WindowsFileOperations : IFileOperations
                 var root = Path.Combine(destination, name);
                 plan.Add(new PlannedItem(full, root, 0, ItemKind.Directory, IsRoot: true));
 
-                foreach (var (path, kind, length) in Descend(full, ct))
+                foreach (var (path, kind, length) in Descend(full, ct, unreadable))
                     plan.Add(new PlannedItem(
                         path, Path.Combine(root, Path.GetRelativePath(full, path)),
                         length, kind, IsRoot: false));
@@ -920,7 +956,7 @@ public sealed class WindowsFileOperations : IFileOperations
         FileMetadata.Carry(source, target);
     }
 
-    private enum ItemKind { File, Directory, Link }
+    internal enum ItemKind { File, Directory, Link }
 
     /// <summary>
     /// <paramref name="IsRoot"/> marks one of the paths the user actually

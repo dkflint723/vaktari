@@ -158,4 +158,53 @@ public sealed class PartialFailureTests
             tree.Exists("dst", "big.bin"),
             "a partly-written file was left where a complete one should be");
     }
+
+    /// <summary>
+    /// **An unreadable folder used to end the whole operation**, thrown from
+    /// during planning before a single file had been copied — one protected
+    /// directory anywhere under the selection and nothing happened at all. The
+    /// Linux twin had the opposite fault and swallowed it, so the plan was
+    /// short and the copy reported success having quietly left files behind.
+    ///
+    /// Tested against the walk directly, with a root that cannot be enumerated
+    /// — denying read access on Windows needs an ACL, and a test that rewrites
+    /// permissions on the machine running it is not worth the coverage.
+    /// </summary>
+    [WindowsFact]
+    public void A_folder_that_cannot_be_read_is_reported_rather_than_thrown_from()
+    {
+        using var tree = new TempTree();
+
+        var missing = tree.At("gone");
+        var unreadable = new List<(string Path, Exception Error)>();
+
+        // Enumerating it throws; the walk has to survive that and say so.
+        var found = WindowsFileOperations
+            .Descend(missing, CancellationToken.None, unreadable)
+            .ToList();
+
+        Assert.Empty(found);
+
+        var problem = Assert.Single(unreadable);
+        Assert.Equal(missing, problem.Path);
+    }
+
+    /// <summary>The ordinary case still walks everything, and reports nothing
+    /// — the list is not a dumping ground for folders that were fine.</summary>
+    [WindowsFact]
+    public void A_readable_tree_reports_nothing()
+    {
+        using var tree = new TempTree();
+
+        tree.Write("src/a/deep.txt", "x");
+
+        var unreadable = new List<(string Path, Exception Error)>();
+
+        var found = WindowsFileOperations
+            .Descend(tree.At("src"), CancellationToken.None, unreadable)
+            .ToList();
+
+        Assert.Contains(found, f => f.Path.EndsWith("deep.txt"));
+        Assert.Empty(unreadable);
+    }
 }

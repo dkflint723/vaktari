@@ -160,8 +160,14 @@ public sealed class LinuxFileOperations : IFileOperations
             {
                 // Enumerating first means the progress bar is honest from the
                 // start rather than discovering the total as it goes.
-                var plan = BuildPlan(sources, destination, handle.Token);
+                var unreadable = new List<(string Path, Exception Error)>();
+                var plan = BuildPlan(sources, destination, handle.Token, unreadable);
+
                 handle.Begin(plan.Count, plan.Sum(p => p.Length));
+
+                // Reported before anything is copied: nothing beneath these
+                // will be attempted, and the person should know which.
+                foreach (var (path, error) in unreadable) handle.ItemFailed(path, error);
 
                 // Where each named item actually landed, and where a renamed
                 // folder sends its contents. Both exist because a target is a
@@ -321,7 +327,8 @@ public sealed class LinuxFileOperations : IFileOperations
     }
 
     private static List<PlannedItem> BuildPlan(
-        IReadOnlyList<string> sources, string destination, CancellationToken ct)
+        IReadOnlyList<string> sources, string destination, CancellationToken ct,
+        List<(string Path, Exception Error)>? unreadable = null)
     {
         var plan = new List<PlannedItem>();
 
@@ -348,7 +355,7 @@ public sealed class LinuxFileOperations : IFileOperations
                 var root = Path.Combine(destination, name);
                 plan.Add(new PlannedItem(full, root, 0, IsDirectory: true, IsRoot: true));
 
-                foreach (var (path, isDirectory, isLink, length) in Descend(full, ct))
+                foreach (var (path, isDirectory, isLink, length) in Descend(full, ct, unreadable))
                     plan.Add(new PlannedItem(
                         path, Path.Combine(root, Path.GetRelativePath(full, path)),
                         length, isDirectory, IsRoot: false, IsLink: isLink));
@@ -408,8 +415,17 @@ public sealed class LinuxFileOperations : IFileOperations
     /// round a loop. WindowsFileOperations.Descend exists for the same reason
     /// and this is its twin.
     /// </summary>
+    /// <summary>
+    /// Walks a tree for the plan, recording what it could not read.
+    ///
+    /// **It used to swallow and carry on**, so a protected folder made the plan
+    /// silently short and the copy reported success having quietly left files
+    /// behind. The Windows twin had the opposite fault and threw, ending the
+    /// whole operation before anything was copied. Skip and REPORT is the only
+    /// honest answer to either.
+    /// </summary>
     private static IEnumerable<(string Path, bool IsDirectory, bool IsLink, long Length)> Descend(
-        string root, CancellationToken ct)
+        string root, CancellationToken ct, List<(string Path, Exception Error)>? unreadable = null)
     {
         var pending = new Stack<string>();
         pending.Push(root);
@@ -424,6 +440,7 @@ public sealed class LinuxFileOperations : IFileOperations
             try { children = new DirectoryInfo(folder).EnumerateFileSystemInfos(); }
             catch (Exception e) when (e is IOException or UnauthorizedAccessException)
             {
+                unreadable?.Add((folder, e));
                 continue;
             }
 
