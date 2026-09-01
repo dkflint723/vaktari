@@ -188,19 +188,22 @@ public sealed class ExplorerConventionTests
     [InlineData("Ctrl+Shift+Z", "Redo")]
     public void The_expected_shortcut_is_bound(string gesture, string command)
     {
-        var markup = File.ReadAllText(MarkupPath("MainWindow.axaml"));
+        // Either binding site counts, and the command has to match at whichever
+        // one implements it — a gesture pointing at the wrong command is
+        // missing rather than present.
+        //
+        // **Undo and redo live in the second one, and had to.** As markup
+        // KeyBindings they were claimed ahead of the focused control, so
+        // pressing Ctrl+Z to take back a mistyped character in the address bar
+        // reversed the last copy, move or delete on disk instead.
+        var site = KeyBindingSites.Markup().TryGetValue(gesture, out var markup)
+            ? markup
+            : KeyBindingSites.CodeBehind().GetValueOrDefault(gesture);
 
-        Assert.Contains($"Gesture=\"{gesture}\"", markup, StringComparison.Ordinal);
+        Assert.True(site is not null, $"{gesture} is bound nowhere — neither a Window "
+                                      + "KeyBinding nor a case in OnWindowKeyDown.");
 
-        // The binding and the gesture on one line, so a gesture pointing at the
-        // wrong command counts as missing rather than as present.
-        var line = markup
-            .Split('\n')
-            .FirstOrDefault(l => l.Contains($"Gesture=\"{gesture}\"", StringComparison.Ordinal)
-                                 && l.Contains("KeyBinding", StringComparison.Ordinal));
-
-        Assert.NotNull(line);
-        Assert.Contains(command, line!, StringComparison.Ordinal);
+        Assert.Contains(command, site!, StringComparison.Ordinal);
     }
 
     private static string MarkupPath(string name)

@@ -239,15 +239,25 @@ public class MarkupRulesTests
         // through the ListBox's own bulk selection path, because filling the
         // bound collection row by row fires a change per file and each one
         // refreshes the details panel.
-        var inCodeBehind = new[]
+        // These run something other than a pane command — the listing's own
+        // bulk selection path, a confirm prompt, a preview toggle — so they
+        // have no `pane.XxxCommand.Execute` line for the reader below to find.
+        var shapedDifferently = new[]
         {
             "Enter", "Delete", "Alt+Enter", "Shift+Delete", "Space", "Ctrl+A", "Ctrl+Shift+A",
         };
 
+        // **The clipboard rows advertise Ctrl+X, Ctrl+C and Ctrl+V and no
+        // KeyBinding implements them any more.** That is deliberate: as markup
+        // bindings they were claimed before the focused text box saw them, so
+        // the address bar could not copy or paste. Read out of the switch that
+        // does implement them rather than added to the list above, so deleting
+        // the case still fails this test.
         var bound = doc.Descendants(Avalonia + "KeyBinding")
             .Select(k => (string?)k.Attribute("Gesture"))
             .OfType<string>()
-            .Concat(inCodeBehind)
+            .Concat(shapedDifferently)
+            .Concat(KeyBindingSites.CodeBehind().Keys)
             .ToHashSet(StringComparer.OrdinalIgnoreCase);
 
         var lying = doc.Descendants(Avalonia + "MenuItem")

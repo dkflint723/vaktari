@@ -3500,10 +3500,14 @@ public partial class MainWindow : Window
 
                 break;
 
-            // Deliberately duplicated from Window.KeyBindings. This handler is
-            // known to run — it is where the crash surfaced — so routing the
-            // clipboard through it too means copy cannot fail silently just
-            // because a KeyBinding didn't resolve.
+            // **The only place the clipboard is bound.** These three were also
+            // Window.KeyBindings, and a KeyBinding is dispatched ahead of this
+            // handler — so the text-box guard above could never save them and
+            // the address bar could not copy or paste. Ctrl+V pasted FILES into
+            // the folder behind the box; Ctrl+C replaced the system clipboard
+            // with the listing's selection, destroying the path you were about
+            // to paste; Ctrl+X armed a move of it. Handled here, the guard
+            // applies and a focused TextBox keeps its own keys.
             case Key.C when e.KeyModifiers == KeyModifiers.Control:
                 e.Handled = true;
                 pane.CopySelectionToClipboardCommand.Execute(null);
@@ -3517,6 +3521,26 @@ public partial class MainWindow : Window
             case Key.V when e.KeyModifiers == KeyModifiers.Control:
                 e.Handled = true;
                 pane.PasteCommand.Execute(null);
+                break;
+
+            // Undo and redo of FILE operations, and they moved here for a
+            // sharper reason than the clipboard did: as Window.KeyBindings,
+            // pressing Ctrl+Z to take back a mistyped character in the address
+            // bar reversed the last copy, move or delete on disk instead. A
+            // text box gets its own undo stack back, and this one now only
+            // fires when the keyboard is in the listing.
+            //
+            // Shift before the plain one: KeyModifiers is a flags enum and
+            // Ctrl+Shift+Z would otherwise never be reached.
+            case Key.Z when e.KeyModifiers == (KeyModifiers.Control | KeyModifiers.Shift):
+            case Key.Y when e.KeyModifiers == KeyModifiers.Control:
+                e.Handled = true;
+                pane.RedoCommand.Execute(null);
+                break;
+
+            case Key.Z when e.KeyModifiers == KeyModifiers.Control:
+                e.Handled = true;
+                pane.UndoCommand.Execute(null);
                 break;
         }
     }

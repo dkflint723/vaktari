@@ -162,6 +162,44 @@ public static class FocusBehavior
     {
         if (sender is not Control control) return;
         if (GetLostFocusCommand(control) is not { } command) return;
+
+        // **A control's own context menu is not somewhere else.**
+        //
+        // An open flyout takes the focus, so "focus left the box" was true of
+        // the one gesture that most needs the box to stay put: right-clicking
+        // the address bar to reach Cut, Copy and Paste. The path bar's
+        // LostFocus command reverts the edit and hides the box, so the field
+        // collapsed back to breadcrumbs out from under the menu that had just
+        // opened — and whatever had been typed went with it. Right-clicking to
+        // paste a path destroyed the field being pasted into.
+        if (control.ContextFlyout is { IsOpen: true } flyout)
+        {
+            // Asked again when the menu closes. Focus normally returns to the
+            // control, and then there is nothing to do; if it does not, the
+            // control should still lose focus properly rather than be left
+            // open and unfocused with no event coming to close it.
+            void Reconsider(object? _, EventArgs __)
+            {
+                flyout.Closed -= Reconsider;
+
+                // Posted: focus is restored as part of closing, and reading it
+                // in the handler measures the moment before that happens.
+                Dispatcher.UIThread.Post(
+                    () => { if (!control.IsFocused) Run(command); },
+                    DispatcherPriority.Background);
+            }
+
+            flyout.Closed += Reconsider;
+            return;
+        }
+
+        if (control.ContextMenu is { IsOpen: true }) return;
+
+        Run(command);
+    }
+
+    private static void Run(ICommand command)
+    {
         if (command.CanExecute(null)) command.Execute(null);
     }
 }

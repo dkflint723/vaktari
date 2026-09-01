@@ -2151,14 +2151,27 @@
          dispatched by the window ahead of that handler, so Space toggled the
          preview while somebody was typing a filename. -->
     <KeyBinding Gesture="F4"             Command="{Binding ActiveTab.OpenTerminalHereCommand}"/>
-    <KeyBinding Gesture="Ctrl+Z"         Command="{Binding ActiveTab.UndoCommand}"/>
-    <!-- Both spellings of redo: Ctrl+Y is Windows', Ctrl+Shift+Z is what
-         everything with a text cursor answers. -->
-    <KeyBinding Gesture="Ctrl+Y"         Command="{Binding ActiveTab.RedoCommand}"/>
-    <KeyBinding Gesture="Ctrl+Shift+Z"   Command="{Binding ActiveTab.RedoCommand}"/>
-    <KeyBinding Gesture="Ctrl+C"         Command="{Binding ActiveTab.CopySelectionToClipboardCommand}"/>
-    <KeyBinding Gesture="Ctrl+X"         Command="{Binding ActiveTab.CutSelectionToClipboardCommand}"/>
-    <KeyBinding Gesture="Ctrl+V"         Command="{Binding ActiveTab.PasteCommand}"/>
+    <!-- **The six gestures a text cursor owns are NOT here.** They are handled
+         in OnWindowKeyDown, for exactly the reason Space is, and the fault was
+         the same one this file already warns about four lines up.
+
+         Ctrl+C, Ctrl+X and Ctrl+V lived here, so the address bar could not copy
+         or paste: the window claimed the keystroke before the focused TextBox
+         ever saw it. Ctrl+V pasted FILES into the folder behind the box, Ctrl+X
+         armed a move of whatever was selected in the listing, and Ctrl+C
+         replaced the system clipboard with that selection — so copying a path
+         out of the address bar destroyed the thing you were copying it into.
+
+         Ctrl+Z and both redo spellings went the same way, and worse: undo while
+         mistyping a path reversed the last copy, move or delete ON DISK. The
+         comment that used to sit here called Ctrl+Shift+Z "what everything with
+         a text cursor answers", which is precisely why binding it window-wide
+         stopped the one text cursor that wanted it.
+
+         Ctrl+A is deliberately absent for the same reason and always was.
+         Shift+Insert, Ctrl+Insert and Shift+Delete are the same commands under
+         their older names; those were never bound here, which is why they kept
+         working in the address bar the whole time. -->
     <KeyBinding Gesture="Ctrl+I"         Command="{Binding ActiveTab.ToggleFilterCommand}"/>
     <KeyBinding Gesture="Ctrl+Shift+N"   Command="{Binding ActiveTab.NewFolderCommand}"/>
     <KeyBinding Gesture="Ctrl+OemPlus"   Command="{Binding ZoomInCommand}"/>
