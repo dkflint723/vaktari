@@ -163,8 +163,6 @@ public sealed class LinuxFileOperations : IFileOperations
                 var plan = BuildPlan(sources, destination, handle.Token);
                 handle.Begin(plan.Count, plan.Sum(p => p.Length));
 
-                var created = new List<string>();
-
                 // Where each named item actually landed, and where a renamed
                 // folder sends its contents. Both exist because a target is a
                 // guess until the conflict at it has been settled.
@@ -248,8 +246,6 @@ public sealed class LinuxFileOperations : IFileOperations
                         await CopyFileAsync(item.Source, target, handle).ConfigureAwait(false);
                         if (move) File.Delete(item.Source);
                     }
-
-                    created.Add(target);
 
                     // Only the items the user named, and the place they really
                     // went — not destination + name, which is true only when

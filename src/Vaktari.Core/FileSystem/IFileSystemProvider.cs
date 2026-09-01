@@ -16,7 +16,12 @@ public readonly record struct FileSystemChange(
 public sealed record ListingOptions
 {
     public bool IncludeHidden { get; init; }
-    public bool FollowSymlinks { get; init; }
+
+    // FollowSymlinks was declared here and was the only line in the repository
+    // that mentioned it: never set, never read, and no provider consulted it.
+    // Removed rather than implemented — a listing that followed links would
+    // show a folder's contents twice over, and the recursive walks that DO care
+    // now share SafeWalk, which never follows one.
 
     /// <summary>
     /// How many entries to accumulate before yielding. Small enough that the

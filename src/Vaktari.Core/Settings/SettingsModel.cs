@@ -18,8 +18,6 @@ public enum DateStyle { Relative, Absolute }
 /// <summary>What the size column means for a folder.</summary>
 public enum FolderSizeMode { ItemCount, ContentSize, None }
 
-public enum ExecutableAction { Ask, OpenInApplication, RunScript }
-
 public enum TrashLimitAction { Warn, DeleteOldest, DeleteLargest }
 
 /// <summary>
@@ -146,7 +144,14 @@ public sealed record GeneralSettings
 
     public bool ConfirmClosingMultipleTabs { get; init; }
 
-    public ExecutableAction OnOpeningExecutable { get; init; } = ExecutableAction.OpenInApplication;
+    // OnOpeningExecutable lived here: declared, defaulted, serialised into
+    // settings.json and read by nothing, with no control in the settings
+    // dialog — so nobody could ever have set it, and its default was the
+    // behaviour anyway. This is Nautilus's "Executable Text Files" preference,
+    // and the reason it was inert is that the interesting values need a
+    // prompt: Ask has to ask, and RunScript has to decide what "run" means for
+    // a file the user may not have read. That is a feature with a dialog, not
+    // a field — so the field goes rather than sit here looking finished.
 
     // ---- status bar -------------------------------------------------------
 

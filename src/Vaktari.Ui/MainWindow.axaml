@@ -1322,7 +1322,17 @@
                                           IsChecked="{Binding ActiveTab.SortDescending, Mode=OneWay}"
                                           Command="{Binding ActiveTab.ToggleSortDirectionCommand}"/>
                               </MenuItem>
-                <MenuItem Header="Group by">
+                <!-- **Only in Details, because that is the only view that can
+                     draw the headings.** The RowGroup header is part of the
+                     details row template; grid and compact lay out fixed-size
+                     cells in a wrap panel, where a heading would sit inside a
+                     cell rather than break the run. Grouping there still
+                     reordered the tiles, silently and with nothing to say what
+                     the runs were — the menu looked like it had done nothing.
+                     Headings for the other two layouts are a real feature and a
+                     different panel, not a gate. -->
+                <MenuItem Header="Group by"
+                                      IsVisible="{Binding ActiveTab.IsDetailsView}">
                                 <MenuItem Header="None" ToggleType="Radio"
                                           IsChecked="{Binding ActiveTab.IsUngrouped, Mode=OneWay}"
                                           Command="{Binding ActiveTab.GroupByNoneCommand}"/>

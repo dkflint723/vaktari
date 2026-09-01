@@ -1336,10 +1336,22 @@ public sealed partial class PaneViewModel : ObservableObject, IDisposable
         var restored = 0;
         var failed = 0;
 
-        foreach (var item in Trash.List())
-        {
-            if (!wanted.Contains(item.OriginalPath)) continue;
+        // **One entry per selected row, not every entry that shares its path.**
+        // The rows carry original paths, and two items in the bin can
+        // legitimately have the same one — delete a file, restore it, delete it
+        // again, which is exactly when somebody reaches for restore. Matching on
+        // the path alone put BOTH back from one selected row, the second landing
+        // beside the first under a deduplicated name.
+        //
+        // The newest wins, which is the row a person means when they say "put
+        // that back".
+        var chosen = Trash.List()
+            .Where(item => wanted.Contains(item.OriginalPath))
+            .GroupBy(item => item.OriginalPath, StringComparer.Ordinal)
+            .Select(group => group.OrderByDescending(item => item.Deleted).First());
 
+        foreach (var item in chosen)
+        {
             try
             {
                 Trash.Restore(item.TrashName);
