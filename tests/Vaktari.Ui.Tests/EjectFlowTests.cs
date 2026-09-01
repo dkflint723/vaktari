@@ -124,20 +124,20 @@ public sealed class EjectFlowTests
     /// a headless test nothing pumps that queue on its own — the established
     /// idiom in this project's UI tests is to run the jobs by hand.
     /// </summary>
+    /// <summary>
+    /// Builds the sidebar and lets the dispatcher settle.
+    ///
+    /// **Awaiting the reload is now enough**, because a request that lands
+    /// while one is in flight is folded into it rather than dropped. The
+    /// earlier version of this helper spun on RunJobs to paper over that, and
+    /// the spin was fast enough to finish before the rebuild did — which is why
+    /// it passed here and failed on CI.
+    /// </summary>
     private static async Task LoadAsync(ShellViewModel shell)
     {
         await shell.Sidebar.ReloadAsync();
 
-        // **Pumped until the rows exist, not once.** The rebuild hands its
-        // results back through Dispatcher.InvokeAsync after a hop through the
-        // thread pool, so a single RunJobs can run before the results have been
-        // posted — which showed up as this class passing on Windows and failing
-        // one test on Linux, purely on scheduling.
-        for (var attempt = 0; attempt < 50 && shell.Sidebar.Groups.Count == 0; attempt++)
-        {
-            Avalonia.Threading.Dispatcher.UIThread.RunJobs();
-            await Task.Yield();
-        }
+        Avalonia.Threading.Dispatcher.UIThread.RunJobs();
     }
 
     private static PlaceItemViewModel Row(ShellViewModel shell)

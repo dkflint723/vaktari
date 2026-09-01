@@ -241,41 +241,60 @@ public sealed partial class SidebarViewModel : ObservableObject
         await ReloadAsync().ConfigureAwait(false);
     }
 
-    private bool _reloading;
+    private Task? _reloading;
     private bool _reloadDirty;
 
-    public async Task ReloadAsync()
+    /// <summary>
+    /// Rebuilds the sidebar, coalescing overlapping requests.
+    ///
+    /// **Coalesced, and this is required rather than defensive.** Until devices
+    /// were watched, this ran only at startup and after a pin, so two could
+    /// never overlap. Driven by arrivals and removals they will: a stick with
+    /// four partitions, or an eject, which changes the mount table while the
+    /// rebuild it triggered is still running. Each overlapping rebuild parks a
+    /// thread-pool thread for the whole SMB timeout on a machine with a dead
+    /// mapped drive, so they must not stack.
+    ///
+    /// **A caller who awaits this still gets a finished rebuild.** The first
+    /// version returned immediately when one was already running, which quietly
+    /// broke the promise every existing caller was written against — UnpinAsync
+    /// awaits this and then expects the row to be gone. Instead the request is
+    /// folded into the run in flight, which loops again for it, and the caller
+    /// awaits that whole chain.
+    /// </summary>
+    public Task ReloadAsync()
     {
-        if (_places is not { } places) return;
+        if (_places is not { } places) return Task.CompletedTask;
 
-        // **Coalesced, and this is required rather than defensive.** Until
-        // devices were watched, this ran only at startup and after a pin, so
-        // two could never overlap. Driven by arrivals and removals they will:
-        // one stick with four partitions, or an eject, which changes the mount
-        // table while the rebuild it triggered is still running. Each overlapping
-        // rebuild parks a thread-pool thread for the whole SMB timeout on a
-        // machine with a dead mapped drive, so they must not stack — and the
-        // last one still has to happen, or the sidebar settles on stale rows.
-        if (_reloading)
+        if (_reloading is { } inFlight)
         {
             _reloadDirty = true;
-            return;
+            return inFlight;
         }
 
-        _reloading = true;
+        _reloading = RunReloadsAsync(places);
 
+        return _reloading;
+    }
+
+    private async Task RunReloadsAsync(Vaktari.Core.Places.IPlacesProvider places)
+    {
         try
         {
             do
             {
                 _reloadDirty = false;
-                await ReloadOnceAsync(places).ConfigureAwait(false);
+
+                // Deliberately NOT ConfigureAwait(false): this loop reads and
+                // writes _reloadDirty, and staying on the dispatcher is what
+                // makes those checks single-threaded rather than a race.
+                await ReloadOnceAsync(places);
             }
             while (_reloadDirty);
         }
         finally
         {
-            _reloading = false;
+            _reloading = null;
         }
     }
 
