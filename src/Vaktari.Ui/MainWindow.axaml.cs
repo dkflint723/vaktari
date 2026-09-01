@@ -233,6 +233,7 @@ public partial class MainWindow : Window
         // context menu is entirely a platform fact, and on Linux the answer is
         // that there is no such thing.
         ViewModels.PaneViewModel.ShellMenu = platform.ShellMenu;
+        ViewModels.PaneViewModel.DiskImages = platform.DiskImages;
         _virtualDrop = platform.VirtualFileDrop;
         _shortcuts = platform.Shortcuts;
 

@@ -329,9 +329,20 @@ internal sealed class WindowsEjector : IEjector
     }
 
     private static Native.STORAGE_DEVICE_NUMBER? Identify(string letter)
+        => DeviceNumberOf($@"\\.\{letter}");
+
+    /// <summary>
+    /// Which physical device is behind a device path — "\\.\E:" for a volume,
+    /// "\\.\CDROM0" for the thing a mounted image attaches as.
+    ///
+    /// Shared with the disk-image code, which needs exactly this to turn the
+    /// device a freshly attached ISO reports into the drive letter a person can
+    /// actually open.
+    /// </summary>
+    internal static Native.STORAGE_DEVICE_NUMBER? DeviceNumberOf(string devicePath)
     {
         var handle = Native.CreateFile(
-            $@"\\.\{letter}", 0,
+            devicePath, 0,
             Native.FILE_SHARE_READ | Native.FILE_SHARE_WRITE,
             0, Native.OPEN_EXISTING, 0, 0);
 

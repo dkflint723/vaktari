@@ -160,6 +160,11 @@ public sealed class WindowsPlatform : IPlatform
     /// 7-Zip or Explorer's zip view, which arrive with no location on disk.</summary>
     public IVirtualFileDrop? VirtualFileDrop { get; } = new VirtualFileDrop();
 
+    /// <summary>ISO mounting through the Virtual Disk Service — the same
+    /// machinery behind Explorer's own Mount verb, and measured working without
+    /// administrator rights.</summary>
+    public Vaktari.Core.Places.IDiskImages? DiskImages { get; } = new WindowsDiskImages();
+
     /// <summary>
     /// **Was null on the grounds that the Recycle Bin needs COM, and that COM
     /// under NativeAOT would fail at runtime rather than at compile time.**

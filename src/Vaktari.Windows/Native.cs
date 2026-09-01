@@ -363,6 +363,129 @@ internal static partial class Native
     internal static partial uint CM_Request_Device_Eject(
         uint devInst, out PnpVetoType vetoType, nint vetoName, uint nameLength, uint flags);
 
+    // ---- Mounting a disk image ---------------------------------------------
+
+    /// <summary>
+    /// Which provider handles the image.
+    ///
+    /// **Always named explicitly, never DEVICE_UNKNOWN.** The catch-all was
+    /// measured selecting its provider by FILE EXTENSION rather than content:
+    /// a genuine ISO named .img came back ERROR_VIRTDISK_PROVIDER_NOT_FOUND.
+    /// It only looks like content sniffing when the extension happens to agree.
+    /// </summary>
+    [StructLayout(LayoutKind.Sequential)]
+    internal struct VIRTUAL_STORAGE_TYPE
+    {
+        internal uint DeviceId;
+        internal Guid VendorId;
+    }
+
+    internal const uint VIRTUAL_STORAGE_TYPE_DEVICE_ISO = 1;
+
+    internal static readonly Guid VIRTUAL_STORAGE_TYPE_VENDOR_MICROSOFT =
+        new("EC984AEC-A0F9-47e9-901F-71415A66345B");
+
+    /// <summary>
+    /// The access masks, and they are NOT interchangeable — 0x00080000 is
+    /// GET_INFO, not DETACH. Opening with the wrong one attaches fine and then
+    /// fails the detach with a bare ERROR_ACCESS_DENIED, which reads like a
+    /// permissions problem and is actually a typo. Found by mounting a real
+    /// image and failing to put it away again.
+    ///
+    /// READ is the union ATTACH_RO | DETACH | GET_INFO, so a handle opened to
+    /// mount can also detach.
+    /// </summary>
+    internal const uint VIRTUAL_DISK_ACCESS_ATTACH_RO = 0x00010000;
+    internal const uint VIRTUAL_DISK_ACCESS_DETACH = 0x00040000;
+    internal const uint VIRTUAL_DISK_ACCESS_GET_INFO = 0x00080000;
+    internal const uint VIRTUAL_DISK_ACCESS_READ = 0x000D0000;
+
+    internal const uint OPEN_VIRTUAL_DISK_FLAG_NONE = 0;
+
+    /// <summary>
+    /// **PERMANENT_LIFETIME, deliberately.** Without it the image detaches when
+    /// the handle closes — so a mount would evaporate the moment the call
+    /// returned, or survive only as long as Vaktari did. Explorer's own Mount
+    /// verb leaves an image attached after the window closes, and a file
+    /// manager that silently unmounted someone's ISO on exit would be losing
+    /// their work in progress.
+    /// </summary>
+    internal const uint ATTACH_VIRTUAL_DISK_FLAG_READ_ONLY = 0x00000001;
+
+    /// <summary>
+    /// **0x4, and getting this wrong fails SILENTLY.** 0x10 is an ignored bit,
+    /// so AttachVirtualDisk still returns success — and the attach stays tied to
+    /// the handle, so closing it detaches the image immediately. Measured: with
+    /// 0x1|0x10 the letter exists while the handle is open and is gone the
+    /// instant it closes, which reads as "Windows gave it no drive letter" and
+    /// blames the operating system for a constant.
+    /// </summary>
+    internal const uint ATTACH_VIRTUAL_DISK_FLAG_PERMANENT_LIFETIME = 0x00000004;
+
+    internal const uint GET_STORAGE_DEPENDENCY_FLAG_HOST_VOLUMES = 0x00000001;
+    internal const uint GET_STORAGE_DEPENDENCY_FLAG_DISK_HANDLE = 0x00000002;
+
+    /// <summary>
+    /// STORAGE_DEPENDENCY_INFO with its version-2 entry inline — enough of the
+    /// shape to reach DependentVolumeRelativePath, which is the image file a
+    /// mounted volume came from.
+    ///
+    /// Pointer fields rather than marshalled strings: the struct crosses a
+    /// LibraryImport boundary, so every field must be blittable.
+    /// </summary>
+    [StructLayout(LayoutKind.Sequential)]
+    internal struct STORAGE_DEPENDENCY_INFO_TYPE_2
+    {
+        internal uint DependencyTypeFlags;
+        internal uint ProviderSpecificFlags;
+        internal VIRTUAL_STORAGE_TYPE VirtualStorageType;
+        internal uint AncestorLevel;
+        internal nint DependencyDeviceName;
+        internal nint HostVolumeName;
+        internal nint DependentVolumeName;
+        internal nint DependentVolumeRelativePath;
+    }
+
+    [StructLayout(LayoutKind.Sequential)]
+    internal struct STORAGE_DEPENDENCY_INFO_V2
+    {
+        internal uint Version;
+        internal uint NumberEntries;
+        internal STORAGE_DEPENDENCY_INFO_TYPE_2 FirstEntry;
+    }
+
+    internal const uint STORAGE_DEPENDENCY_INFO_VERSION_2 = 2;
+
+    [LibraryImport("virtdisk.dll", EntryPoint = "GetStorageDependencyInformation")]
+    internal static partial int GetStorageDependencyInformation(
+        nint objectHandle, uint flags, uint infoSize, nint info, out uint sizeUsed);
+
+    internal const uint DETACH_VIRTUAL_DISK_FLAG_NONE = 0;
+
+    internal const int ERROR_FILE_CORRUPT = 1392;
+    internal const int ERROR_PRIVILEGE_NOT_HELD = 1314;
+    internal const int ERROR_NOT_READY = 21;
+    internal const int ERROR_VIRTDISK_PROVIDER_NOT_FOUND = unchecked((int)0xC03A0014);
+
+    [LibraryImport("virtdisk.dll", EntryPoint = "OpenVirtualDisk",
+        StringMarshalling = StringMarshalling.Utf16)]
+    internal static partial int OpenVirtualDisk(
+        in VIRTUAL_STORAGE_TYPE storageType, string path,
+        uint accessMask, uint flags, nint parameters, out nint handle);
+
+    [LibraryImport("virtdisk.dll", EntryPoint = "AttachVirtualDisk")]
+    internal static partial int AttachVirtualDisk(
+        nint handle, nint securityDescriptor, uint flags,
+        uint providerSpecificFlags, nint parameters, nint overlapped);
+
+    [LibraryImport("virtdisk.dll", EntryPoint = "DetachVirtualDisk")]
+    internal static partial int DetachVirtualDisk(
+        nint handle, uint flags, uint providerSpecificFlags);
+
+    [LibraryImport("virtdisk.dll", EntryPoint = "GetVirtualDiskPhysicalPath")]
+    internal static partial int GetVirtualDiskPhysicalPath(
+        nint handle, ref uint pathSizeInBytes, nint path);
+
     // ---- The desktop's UI font ---------------------------------------------
 
     internal const uint SPI_GETICONTITLELOGFONT = 0x001F;

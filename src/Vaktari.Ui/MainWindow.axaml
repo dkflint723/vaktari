@@ -1075,6 +1075,21 @@
               <MenuItem Header="Run as administrator"
                                       Command="{Binding ActiveTab.RunAsAdministratorCommand}"
                                       IsVisible="{Binding ActiveTab.CanRunSelectionAsAdministrator}"/>
+              <!-- **A verb of its own, and Open is left alone.** Explorer
+                   mounts an .iso on double-click; doing the same here would
+                   change what Open means for a file type, silently, for
+                   everyone who had it opening in an archive tool. Mount says
+                   what it does and is one click away.
+
+                   The two entries are mutually exclusive — an image is either
+                   attached or it is not — so this is one row that changes its
+                   word, not two rows to choose between. -->
+              <MenuItem Header="Mount"
+                                      Command="{Binding ActiveTab.MountImageCommand}"
+                                      IsVisible="{Binding ActiveTab.CanMountSelection}"/>
+              <MenuItem Header="Unmount"
+                                      Command="{Binding ActiveTab.UnmountImageCommand}"
+                                      IsVisible="{Binding ActiveTab.CanUnmountSelection}"/>
               <MenuItem Header="Open in new tab"
                                       Command="{Binding $parent[Window].((vm:ShellViewModel)DataContext).OpenInNewTabCommand}"
                                       CommandParameter="{Binding ActiveTab.SelectedEntry}"

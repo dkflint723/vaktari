@@ -60,6 +60,10 @@ public sealed class LinuxPlatform : IPlatform
 
     public INetworkDiscovery? Discovery { get; } = new AvahiDiscovery();
 
+    /// <summary>ISO mounting through udisks2, which needs no rights of our own
+    /// — polkit grants loop-setup and mount to an active local session.</summary>
+    public Vaktari.Core.Places.IDiskImages? DiskImages { get; } = new LinuxDiskImages();
+
     public IThemeProvider? Theme { get; } = new KdeThemeProvider();
 
     /// <summary>

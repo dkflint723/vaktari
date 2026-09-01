@@ -85,6 +85,13 @@ public interface IPlatform
     /// </summary>
     IVirtualFileDrop? VirtualFileDrop => null;
 
+    /// <summary>
+    /// Mounts .iso files and their kin, or null where this machine has no way
+    /// to. Nullable rather than a no-op, so the menu can omit the entry
+    /// entirely instead of offering a verb that cannot work.
+    /// </summary>
+    Places.IDiskImages? DiskImages => null;
+
     /// <summary>Null where the desktop exposes no readable theme.</summary>
     IThemeProvider? Theme { get; }
 
