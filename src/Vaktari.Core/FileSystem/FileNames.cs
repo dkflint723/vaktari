@@ -32,4 +32,61 @@ public static class FileNames
 
         return name;
     }
+
+    /// <summary>
+    /// Why this name cannot be used here, or null when it can.
+    ///
+    /// **The rename check was empty-or-separator and nothing else**, so on
+    /// Windows a colon reached the filesystem and came back as the raw "The
+    /// parameter is incorrect." — and worse, <c>d:notes</c> is drive-RELATIVE,
+    /// so Path.Combine discarded the folder entirely and the file silently left
+    /// the listing for the current directory of drive D:.
+    ///
+    /// A sentence, not a code: it is shown to the person typing the name, and
+    /// an error number tells them nothing about which character to remove.
+    /// Applied to <see cref="Clean"/>'s output, so a trailing space that would
+    /// have been trimmed anyway is not reported as a fault.
+    /// </summary>
+    public static string? Refuse(string? typed)
+    {
+        var name = Clean(typed);
+
+        if (name.Length == 0) return "a name cannot be empty";
+
+        if (name.Contains(Path.DirectorySeparatorChar)
+            || name.Contains(Path.AltDirectorySeparatorChar))
+            return "a name cannot contain a slash";
+
+        if (name is "." or "..") return $"\"{name}\" is not a name";
+
+        // **Windows only past here.** ext4 takes every one of these, and
+        // refusing them everywhere would stop a Linux user renaming a file to
+        // something their filesystem is perfectly happy with.
+        if (!OperatingSystem.IsWindows()) return null;
+
+        foreach (var bad in Path.GetInvalidFileNameChars())
+        {
+            if (!name.Contains(bad)) continue;
+
+            // The control characters have no printable form to quote back.
+            return char.IsControl(bad)
+                ? "a name cannot contain control characters"
+                : $"a name cannot contain {bad}";
+        }
+
+        // Reserved with or without an extension: a file called CON.txt cannot
+        // be created either.
+        if (Reserved.Contains(Path.GetFileNameWithoutExtension(name)))
+            return $"\"{Path.GetFileNameWithoutExtension(name)}\" is a name Windows reserves for a device";
+
+        return null;
+    }
+
+    private static readonly HashSet<string> Reserved =
+        new(StringComparer.OrdinalIgnoreCase)
+        {
+            "CON", "PRN", "AUX", "NUL",
+            "COM1", "COM2", "COM3", "COM4", "COM5", "COM6", "COM7", "COM8", "COM9",
+            "LPT1", "LPT2", "LPT3", "LPT4", "LPT5", "LPT6", "LPT7", "LPT8", "LPT9",
+        };
 }

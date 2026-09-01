@@ -63,4 +63,81 @@ public class FileNameTests
         // names can differ by something invisible in a listing.
         Assert.Equal("Ember Setup 0.1.0 .exe", FileNames.Clean("Ember Setup 0.1.0 .exe"));
     }
+
+    // ---- what a name may not be -------------------------------------------
+    //
+    // Rename checked empty-or-separator and nothing else, so on Windows a colon
+    // reached the filesystem and came back as "The parameter is incorrect." —
+    // and "d:notes" is drive-RELATIVE, so Path.Combine discarded the folder and
+    // the file silently left the listing for the current directory of drive D:.
+
+    [Theory]
+    [InlineData("report.txt")]
+    [InlineData("a name with spaces.txt")]
+    [InlineData("Ünïcödé.txt")]
+    public void An_ordinary_name_is_accepted(string name)
+        => Assert.Null(FileNames.Refuse(name));
+
+    [Theory]
+    [InlineData("")]
+    [InlineData("   ")]
+    [InlineData(null)]
+    public void An_empty_name_is_refused(string? name)
+        => Assert.Equal("a name cannot be empty", FileNames.Refuse(name));
+
+    [Fact]
+    public void A_separator_is_refused_on_both_platforms()
+    {
+        Assert.NotNull(FileNames.Refuse("a/b.txt"));
+        Assert.NotNull(FileNames.Refuse(Path.Combine("a", "b.txt")));
+    }
+
+    [Theory]
+    [InlineData(".")]
+    [InlineData("..")]
+    public void The_directory_shorthands_are_not_names(string name)
+        => Assert.NotNull(FileNames.Refuse(name));
+
+    /// <summary>
+    /// **The one that silently moved a file.** "d:notes" is drive-relative, so
+    /// the folder was discarded and the file went to the current directory of
+    /// drive D: — it simply vanished from the listing.
+    /// </summary>
+    [Fact]
+    public void A_colon_is_refused_on_windows_and_allowed_on_linux()
+    {
+        if (OperatingSystem.IsWindows())
+        {
+            Assert.NotNull(FileNames.Refuse("d:notes"));
+            Assert.Contains(":", FileNames.Refuse("notes:stream")!);
+        }
+        else
+        {
+            // ext4 takes it, and refusing it here would stop a Linux user
+            // naming a file something their filesystem is happy with.
+            Assert.Null(FileNames.Refuse("notes:stream"));
+        }
+    }
+
+    [Fact]
+    public void A_reserved_device_name_is_refused_on_windows()
+    {
+        if (!OperatingSystem.IsWindows()) return;
+
+        Assert.NotNull(FileNames.Refuse("CON"));
+        Assert.NotNull(FileNames.Refuse("con.txt"));
+        Assert.NotNull(FileNames.Refuse("LPT1.log"));
+
+        // Not a false positive on a name that merely starts with one.
+        Assert.Null(FileNames.Refuse("CONTENTS.txt"));
+    }
+
+    /// <summary>
+    /// A trailing space is trimmed rather than refused: Clean already removes
+    /// it, so reporting it as a fault would reject a name the application is
+    /// perfectly willing to use.
+    /// </summary>
+    [Fact]
+    public void A_trailing_space_is_tidied_rather_than_refused()
+        => Assert.Null(FileNames.Refuse("report.txt "));
 }

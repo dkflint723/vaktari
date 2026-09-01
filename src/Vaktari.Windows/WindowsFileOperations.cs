@@ -353,13 +353,13 @@ public sealed class WindowsFileOperations : IFileOperations
 
     public ValueTask RenameAsync(string path, string newName, CancellationToken ct)
     {
-        // Both separators, because both are legal here — the same reason
-        // PathRules unifies them.
-        if (string.IsNullOrWhiteSpace(newName)
-            || newName.Contains(Path.DirectorySeparatorChar)
-            || newName.Contains(Path.AltDirectorySeparatorChar))
-            throw new ArgumentException(
-                "A name cannot be empty or contain a separator.", nameof(newName));
+        // **Every character Windows refuses, not just the separators.** A
+        // colon used to reach the filesystem and come back as the raw "The
+        // parameter is incorrect."; worse, "d:notes" is drive-RELATIVE, so
+        // Path.Combine discarded the folder and the file silently left the
+        // listing for the current directory of drive D:.
+        if (FileNames.Refuse(newName) is { } why)
+            throw new ArgumentException(why, nameof(newName));
 
         var directory = PathRules.Parent(Path.GetFullPath(path))
             ?? throw new IOException("A drive root cannot be renamed.");

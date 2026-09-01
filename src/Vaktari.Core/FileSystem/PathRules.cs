@@ -166,6 +166,36 @@ public static class PathRules
         => string.Equals(Normalise(a), Normalise(b), Comparison);
 
     /// <summary>
+    /// Whether <paramref name="candidate"/> is <paramref name="root"/> or lies
+    /// anywhere inside it.
+    ///
+    /// **Three separate places claimed to prevent a folder being copied into
+    /// itself and all three tested equality.** Equality catches dropping A onto
+    /// A and misses dropping A into A/sub, which is the case that actually goes
+    /// wrong: the destination is inside the thing being read, so the copy walks
+    /// into its own output.
+    ///
+    /// The prefix has to end at a separator, or "/media/one" would claim
+    /// "/media/onetwo" — the same trap <see cref="Volumes.MountFor"/> documents.
+    /// </summary>
+    public static bool Contains(string? root, string? candidate)
+    {
+        var top = Normalise(root);
+        var inner = Normalise(candidate);
+
+        if (top.Length == 0 || inner.Length == 0) return false;
+
+        if (string.Equals(top, inner, Comparison)) return true;
+
+        if (!inner.StartsWith(top, Comparison)) return false;
+
+        // A drive root keeps its separator, so it already ends at one.
+        return top.EndsWith(Path.DirectorySeparatorChar)
+               || (inner.Length > top.Length
+                   && inner[top.Length] == Path.DirectorySeparatorChar);
+    }
+
+    /// <summary>
     /// Every ancestor from the root down to <paramref name="path"/> itself, which
     /// is what the column strip walks.
     ///

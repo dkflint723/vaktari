@@ -102,8 +102,12 @@ public sealed class LinuxFileOperations : IFileOperations
 
     public ValueTask RenameAsync(string path, string newName, CancellationToken ct)
     {
-        if (string.IsNullOrWhiteSpace(newName) || newName.Contains('/'))
-            throw new ArgumentException("A name cannot be empty or contain a separator.", nameof(newName));
+        // Shared with the Windows twin so the two cannot drift, and so the
+        // rules that are genuinely Windows-only stay Windows-only: ext4 takes
+        // a colon happily, and refusing one here would stop a Linux user
+        // naming a file something their filesystem is perfectly happy with.
+        if (FileNames.Refuse(newName) is { } why)
+            throw new ArgumentException(why, nameof(newName));
 
         var directory = Path.GetDirectoryName(Path.GetFullPath(path))!;
         var target = Path.Combine(directory, newName);

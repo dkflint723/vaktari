@@ -74,7 +74,14 @@ public static class DroppedFileReader
 
         // A folder cannot be copied into itself whichever key is held: the
         // destination would be inside the thing being read.
-        usable = usable.Where(p => !Core.FileSystem.PathRules.Same(p, destination)).ToList();
+        //
+        // **Containment, not equality**, which is what this line tested while
+        // the comment above it said otherwise. Equality catches dropping A onto
+        // A and misses dropping A into A/sub — the case that actually goes
+        // wrong, because the copy then walks into its own output.
+        usable = usable
+            .Where(p => !Core.FileSystem.PathRules.Contains(p, destination))
+            .ToList();
 
         if (usable.Count > 0) return new DroppedFiles(usable, "");
 

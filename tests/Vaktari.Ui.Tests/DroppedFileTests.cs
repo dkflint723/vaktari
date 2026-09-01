@@ -150,4 +150,37 @@ public sealed class DroppedFileTests
             Assert.NotEmpty(dropped.Refusal);
         }
     }
+
+    /// <summary>
+    /// **A folder cannot be dropped into something inside itself.** The check
+    /// tested equality while the comment above it said containment, so
+    /// dropping A onto A was refused and dropping A into A/sub went ahead —
+    /// which is the case that actually goes wrong, because the destination is
+    /// then inside the thing being read.
+    /// </summary>
+    [Fact]
+    public void A_folder_cannot_be_dropped_into_its_own_subfolder()
+    {
+        var parent = OperatingSystem.IsWindows() ? @"C:\dest" : "/dest";
+        var ancestor = Path.GetDirectoryName(parent)!;
+
+        // Dropping the folder that CONTAINS the destination, into it.
+        var dropped = DroppedFileReader.Decide(
+            [parent], ["File"], Path.Combine(parent, "sub"), copying: true);
+
+        Assert.Empty(dropped.Paths);
+        Assert.Contains("itself", dropped.Refusal);
+    }
+
+    [Fact]
+    public void An_unrelated_folder_whose_name_merely_starts_the_same_is_allowed()
+    {
+        // "dest" must not claim "destination": a name prefix is not containment.
+        var root = OperatingSystem.IsWindows() ? @"C:\" : "/";
+
+        var dropped = DroppedFileReader.Decide(
+            [Path.Combine(root, "destination")], ["File"], Destination, copying: true);
+
+        Assert.Single(dropped.Paths);
+    }
 }

@@ -1530,11 +1530,13 @@ public sealed partial class ShellViewModel : ObservableObject
                 // destination and fail on use.
                 .Where(p => p.IsAvailable && !string.IsNullOrEmpty(p.Path))
 
-                // Sending a folder into itself is the one destination that is never
-                // meaningful.
-                // PathRules.Same also picks the platform's case rules — two paths
-                // differing only in case are one folder on NTFS and two on ext4.
-                .Where(p => !PathRules.Same(p.Path, ActiveTab?.CurrentPath))
+                // Sending a folder into itself is the one destination that is
+                // never meaningful — and neither is sending it into something
+                // inside itself, which equality alone allowed. Contains also
+                // picks the platform's case rules: two paths differing only in
+                // case are one folder on NTFS and two on ext4.
+                .Where(p => !PathRules.Contains(SelectedFolderOf(ActiveTab), p.Path)
+                            && !PathRules.Same(p.Path, ActiveTab?.CurrentPath))
                 .ToList();
 
             if (CanTransferToOtherPane) targets.Insert(0, OtherPaneTarget);
@@ -1616,6 +1618,15 @@ public sealed partial class ShellViewModel : ObservableObject
 
         var paths = SelectionOf(source);
         if (paths.Count == 0) return;
+
+        // **The one route with no containment check at all.** Sending a folder
+        // to the other pane while that pane is showing somewhere inside it
+        // copies the folder into its own subtree.
+        if (paths.Any(p => PathRules.Contains(p, target.CurrentPath)))
+        {
+            source.Status = "that folder cannot be sent into itself";
+            return;
+        }
 
         target.PasteInto(paths, move);
     }
@@ -1826,6 +1837,13 @@ public sealed partial class ShellViewModel : ObservableObject
             ? $"{name} was left behind — {why}"
             : $"{name} and {problems.Count - 1} more were left behind — {why}";
     }
+
+    /// <summary>
+    /// The folder currently selected in a pane, when one is — which is what a
+    /// transfer destination must not be inside.
+    /// </summary>
+    private static string? SelectedFolderOf(PaneViewModel? pane)
+        => pane?.SelectedEntry is { IsDirectory: true } folder ? folder.FullPath : null;
 
     /// <summary>Whether a pane is looking at the drive, or anywhere inside it.</summary>
     private static bool IsUnder(string? path, string root)
