@@ -397,6 +397,15 @@ public sealed class WindowsFileOperations : IFileOperations
                     }
 
                     handle.ItemStarted(item.Source);
+
+                    // **One item's failure is not the batch's.** This whole
+                    // block used to sit inside a single try around the entire
+                    // loop, so copying twelve files with the third open in
+                    // another program copied two and abandoned nine — and said
+                    // neither which file nor what was left undone. Cancellation
+                    // still ends everything, because that is what was asked for.
+                    try
+                    {
                     Directory.CreateDirectory(PathRules.Parent(target) ?? destination);
 
                     switch (item.Kind)
@@ -411,16 +420,59 @@ public sealed class WindowsFileOperations : IFileOperations
                             break;
 
                         default:
-                            await CopyFileAsync(item.Source, target, handle).ConfigureAwait(false);
-                            if (move)
+                            // **A move within one volume is a rename.** Copying
+                            // every byte and deleting the original is correct
+                            // and ruinously slow: moving a folder of video
+                            // inside one drive rewrote the whole folder. The
+                            // giveaway that the trick was already known is that
+                            // UNDOING a move has always used File.Move, so the
+                            // undo of a fifty-gigabyte move was instant while
+                            // the move itself was not.
+                            if (CanRename(item.Source, target, move))
                             {
-                                ClearReadOnly(item.Source);
-                                File.Delete(item.Source);
+                                // The target only exists here if the user chose
+                                // to overwrite it; Skip continued, and KeepBoth
+                                // already moved the name aside.
+                                if (File.Exists(target)) ClearReadOnly(target);
+
+                                File.Move(item.Source, target, overwrite: true);
+
+                                // Reported so the bar still advances: a rename
+                                // moves the bytes without reading any, and a
+                                // progress bar that sits at zero through the
+                                // fast path looks like a hang.
+                                handle.BytesCopied(item.Length);
+                            }
+                            else
+                            {
+                                await CopyFileAsync(item.Source, target, handle)
+                                    .ConfigureAwait(false);
+
+                                if (move)
+                                {
+                                    ClearReadOnly(item.Source);
+                                    File.Delete(item.Source);
+                                }
                             }
                             break;
                     }
 
                     if (item.IsRoot) landings.Add((item.Source, target));
+                    }
+                    catch (OperationCanceledException)
+                    {
+                        // Cancelling means stop, so this one does leave the loop.
+                        throw;
+                    }
+                    catch (Exception ex)
+                    {
+                        // Recorded and carried on. A directory that could not be
+                        // created also means its contents will fail, and each of
+                        // those is reported on its own — noisy, but honest, and
+                        // far better than nine files silently not arriving.
+                        handle.ItemFailed(item.Source, ex);
+                    }
+
                     handle.ItemFinished();
                 }
 
@@ -645,22 +697,38 @@ public sealed class WindowsFileOperations : IFileOperations
         return plan;
     }
 
+    /// <summary>
+    /// Whether this item can be moved by renaming it rather than rewritten.
+    ///
+    /// Pulled out so the rule can be tested directly: it is one boolean that
+    /// decides between an instant operation and one that reads and writes every
+    /// byte, and it is invisible from the outside — both paths produce the same
+    /// files.
+    /// </summary>
+    internal static bool CanRename(string source, string target, bool move)
+        => move && Volumes.Same(source, target);
+
     private static async Task CopyFileAsync(string source, string target, OperationHandle handle)
     {
         var buffer = new byte[BufferSize];
 
-        await using var input = new FileStream(
-            source, FileMode.Open, FileAccess.Read, FileShare.Read, BufferSize, useAsync: true);
-        await using var output = new FileStream(
-            target, FileMode.Create, FileAccess.Write, FileShare.None, BufferSize, useAsync: true);
-
-        int read;
-        while ((read = await input.ReadAsync(buffer, handle.Token).ConfigureAwait(false)) > 0)
+        // Scoped so both handles are closed before the metadata is applied: a
+        // timestamp set on an open file is overwritten when the stream flushes.
+        await using (var input = new FileStream(
+            source, FileMode.Open, FileAccess.Read, FileShare.Read, BufferSize, useAsync: true))
+        await using (var output = new FileStream(
+            target, FileMode.Create, FileAccess.Write, FileShare.None, BufferSize, useAsync: true))
         {
-            await handle.WaitIfPausedAsync().ConfigureAwait(false);
-            await output.WriteAsync(buffer.AsMemory(0, read), handle.Token).ConfigureAwait(false);
-            handle.BytesCopied(read);
+            int read;
+            while ((read = await input.ReadAsync(buffer, handle.Token).ConfigureAwait(false)) > 0)
+            {
+                await handle.WaitIfPausedAsync().ConfigureAwait(false);
+                await output.WriteAsync(buffer.AsMemory(0, read), handle.Token).ConfigureAwait(false);
+                handle.BytesCopied(read);
+            }
         }
+
+        FileMetadata.Carry(source, target);
     }
 
     private enum ItemKind { File, Directory, Link }

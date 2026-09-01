@@ -203,6 +203,14 @@ public sealed class LinuxFileOperations : IFileOperations
                     }
 
                     handle.ItemStarted(item.Source);
+
+                    // **One item's failure is not the batch's.** This block used
+                    // to sit inside a single try around the whole loop, so one
+                    // unreadable file abandoned every item after it, naming
+                    // neither the file nor what was left undone. Cancellation
+                    // still ends everything, because that is what was asked for.
+                    try
+                    {
                     Directory.CreateDirectory(Path.GetDirectoryName(target)!);
 
                     if (item.IsLink)
@@ -217,6 +225,20 @@ public sealed class LinuxFileOperations : IFileOperations
                     {
                         Directory.CreateDirectory(target);
                     }
+                    else if (CanRename(item.Source, target, move))
+                    {
+                        // **A move within one filesystem is a rename.** Copying
+                        // every byte and deleting the original is correct and
+                        // ruinously slow — and the undo of a move has always
+                        // used File.Move, so undoing was instant while the move
+                        // itself rewrote the file.
+                        File.Move(item.Source, target, overwrite: true);
+
+                        // Reported so the bar advances: a rename moves the bytes
+                        // without reading any, and a bar stuck at zero through
+                        // the fast path reads as a hang.
+                        handle.BytesCopied(item.Length);
+                    }
                     else
                     {
                         await CopyFileAsync(item.Source, target, handle).ConfigureAwait(false);
@@ -229,6 +251,15 @@ public sealed class LinuxFileOperations : IFileOperations
                     // went — not destination + name, which is true only when
                     // nothing was renamed or skipped along the way.
                     if (item.IsRoot) landings.Add((item.Source, target));
+                    }
+                    catch (OperationCanceledException)
+                    {
+                        throw;
+                    }
+                    catch (Exception ex)
+                    {
+                        handle.ItemFailed(item.Source, ex);
+                    }
 
                     handle.ItemFinished();
                 }
@@ -386,22 +417,38 @@ public sealed class LinuxFileOperations : IFileOperations
         }
     }
 
+    /// <summary>
+    /// Whether this item can be moved by renaming rather than rewritten. Pulled
+    /// out so the rule can be tested: it decides between an instant operation
+    /// and one that reads and writes every byte, and both paths leave the same
+    /// files behind, so it is invisible from the outside.
+    /// </summary>
+    internal static bool CanRename(string source, string target, bool move)
+        => move && Volumes.Same(source, target);
+
     private static async Task CopyFileAsync(string source, string target, OperationHandle handle)
     {
         var buffer = new byte[BufferSize];
 
-        await using var input = new FileStream(
-            source, FileMode.Open, FileAccess.Read, FileShare.Read, BufferSize, useAsync: true);
-        await using var output = new FileStream(
-            target, FileMode.Create, FileAccess.Write, FileShare.None, BufferSize, useAsync: true);
-
-        int read;
-        while ((read = await input.ReadAsync(buffer, handle.Token).ConfigureAwait(false)) > 0)
+        // Scoped so both handles close before the metadata is applied: a
+        // timestamp set on an open file is overwritten when the stream flushes.
+        await using (var input = new FileStream(
+            source, FileMode.Open, FileAccess.Read, FileShare.Read, BufferSize, useAsync: true))
+        await using (var output = new FileStream(
+            target, FileMode.Create, FileAccess.Write, FileShare.None, BufferSize, useAsync: true))
         {
-            await handle.WaitIfPausedAsync().ConfigureAwait(false);
-            await output.WriteAsync(buffer.AsMemory(0, read), handle.Token).ConfigureAwait(false);
-            handle.BytesCopied(read);
+            int read;
+            while ((read = await input.ReadAsync(buffer, handle.Token).ConfigureAwait(false)) > 0)
+            {
+                await handle.WaitIfPausedAsync().ConfigureAwait(false);
+                await output.WriteAsync(buffer.AsMemory(0, read), handle.Token).ConfigureAwait(false);
+                handle.BytesCopied(read);
+            }
         }
+
+        // The executable bit above all: a copied script that will not run is
+        // the loss people notice, and a stream copy always drops it.
+        FileMetadata.Carry(source, target);
     }
 
     /// <summary>

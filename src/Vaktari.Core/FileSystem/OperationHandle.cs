@@ -33,6 +33,31 @@ public sealed class OperationHandle : IOperationHandle
     public OperationState State { get; private set; } = OperationState.Queued;
     public Exception? Error { get; private set; }
 
+    private readonly List<ItemProblem> _problems = [];
+
+    /// <summary>
+    /// The items that could not be done, while the rest were.
+    ///
+    /// **Because one locked file used to end the whole batch.** The engines
+    /// wrapped their entire item loop in a single try, so copying twelve files
+    /// with the third open in another program copied two and abandoned nine —
+    /// and the message named neither the file nor what was left undone. Explorer
+    /// finishes the rest and tells you which ones it could not do.
+    /// </summary>
+    public IReadOnlyList<ItemProblem> Problems
+    {
+        get { lock (_problems) return _problems.ToList(); }
+    }
+
+    /// <summary>
+    /// Records that one item failed, without ending the operation. The engines
+    /// call this instead of throwing out of the loop.
+    /// </summary>
+    public void ItemFailed(string path, Exception error)
+    {
+        lock (_problems) _problems.Add(new ItemProblem(path, error));
+    }
+
     public IProgress<OperationProgress> Progress => ProgressReporter;
     public Progress<OperationProgress> ProgressReporter { get; } = new();
 

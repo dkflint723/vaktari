@@ -1766,6 +1766,26 @@ public sealed partial class ShellViewModel : ObservableObject
         }
     }
 
+    /// <summary>
+    /// What to say when a batch finished with items left behind.
+    ///
+    /// **Names the file when there is one to name.** "3 items could not be
+    /// copied" sends someone hunting; the first name plus a count tells them
+    /// where to start. The reason comes from the same register every other
+    /// failure in this window uses, so "the file is open in another program"
+    /// rather than an exception type.
+    /// </summary>
+    internal static string DescribeProblems(IReadOnlyList<Core.FileSystem.ItemProblem> problems)
+    {
+        var first = problems[0];
+        var name = Path.GetFileName(first.Path.TrimEnd(Path.DirectorySeparatorChar));
+        var why = Core.FileSystem.Failures.Describe(first.Error, "copy that");
+
+        return problems.Count == 1
+            ? $"{name} was left behind — {why}"
+            : $"{name} and {problems.Count - 1} more were left behind — {why}";
+    }
+
     /// <summary>Whether a pane is looking at the drive, or anywhere inside it.</summary>
     private static bool IsUnder(string? path, string root)
     {
@@ -1829,6 +1849,15 @@ public sealed partial class ShellViewModel : ObservableObject
                     // Described the way the rest of the application describes a
                     // failure, rather than handing back a .NET exception message.
                     OperationStatus = "failed: " + Core.FileSystem.Failures.Describe(error, "finish that");
+                }
+                else if (handle.Problems.Count > 0)
+                {
+                    // **A batch that finished with items left behind must say
+                    // so.** The rest of the files really did arrive, so this is
+                    // not a failure — but clearing the line would report a clean
+                    // run, and the whole point of carrying on past a locked file
+                    // is that the person learns which ones were skipped.
+                    OperationStatus = DescribeProblems(handle.Problems);
                 }
                 else if (ReferenceEquals(ActiveOperation, handle))
                 {

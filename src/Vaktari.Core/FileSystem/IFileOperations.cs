@@ -16,6 +16,12 @@ public readonly record struct FileConflict(string Source, string Target);
 
 public enum OperationState { Queued, Running, Paused, Completed, Failed, Cancelled }
 
+/// <summary>
+/// One item an operation could not do, and why — so the rest of the batch can
+/// carry on and the person still learns which files were left behind.
+/// </summary>
+public readonly record struct ItemProblem(string Path, Exception Error);
+
 public readonly record struct OperationProgress(
     long BytesDone,
     long BytesTotal,
@@ -33,6 +39,13 @@ public interface IOperationHandle
     Guid Id { get; }
     OperationState State { get; }
     IProgress<OperationProgress> Progress { get; }
+
+    /// <summary>
+    /// Items that failed while the rest of the batch went through. Empty on a
+    /// clean run. A non-empty list on a COMPLETED operation is the normal way
+    /// to report "eleven of twelve" — it is not a failure of the operation.
+    /// </summary>
+    IReadOnlyList<ItemProblem> Problems { get; }
 
     void Pause();
     void Resume();

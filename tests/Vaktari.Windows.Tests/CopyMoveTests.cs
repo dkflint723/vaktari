@@ -206,4 +206,119 @@ public class CopyMoveTests
         Assert.Equal("mine", tree.Read("src", "readme.txt"));
         Assert.Equal("theirs", tree.Read("dst", "readme.txt"));
     }
+
+    // ---- The rename fast path ----------------------------------------------
+    //
+    // A move within one volume renames rather than rewriting. Both paths must
+    // leave the same files behind, which is exactly why the change was
+    // invisible for so long — so these pin the OUTCOMES, and MoveFastPathTests
+    // pins the rule that chooses between them.
+
+    [WindowsFact]
+    public async Task A_renamed_move_still_lands_the_content_and_clears_the_source()
+    {
+        using var tree = new TempTree();
+        var file = tree.Write("src/notes.txt", "the actual bytes");
+        tree.Dir("dst");
+        var ops = new WindowsFileOperations();
+
+        await Finished(ops.Move([file], tree.At("dst"), Always(ConflictResolution.Overwrite)));
+
+        Assert.Equal("the actual bytes", tree.Read("dst", "notes.txt"));
+        Assert.False(tree.Exists("src", "notes.txt"));
+    }
+
+    /// <summary>
+    /// **Overwrite still overwrites on the fast path.** File.Move refuses an
+    /// existing target unless told otherwise, so a rename path that forgot this
+    /// would fail exactly where the slow path succeeded — and only for people
+    /// who answered Replace.
+    /// </summary>
+    [WindowsFact]
+    public async Task A_renamed_move_over_an_existing_file_replaces_it()
+    {
+        using var tree = new TempTree();
+        var file = tree.Write("src/readme.txt", "mine");
+        tree.Write("dst/readme.txt", "theirs");
+        var ops = new WindowsFileOperations();
+
+        await Finished(ops.Move([file], tree.At("dst"), Always(ConflictResolution.Overwrite)));
+
+        Assert.Equal("mine", tree.Read("dst", "readme.txt"));
+        Assert.False(tree.Exists("src", "readme.txt"));
+    }
+
+    /// <summary>
+    /// A read-only file at the destination stopped the slow path too, but the
+    /// rename path reaches the filesystem more directly — so the clearing has
+    /// to happen on both.
+    /// </summary>
+    [WindowsFact]
+    public async Task A_renamed_move_replaces_a_read_only_file()
+    {
+        using var tree = new TempTree();
+        var file = tree.Write("src/readme.txt", "mine");
+        tree.Write("dst/readme.txt", "theirs");
+
+        var existing = tree.At("dst", "readme.txt");
+        File.SetAttributes(existing, FileAttributes.ReadOnly);
+
+        var ops = new WindowsFileOperations();
+
+        try
+        {
+            await Finished(ops.Move([file], tree.At("dst"), Always(ConflictResolution.Overwrite)));
+
+            Assert.Equal("mine", tree.Read("dst", "readme.txt"));
+        }
+        finally
+        {
+            if (File.Exists(existing)) File.SetAttributes(existing, FileAttributes.Normal);
+        }
+    }
+
+    /// <summary>
+    /// The progress bar has to advance on the fast path too. A rename moves the
+    /// bytes without reading any, so a bar left at zero through an otherwise
+    /// instant operation reads as a hang.
+    /// </summary>
+    [WindowsFact]
+    public async Task A_renamed_move_still_reports_its_bytes()
+    {
+        using var tree = new TempTree();
+        var file = tree.Write("src/notes.txt", "0123456789");
+        tree.Dir("dst");
+        var ops = new WindowsFileOperations();
+
+        var handle = ops.Move([file], tree.At("dst"), Always(ConflictResolution.Overwrite));
+
+        long reported = 0;
+        handle.Progressed += (_, p) => reported = Math.Max(reported, p.BytesDone);
+
+        await Finished(handle);
+
+        Assert.True(
+            reported > 0,
+            "a renamed move reported no bytes, so the progress bar would sit at zero");
+    }
+
+    /// <summary>A copy keeps the file's own dates rather than stamping today
+    /// on it — the loss nobody notices until a folder sorts wrongly.</summary>
+    [WindowsFact]
+    public async Task A_copied_file_keeps_the_time_it_was_written()
+    {
+        using var tree = new TempTree();
+        var file = tree.Write("src/old.txt", "aged");
+        tree.Dir("dst");
+
+        var when = new DateTime(2015, 6, 1, 12, 0, 0, DateTimeKind.Utc);
+        File.SetLastWriteTimeUtc(file, when);
+
+        var ops = new WindowsFileOperations();
+
+        await Finished(ops.Copy([file], tree.At("dst"), Always(ConflictResolution.Overwrite)));
+
+        Assert.Equal(
+            when, File.GetLastWriteTimeUtc(tree.At("dst", "old.txt")), TimeSpan.FromSeconds(2));
+    }
 }
