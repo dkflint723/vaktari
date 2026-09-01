@@ -3181,6 +3181,22 @@ public partial class MainWindow : Window
         // boxes are handled by their own KeyBindings in the markup.
         if (FocusManager?.GetFocusedElement() is TextBox) return;
 
+        // Space previews the selection.
+        //
+        // **Handled here rather than as a Window KeyBinding**, which is where it
+        // lived. Markup KeyBindings are dispatched by the window's own key
+        // handling, AHEAD of this handler — so every guard above was
+        // structurally unable to save it, and typing a space while renaming a
+        // file to "My Report" flipped a preview overlay open instead of typing
+        // the space. The rename guard and the text-box guard now both apply,
+        // because the gesture finally goes through them.
+        if (e.Key == Key.Space && e.KeyModifiers == KeyModifiers.None)
+        {
+            e.Handled = true;
+            _shell.ActiveTab?.TogglePreview();
+            return;
+        }
+
         // Ctrl+1..9 jumps to a tab, browser-style.
         if (e.KeyModifiers == KeyModifiers.Control &&
             e.Key >= Key.D1 && e.Key <= Key.D9)

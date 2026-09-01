@@ -224,18 +224,18 @@ public class MarkupRulesTests
     /// Settings used to carry a sentence with the same problem, promising that
     /// hidden entries kept working from the keyboard when most had no key.
     ///
-    /// These four are handled in MainWindow.axaml.cs rather than declared in
-    /// markup, because they depend on what has focus: Enter and Alt+Enter act
-    /// on the row, Delete and Shift+Delete have to leave a rename box alone.
-    /// Named here so the rule can tell "deliberately elsewhere" from "not
-    /// bound at all".
+    /// These are handled in MainWindow.axaml.cs rather than declared in markup,
+    /// because they depend on what has focus: Enter and Alt+Enter act on the
+    /// row, Delete and Shift+Delete have to leave a rename box alone, and Space
+    /// must not fire while somebody is typing a filename. Named here so the rule
+    /// can tell "deliberately elsewhere" from "not bound at all".
     /// </summary>
     [Fact]
     public void Every_shortcut_shown_in_the_menu_is_really_bound()
     {
         var doc = Markup();
 
-        var inCodeBehind = new[] { "Enter", "Delete", "Alt+Enter", "Shift+Delete" };
+        var inCodeBehind = new[] { "Enter", "Delete", "Alt+Enter", "Shift+Delete", "Space" };
 
         var bound = doc.Descendants(Avalonia + "KeyBinding")
             .Select(k => (string?)k.Attribute("Gesture"))

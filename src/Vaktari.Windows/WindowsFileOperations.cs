@@ -708,24 +708,61 @@ public sealed class WindowsFileOperations : IFileOperations
     internal static bool CanRename(string source, string target, bool move)
         => move && Volumes.Same(source, target);
 
+    /// <summary>
+    /// Removes a partly-written target after a failed or cancelled copy.
+    ///
+    /// Swallows everything: this runs while another exception is on its way up,
+    /// and a failure to tidy must not replace the reason the copy failed with a
+    /// less useful one.
+    /// </summary>
+    private static void Discard(string target)
+    {
+        try
+        {
+            if (File.Exists(target))
+            {
+                ClearReadOnly(target);
+                File.Delete(target);
+            }
+        }
+        catch (Exception ex)
+        {
+            Vaktari.Core.Quiet.Swallowed("file-ops", ex);
+        }
+    }
+
     private static async Task CopyFileAsync(string source, string target, OperationHandle handle)
     {
         var buffer = new byte[BufferSize];
 
-        // Scoped so both handles are closed before the metadata is applied: a
-        // timestamp set on an open file is overwritten when the stream flushes.
-        await using (var input = new FileStream(
-            source, FileMode.Open, FileAccess.Read, FileShare.Read, BufferSize, useAsync: true))
-        await using (var output = new FileStream(
-            target, FileMode.Create, FileAccess.Write, FileShare.None, BufferSize, useAsync: true))
+        try
         {
-            int read;
-            while ((read = await input.ReadAsync(buffer, handle.Token).ConfigureAwait(false)) > 0)
+            // Scoped so both handles are closed before the metadata is applied:
+            // a timestamp set on an open file is overwritten when the stream
+            // flushes.
+            await using (var input = new FileStream(
+                source, FileMode.Open, FileAccess.Read, FileShare.Read, BufferSize, useAsync: true))
+            await using (var output = new FileStream(
+                target, FileMode.Create, FileAccess.Write, FileShare.None, BufferSize, useAsync: true))
             {
-                await handle.WaitIfPausedAsync().ConfigureAwait(false);
-                await output.WriteAsync(buffer.AsMemory(0, read), handle.Token).ConfigureAwait(false);
-                handle.BytesCopied(read);
+                int read;
+                while ((read = await input.ReadAsync(buffer, handle.Token).ConfigureAwait(false)) > 0)
+                {
+                    await handle.WaitIfPausedAsync().ConfigureAwait(false);
+                    await output.WriteAsync(buffer.AsMemory(0, read), handle.Token).ConfigureAwait(false);
+                    handle.BytesCopied(read);
+                }
             }
+        }
+        catch
+        {
+            // **A half-written file must not be left under the final name.**
+            // The target is opened Create, so it exists and is truncated from
+            // the first byte — cancel a copy of a large file and what was left
+            // behind looked like the file, opened, and was silently incomplete.
+            // Worse on Replace: the original was already gone.
+            Discard(target);
+            throw;
         }
 
         FileMetadata.Carry(source, target);

@@ -118,4 +118,44 @@ public sealed class PartialFailureTests
         Assert.False(tree.Exists("dst", "src", "held.txt"));
     }
 
+
+    /// <summary>
+    /// **A cancelled copy must not leave a truncated file under the final
+    /// name.** The target is opened Create, so it exists and is truncated from
+    /// the first byte — cancelling a large copy left something that looked like
+    /// the file, opened, and was silently incomplete. Worse after Replace,
+    /// where the original had already been destroyed to make room for it.
+    ///
+    /// Cancelled rather than locked, deliberately: a locked SOURCE fails before
+    /// the target is ever created, so that version of this test passes whether
+    /// or not the cleanup exists.
+    /// </summary>
+    [WindowsFact]
+    public async Task A_cancelled_copy_leaves_no_half_written_file()
+    {
+        using var tree = new TempTree();
+
+        // Big enough that the copy is still running when it is cancelled: the
+        // engine reads in one-megabyte blocks.
+        var source = tree.At("src", "big.bin");
+        Directory.CreateDirectory(tree.At("src"));
+        await File.WriteAllBytesAsync(source, new byte[24 * 1024 * 1024]);
+        tree.Dir("dst");
+
+        var ops = new WindowsFileOperations();
+        var handle = ops.Copy([source], tree.At("dst"), Always(ConflictResolution.Overwrite));
+
+        // Cancel as soon as the first bytes have moved, so the target exists.
+        var cancelled = new TaskCompletionSource();
+        handle.Progressed += (_, p) => { if (p.BytesDone > 0) cancelled.TrySetResult(); };
+
+        await Task.WhenAny(cancelled.Task, Task.Delay(TimeSpan.FromSeconds(10)));
+        handle.Cancel();
+
+        await handle.Completion;
+
+        Assert.False(
+            tree.Exists("dst", "big.bin"),
+            "a partly-written file was left where a complete one should be");
+    }
 }

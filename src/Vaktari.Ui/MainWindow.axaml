@@ -2104,7 +2104,10 @@
     <KeyBinding Gesture="F1"             Command="{Binding ShowShortcutsCommand}"/>
     <KeyBinding Gesture="F3"             Command="{Binding ToggleSplitCommand}"/>
     <KeyBinding Gesture="F8"             Command="{Binding ActiveTab.ToggleViewCommand}"/>
-    <KeyBinding Gesture="Space"          Command="{Binding ActiveTab.TogglePreviewCommand}"/>
+    <!-- Space is NOT here. It is handled in OnWindowKeyDown, which is the only
+         place the text-box and rename guards can reach it: a KeyBinding is
+         dispatched by the window ahead of that handler, so Space toggled the
+         preview while somebody was typing a filename. -->
     <KeyBinding Gesture="F4"             Command="{Binding ActiveTab.OpenTerminalHereCommand}"/>
     <KeyBinding Gesture="Ctrl+Z"         Command="{Binding ActiveTab.UndoCommand}"/>
     <!-- Both spellings of redo: Ctrl+Y is Windows', Ctrl+Shift+Z is what
