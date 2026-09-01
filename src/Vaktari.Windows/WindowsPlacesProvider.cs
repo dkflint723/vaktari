@@ -23,9 +23,10 @@ public partial class PinnedPlacesJsonContext : JsonSerializerContext;
 /// covers the user folders that have a SpecialFolder, which is all of them bar
 /// one — see <see cref="Downloads"/>.
 /// </summary>
-public sealed class WindowsPlacesProvider : IPlacesProvider
+public sealed class WindowsPlacesProvider : IPlacesProvider, IDisposable
 {
     private readonly string _pinsPath;
+    private DeviceWatch? _watch;
     /// <summary>
     /// **Replaced, never mutated in place.** Building the places list reads
     /// this, and that build moved off the UI thread because enumerating drives
@@ -47,6 +48,34 @@ public sealed class WindowsPlacesProvider : IPlacesProvider
         Directory.CreateDirectory(stateDirectory);
         _pinsPath = Path.Combine(stateDirectory, "places.json");
         _pins = LoadPins();
+    }
+
+    /// <summary>
+    /// Begins watching for drives arriving and leaving, so a stick plugged in
+    /// shows up on its own.
+    ///
+    /// **Deliberately not done in the constructor.** Tests build providers
+    /// freely and a background loop started by construction is a leak with a
+    /// heartbeat; the composition root is where a fact about this machine — that
+    /// it has removable drives someone might plug into — is allowed to live.
+    /// Idempotent, so calling it twice does not give the sidebar two watchers.
+    /// </summary>
+    public void Start()
+    {
+        if (_watch is not null) return;
+
+        _watch = new DeviceWatch(DriveSet.Snapshot);
+        _watch.Changed += (_, _) => PlacesChanged?.Invoke(this, EventArgs.Empty);
+        _watch.Start();
+    }
+
+    /// <summary>Stops the watch. Nothing calls this in the running application —
+    /// the process exiting is the shutdown path — but a test that starts one
+    /// must be able to stop it.</summary>
+    public void Dispose()
+    {
+        _watch?.Dispose();
+        _watch = null;
     }
 
     private static string Home =>
@@ -292,8 +321,40 @@ public sealed class WindowsPlacesProvider : IPlacesProvider
     /// </summary>
     public ValueTask MountAsync(string id, CancellationToken ct) => ValueTask.CompletedTask;
 
-    /// <inheritdoc cref="MountAsync"/>
-    public ValueTask EjectAsync(string id, CancellationToken ct) => ValueTask.CompletedTask;
+    /// <summary>Stands in for the real device work, so the rules above it —
+    /// which id is refused, and when the sidebar rebuilds — are testable with
+    /// no hardware.</summary>
+    internal IEjector? EjectorOverride { get; init; }
+
+    /// <summary>
+    /// Safely removes the drive behind a place id.
+    ///
+    /// **Both refusals happen here, before the ejector is constructed**, so
+    /// "the system drive is never handed to the device layer" is a fact about
+    /// the call graph rather than a promise inside it.
+    /// </summary>
+    public async ValueTask<EjectResult> EjectAsync(string id, CancellationToken ct)
+    {
+        if (Find(id) is not { } place)
+            return EjectResult.NotRemovable("that drive is not there any more");
+
+        if (!place.CanEject)
+            return EjectResult.NotRemovable($"{place.Label} is not a removable drive");
+
+        var ejector = EjectorOverride ?? new WindowsEjector();
+        var result = await ejector.EjectAsync(place.Path, ct).ConfigureAwait(false);
+
+        // **Only a real ejection rebuilds the sidebar.** A row that vanished
+        // after a vetoed eject would tell the person the drive is gone while it
+        // is still mounted — and the watch will notice a genuine departure on
+        // its own within the second regardless.
+        if (result.VolumeIsGone) PlacesChanged?.Invoke(this, EventArgs.Empty);
+
+        return result;
+    }
+
+    private Place? Find(string id)
+        => BuildDrives().Devices.FirstOrDefault(p => p.Id == id);
 
     /// <summary>
     /// Imports the shortcut folders Explorer keeps as files.

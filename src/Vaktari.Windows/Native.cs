@@ -233,6 +233,136 @@ internal static partial class Native
         }
     }
 
+    // ---- Ejecting a volume -------------------------------------------------
+
+    internal const uint GENERIC_READ = 0x80000000;
+    internal const uint FILE_SHARE_READ = 0x00000001;
+    internal const uint FILE_SHARE_WRITE = 0x00000002;
+
+    /// <summary>
+    /// The five volume control codes, DERIVED rather than transcribed.
+    ///
+    /// CTL_CODE is a documented bit layout, and writing 0x002D4808 by hand is
+    /// one typo away from sending a different command to a device — a class of
+    /// mistake that fails at runtime, on hardware, with a meaningless error.
+    /// </summary>
+    internal static uint CtlCode(uint device, uint function, uint method, uint access)
+        => (device << 16) | (access << 14) | (function << 2) | method;
+
+    private const uint FILE_DEVICE_FILE_SYSTEM = 0x00000009;
+    private const uint FILE_DEVICE_MASS_STORAGE = 0x0000002D;
+    private const uint METHOD_BUFFERED = 0;
+    private const uint FILE_ANY_ACCESS = 0;
+    private const uint FILE_READ_ACCESS = 1;
+
+    internal static readonly uint FSCTL_LOCK_VOLUME =
+        CtlCode(FILE_DEVICE_FILE_SYSTEM, 6, METHOD_BUFFERED, FILE_ANY_ACCESS);
+
+    internal static readonly uint FSCTL_DISMOUNT_VOLUME =
+        CtlCode(FILE_DEVICE_FILE_SYSTEM, 8, METHOD_BUFFERED, FILE_ANY_ACCESS);
+
+    internal static readonly uint IOCTL_STORAGE_GET_DEVICE_NUMBER =
+        CtlCode(FILE_DEVICE_MASS_STORAGE, 0x0420, METHOD_BUFFERED, FILE_ANY_ACCESS);
+
+    internal static readonly uint IOCTL_STORAGE_MEDIA_REMOVAL =
+        CtlCode(FILE_DEVICE_MASS_STORAGE, 0x0201, METHOD_BUFFERED, FILE_READ_ACCESS);
+
+    internal static readonly uint IOCTL_STORAGE_EJECT_MEDIA =
+        CtlCode(FILE_DEVICE_MASS_STORAGE, 0x0202, METHOD_BUFFERED, FILE_READ_ACCESS);
+
+    internal const uint FILE_DEVICE_CD_ROM = 0x00000002;
+    internal const uint FILE_DEVICE_DISK = 0x00000007;
+
+    /// <summary>Which physical device a volume sits on. Two volumes sharing a
+    /// DeviceNumber are partitions of one stick, and one cannot be unplugged
+    /// without the other.</summary>
+    [StructLayout(LayoutKind.Sequential)]
+    internal struct STORAGE_DEVICE_NUMBER
+    {
+        internal uint DeviceType;
+        internal uint DeviceNumber;
+        internal int PartitionNumber;
+    }
+
+    // cfgmgr32 rather than setupapi: every parameter is a Guid, a uint or a
+    // pointer, so the source generator takes all of it with no marshaller and
+    // no analyser suppression under TreatWarningsAsErrors — and it avoids
+    // SP_DEVICE_INTERFACE_DETAIL_DATA_W, whose cbSize must be hard-coded to a
+    // value that differs by architecture and which fails as a bare
+    // ERROR_INVALID_PARAMETER when it is wrong.
+
+    internal const uint CR_SUCCESS = 0;
+    internal const uint CR_REMOVE_VETOED = 0x17;
+
+    internal const uint CM_GETIDLIST_FILTER_NONE = 0;
+    internal const uint DN_REMOVABLE = 0x00004000;
+
+    internal static readonly Guid GUID_DEVINTERFACE_DISK =
+        new("53f56307-b6bf-11d0-94f2-00a0c91efb8b");
+
+    /// <summary>DEVPKEY_Device_InstanceId — the string CM_Locate_DevNodeW takes.</summary>
+    [StructLayout(LayoutKind.Sequential)]
+    internal struct DEVPROPKEY
+    {
+        internal Guid Fmtid;
+        internal uint Pid;
+    }
+
+    internal static readonly DEVPROPKEY DEVPKEY_Device_InstanceId = new()
+    {
+        Fmtid = new Guid("78c34fc8-104a-4aca-9ea4-524d52996e57"),
+        Pid = 256,
+    };
+
+    /// <summary>Why the system refused. Only the two that name an application
+    /// are ever shown to a person — the rest describe the device tree, and
+    /// PNP_VetoOutstandingOpen's "name" is a device instance path.</summary>
+    internal enum PnpVetoType
+    {
+        TypeUnknown = 0,
+        LegacyDevice,
+        PendingClose,
+        WindowsApp,
+        WindowsService,
+        OutstandingOpen,
+        Device,
+        Driver,
+        IllegalDeviceRequest,
+        InsufficientPower,
+        NonDisableable,
+        LegacyDriver,
+        InsufficientRights,
+    }
+
+    [LibraryImport("cfgmgr32.dll", EntryPoint = "CM_Get_Device_Interface_List_SizeW")]
+    internal static partial uint CM_Get_Device_Interface_List_Size(
+        out uint length, in Guid interfaceClass, nint deviceId, uint flags);
+
+    [LibraryImport("cfgmgr32.dll", EntryPoint = "CM_Get_Device_Interface_ListW")]
+    internal static partial uint CM_Get_Device_Interface_List(
+        in Guid interfaceClass, nint deviceId, nint buffer, uint length, uint flags);
+
+    [LibraryImport("cfgmgr32.dll", EntryPoint = "CM_Get_Device_Interface_PropertyW")]
+    internal static partial uint CM_Get_Device_Interface_Property(
+        nint deviceInterface, in DEVPROPKEY key, out uint propertyType,
+        nint buffer, ref uint size, uint flags);
+
+    [LibraryImport("cfgmgr32.dll", EntryPoint = "CM_Locate_DevNodeW",
+        StringMarshalling = StringMarshalling.Utf16)]
+    internal static partial uint CM_Locate_DevNode(
+        out uint devInst, string deviceId, uint flags);
+
+    [LibraryImport("cfgmgr32.dll", EntryPoint = "CM_Get_Parent")]
+    internal static partial uint CM_Get_Parent(out uint parent, uint devInst, uint flags);
+
+    [LibraryImport("cfgmgr32.dll", EntryPoint = "CM_Get_DevNode_Status")]
+    internal static partial uint CM_Get_DevNode_Status(
+        out uint status, out uint problem, uint devInst, uint flags);
+
+    [LibraryImport("cfgmgr32.dll", EntryPoint = "CM_Request_Device_EjectW")]
+    internal static partial uint CM_Request_Device_Eject(
+        uint devInst, out PnpVetoType vetoType, nint vetoName, uint nameLength, uint flags);
+
     // ---- The desktop's UI font ---------------------------------------------
 
     internal const uint SPI_GETICONTITLELOGFONT = 0x001F;

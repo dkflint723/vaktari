@@ -1711,6 +1711,79 @@ public sealed partial class ShellViewModel : ObservableObject
         if (place is { IsUserPinned: true }) _ = Sidebar.UnpinAsync(place.Id);
     }
 
+    /// <summary>
+    /// Safely removes a drive, after getting out of its way.
+    ///
+    /// **Step one is the difference between this working and never working.**
+    /// Vaktari holds the volume open itself: a pane showing a folder on the
+    /// drive keeps a live directory watch on it, which is an outstanding handle
+    /// like any other. Ejecting the drive somebody is looking at — overwhelmingly
+    /// the common case, since looking at it is why they want it back — would
+    /// fail every single time, and the veto would blame a program the user
+    /// cannot find, because the program is us.
+    /// </summary>
+    [RelayCommand]
+    private async Task EjectPlaceAsync(PlaceItemViewModel? place)
+    {
+        if (place is not { CanEject: true, IsEjecting: false }) return;
+
+        // Captured before the first await: an eject takes seconds, a tab can be
+        // switched inside them, and the answer must land where it was asked for
+        // — the same reason DisconnectRemoteAsync captures it.
+        var pane = ActiveTab;
+
+        // Every tab in both panes, not just the active one: a background tab
+        // holds its directory watch open exactly like a visible one does, and
+        // an unseen tab vetoing the eject is the least explicable failure of
+        // the lot. Right is null when the window is not split.
+        foreach (var group in new[] { Left, Right }.OfType<PaneGroupViewModel>())
+        {
+            foreach (var tab in group.Tabs.ToList())
+            {
+                if (!IsUnder(tab.CurrentPath, place.Path)) continue;
+
+                await tab.NavigateAsync(
+                    Environment.GetFolderPath(Environment.SpecialFolder.UserProfile))
+                    .ConfigureAwait(true);
+            }
+        }
+
+        // After the navigation, never before: a finished listing clears the
+        // status line, so a message set first would be erased by the very
+        // navigation this just triggered.
+        if (pane is not null) pane.Status = $"ejecting {place.Label}…";
+
+        try
+        {
+            var result = await Sidebar.EjectAsync(place.Id).ConfigureAwait(true);
+
+            if (pane is not null) pane.Status = result.Message;
+        }
+        catch (Exception ex)
+        {
+            if (pane is not null)
+                pane.Status = Core.FileSystem.Failures.Describe(ex, $"eject {place.Label}");
+        }
+    }
+
+    /// <summary>Whether a pane is looking at the drive, or anywhere inside it.</summary>
+    private static bool IsUnder(string? path, string root)
+    {
+        if (string.IsNullOrEmpty(path)) return false;
+
+        if (Core.FileSystem.PathRules.Same(path, root)) return true;
+
+        var prefix = Core.FileSystem.PathRules.Normalise(root);
+        var full = Core.FileSystem.PathRules.Normalise(path);
+
+        if (!full.StartsWith(prefix, Core.FileSystem.PathRules.Comparison)) return false;
+
+        // The prefix has to end at a separator, or "E:\" would claim "E:\..."
+        // correctly but "/media/one" would also claim "/media/onetwo".
+        return prefix.EndsWith(Path.DirectorySeparatorChar)
+               || (full.Length > prefix.Length && full[prefix.Length] == Path.DirectorySeparatorChar);
+    }
+
     // ---- operations ----------------------------------------------------
 
     /// <summary>

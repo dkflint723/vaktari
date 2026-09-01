@@ -241,9 +241,46 @@ public sealed partial class SidebarViewModel : ObservableObject
         await ReloadAsync().ConfigureAwait(false);
     }
 
+    private bool _reloading;
+    private bool _reloadDirty;
+
     public async Task ReloadAsync()
     {
         if (_places is not { } places) return;
+
+        // **Coalesced, and this is required rather than defensive.** Until
+        // devices were watched, this ran only at startup and after a pin, so
+        // two could never overlap. Driven by arrivals and removals they will:
+        // one stick with four partitions, or an eject, which changes the mount
+        // table while the rebuild it triggered is still running. Each overlapping
+        // rebuild parks a thread-pool thread for the whole SMB timeout on a
+        // machine with a dead mapped drive, so they must not stack — and the
+        // last one still has to happen, or the sidebar settles on stale rows.
+        if (_reloading)
+        {
+            _reloadDirty = true;
+            return;
+        }
+
+        _reloading = true;
+
+        try
+        {
+            do
+            {
+                _reloadDirty = false;
+                await ReloadOnceAsync(places).ConfigureAwait(false);
+            }
+            while (_reloadDirty);
+        }
+        finally
+        {
+            _reloading = false;
+        }
+    }
+
+    private async Task ReloadOnceAsync(Vaktari.Core.Places.IPlacesProvider places)
+    {
 
         // **The providers are synchronous behind an async signature**, so this
         // ran wherever it was called from, and it is called from the UI thread
@@ -269,7 +306,55 @@ public sealed partial class SidebarViewModel : ObservableObject
             // re-applied — a refresh would otherwise silently clear the
             // highlight and leave the sidebar looking like nothing is open.
             SetCurrentPath(CurrentPath);
+
+            // And the busy mark, for exactly the same reason: an eject spans
+            // several rebuilds, and a row that came back idle would invite a
+            // second click on a drive already being torn down.
+            MarkEjecting();
         });
+    }
+
+    /// <summary>
+    /// Which drives are being ejected right now, by place id.
+    ///
+    /// **On the sidebar, not on the rows**, because the rows do not survive a
+    /// reload and an eject outlives several. Re-applied after every rebuild by
+    /// <see cref="MarkEjecting"/>, on the same principle as the current-path
+    /// mark beside it.
+    /// </summary>
+    private readonly HashSet<string> _ejecting = new(StringComparer.Ordinal);
+
+    private void MarkEjecting()
+    {
+        foreach (var group in Groups)
+            foreach (var row in group.Places)
+                row.IsEjecting = _ejecting.Contains(row.Id);
+    }
+
+    /// <summary>
+    /// Ejects a drive, keeping the row visibly busy across the reloads that
+    /// happen while it runs.
+    /// </summary>
+    public async Task<Vaktari.Core.Places.EjectResult> EjectAsync(string id)
+    {
+        if (_places is not { } places)
+            return Vaktari.Core.Places.EjectResult.Failed("no drives are available");
+
+        _ejecting.Add(id);
+        MarkEjecting();
+
+        try
+        {
+            return await Task.Run(() => places.EjectAsync(id, CancellationToken.None).AsTask())
+                             .ConfigureAwait(true);
+        }
+        finally
+        {
+            _ejecting.Remove(id);
+            MarkEjecting();
+
+            await ReloadAsync().ConfigureAwait(true);
+        }
     }
 
     public Task PinAsync(string path)
@@ -325,6 +410,41 @@ public sealed partial class PlaceItemViewModel(Place place) : ObservableObject
     /// </summary>
     public bool IsUserPinned { get; } = place.IsUserPinned;
 
+    /// <summary>
+    /// Whether this is a drive that can be safely removed.
+    ///
+    /// **Both providers have set this since they were written, and nothing has
+    /// ever read it.** Every binding on it was dead until the eject entries
+    /// landed — and a binding to a property that does not exist is a debug-log
+    /// line in Avalonia, not an error, so the row would simply have shown
+    /// nothing and said nothing.
+    /// </summary>
+    public bool CanEject { get; } = place.CanEject;
+
+    /// <summary>
+    /// True while this drive is being ejected, which disables the row.
+    ///
+    /// Set from the sidebar rather than owned here: a reload throws every row
+    /// object away and builds new ones, and once devices are watched a reload
+    /// landing mid-eject is guaranteed rather than hypothetical — the dismount
+    /// itself changes the mount table. A flag living on the row would vanish
+    /// with it and the drive would come back looking idle and clickable while
+    /// the eject was still running.
+    /// </summary>
+    [ObservableProperty] private bool _isEjecting;
+
+    partial void OnIsEjectingChanged(bool value)
+    {
+        OnPropertyChanged(nameof(CanClickEject));
+        OnPropertyChanged(nameof(ShowCapacity));
+    }
+
+    public bool CanClickEject => CanEject && !IsEjecting;
+
+    /// <summary>Names the drive, because with two sticks plugged in "eject" on
+    /// its own does not say which — and this is what a screen reader reads.</summary>
+    public string EjectHint => $"eject {Label}";
+
     /// <summary>Unreachable entries render dimmed and in place — never hidden,
     /// never silently dropped.</summary>
     public double Opacity => IsAvailable ? 1.0 : 0.4;
@@ -360,7 +480,7 @@ public sealed partial class PlaceItemViewModel(Place place) : ObservableObject
     /// <see cref="RaiseCapacityVisibilityChanged"/> exists for.
     /// </summary>
     public bool ShowCapacity =>
-        HasCapacity && Settings.AppSettings.Current.General.ShowFreeSpace;
+        HasCapacity && !IsEjecting && Settings.AppSettings.Current.General.ShowFreeSpace;
 
     /// <summary>
     /// The rows are separate objects from the shell that owns the setting, so

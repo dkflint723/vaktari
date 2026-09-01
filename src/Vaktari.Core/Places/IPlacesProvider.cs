@@ -37,7 +37,15 @@ public interface IPlacesProvider
 {
     ValueTask<IReadOnlyList<PlaceGroup>> GetPlacesAsync(CancellationToken ct);
 
-    /// <summary>Fires on mount, unmount, and device arrival or removal.</summary>
+    /// <summary>
+    /// Fires on mount, unmount, and device arrival or removal — and on a pin
+    /// being added or removed.
+    ///
+    /// **Raised on a background thread.** Handlers marshal to their own if they
+    /// need one; the sidebar posts to the dispatcher. This was always true of
+    /// the pin path and never written down, and it becomes load-bearing now
+    /// that a watcher raises it from a timer with no thread affinity at all.
+    /// </summary>
     event EventHandler? PlacesChanged;
 
     ValueTask PinAsync(string path, string? label, CancellationToken ct);
@@ -45,7 +53,18 @@ public interface IPlacesProvider
     ValueTask ReorderAsync(IReadOnlyList<string> orderedIds, CancellationToken ct);
 
     ValueTask MountAsync(string id, CancellationToken ct);
-    ValueTask EjectAsync(string id, CancellationToken ct);
+
+    /// <summary>
+    /// Safely removes the volume behind a place id.
+    ///
+    /// Returns rather than throws, because "something has a file open" is an
+    /// ordinary answer and not an exceptional one — and the caller has to tell
+    /// the person which of several ordinary answers happened. An id that names
+    /// nothing, or names something not removable, comes back as
+    /// <see cref="EjectOutcome.NotRemovable"/> without the platform being asked
+    /// to do anything.
+    /// </summary>
+    ValueTask<EjectResult> EjectAsync(string id, CancellationToken ct);
 
     /// <summary>
     /// First-run import of the user's existing bookmarks — Dolphin's

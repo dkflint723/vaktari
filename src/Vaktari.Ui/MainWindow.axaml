@@ -2271,6 +2271,17 @@
                                      cursor. Cancelling in Opening is the one
                                      hook that stops the popup itself. -->
                                 <ContextMenu Opening="OnPlaceMenuOpening">
+                                  <!-- Above "Remove from places", and with no
+                                       separator between them: Avalonia collapses
+                                       none, and the two are mutually exclusive
+                                       in practice — a drive is never a row the
+                                       user pinned — so a rule would always be
+                                       drawn above or below nothing. -->
+                                  <MenuItem Header="Eject"
+                                            IsVisible="{Binding CanEject}"
+                                            IsEnabled="{Binding CanClickEject}"
+                                            Command="{Binding $parent[Window].((vm:ShellViewModel)DataContext).EjectPlaceCommand}"
+                                            CommandParameter="{Binding}"/>
                                   <MenuItem Header="Remove from places"
                                             IsVisible="{Binding IsUserPinned}"
                                             Command="{Binding $parent[Window].((vm:ShellViewModel)DataContext).RemovePlaceCommand}"
@@ -2299,6 +2310,48 @@
                                         StrokeThickness="{DynamicResource IconStroke}"
                                         StrokeLineCap="Round" StrokeJoin="Round"
                                         th:SidebarIcon.Token="{Binding Icon}"/>
+                                  <!-- **Declared first among the right-docked
+                                       children, so it takes the far edge** —
+                                       the order the sharing rows already prove,
+                                       where the ✕ is declared before the copy
+                                       button and lands rightmost.
+
+                                       Always drawn, never revealed on hover:
+                                       there is not one hover-gated control in
+                                       this window, and a hover gate is either
+                                       out of the tab order or an invisible
+                                       focus target. CanEject is true only for
+                                       removable drives, so on an ordinary
+                                       machine this adds a button to no rows at
+                                       all. -->
+                                  <Button DockPanel.Dock="Right" Padding="4,0" Margin="6,0,0,0"
+                                          Background="Transparent" BorderThickness="0"
+                                          VerticalAlignment="Center"
+                                          IsVisible="{Binding CanEject}"
+                                          IsEnabled="{Binding CanClickEject}"
+                                          AutomationProperties.Name="{Binding EjectHint}"
+                                          ToolTip.Tip="{Binding EjectHint}"
+                                          Command="{Binding $parent[Window].((vm:ShellViewModel)DataContext).EjectPlaceCommand}"
+                                          CommandParameter="{Binding}">
+                                    <!-- Drawn rather than typed: U+23CF is not
+                                         in the UI font and renders as tofu. -->
+                                    <Path Width="{DynamicResource IconSize}" Height="{DynamicResource IconSize}"
+                                          Stretch="Uniform" VerticalAlignment="Center"
+                                          Stroke="{DynamicResource ViewText}"
+                                          StrokeThickness="{DynamicResource IconStroke}"
+                                          StrokeLineCap="Round" StrokeJoin="Round"
+                                          Data="M6 10.5 L12 5 L18 10.5 Z M6 15 H18"/>
+                                  </Button>
+                                  <!-- In the free-space slot rather than the
+                                       label: with two sticks plugged in, a row
+                                       that stops saying which drive it is is a
+                                       row nobody can check. "offline" already
+                                       reports a dead mount the same way. -->
+                                  <TextBlock DockPanel.Dock="Right" Text="ejecting…"
+                                             VerticalAlignment="Center" Margin="8,0,0,0"
+                                             FontSize="{DynamicResource FontSizeTiny}"
+                                             Foreground="{DynamicResource ViewDimText}"
+                                             IsVisible="{Binding IsEjecting}"/>
                                   <TextBlock DockPanel.Dock="Right" Text="{Binding CapacityShort}"
                                              VerticalAlignment="Center" Margin="8,0,0,0"
                                              FontSize="{DynamicResource FontSizeTiny}"

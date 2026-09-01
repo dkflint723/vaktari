@@ -17,7 +17,11 @@ public sealed class LinuxPlatform : IPlatform
 
     public LinuxPlatform(string stateDirectory)
     {
-        Places = new LinuxPlacesProvider(stateDirectory);
+        // Started here rather than in its constructor, for the reason given on
+        // the Windows twin.
+        var places = new LinuxPlacesProvider(stateDirectory);
+        places.Start();
+        Places = places;
         Icons = new FreedesktopIconTheme(Theme?.Read()?.IconTheme, naming: new XdgIconNaming());
     }
 

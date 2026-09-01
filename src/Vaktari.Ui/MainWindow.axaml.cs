@@ -1056,12 +1056,19 @@ public partial class MainWindow : Window
     /// row in the sidebar.
     ///
     /// Cancelling here is the only hook that stops the popup rather than its
-    /// contents. If this menu ever gains an entry that applies to any place,
-    /// this handler is what has to go.
+    /// contents — so every entry the menu gains needs an arm here too.
+    ///
+    /// **Eject is the second such entry, and it is why this now asks two
+    /// questions.** The old rule cancelled on every row that was not user
+    /// pinned, which is every DRIVE row — precisely the rows eject exists for.
+    /// Adding the entry without touching this would have made the whole
+    /// context-menu route inert, and silently: a cancelled ContextMenu is not
+    /// an error, it is simply a menu that never appears.
     /// </summary>
     private void OnPlaceMenuOpening(object? sender, CancelEventArgs e)
     {
-        if (sender is Control { DataContext: PlaceItemViewModel { IsUserPinned: true } }) return;
+        if (sender is Control { DataContext: PlaceItemViewModel row }
+            && (row.IsUserPinned || row.CanEject)) return;
 
         e.Cancel = true;
     }

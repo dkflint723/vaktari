@@ -16,9 +16,24 @@ public partial class PinnedPlacesJsonContext : JsonSerializerContext;
 /// versus mount points" difference is expressed honestly rather than papered
 /// over with a fake common root.
 /// </summary>
-public sealed class LinuxPlacesProvider : IPlacesProvider
+public sealed class LinuxPlacesProvider : IPlacesProvider, IDisposable
 {
     private readonly string _pinsPath;
+    private DeviceWatch? _watch;
+
+    /// <summary>
+    /// Stands in for /proc/mounts.
+    ///
+    /// **The seam has to replace the File.Exists guard as well as the read.**
+    /// Guarding on the literal path and then substituting only the content
+    /// means every fixture test on a Windows desktop sees an empty table and
+    /// passes having asserted nothing — worse than no test, because it reads
+    /// like coverage.
+    /// </summary>
+    internal Func<IEnumerable<string>>? MountLines { get; init; }
+
+    /// <summary>Stands in for the by-label directory walk, for the same reason.</summary>
+    internal Func<Dictionary<string, string>>? VolumeLabels { get; init; }
     /// <summary>
     /// **Replaced, never mutated in place** — the same reason as the Windows
     /// provider: building the places list reads this off the UI thread while
@@ -35,6 +50,29 @@ public sealed class LinuxPlacesProvider : IPlacesProvider
         Directory.CreateDirectory(stateDirectory);
         _pinsPath = Path.Combine(stateDirectory, "places.json");
         _pins = LoadPins();
+    }
+
+    /// <summary>
+    /// Begins watching the mount table, so a stick plugged in shows up on its
+    /// own. Separate from the constructor, and idempotent, for the reasons
+    /// given on the Windows twin.
+    /// </summary>
+    public void Start()
+    {
+        if (_watch is not null) return;
+
+        _watch = new DeviceWatch(() => MountLines is { } lines
+            ? MountTable.Signature(lines())
+            : MountTable.Snapshot());
+
+        _watch.Changed += (_, _) => PlacesChanged?.Invoke(this, EventArgs.Empty);
+        _watch.Start();
+    }
+
+    public void Dispose()
+    {
+        _watch?.Dispose();
+        _watch = null;
     }
 
     private static string Home =>
@@ -180,21 +218,26 @@ public sealed class LinuxPlacesProvider : IPlacesProvider
         var devices = new List<Place>();
         var network = new List<Place>();
 
-        if (!File.Exists("/proc/mounts")) return (devices, network);
+        // Through the seam, guard and all: reading the literal path here is what
+        // made a hundred lines of parsing untestable on any machine that is not
+        // the one being described.
+        var lines = MountLines is { } source_ ? source_() : ReadMountLines();
 
-        var labels = ReadVolumeLabels();
+        var labels = VolumeLabels is { } fake ? fake() : ReadVolumeLabels();
         var seenDevices = new HashSet<string>(StringComparer.Ordinal);
 
-        foreach (var line in File.ReadLines("/proc/mounts"))
+        foreach (var line in lines)
         {
             var parts = line.Split(' ');
             if (parts.Length < 3) continue;
 
-            var source = parts[0];
-            var mountPoint = parts[1].Replace("\\040", " ");
+            // Both fields, and through the one-pass unescaper: the device name
+            // can carry escapes too, and it is the key the eject path matches on.
+            var source = MountTable.Unescape(parts[0]);
+            var mountPoint = MountTable.Unescape(parts[1]);
             var fsType = parts[2];
 
-            if (IsNetworkFs(fsType))
+            if (MountTable.IsNetworkFs(fsType))
             {
                 // gvfs is a control mount, not somewhere anyone navigates.
                 if (mountPoint.Contains("/gvfs", StringComparison.Ordinal)) continue;
@@ -210,7 +253,7 @@ public sealed class LinuxPlacesProvider : IPlacesProvider
                 continue;
             }
 
-            if (!IsRealVolume(source, mountPoint, fsType)) continue;
+            if (!MountTable.IsRealVolume(source, mountPoint, fsType)) continue;
 
             // One physical volume, one entry. btrfs subvolumes mount the same
             // device several times and would otherwise appear as separate
@@ -257,26 +300,9 @@ public sealed class LinuxPlacesProvider : IPlacesProvider
         return (devices, network);
     }
 
-    /// <summary>
-    /// Snap and flatpak mount squashfs images through loop devices, which live
-    /// under /dev/ and so pass a naive "is it a block device" test — that is
-    /// how a sidebar ends up listing a dozen entries named after revision
-    /// numbers, all reporting zero bytes free.
-    /// </summary>
-    private static bool IsRealVolume(string source, string mountPoint, string fsType)
-    {
-        if (!source.StartsWith("/dev/", StringComparison.Ordinal)) return false;
-        if (source.StartsWith("/dev/loop", StringComparison.Ordinal)) return false;
-        if (source.StartsWith("/dev/zram", StringComparison.Ordinal)) return false;
-
-        if (fsType is "squashfs" or "overlay" or "tmpfs" or "devtmpfs" or "iso9660") return false;
-
-        if (mountPoint.StartsWith("/boot", StringComparison.Ordinal)) return false;
-        if (mountPoint.StartsWith("/snap", StringComparison.Ordinal)) return false;
-        if (mountPoint.StartsWith("/var/lib/docker", StringComparison.Ordinal)) return false;
-
-        return true;
-    }
+    /// <summary>The real mount table, when no test has substituted one.</summary>
+    private static IEnumerable<string> ReadMountLines()
+        => File.Exists("/proc/mounts") ? File.ReadLines("/proc/mounts") : [];
 
     private static string LabelFor(
         string source, string mountPoint, Dictionary<string, string> labels)
@@ -290,8 +316,6 @@ public sealed class LinuxPlacesProvider : IPlacesProvider
         return string.IsNullOrEmpty(name) ? source : name;
     }
 
-    private static bool IsNetworkFs(string fsType) => fsType
-        is "cifs" or "smb3" or "nfs" or "nfs4" or "fuse.sshfs" or "fuse.kio" or "fuse.gvfsd-fuse";
 
     public ValueTask PinAsync(string path, string? label, CancellationToken ct)
     {
@@ -323,7 +347,32 @@ public sealed class LinuxPlacesProvider : IPlacesProvider
     }
 
     public ValueTask MountAsync(string id, CancellationToken ct) => ValueTask.CompletedTask;
-    public ValueTask EjectAsync(string id, CancellationToken ct) => ValueTask.CompletedTask;
+    /// <summary>Stands in for the real tool, so the rules above it are testable
+    /// on a machine with no udisks2 and no removable drive.</summary>
+    internal IEjector? EjectorOverride { get; init; }
+
+    /// <summary>
+    /// Safely removes the volume behind a place id. Both refusals happen here,
+    /// before an ejector exists, so "a fixed disk is never handed to the device
+    /// layer" is a fact about the call graph rather than a promise inside it.
+    /// </summary>
+    public async ValueTask<EjectResult> EjectAsync(string id, CancellationToken ct)
+    {
+        if (BuildMounts().Devices.FirstOrDefault(p => p.Id == id) is not { } place)
+            return EjectResult.NotRemovable("that drive is not there any more");
+
+        if (!place.CanEject)
+            return EjectResult.NotRemovable($"{place.Label} is not a removable drive");
+
+        var ejector = EjectorOverride ?? new UdisksEjector { MountLines = MountLines };
+        var result = await ejector.EjectAsync(place.Path, ct).ConfigureAwait(false);
+
+        // Only a real ejection rebuilds: a row that vanished after a refusal
+        // would say the drive is gone while it is still mounted.
+        if (result.VolumeIsGone) PlacesChanged?.Invoke(this, EventArgs.Empty);
+
+        return result;
+    }
 
     /// <summary>
     /// First-run import from Dolphin and GTK. Coming up with the user's real

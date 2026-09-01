@@ -47,7 +47,12 @@ public sealed class WindowsPlatform : IPlatform
         // process's environment only — see GitOnPath.
         if (GitOnPath.Ensure() is { } git)
             Console.Error.WriteLine($"[vaktari] vcs: git not on PATH, found at {git}");
-        Places = new WindowsPlacesProvider(stateDirectory);
+        // Started here rather than in its constructor: the composition root is
+        // where a fact about this machine belongs, and it is the only place
+        // that knows the provider is the live one rather than a test's.
+        var places = new WindowsPlacesProvider(stateDirectory);
+        places.Start();
+        Places = places;
         Scripts = new WindowsScriptRunner(stateDirectory);
 
         Operations = new WindowsFileOperations();
