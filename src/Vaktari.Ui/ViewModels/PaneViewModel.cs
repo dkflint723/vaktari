@@ -403,9 +403,18 @@ public sealed partial class PaneViewModel : ObservableObject, IDisposable
     [RelayCommand]
     public void RunAsAdministrator()
     {
-        if (!CanRunSelectionAsAdministrator || SelectedEntry is not { } entry) return;
+        if (!CanRunSelectionAsAdministrator) return;
 
-        _launcher?.OpenElevated(entry.FullPath);
+        // Every one that is actually runnable. Selecting three installers and
+        // choosing this ran one of them — and elevation is the worst place for
+        // "it did something, but not what you asked".
+        var runnable = EntriesToActOn()
+            .Where(e => !e.IsDirectory && Executable.Contains(Path.GetExtension(e.Name)))
+            .ToList();
+
+        if (runnable.Count == 0 || TooMany(runnable.Count)) return;
+
+        foreach (var entry in runnable) _launcher?.OpenElevated(entry.FullPath);
     }
 
     /// <summary>
@@ -736,6 +745,17 @@ public sealed partial class PaneViewModel : ObservableObject, IDisposable
 
     /// <summary>Applications offered by the "open with" submenu.</summary>
     public ObservableCollection<LaunchOption> OpenWithOptions { get; } = new();
+
+    /// <summary>
+    /// Whether "Open with" has anything to offer.
+    ///
+    /// **Gated on a count, like every neighbour.** It was gated on HasSelection
+    /// alone, so every folder on both platforms — and on Linux any file whose
+    /// MIME will not resolve — drew a row with a chevron and an empty popup
+    /// behind it. HasScripts, HasTemplates and HasSeveralTerminals all guard on
+    /// a count for exactly this reason.
+    /// </summary>
+    public bool HasOpenWithOptions => OpenWithOptions.Count > 0;
 
     /// <summary>Raised when an operation starts, so the shell can show progress.</summary>
     public event EventHandler<IOperationHandle>? OperationStarted;
@@ -1494,6 +1514,30 @@ public sealed partial class PaneViewModel : ObservableObject, IDisposable
             ? Selection.Select(e => e.FullPath).ToList()
             : SelectedEntry is { } one ? [one.FullPath] : [];
 
+    /// <summary>
+    /// The entries the user means, which is the whole selection when there is
+    /// one and the focused row otherwise.
+    ///
+    /// **The twin of <see cref="SelectionPaths"/>, for the verbs that need the
+    /// entry rather than the path.** Nine call sites used SelectionPaths and
+    /// the open verbs used SelectedEntry, so selecting five files and pressing
+    /// Enter opened one of them — silently, with no sign that the other four
+    /// had been ignored.
+    /// </summary>
+    public IReadOnlyList<FileEntry> EntriesToActOn()
+        => Selection.Count > 0
+            ? Selection.ToList()
+            : SelectedEntry is { } one ? [one] : [];
+
+    /// <summary>
+    /// How many things Vaktari will open at once before it stops and says so.
+    ///
+    /// Explorer asks for confirmation around fifteen; the number matters less
+    /// than there being one, because "open" on a selection of four hundred
+    /// files launches four hundred processes and the machine is gone.
+    /// </summary>
+    internal const int OpenLimit = 15;
+
     private void Track(IOperationHandle handle)
     {
         OperationStarted?.Invoke(this, handle);
@@ -1519,6 +1563,12 @@ public sealed partial class PaneViewModel : ObservableObject, IDisposable
         if (IsPreviewVisible) _ = RefreshPreviewAsync();
 
         OpenWithOptions.Clear();
+
+        // Raised on the way out as well as after a refill: a folder clears the
+        // list and returns here, and without this the row stayed visible from
+        // whatever was selected before it.
+        OnPropertyChanged(nameof(HasOpenWithOptions));
+
         if (_launcher is null || value is not { IsDirectory: false } entry) return;
 
         // Enumeration shells out to xdg-mime, so keep it off the UI thread.
@@ -1553,6 +1603,8 @@ public sealed partial class PaneViewModel : ObservableObject, IDisposable
 
                 OpenWithOptions.Clear();
                 foreach (var option in wanted) OpenWithOptions.Add(option);
+
+                OnPropertyChanged(nameof(HasOpenWithOptions));
             });
         });
     }
@@ -1565,6 +1617,9 @@ public sealed partial class PaneViewModel : ObservableObject, IDisposable
         // The chooser opens the file itself once something is picked, so it
         // records the same way — and is checked BEFORE the recent entry,
         // because a cancelled chooser opened nothing and must not claim to.
+        //
+        // One file only: the system's chooser takes a single path, and asking
+        // it five times would stack five dialogs.
         if (option.IsChooser)
         {
             if (_launcher?.ChooseApplication(entry.FullPath) is true)
@@ -1573,12 +1628,21 @@ public sealed partial class PaneViewModel : ObservableObject, IDisposable
             return;
         }
 
-        // Same act as OpenAsync, so it belongs in the recent list too. Missing
-        // this would make the list quietly depend on WHICH way you opened
-        // something, which nobody would guess from the UI.
-        Recents?.Record(entry.FullPath, RecentKind.File);
+        // All of them, for the same reason Open does: choosing an application
+        // for five selected images and having one open is a silent loss.
+        var files = EntriesToActOn().Where(e => !e.IsDirectory).ToList();
 
-        _launcher?.OpenWith(entry.FullPath, option);
+        if (files.Count == 0 || TooMany(files.Count)) return;
+
+        foreach (var file in files)
+        {
+            // Same act as OpenAsync, so it belongs in the recent list too.
+            // Missing this would make the list quietly depend on WHICH way you
+            // opened something, which nobody would guess from the UI.
+            Recents?.Record(file.FullPath, RecentKind.File);
+
+            _launcher?.OpenWith(file.FullPath, option);
+        }
     }
 
     /// <summary>
@@ -1652,8 +1716,47 @@ public sealed partial class PaneViewModel : ObservableObject, IDisposable
     public Task RefreshAsync() => LoadAsync(CurrentPath);
 
     [RelayCommand]
-    public Task OpenSelectedAsync()
-        => SelectedEntry is { } entry ? OpenAsync(entry) : Task.CompletedTask;
+    /// <summary>
+    /// Opens what is selected — all of it.
+    ///
+    /// **This used to open exactly one file however many were selected.** Pick
+    /// five images, press Enter, and one opened with nothing to say the other
+    /// four had been dropped. A folder is still navigated rather than opened
+    /// alongside, and only when it is the only thing chosen: navigating "into"
+    /// five folders has no meaning.
+    /// </summary>
+    public async Task OpenSelectedAsync()
+    {
+        var entries = EntriesToActOn();
+
+        if (entries.Count == 0) return;
+
+        if (entries.Count == 1)
+        {
+            await OpenAsync(entries[0]).ConfigureAwait(true);
+            return;
+        }
+
+        if (TooMany(entries.Count)) return;
+
+        // Files only past this point: a multi-selection containing folders
+        // opens the files and leaves the folders alone, because there is no
+        // sensible "navigate into all of these".
+        foreach (var entry in entries.Where(e => !e.IsDirectory))
+            await OpenAsync(entry).ConfigureAwait(true);
+    }
+
+    /// <summary>
+    /// Refuses to launch an unreasonable number of things at once, and says so
+    /// rather than doing nothing.
+    /// </summary>
+    private bool TooMany(int count)
+    {
+        if (count <= OpenLimit) return false;
+
+        Status = $"that would open {count} things at once — select fewer";
+        return true;
+    }
 
 
 

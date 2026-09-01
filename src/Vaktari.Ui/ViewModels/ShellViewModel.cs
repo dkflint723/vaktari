@@ -1056,7 +1056,23 @@ public sealed partial class ShellViewModel : ObservableObject
     private void BatchRename() => BatchRenameRequested?.Invoke(this, EventArgs.Empty);
 
     [RelayCommand]
-    private void ShowProperties() => PropertiesRequested?.Invoke(this, EventArgs.Empty);
+    private void ShowProperties()
+    {
+        // **Not in the bin or in Recent.** Both hold rows naming where a file
+        // USED to be, so the sheet describes a path that is not there: on
+        // Windows that reads as "modified 1601-01-01", size 0. Every neighbouring
+        // entry carries this gate; this one was written two hundred lines from
+        // the comment explaining why.
+        if (ActiveTab is { IsTrashListing: true } or { IsRecentListing: true }) return;
+
+        PropertiesRequested?.Invoke(this, EventArgs.Empty);
+    }
+
+    /// <summary>Whether the Properties entry applies here at all.</summary>
+    public bool CanShowProperties
+        => ActiveTab is not null
+           && !ActiveTab.IsTrashListing
+           && !ActiveTab.IsRecentListing;
 
     /// <summary>
     /// Emptying the trash goes through the window, not straight to the store,
@@ -1239,6 +1255,7 @@ public sealed partial class ShellViewModel : ObservableObject
                 item.RaiseCapacityVisibilityChanged();
 
         OnPropertyChanged(nameof(ShowCopyToInMenu));
+        OnPropertyChanged(nameof(CanShowProperties));
         OnPropertyChanged(nameof(ShowMoveToInMenu));
         OnPropertyChanged(nameof(ShowSortByInMenu));
         OnPropertyChanged(nameof(ShowDuplicateInMenu));
@@ -1538,6 +1555,7 @@ public sealed partial class ShellViewModel : ObservableObject
     private void NotifySelectionMenu()
     {
         OnPropertyChanged(nameof(ShowCopyToInMenu));
+        OnPropertyChanged(nameof(CanShowProperties));
         OnPropertyChanged(nameof(ShowMoveToInMenu));
         OnPropertyChanged(nameof(ShowDuplicateInMenu));
         OnPropertyChanged(nameof(ShowOpenInNewTabInMenu));

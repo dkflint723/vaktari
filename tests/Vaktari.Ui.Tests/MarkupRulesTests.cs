@@ -235,7 +235,14 @@ public class MarkupRulesTests
     {
         var doc = Markup();
 
-        var inCodeBehind = new[] { "Enter", "Delete", "Alt+Enter", "Shift+Delete", "Space" };
+        // Ctrl+A and Ctrl+Shift+A are handled in OnWindowKeyDown too: both go
+        // through the ListBox's own bulk selection path, because filling the
+        // bound collection row by row fires a change per file and each one
+        // refreshes the details panel.
+        var inCodeBehind = new[]
+        {
+            "Enter", "Delete", "Alt+Enter", "Shift+Delete", "Space", "Ctrl+A", "Ctrl+Shift+A",
+        };
 
         var bound = doc.Descendants(Avalonia + "KeyBinding")
             .Select(k => (string?)k.Attribute("Gesture"))

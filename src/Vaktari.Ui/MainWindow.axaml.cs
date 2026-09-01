@@ -575,11 +575,24 @@ public partial class MainWindow : Window
         return null;
     }
 
-    private static void FocusListIfEmptySpace(object? source)
+    private static void FocusListIfEmptySpace(object? source, KeyModifiers modifiers)
     {
+        if (ListForEmptySpace(source) is not { } list) return;
+
         // Without this, pressing Home or End after clicking below the tiles did
         // nothing: keyboard navigation begins at the focused element.
-        if (ListForEmptySpace(source) is { IsFocused: false } list) list.Focus();
+        if (!list.IsFocused) list.Focus();
+
+        // **And it clears the selection, which nothing did.** Clicking empty
+        // space is how every file manager says "never mind" — Avalonia's ListBox
+        // does not do it for you, and the band only reaches ApplyBand once the
+        // rectangle passes six pixels, so a click that never becomes a drag
+        // touched the selection not at all. Ctrl and Shift are excluded: those
+        // mean "keep what I have and add to it".
+        if (modifiers.HasFlag(KeyModifiers.Control) || modifiers.HasFlag(KeyModifiers.Shift))
+            return;
+
+        list.SelectedItems?.Clear();
     }
 
     private void OnPointerPressedAnywhere(object? sender, Avalonia.Input.PointerPressedEventArgs e)
@@ -692,7 +705,7 @@ public partial class MainWindow : Window
         //
         // Only when the press did NOT land on an item: an item click focuses
         // itself, and stealing that would break selection.
-        FocusListIfEmptySpace(e.Source);
+        FocusListIfEmptySpace(e.Source, e.KeyModifiers);
 
         // Recorded here so a drag can start on the first move past the
         // threshold rather than on the press itself.
@@ -718,6 +731,22 @@ public partial class MainWindow : Window
             ? PaneAt(e.Source)
             : null;
         _dragTrigger = _dragSource is null ? null : e;
+
+        // **Snapshotted before the listing sees the press.** This handler is
+        // registered on the tunnel, so the selection here is still what the
+        // user had; a moment later the press collapses it to the single row
+        // under the pointer and a drag of five files would carry one.
+        //
+        // Only when the press landed ON something already selected — pressing
+        // an unselected row genuinely does mean "just this one", and carrying
+        // the old selection there would drag files the user had just moved
+        // away from.
+        _dragSelection = null;
+
+        if (_dragSource is { } source && EntryAt(e.Source) is { } pressed
+            && source.Selection.Count > 1
+            && source.Selection.Any(x => PathRules.Same(x.FullPath, pressed.FullPath)))
+            _dragSelection = source.Selection.Select(x => x.FullPath).ToList();
 
         // Visual tree — same reason as EntryAt. A press that lands on
         // templated content has no logical path back to the group, so clicking
@@ -1116,6 +1145,18 @@ public partial class MainWindow : Window
     {
         if (sender is not ContextMenu menu) return;
 
+        // **Re-read on every menu open, which is what their own comments always
+        // claimed.** Both were called once, from the pane's constructor, so
+        // adding a script or a template needed a restart to appear — while the
+        // menu itself invites you to go and add one ("Add your own scripts"
+        // opens the folder) and then never notices what you put there. Reading
+        // two small directories is cheap next to building this menu at all.
+        if (menu.DataContext is ViewModels.PaneGroupViewModel { ActiveTab: { } tab })
+        {
+            tab.RefreshScripts();
+            tab.RefreshTemplates();
+        }
+
         // The Proton entries live inside the Share submenu now, so the walk
         // has to descend — and it has to see more than MenuItems, because the
         // rule between the two sharing methods is a Separator. The first
@@ -1248,6 +1289,18 @@ public partial class MainWindow : Window
     private Point _dragOrigin;
     private PaneViewModel? _dragSource;
     private bool _dragging;
+
+    /// <summary>
+    /// What was selected at the moment the button went down.
+    ///
+    /// **Because pressing collapses the selection before the drag starts.**
+    /// Select five files, press on one of them and drag: the press has already
+    /// reduced the selection to that row by the time BeginDragAsync reads it,
+    /// so four files were silently left behind. The right-button drag carried
+    /// all five, because Avalonia treats a right press differently — which is
+    /// what made it look like a listing quirk rather than a drag one.
+    /// </summary>
+    private List<string>? _dragSelection;
 
     // The press that began the gesture, held until the move threshold is
     // crossed.
@@ -1522,6 +1575,7 @@ public partial class MainWindow : Window
         {
             _dragSource = null;
             _dragTrigger = null;
+            _dragSelection = null;
             _dragRight = false;
             return;
         }
@@ -1674,6 +1728,41 @@ public partial class MainWindow : Window
         return true;
     }
 
+    /// <summary>
+    /// Selects everything that is not selected, and deselects everything that
+    /// is — Explorer's Ctrl+Shift+A, and the fastest way to say "all of these
+    /// except those".
+    ///
+    /// Through the ListBox for the same reason SelectAll is: filling the bound
+    /// collection row by row fires CollectionChanged once per file, and each
+    /// one refreshes the details panel and recomputes the summary.
+    /// </summary>
+    private void InvertSelection()
+    {
+        if (ActiveListing() is not { } list) return;
+        if (list.SelectedItems is not { } selected) return;
+
+        var wanted = list.Items
+            .OfType<object>()
+            .Where(item => !selected.Contains(item))
+            .ToList();
+
+        selected.Clear();
+
+        foreach (var item in wanted) selected.Add(item);
+    }
+
+    /// <summary>Clears the selection without touching what is focused.</summary>
+    private void SelectNone() => ActiveListing()?.SelectedItems?.Clear();
+
+    private void OnSelectAllClicked(object? sender, RoutedEventArgs e)
+        => ActiveListing()?.SelectAll();
+
+    private void OnSelectNoneClicked(object? sender, RoutedEventArgs e) => SelectNone();
+
+    private void OnInvertSelectionClicked(object? sender, RoutedEventArgs e)
+        => InvertSelection();
+
     private ListBox? ActiveListing()
     {
         foreach (var list in Lists(this))
@@ -1802,9 +1891,13 @@ public partial class MainWindow : Window
 
     private async Task BeginDragAsync(PaneViewModel pane, PointerPressedEventArgs trigger)
     {
-        var paths = pane.Selection.Count > 0
-            ? pane.Selection.Select(x => x.FullPath).ToList()
-            : pane.SelectedEntry is { } one ? [one.FullPath] : [];
+        // The snapshot taken when the button went down wins: by now the press
+        // has collapsed a multi-selection to the one row under the pointer.
+        var paths = _dragSelection is { Count: > 0 } remembered
+            ? remembered
+            : pane.Selection.Count > 0
+                ? pane.Selection.Select(x => x.FullPath).ToList()
+                : pane.SelectedEntry is { } one ? [one.FullPath] : [];
 
         if (paths.Count == 0) return;
         if (TopLevel.GetTopLevel(this)?.StorageProvider is not { } storage) return;
@@ -1853,6 +1946,7 @@ public partial class MainWindow : Window
             _dragRight = false;
             _dragSource = null;
             _dragTrigger = null;
+            _dragSelection = null;
         }
     }
 
@@ -3221,6 +3315,17 @@ public partial class MainWindow : Window
         {
             e.Handled = true;
             _shell.FocusOtherPaneCommand.Execute(null);
+
+            // **And move the keyboard with it.** The command only reassigns
+            // which group is active, so focus stayed in the old ListBox: arrows
+            // went on moving the OLD pane's selection while Enter, Delete and
+            // Ctrl+C/X/V resolve through ActiveTab and acted on the NEW one.
+            // Arrow to a file, press Delete, and the wrong file went to the bin.
+            //
+            // Posted rather than called: the listing for the other side is
+            // chosen by ActiveTab, and that binding has not been applied yet at
+            // this point in the keystroke.
+            Dispatcher.UIThread.Post(() => ActiveListing()?.Focus());
             return;
         }
 
@@ -3254,6 +3359,13 @@ public partial class MainWindow : Window
             // bulk path does the work: filling the bound collection item by item
             // would fire CollectionChanged once per file, and each one refreshes
             // the details panel and recomputes the summary.
+            case Key.A when e.KeyModifiers == (KeyModifiers.Control | KeyModifiers.Shift):
+                if (FocusManager?.GetFocusedElement() is TextBox) break;
+
+                InvertSelection();
+                e.Handled = true;
+                break;
+
             case Key.A when e.KeyModifiers.HasFlag(KeyModifiers.Control):
                 if (FocusManager?.GetFocusedElement() is TextBox) break;
 

@@ -1050,7 +1050,7 @@
                    nested: the others are safe only because of where they
                    happen to sit today, and where they sit is what changed. -->
               <MenuItem x:Name="OpenWithMenu" Header="Open with"
-                                      IsVisible="{Binding ActiveTab.HasSelection}"
+                                      IsVisible="{Binding ActiveTab.HasOpenWithOptions}"
                                       ItemsSource="{Binding ActiveTab.OpenWithOptions}">
                               <MenuItem.ItemTemplate>
                                 <DataTemplate x:DataType="fs:LaunchOption">
@@ -1283,6 +1283,15 @@
                    hiding one half and leaving the other stranded was never a state
                    anyone asked for.
               -->
+              <!-- **Selection had exactly one command and no menu home.**
+                   Ctrl+A worked and was findable only by knowing it; there was
+                   no way at all to clear a selection or invert one. Together
+                   because they are one decision about what is chosen. -->
+              <MenuItem Header="Select">
+                <MenuItem Header="All" InputGesture="Ctrl+A" Click="OnSelectAllClicked"/>
+                <MenuItem Header="None" Click="OnSelectNoneClicked"/>
+                <MenuItem Header="Invert" InputGesture="Ctrl+Shift+A" Click="OnInvertSelectionClicked"/>
+              </MenuItem>
               <MenuItem Header="Arrange"
                                       IsVisible="{Binding $parent[Window].((vm:ShellViewModel)DataContext).ShowSortByInMenu}">
                 <MenuItem Header="Sort by">
@@ -1466,6 +1475,7 @@
               <Separator/>
               <MenuItem Header="Properties"
                                       Command="{Binding $parent[Window].((vm:ShellViewModel)DataContext).ShowPropertiesCommand}"
+                                      IsVisible="{Binding $parent[Window].((vm:ShellViewModel)DataContext).CanShowProperties}"
                                       InputGesture="Alt+Enter"/>
             </ContextMenu>
           </ItemsControl.ContextMenu>

@@ -127,7 +127,35 @@ public sealed partial class PaneViewModel
         // Windows names that folder everywhere else they will have met it.
         // A path read from disk or from settings is used exactly as written,
         // because a folder whose real name contains a percent sign is legal.
-        return NavigateAsync(PathVariables.Expand(PathText));
+        var typed = PathVariables.Expand(PathText);
+
+        // **A file is a perfectly reasonable thing to paste in here**, and it
+        // used to be handed to the directory enumerator, which answered with
+        // the operating system's own "The directory name is invalid." over an
+        // empty listing. The route that receives paths FROM the desktop already
+        // resolves a file to its folder; the typed route never learned to.
+        if (!Directory.Exists(typed) && File.Exists(typed))
+            return OpenTypedFileAsync(typed);
+
+        return NavigateAsync(typed);
+    }
+
+    /// <summary>
+    /// Shows a typed file in its folder and opens it — which is what somebody
+    /// pasting a file path is asking for.
+    /// </summary>
+    private async Task OpenTypedFileAsync(string file)
+    {
+        var folder = Path.GetDirectoryName(file);
+
+        if (string.IsNullOrEmpty(folder)) return;
+
+        await NavigateAsync(folder).ConfigureAwait(true);
+
+        // Selected rather than opened: landing on the file with it highlighted
+        // is the least surprising answer, and launching something because a
+        // path was pasted would be a side effect nobody asked for.
+        SelectedEntry = Entries.FirstOrDefault(e => PathRules.Same(e.FullPath, file));
     }
 
     /// <summary>
