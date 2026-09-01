@@ -268,11 +268,26 @@ public sealed class LinuxFileOperations : IFileOperations
                 // cancelled move never deletes a folder it hasn't emptied.
                 if (move)
                 {
+                    // **Every directory the plan touched, deepest first.**
+                    // This used to walk `sources` — the caller's top-level list
+                    // — so a nested folder was never a candidate for removal,
+                    // and a root is never empty while its own subdirectories
+                    // are still standing. A moved tree therefore left its whole
+                    // skeleton behind at the source. The Windows twin was fixed
+                    // for exactly this and carries a comment saying so; the
+                    // port never happened, and there was no Linux test to
+                    // notice.
+                    //
                     // A link to a directory is not a directory to empty and
-                    // remove - Directory.Exists says yes to both.
-                    foreach (var source in sources.Where(p => Directory.Exists(p) && !IsLink(p)).Reverse())
-                        if (Directory.Exists(source) && !Directory.EnumerateFileSystemEntries(source).Any())
-                            Directory.Delete(source);
+                    // remove — Directory.Exists says yes to both.
+                    foreach (var directory in plan
+                                 .Where(i => i.IsDirectory && !i.IsLink)
+                                 .Select(i => i.Source)
+                                 .Reverse())
+                        if (Directory.Exists(directory)
+                            && !IsLink(directory)
+                            && !Directory.EnumerateFileSystemEntries(directory).Any())
+                            Directory.Delete(directory);
                 }
 
                 // Copies are not undoable: undoing one means deleting files,

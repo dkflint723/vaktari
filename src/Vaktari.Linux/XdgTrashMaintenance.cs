@@ -14,10 +14,13 @@ namespace Vaktari.Linux;
 /// same, and it is the only coherent reading of "keep the trash under N days":
 /// a trash that expired only its own deposits would not stay under anything.
 ///
-/// **It only covers the home trash.** Files deleted from another filesystem land
-/// in a <c>.Trash-$uid</c> directory on that volume, which XdgTrash does not
-/// implement and this therefore cannot sweep. A sweep is partial in exactly that
-/// case, and saying so is better than appearing thorough.
+/// **The LISTING covers every trash; the SWEEP still covers only the home one.**
+/// Files deleted from another filesystem now land in a <c>.Trash-$uid</c> at the
+/// top of that volume, per the spec, and List() and Restore() both find them.
+/// Expiry and the size limit are still home-only: a removable drive is not
+/// mounted most of the time, so a sweep could not apply a policy to it
+/// consistently, and quietly deleting from a stick the moment it appears is not
+/// what "keep the trash under N days" means to anyone.
 /// </summary>
 public sealed class XdgTrashMaintenance : ITrashMaintenance
 {
@@ -129,18 +132,46 @@ public sealed class XdgTrashMaintenance : ITrashMaintenance
         };
     }
 
+    /// <summary>
+    /// What is in the trash — **every trash, not just the home one.**
+    ///
+    /// This read $XDG_DATA_HOME/Trash alone, so anything Dolphin or Nautilus
+    /// had trashed onto a removable drive was invisible here, and a shipped
+    /// string in the recent listing already claimed "trash.List() walks every
+    /// volume's bin". Now that Vaktari puts a delete on the volume it came
+    /// from, its own deletions would have vanished from its own trash view too.
+    /// </summary>
     public IReadOnlyList<TrashedItem> List()
     {
         var items = new List<TrashedItem>();
 
-        if (!Directory.Exists(XdgTrash.InfoDir)) return items;
+        foreach (var root in XdgTrash.AllRoots())
+        {
+            var infoDir = Path.Combine(root, "info");
+            var filesDir = Path.Combine(root, "files");
 
-        foreach (var infoPath in Directory.EnumerateFiles(XdgTrash.InfoDir, "*.trashinfo"))
+            if (!Directory.Exists(infoDir)) continue;
+
+            items.AddRange(ListIn(infoDir, filesDir));
+        }
+
+        // Sorted across every trash, not within each: two volumes' entries
+        // interleaved by date is the only ordering that reads as one list.
+        items.Sort((a, b) => b.Deleted.CompareTo(a.Deleted));
+
+        return items;
+    }
+
+    private static List<TrashedItem> ListIn(string infoDir, string filesDir)
+    {
+        var items = new List<TrashedItem>();
+
+        foreach (var infoPath in Directory.EnumerateFiles(infoDir, "*.trashinfo"))
         {
             try
             {
                 var trashName = Path.GetFileNameWithoutExtension(infoPath);
-                var payload = Path.Combine(XdgTrash.FilesDir, trashName);
+                var payload = Path.Combine(filesDir, trashName);
 
                 // An info file whose payload is gone is an orphan. Listing it
                 // would offer a restore that cannot succeed.
@@ -176,6 +207,23 @@ public sealed class XdgTrashMaintenance : ITrashMaintenance
 
     public string Restore(string trashName) => XdgTrash.Restore(trashName);
 
+    /// <summary>
+    /// The sidecar for an item, in whichever trash it actually lives in.
+    ///
+    /// Derived from the payload rather than assembled from the home trash: the
+    /// payload is $root/files/$name, so its grandparent is the root. Building
+    /// it from XdgTrash.InfoDir made emptying skip everything on a removable
+    /// drive while reporting it as removed.
+    /// </summary>
+    private static string InfoPathOf(TrashedItem item)
+    {
+        var filesDir = Path.GetDirectoryName(item.Payload);
+        var root = filesDir is null ? null : Path.GetDirectoryName(filesDir);
+
+        return Path.Combine(
+            root ?? XdgTrash.TrashRoot, "info", item.TrashName + ".trashinfo");
+    }
+
     public ValueTask<TrashSweepResult> EmptyAsync(CancellationToken ct)
         => new(Task.Run(() =>
         {
@@ -187,7 +235,7 @@ public sealed class XdgTrashMaintenance : ITrashMaintenance
                 ct.ThrowIfCancellationRequested();
 
                 var entry = new Entry(
-                    Path.Combine(XdgTrash.InfoDir, item.TrashName + ".trashinfo"),
+                    InfoPathOf(item),
                     item.Payload, item.Deleted.DateTime, item.Size);
 
                 if (!Remove(entry)) continue;

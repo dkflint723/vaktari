@@ -11,8 +11,11 @@ namespace Vaktari.Linux;
 /// "deleted" folder would work only inside this app, which is the wrong answer
 /// for a file manager meant to sit alongside the rest of the desktop.
 /// </summary>
-public static class XdgTrash
+public static partial class XdgTrash
 {
+    [System.Runtime.InteropServices.LibraryImport("libc", EntryPoint = "getuid")]
+    private static partial uint GetUid();
+
     public static string TrashRoot
     {
         get
@@ -31,18 +34,103 @@ public static class XdgTrash
     public static string InfoDir  => Path.Combine(TrashRoot, "info");
 
     /// <summary>
+    /// Which trash a given path belongs in.
+    ///
+    /// **The home trash is only correct for the home volume.** Everything went
+    /// there unconditionally, so deleting a twenty-gigabyte video off a USB
+    /// stick COPIED twenty gigabytes onto the home partition — slowly, filling
+    /// a disk the user was not deleting from. The entry then survived the stick
+    /// being unplugged, and restoring it failed because the original path was
+    /// gone. Two shipped strings already promised the behaviour that did not
+    /// exist: the settings page says "Files deleted from another drive live in
+    /// a trash on that drive".
+    ///
+    /// The spec puts it at the top of the volume the file lives on:
+    /// <c>$topdir/.Trash/$uid</c> when the administrator has made a sticky
+    /// <c>.Trash</c> there, and <c>$topdir/.Trash-$uid</c> otherwise — which is
+    /// what Dolphin and Nautilus create, and what they read.
+    /// </summary>
+    internal static string RootFor(string path)
+    {
+        var home = TrashRoot;
+
+        try
+        {
+            var mount = Volumes.MountFor(Path.GetFullPath(path));
+            var homeMount = Volumes.MountFor(home);
+
+            // Same volume as the home trash — including the ordinary case where
+            // everything is one filesystem — means the home trash IS the right
+            // answer, and no per-volume directory should be created.
+            if (mount is null || homeMount is null
+                || string.Equals(mount, homeMount, StringComparison.Ordinal))
+                return home;
+
+            return VolumeTrash(mount);
+        }
+        catch (Exception e) when (e is IOException or UnauthorizedAccessException
+                                    or ArgumentException)
+        {
+            // A volume that will not answer is not a reason to refuse to
+            // delete: falling back to the home trash is the old behaviour, and
+            // it works.
+            Vaktari.Core.Quiet.Swallowed("trash", e);
+            return home;
+        }
+    }
+
+    /// <summary>
+    /// The trash directory at the top of a volume, by the spec's two spellings.
+    ///
+    /// <c>$topdir/.Trash</c> is only trusted when it is a real directory with
+    /// the sticky bit and is not a symbolic link — the spec is explicit, and
+    /// the reason is that an unstickied or linked one is a way to have somebody
+    /// else's files written somewhere they did not choose.
+    /// </summary>
+    internal static string VolumeTrash(string mount)
+    {
+        var uid = OperatingSystem.IsLinux() ? GetUid() : 0;
+
+        var shared = Path.Combine(mount, ".Trash");
+
+        try
+        {
+            if (Directory.Exists(shared)
+                && (File.GetAttributes(shared) & FileAttributes.ReparsePoint) == 0
+                && OperatingSystem.IsLinux()
+                && File.GetUnixFileMode(shared).HasFlag(UnixFileMode.StickyBit))
+                return Path.Combine(shared, uid.ToString(CultureInfo.InvariantCulture));
+        }
+        catch (Exception e) when (e is IOException or UnauthorizedAccessException)
+        {
+            Vaktari.Core.Quiet.Swallowed("trash", e);
+        }
+
+        return Path.Combine(
+            mount, ".Trash-" + uid.ToString(CultureInfo.InvariantCulture));
+    }
+
+    /// <summary>
     /// Moves one item to the trash and returns the name it was given there, so
     /// an undo can find it again.
     /// </summary>
     public static string Trash(string sourcePath)
     {
-        Directory.CreateDirectory(FilesDir);
-        Directory.CreateDirectory(InfoDir);
-
         var full = Path.GetFullPath(sourcePath);
-        var name = ReserveName(Path.GetFileName(full), full);
 
-        var destination = Path.Combine(FilesDir, name);
+        // The trash on the volume the file lives on, so a delete is a rename
+        // rather than a copy across devices — and so the entry stays with the
+        // drive it came from.
+        var root = RootFor(full);
+        var filesDir = Path.Combine(root, "files");
+        var infoDir = Path.Combine(root, "info");
+
+        Directory.CreateDirectory(filesDir);
+        Directory.CreateDirectory(infoDir);
+
+        var name = ReserveName(Path.GetFileName(full), full, root);
+
+        var destination = Path.Combine(filesDir, name);
 
         try
         {
@@ -52,21 +140,89 @@ public static class XdgTrash
         {
             // Never leave an info file pointing at something that isn't there —
             // that would show as a phantom entry in every trash browser.
-            File.Delete(Path.Combine(InfoDir, name + ".trashinfo"));
+            File.Delete(Path.Combine(infoDir, name + ".trashinfo"));
             throw;
         }
 
         return name;
     }
 
-    /// <summary>Puts a trashed item back where it came from.</summary>
+    /// <summary>
+    /// Every trash this user has on this machine: the home one, and one per
+    /// mounted volume that has been deleted from.
+    ///
+    /// **The listing and the restore both need this.** They read the home trash
+    /// only, so anything Dolphin had trashed onto a stick was invisible here —
+    /// and once Vaktari started using per-volume trashes, its own deletions
+    /// would have been too.
+    /// </summary>
+    internal static IEnumerable<string> AllRoots()
+    {
+        yield return TrashRoot;
+
+        var home = TrashRoot;
+        string? homeMount = null;
+
+        try { homeMount = Volumes.MountFor(home); }
+        catch (Exception e) when (e is IOException or UnauthorizedAccessException)
+        {
+            Vaktari.Core.Quiet.Swallowed("trash", e);
+        }
+
+        foreach (var drive in Drives())
+        {
+            if (homeMount is not null
+                && string.Equals(drive, homeMount, StringComparison.Ordinal))
+                continue;
+
+            var root = VolumeTrash(drive);
+
+            // Only ones that exist: naming a trash on every mounted volume
+            // would have the listing create directories on read-only media.
+            if (Directory.Exists(root)) yield return root;
+        }
+    }
+
+    private static IEnumerable<string> Drives()
+    {
+        DriveInfo[] drives;
+
+        try { drives = DriveInfo.GetDrives(); }
+        catch (Exception e) when (e is IOException or UnauthorizedAccessException)
+        {
+            Vaktari.Core.Quiet.Swallowed("trash", e);
+            yield break;
+        }
+
+        foreach (var drive in drives)
+        {
+            string? root = null;
+
+            try { if (drive.IsReady) root = drive.RootDirectory.FullName; }
+            catch (Exception e) when (e is IOException or UnauthorizedAccessException)
+            {
+                Vaktari.Core.Quiet.Swallowed("trash", e);
+            }
+
+            if (root is not null) yield return root;
+        }
+    }
+
+    /// <summary>
+    /// Puts a trashed item back where it came from, from whichever trash holds
+    /// it.
+    /// </summary>
     public static string Restore(string trashName)
     {
-        var infoPath = Path.Combine(InfoDir, trashName + ".trashinfo");
+        var root = AllRoots().FirstOrDefault(r =>
+            File.Exists(Path.Combine(r, "info", trashName + ".trashinfo")))
+            ?? TrashRoot;
+
+        var infoPath = Path.Combine(root, "info", trashName + ".trashinfo");
         var originalPath = ReadOriginalPath(infoPath)
             ?? throw new FileNotFoundException("No trash info for " + trashName);
 
-        var source = Path.Combine(FilesDir, trashName);
+        var source = Path.Combine(root, "files", trashName);
         var target = originalPath;
 
         // If something has taken the original name in the meantime, don't
@@ -86,15 +242,16 @@ public static class XdgTrash
     /// this ordering: two processes trashing "notes.txt" at the same moment
     /// must not both win the same slot.
     /// </summary>
-    private static string ReserveName(string preferred, string originalPath)
+    private static string ReserveName(string preferred, string originalPath, string root)
     {
         var stem = Path.GetFileNameWithoutExtension(preferred);
         var ext = Path.GetExtension(preferred);
+        var infoDir = Path.Combine(root, "info");
 
         for (var i = 0; i < 10_000; i++)
         {
             var candidate = i == 0 ? preferred : $"{stem}.{i}{ext}";
-            var infoPath = Path.Combine(InfoDir, candidate + ".trashinfo");
+            var infoPath = Path.Combine(infoDir, candidate + ".trashinfo");
 
             try
             {
