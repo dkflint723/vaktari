@@ -1383,6 +1383,27 @@ public partial class MainWindow : Window
         return null;
     }
 
+    /// <summary>
+    /// Whether the pointer is over the bin's row.
+    ///
+    /// Separate from <see cref="PlaceAt"/>, which deliberately refuses a
+    /// virtual path because those are not folders anything can be copied into.
+    /// The bin is the one virtual place that IS a destination — for exactly one
+    /// verb.
+    /// </summary>
+    private static bool TrashRowAt(object? source)
+    {
+        for (var visual = source as Visual; visual is not null;
+             visual = visual.GetVisualParent())
+        {
+            if (visual is Control { DataContext: PlaceItemViewModel place }
+                && PathRules.Same(place.Path, VirtualPaths.Trash))
+                return true;
+        }
+
+        return false;
+    }
+
     /// <summary>The folder row under the pointer, if the drop should go into it
     /// rather than into the directory being listed.</summary>
     private static string? FolderRowAt(object? source)
@@ -2222,6 +2243,19 @@ public partial class MainWindow : Window
     private void OnDrop(object? sender, DragEventArgs e)
     {
         HighlightDropTarget(null);
+
+        // **The bin takes drops.** Its row is AllowDrop with a comment about
+        // taking them "the way the tree and Quick access do in Explorer", and
+        // nothing ever mapped one to IFileOperations.Trash — PlaceAt refuses a
+        // virtual path, and the bin's path is the virtual vaktari:trash, so the
+        // drop landed nowhere and looked like the row was simply dead.
+        if (TrashRowAt(e.Source) && _shell.ActiveTab is { } binPane)
+        {
+            var offered = Input.DroppedFileReader.Offered(e.DataTransfer);
+
+            if (offered.Count > 0) binPane.TrashPaths(offered);
+            return;
+        }
 
         // A sidebar place is a destination in its own right, and has no pane
         // above it to ask about.

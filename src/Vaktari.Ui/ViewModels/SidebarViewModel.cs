@@ -152,7 +152,27 @@ public sealed partial class SidebarViewModel : ObservableObject
         // Published here because this is the one place that knows what is
         // mounted; thumbnails need it to tell a network file from a local one
         // without re-reading the mount table per row.
-        Thumbnails.ThumbnailLoader.RemoteRoots = Remotes.Select(m => m.Path).ToList();
+        // **Mapped network drives count too.** This was fed only from
+        // IRemoteMounts.Discover(), which deliberately skips lettered
+        // connections — so Z: was never remote, and RowIcon's folder-contents
+        // probe ran a directory read per visible row over SMB: exactly the
+        // round-trip storm its own comment exists to prevent.
+        var roots = Remotes.Select(m => m.Path).ToList();
+
+        try
+        {
+            foreach (var drive in DriveInfo.GetDrives())
+                if (drive.DriveType == DriveType.Network)
+                    roots.Add(drive.RootDirectory.FullName);
+        }
+        catch (Exception ex)
+        {
+            // A drive that will not answer is one we cannot mark remote, which
+            // is the old behaviour rather than a failure.
+            Quiet.Swallowed("places", ex);
+        }
+
+        Thumbnails.ThumbnailLoader.RemoteRoots = roots;
 
         OnPropertyChanged(nameof(HasRemotes));
     }

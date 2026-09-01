@@ -1728,6 +1728,32 @@ public sealed partial class ShellViewModel : ObservableObject
     [RelayCommand] private void PreviousTab() => ActiveGroup.Cycle(-1);
     [RelayCommand] private void CancelOperation() => ActiveOperation?.Cancel();
 
+    /// <summary>
+    /// Pauses or resumes the running operation.
+    ///
+    /// **Pause was fully implemented and unreachable.** OperationHandle has a
+    /// real gate, and BOTH engines await it between items and inside the byte
+    /// loop — so the machinery for stopping a large copy mid-flight has always
+    /// worked and nothing in the application could ask for it. The interface's
+    /// own comment justifies handles existing on the grounds that "pause and
+    /// reorder cannot be retrofitted onto a Task", which was true and was the
+    /// reason a feature nobody could use had been paid for in full.
+    /// </summary>
+    [RelayCommand]
+    private void PauseOperation()
+    {
+        if (ActiveOperation is not { } operation) return;
+
+        if (operation.State == OperationState.Paused) operation.Resume();
+        else operation.Pause();
+
+        OnPropertyChanged(nameof(PauseLabel));
+    }
+
+    /// <summary>One button, two words — the state it is in decides which.</summary>
+    public string PauseLabel
+        => ActiveOperation?.State == OperationState.Paused ? "resume" : "pause";
+
     public void SelectTabByIndex(int index) => ActiveGroup.SelectTabByIndex(index);
 
     public void ActivateGroup(PaneGroupViewModel group)

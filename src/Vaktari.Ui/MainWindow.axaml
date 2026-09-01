@@ -838,6 +838,16 @@
                           Background="{DynamicResource PanelBackground}"
                           BorderThickness="1" BorderBrush="{DynamicResource SeparatorColour}">
                     <DockPanel>
+                      <!-- **The scope toggle existed and no control could set
+                           it.** ScopeToCurrentFolder is an observable property
+                           with a live handler that restarts the search, and
+                           both platforms already implement the unscoped case —
+                           so searching the whole machine was built, tested by
+                           neither, and unreachable. -->
+                      <CheckBox DockPanel.Dock="Top" Margin="12,0,12,4"
+                                Content="This folder only"
+                                FontSize="{DynamicResource FontSizeTiny}"
+                                IsChecked="{Binding $parent[Window].((vm:ShellViewModel)DataContext).Sidebar.Search.ScopeToCurrentFolder}"/>
                       <TextBlock DockPanel.Dock="Top"
                                  Text="{Binding $parent[Window].((vm:ShellViewModel)DataContext).Sidebar.Search.Status}"
                                  Margin="12,2,12,6" TextWrapping="Wrap"
@@ -2201,6 +2211,12 @@
       <StackPanel Orientation="Horizontal" Spacing="10">
         <TextBlock Text="{Binding OperationStatus}" FontFamily="monospace"
                    FontSize="{DynamicResource FontSizeSmall}" VerticalAlignment="Center"/>
+        <!-- Pause was implemented in full and unreachable: the handle has a
+             real gate and both engines wait on it between items and inside the
+             byte loop, so stopping a large copy mid-flight has always worked
+             and nothing could ask for it. -->
+        <Button Content="{Binding PauseLabel}" FontSize="{DynamicResource FontSizeSmall}" Padding="8,2"
+                Command="{Binding PauseOperationCommand}"/>
         <Button Content="cancel" FontSize="{DynamicResource FontSizeSmall}" Padding="8,2"
                 Command="{Binding CancelOperationCommand}"/>
       </StackPanel>

@@ -69,13 +69,43 @@ public sealed class WindowsLauncher : IApplicationLauncher
         return false;
     }
 
+    /// <summary>
+    /// The folder a started program should run in — its own.
+    ///
+    /// Empty when the path has no folder, which leaves the inherited one:
+    /// better than pointing a process at a directory that does not exist.
+    /// </summary>
+    private static string WorkingDirectoryFor(string path)
+    {
+        try
+        {
+            return Path.GetDirectoryName(Path.GetFullPath(path)) ?? "";
+        }
+        catch (Exception e) when (e is ArgumentException or PathTooLongException
+                                    or NotSupportedException)
+        {
+            return "";
+        }
+    }
+
     public void Open(string path)
     {
         try
         {
             // UseShellExecute is what makes this ShellExecute rather than
             // CreateProcess — without it, opening a .txt tries to execute it.
-            Process.Start(new ProcessStartInfo(path) { UseShellExecute = true })?.Dispose();
+            //
+            // **The working directory is the file's own folder**, which this
+            // was the only launcher in the class not to set: OpenElevated,
+            // Elevate and Start all do. Without it a started program inherits
+            // Vaktari's working directory, so a portable .exe or a .bat that
+            // reads a file sitting beside it fails — and the failure looks like
+            // the program being broken rather than how it was started.
+            Process.Start(new ProcessStartInfo(path)
+            {
+                UseShellExecute = true,
+                WorkingDirectory = WorkingDirectoryFor(path),
+            })?.Dispose();
         }
         catch (Exception ex)
         {

@@ -104,8 +104,17 @@ public static class ThumbnailLoader
     /// </summary>
     public static bool IsRemote(string path)
     {
+        // **A UNC path is remote by its shape**, whatever is mounted. Nothing
+        // needs to have been discovered for \\server\share to be over a wire.
+        if (path.StartsWith(@"\\", StringComparison.Ordinal)) return true;
+
         foreach (var root in RemoteRoots)
-            if (path.StartsWith(root, StringComparison.Ordinal)) return true;
+        {
+            // PathRules.Comparison, not Ordinal: this compared case-sensitively
+            // on the one platform where paths are case-insensitive, so a root
+            // discovered as "Z:\" did not match a path spelled "z:\".
+            if (path.StartsWith(root, Vaktari.Core.FileSystem.PathRules.Comparison)) return true;
+        }
 
         return false;
     }

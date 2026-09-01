@@ -266,6 +266,17 @@ public sealed partial class PaneViewModel
         Track(_ops.Trash(paths));
     }
 
+    /// <summary>
+    /// Sends specific paths to the bin — what dropping onto the bin's row
+    /// means, as distinct from the Delete key acting on a selection.
+    /// </summary>
+    public void TrashPaths(IReadOnlyList<string> paths)
+    {
+        if (_ops is null || paths.Count == 0) return;
+
+        Track(_ops.Trash(paths));
+    }
+
     /// <summary>Shift+Delete. Irreversible — the view must confirm first.</summary>
     [RelayCommand]
     public void DeleteSelected()
