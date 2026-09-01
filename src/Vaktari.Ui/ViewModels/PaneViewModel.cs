@@ -179,6 +179,13 @@ public sealed partial class PaneViewModel : ObservableObject, IDisposable
     public static Vaktari.Core.Places.IDiskImages? DiskImages { get; set; }
 
     /// <summary>
+    /// Reads this platform's kind of shortcut, so opening one can follow it.
+    /// Static like the other providers here; null where the desktop has no such
+    /// indirection to read.
+    /// </summary>
+    public static Vaktari.Core.FileSystem.IShortcutMaker? Shortcuts { get; set; }
+
+    /// <summary>
     /// Whether the selected file is an image this machine could mount, and is
     /// not mounted already.
     ///
@@ -1281,6 +1288,14 @@ public sealed partial class PaneViewModel : ObservableObject, IDisposable
     public Task OpenAsync(FileEntry entry)
     {
         if (entry.IsDirectory) return NavigateAsync(entry.FullPath);
+
+        // **A shortcut to a folder navigates the pane**, rather than being
+        // handed to the shell, which opened a separate Explorer window. Only
+        // when it points at a folder: a shortcut to a program is still the
+        // system's to launch, and following that one ourselves would be
+        // re-implementing what the shell does properly.
+        if (Shortcuts?.TargetOf(entry.FullPath) is { } target && Directory.Exists(target))
+            return NavigateAsync(target);
 
         // Recorded on the ATTEMPT, not on success: IApplicationLauncher.Open
         // returns void, so there is nothing to test. Asking to open a file is

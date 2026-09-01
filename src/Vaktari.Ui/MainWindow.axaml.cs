@@ -234,6 +234,7 @@ public partial class MainWindow : Window
         // that there is no such thing.
         ViewModels.PaneViewModel.ShellMenu = platform.ShellMenu;
         ViewModels.PaneViewModel.DiskImages = platform.DiskImages;
+        ViewModels.PaneViewModel.Shortcuts = platform.Shortcuts;
         _virtualDrop = platform.VirtualFileDrop;
         _shortcuts = platform.Shortcuts;
 
@@ -1781,6 +1782,28 @@ public partial class MainWindow : Window
 
     /// <summary>Clears the selection without touching what is focused.</summary>
     private void SelectNone() => ActiveListing()?.SelectedItems?.Clear();
+
+    /// <summary>
+    /// Opens the listing's context menu from the keyboard, at the focused row.
+    ///
+    /// The menu hangs off the ItemsControl that holds the tabs, so it is found
+    /// by walking up from the listing rather than from the row — the row's own
+    /// template has no menu of its own.
+    /// </summary>
+    private void OpenListingMenu()
+    {
+        if (ActiveListing() is not { } list) return;
+
+        for (var visual = (Visual?)list; visual is not null; visual = visual.GetVisualParent())
+        {
+            if (visual is not Control { ContextMenu: { } menu }) continue;
+
+            // Placed on the list rather than at the pointer: the pointer may be
+            // anywhere, and the keyboard user is looking at the focused row.
+            menu.Open(list);
+            return;
+        }
+    }
 
     private void OnSelectAllClicked(object? sender, RoutedEventArgs e)
         => ActiveListing()?.SelectAll();
@@ -3333,6 +3356,32 @@ public partial class MainWindow : Window
         {
             e.Handled = true;
             _shell.ActiveTab?.TogglePreview();
+            return;
+        }
+
+        // **The Menu key and Shift+F10 open the context menu**, which nothing
+        // did: there was no Key.Apps handler, no F10, and no ContextRequested
+        // raise anywhere — the only handler for that event SUPPRESSES the menu
+        // after a right-drag. Avalonia does not provide this for free, so the
+        // whole menu was mouse-only, and every keyboard route into it that the
+        // shortcuts sheet implies simply did not exist.
+        if (e.Key == Key.Apps
+            || (e.Key == Key.F10 && e.KeyModifiers == KeyModifiers.Shift))
+        {
+            e.Handled = true;
+            OpenListingMenu();
+            return;
+        }
+
+        // F6 puts the keyboard in the listing.
+        //
+        // **There was no keyboard route into it at all** — no F6, no focus at
+        // startup, and after Ctrl+L then Escape the focus was left nowhere, so
+        // the arrow keys were simply dead until the mouse was used.
+        if (e.Key == Key.F6)
+        {
+            e.Handled = true;
+            ActiveListing()?.Focus();
             return;
         }
 

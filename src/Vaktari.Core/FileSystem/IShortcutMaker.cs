@@ -18,4 +18,16 @@ public interface IShortcutMaker
     /// what was created.
     /// </summary>
     string CreateShortcut(string target, string destinationFolder);
+
+    /// <summary>
+    /// What a shortcut points at, or null when the path is not one — or when
+    /// this platform has no such indirection to read.
+    ///
+    /// **Defaulted to null because Linux genuinely does not need it.** A
+    /// symbolic link to a directory IS a directory to every call that asks, so
+    /// following one is not a decision anything has to make. Windows .lnk files
+    /// are ordinary files that happen to contain a path, so opening one has to
+    /// be told what it means.
+    /// </summary>
+    string? TargetOf(string path) => null;
 }

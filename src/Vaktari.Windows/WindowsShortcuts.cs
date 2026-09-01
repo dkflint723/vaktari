@@ -21,6 +21,30 @@ namespace Vaktari.Windows;
 [SupportedOSPlatform("windows")]
 public sealed partial class WindowsShortcuts : IShortcutMaker
 {
+    /// <summary>
+    /// What a .lnk points at.
+    ///
+    /// **ShellLink.TargetOf existed, was tested, and had exactly one consumer:
+    /// the places import.** So a shortcut to a folder could be imported as a
+    /// place and could not be opened by double-clicking it — that handed the
+    /// .lnk to the shell, which opened a separate Explorer window instead of
+    /// navigating the pane.
+    /// </summary>
+    public string? TargetOf(string path)
+    {
+        if (!path.EndsWith(".lnk", StringComparison.OrdinalIgnoreCase)) return null;
+
+        try
+        {
+            return ShellLink.TargetOf(path) is { Length: > 0 } target ? target : null;
+        }
+        catch (Exception ex)
+        {
+            Vaktari.Core.Quiet.Swallowed("shortcuts", ex);
+            return null;
+        }
+    }
+
     public string CreateShortcut(string target, string destinationFolder)
     {
         var full = Path.GetFullPath(target);

@@ -1293,6 +1293,13 @@
                    hiding one half and leaving the other stranded was never a state
                    anyone asked for.
               -->
+              <!-- Refresh had F5 and nowhere to be found. Mostly covered by the
+                   folder watcher, which is why it is here rather than higher —
+                   but a listing that has gone stale is exactly when somebody
+                   goes looking for it in a menu. -->
+              <MenuItem Header="Refresh"
+                                      Command="{Binding ActiveTab.RefreshCommand}"
+                                      InputGesture="F5"/>
               <!-- **Selection had exactly one command and no menu home.**
                    Ctrl+A worked and was findable only by knowing it; there was
                    no way at all to clear a selection or invert one. Together
