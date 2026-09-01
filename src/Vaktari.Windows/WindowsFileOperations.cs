@@ -9,9 +9,14 @@ namespace Vaktari.Windows;
 /// through here so there is exactly one place to get right.
 ///
 /// <see cref="Trash"/> recycles, via SHFileOperation — see its own note for why
-/// that P/Invoke rather than the modern COM IFileOperation. What is missing is
-/// the other half of the trash: ITrashMaintenance is still null, so there is no
-/// Trash view and no Restore, and the bin can only be reached from Explorer.
+/// that P/Invoke rather than the modern COM IFileOperation.
+///
+/// **This header used to say ITrashMaintenance was still null**, so there was
+/// no Trash view and no Restore and the bin could only be reached from
+/// Explorer. WindowsTrashMaintenance shipped and made every word of that false,
+/// and nobody came back to delete it — which is how Ctrl+Z after a delete stayed
+/// broken here while working on Linux, with a comment explaining why it could
+/// not possibly work.
 ///
 /// **<see cref="Delete"/> is never a stand-in for <see cref="Trash"/>.** There
 /// is no BCL API for the Recycle Bin, and the tempting shortcut when the
@@ -38,6 +43,26 @@ public sealed class WindowsFileOperations : IFileOperations
         IReadOnlyList<string> sources, string destination,
         Func<FileConflict, ValueTask<ConflictResolution>> onConflict)
         => Run(sources, destination, onConflict, move: true);
+
+    /// <summary>
+    /// Reads the bin, so a recycle can be undone.
+    ///
+    /// **Injected rather than constructed here** so the undo can be tested
+    /// without recycling anything on the machine running the tests.
+    /// </summary>
+    internal ITrashMaintenance? Bin { get; init; }
+
+    /// <summary>
+    /// Stands in for the recycle itself.
+    ///
+    /// **So the tests do not fill the developer's Recycle Bin.** Everything
+    /// worth testing here — which items the undo remembers, what happens when
+    /// the bin cannot be read — is about the bookkeeping around
+    /// SHFileOperation, not the call, and a test suite that genuinely recycles
+    /// leaves litter on the machine that ran it. Returns false to stand for the
+    /// user declining the nuke warning.
+    /// </summary>
+    internal Func<IReadOnlyList<string>, bool>? RecycleOverride { get; init; }
 
     /// <summary>
     /// The Recycle Bin, via SHFileOperation.
@@ -67,6 +92,15 @@ public sealed class WindowsFileOperations : IFileOperations
         {
             nint from = 0;
 
+            // **Noted before the recycle, so the undo can find what moved.**
+            // SHFileOperation reports nothing about what it recycled, which is
+            // why this was undoable on Linux and not here. The bin knows,
+            // though: a recycled item appears in the listing with the path it
+            // came from, so the difference between the listing before and after
+            // names exactly what just went in.
+            var bin = Bin;
+            var before = Snapshot(bin);
+
             try
             {
                 handle.Begin(paths.Count, totalBytes: 0);
@@ -75,6 +109,23 @@ public sealed class WindowsFileOperations : IFileOperations
                 // resolved against the process's working directory, which is
                 // not the folder being listed.
                 var full = paths.Select(Path.GetFullPath).ToList();
+
+                if (RecycleOverride is { } fake)
+                {
+                    if (!fake(full))
+                    {
+                        handle.Cancelled();
+                        return;
+                    }
+
+                    for (var i = 0; i < paths.Count; i++) handle.ItemFinished();
+
+                    var faked = Arrivals(bin, before);
+                    if (faked.Count > 0) Remember(new UndoTrash(bin!, faked));
+
+                    handle.Complete();
+                    return;
+                }
 
                 from = Native.DoubleNullTerminated(full);
 
@@ -113,6 +164,11 @@ public sealed class WindowsFileOperations : IFileOperations
                 // three files finishes reading "1/3".
                 for (var i = 0; i < paths.Count; i++) handle.ItemFinished();
 
+                // What the bin gained is what we just put in it.
+                var landed = Arrivals(bin, before);
+
+                if (landed.Count > 0) Remember(new UndoTrash(bin!, landed));
+
                 handle.Complete();
             }
             catch (Exception ex)
@@ -126,13 +182,90 @@ public sealed class WindowsFileOperations : IFileOperations
         });
 
         return handle;
+    }
 
-        // **Not undoable from here, deliberately.** The bin knows where each
-        // item came from and Explorer can put it back; this application cannot,
-        // because SHFileOperation reports no handle for what it recycled.
-        // Pushing an undo entry that cannot restore would make Ctrl+Z claim a
-        // success it did not have. Restore is ITrashMaintenance's job and needs
-        // the shell namespace — which is the COM decision still outstanding.
+    /// <summary>
+    /// The trash names currently in the bin, or null when there is no bin to
+    /// ask — which is how the undo stays absent rather than wrong.
+    /// </summary>
+    private static HashSet<string>? Snapshot(ITrashMaintenance? bin)
+    {
+        if (bin is null) return null;
+
+        try
+        {
+            return bin.List().Select(item => item.TrashName).ToHashSet(StringComparer.Ordinal);
+        }
+        catch (Exception ex)
+        {
+            // A bin that will not answer means no undo entry, never a failed
+            // delete: the files really did go where the user asked.
+            Vaktari.Core.Quiet.Swallowed("file-ops", ex);
+            return null;
+        }
+    }
+
+    /// <summary>
+    /// What appeared in the bin since the snapshot.
+    ///
+    /// **By difference, not by matching original paths.** Matching on where an
+    /// item came from picks the wrong entry when the same name has been deleted
+    /// before — and deleting, restoring and deleting again is exactly when
+    /// somebody reaches for undo. A trash name is unique and new ones can only
+    /// be what just arrived.
+    /// </summary>
+    private static List<string> Arrivals(ITrashMaintenance? bin, HashSet<string>? before)
+    {
+        if (bin is null || before is null) return [];
+
+        try
+        {
+            return bin.List()
+                .Select(item => item.TrashName)
+                .Where(name => !before.Contains(name))
+                .ToList();
+        }
+        catch (Exception ex)
+        {
+            Vaktari.Core.Quiet.Swallowed("file-ops", ex);
+            return [];
+        }
+    }
+
+    /// <summary>
+    /// Puts recycled items back where they came from.
+    ///
+    /// **This was impossible until the bin could be read.** The comment that
+    /// stood here said restoring needed a COM decision that was still
+    /// outstanding — WindowsTrashMaintenance shipped and made that false, and
+    /// nothing came back to remove the claim. So Ctrl+Z after a delete did
+    /// nothing on Windows while working on Linux, with no sign of why.
+    /// </summary>
+    private sealed class UndoTrash(ITrashMaintenance bin, List<string> trashNames) : IUndoable
+    {
+        public ValueTask<IUndoable?> UndoAsync(CancellationToken ct)
+        {
+            foreach (var name in trashNames)
+            {
+                ct.ThrowIfCancellationRequested();
+
+                try
+                {
+                    bin.Restore(name);
+                }
+                catch (Exception ex)
+                {
+                    // One item that will not come back must not strand the
+                    // rest — the same rule the copy engine now follows.
+                    Vaktari.Core.Quiet.Swallowed("file-ops", ex);
+                }
+            }
+
+            // No redo: putting them back in the bin would need the paths they
+            // were restored to, and Restore reports where each one went. That
+            // is the next increment, not a guess made here.
+            return ValueTask.FromResult<IUndoable?>(null);
+        }
     }
 
     /// <summary>

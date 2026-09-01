@@ -55,7 +55,10 @@ public sealed class WindowsPlatform : IPlatform
         Places = places;
         Scripts = new WindowsScriptRunner(stateDirectory);
 
-        Operations = new WindowsFileOperations();
+        // Handed the bin so a recycle can be undone: SHFileOperation reports
+        // nothing about what it recycled, and reading the bin before and after
+        // is what makes Ctrl+Z work here the way it always has on Linux.
+        Operations = new WindowsFileOperations { Bin = TrashMaintenance };
     }
 
     /// <summary>Where this application's own per-user state lives.</summary>
@@ -176,4 +179,8 @@ public sealed class WindowsPlatform : IPlatform
     /// plain fields, which is what <see cref="RecycleBin"/> reads.
     /// </summary>
     public ITrashMaintenance? TrashMaintenance { get; } = new WindowsTrashMaintenance();
+
+    // The same bin the operations engine reads to make a recycle undoable.
+    // One instance, so the listing it takes before recycling and the restore
+    // afterwards are talking about the same thing.
 }
