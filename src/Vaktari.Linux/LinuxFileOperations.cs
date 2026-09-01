@@ -176,6 +176,22 @@ public sealed class LinuxFileOperations : IFileOperations
 
                     var target = Redirect(item.Target, redirects);
 
+                    // Pasting into the folder it already lives in: the target
+                    // IS the source, so the prompt could only offer to replace
+                    // a file with itself and the copy would open one path for
+                    // both reading and writing. A duplicate is what was meant;
+                    // a move to where it already is has nothing to do.
+                    if (PathRules.Same(item.Source, target))
+                    {
+                        if (move)
+                        {
+                            handle.ItemFinished();
+                            continue;
+                        }
+
+                        target = XdgTrash.Deduplicate(target, item.IsDirectory);
+                    }
+
                     if (File.Exists(target) || Directory.Exists(target))
                     {
                         switch (await onConflict(new FileConflict(item.Source, target)).ConfigureAwait(false))

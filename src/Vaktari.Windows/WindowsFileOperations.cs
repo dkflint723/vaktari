@@ -507,6 +507,25 @@ public sealed class WindowsFileOperations : IFileOperations
 
                     var target = Redirect(item.Target, redirects);
 
+                    // **Pasting into the folder it already lives in.** The
+                    // target then IS the source, so the conflict prompt could
+                    // only offer to replace a file with itself — and Replace
+                    // cannot work, because the copy opens the same path for
+                    // reading and writing and the error blames "something else
+                    // has that file open". Explorer makes a duplicate, which is
+                    // plainly what was meant; a MOVE to where it already is has
+                    // nothing to do at all.
+                    if (PathRules.Same(item.Source, target))
+                    {
+                        if (move)
+                        {
+                            handle.ItemFinished();
+                            continue;
+                        }
+
+                        target = Deduplicate(target, item.Kind == ItemKind.Directory);
+                    }
+
                     if (File.Exists(target) || Directory.Exists(target))
                     {
                         switch (await onConflict(new FileConflict(item.Source, target)).ConfigureAwait(false))

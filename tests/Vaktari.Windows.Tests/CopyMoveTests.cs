@@ -321,4 +321,46 @@ public class CopyMoveTests
         Assert.Equal(
             when, File.GetLastWriteTimeUtc(tree.At("dst", "old.txt")), TimeSpan.FromSeconds(2));
     }
+
+    // ---- pasting into the folder it is already in --------------------------
+
+    /// <summary>
+    /// **Copy then paste in the same folder made a duplicate impossible.** The
+    /// target IS the source, so the prompt could only offer to replace a file
+    /// with itself — and Replace could not work, because the copy opens the
+    /// same path for reading and writing and the error blamed "something else
+    /// has that file open". Explorer makes a second copy, which is plainly what
+    /// was meant.
+    /// </summary>
+    [WindowsFact]
+    public async Task Copying_a_file_into_its_own_folder_makes_a_duplicate()
+    {
+        using var tree = new TempTree();
+        var file = tree.Write("src/notes.txt", "mine");
+        var ops = new WindowsFileOperations();
+
+        await Finished(ops.Copy([file], tree.At("src"), Always(ConflictResolution.Overwrite)));
+
+        // The original is untouched...
+        Assert.Equal("mine", tree.Read("src", "notes.txt"));
+
+        // ...and there is now a second one beside it.
+        var copies = Directory.GetFiles(tree.At("src"));
+        Assert.Equal(2, copies.Length);
+    }
+
+    /// <summary>A move to where it already is has nothing to do, and must not
+    /// duplicate or delete anything.</summary>
+    [WindowsFact]
+    public async Task Moving_a_file_into_its_own_folder_changes_nothing()
+    {
+        using var tree = new TempTree();
+        var file = tree.Write("src/notes.txt", "mine");
+        var ops = new WindowsFileOperations();
+
+        await Finished(ops.Move([file], tree.At("src"), Always(ConflictResolution.Overwrite)));
+
+        Assert.Equal("mine", tree.Read("src", "notes.txt"));
+        Assert.Single(Directory.GetFiles(tree.At("src")));
+    }
 }

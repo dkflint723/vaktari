@@ -13,8 +13,18 @@ namespace Vaktari.Ui.Tests;
 /// the listing already carries, rather than a disk lookup inside a predicate
 /// the menu evaluates for every item it opens over.
 /// </summary>
-public sealed class MountMenuGateTests
+public sealed class MountMenuGateTests : IDisposable
 {
+    private readonly IDiskImages? _saved = PaneViewModel.DiskImages;
+
+    /// <summary>
+    /// **Puts the static back.** PaneViewModel.DiskImages is a shared provider,
+    /// and a test that leaves a fake in it hands that fake to every test that
+    /// runs afterwards — an order-dependent failure somewhere else entirely,
+    /// which is the worst kind to chase.
+    /// </summary>
+    public void Dispose() => PaneViewModel.DiskImages = _saved;
+
     private sealed class Inert : IFileSystemProvider
     {
         public async IAsyncEnumerable<IReadOnlyList<FileEntry>> EnumerateAsync(
