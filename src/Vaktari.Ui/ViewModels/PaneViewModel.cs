@@ -1268,6 +1268,15 @@ public sealed partial class PaneViewModel : ObservableObject, IDisposable
             await NavigateAsync(parent).ConfigureAwait(false);
     }
 
+    /// <summary>
+    /// Alt+Home, which had no command at all — the home folder appeared eight
+    /// times in this codebase, every one of them as a fallback start path and
+    /// none of them as somewhere the user could ask to go.
+    /// </summary>
+    [RelayCommand]
+    public Task GoHomeAsync()
+        => NavigateAsync(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile));
+
     [RelayCommand]
     public Task OpenAsync(FileEntry entry)
     {

@@ -1687,8 +1687,31 @@ public sealed partial class ShellViewModel : ObservableObject
             return;
         }
 
+        // **The last tab closes the window**, which is what Ctrl+W does in
+        // Explorer and in every browser. It used to do nothing at all: the
+        // group refuses to leave a side with no tabs, so with one tab and no
+        // split both Ctrl+W and the tab's × were drawn, clickable, tooltipped
+        // and inert — and there was no Ctrl+Q either, so the keyboard could not
+        // close the window at all.
+        if (Right is null && ActiveGroup.Tabs.Count <= 1
+            && (pane is null || ActiveGroup.Tabs.Contains(pane)))
+        {
+            CloseRequested?.Invoke(this, EventArgs.Empty);
+            return;
+        }
+
         ActiveGroup.CloseTab(pane);
     }
+
+    /// <summary>
+    /// Asks the window to close. Raised rather than acted on: the shell owns no
+    /// window, and the session is saved by whoever does.
+    /// </summary>
+    public event EventHandler? CloseRequested;
+
+    /// <summary>Ctrl+Q, which had no binding anywhere.</summary>
+    [RelayCommand]
+    private void Quit() => CloseRequested?.Invoke(this, EventArgs.Empty);
 
     [RelayCommand] private void NextTab() => ActiveGroup.Cycle(1);
     [RelayCommand] private void PreviousTab() => ActiveGroup.Cycle(-1);

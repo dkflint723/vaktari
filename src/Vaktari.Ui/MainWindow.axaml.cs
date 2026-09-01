@@ -321,6 +321,12 @@ public partial class MainWindow : Window
 
         _shell.ShortcutsRequested += (_, _) => new ShortcutsWindow().ShowDialog(this);
 
+        // Closing the last tab, and Ctrl+Q. The window is the only thing that
+        // can close itself, and closing it runs the ordinary shutdown — the
+        // session is saved on the way out exactly as it is for the title-bar
+        // button.
+        _shell.CloseRequested += (_, _) => Close();
+
         // **The question that was never asked.** Copy and move have understood
         // Overwrite, Skip and Cancel since they were written, and every caller
         // passed KeepBoth outright — so a newer file dropped over an older one
@@ -3295,6 +3301,18 @@ public partial class MainWindow : Window
             _shell.ActiveTab?.TogglePreview();
             return;
         }
+
+        // Escape abandons a pending cut, which the F1 sheet has promised all
+        // along: "Escape — Clear the filter, and any pending cut".
+        //
+        // **It was reachable only from inside the filter box.** ClearFilter is
+        // bound in exactly one place, that TextBox's own KeyBindings, and the
+        // box is hidden unless the filter is open — so with a cut pending and
+        // no filter showing, the key did nothing and the sheet was lying.
+        // Not marked handled: Escape has other meanings further down, and this
+        // one is harmless to whichever of them the user meant.
+        if (e.Key == Key.Escape && e.KeyModifiers == KeyModifiers.None)
+            _shell.ActiveTab?.ClearFilter();
 
         // Ctrl+1..9 jumps to a tab, browser-style.
         if (e.KeyModifiers == KeyModifiers.Control &&

@@ -2100,8 +2100,10 @@
   <Window.KeyBindings>
     <KeyBinding Gesture="Ctrl+T"         Command="{Binding NewTabCommand}"/>
     <KeyBinding Gesture="Ctrl+W"         Command="{Binding CloseTabCommand}"/>
+    <KeyBinding Gesture="Ctrl+Q"         Command="{Binding QuitCommand}"/>
     <KeyBinding Gesture="Ctrl+Tab"       Command="{Binding NextTabCommand}"/>
     <KeyBinding Gesture="Ctrl+Shift+Tab" Command="{Binding PreviousTabCommand}"/>
+    <KeyBinding Gesture="Alt+Home"       Command="{Binding ActiveTab.GoHomeCommand}"/>
     <KeyBinding Gesture="Alt+Left"       Command="{Binding ActiveTab.GoBackCommand}"/>
     <KeyBinding Gesture="Alt+Right"      Command="{Binding ActiveTab.GoForwardCommand}"/>
     <KeyBinding Gesture="Alt+Up"         Command="{Binding ActiveTab.GoUpCommand}"/>
