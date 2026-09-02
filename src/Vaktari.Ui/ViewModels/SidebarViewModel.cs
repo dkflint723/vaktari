@@ -497,6 +497,17 @@ public sealed partial class PlaceItemViewModel(Place place) : ObservableObject
     /// </summary>
     [ObservableProperty] private bool _isCurrent;
 
+    /// <summary>
+    /// True while a drag is over this row and would land here.
+    ///
+    /// **A place gave no sign at all.** Dragging onto "Documents" in the
+    /// sidebar looked exactly like dragging past it, so the only way to find
+    /// out where the files had gone was to release and look — and the sidebar
+    /// rows are small and close together, which is precisely where a target
+    /// needs to say which one it is.
+    /// </summary>
+    [ObservableProperty] private bool _isDropTarget;
+
     public string Id { get; } = place.Id;
     public string Label { get; } = place.Label;
     public string Path { get; } = place.Path;

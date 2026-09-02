@@ -213,6 +213,92 @@ public static class FileConverters
                    && confusable.Contains(path);
         });
 
+    /// <summary>
+    /// Whether this row is the folder a drop would land in.
+    ///
+    /// **Nothing said where a drop was going.** The whole pane took an outline
+    /// while a drag was over it, and that is the one thing never in doubt — what
+    /// you cannot tell is whether releasing puts the files in the folder under
+    /// the pointer or in the folder being listed, and those are different
+    /// places. Both references ring the row.
+    ///
+    /// Same shape as CutFade and Confusable: the row supplies its path, the
+    /// pane supplies the target, and binding the pane's property is what makes
+    /// every visible row re-evaluate as the pointer moves.
+    /// </summary>
+    public static readonly Avalonia.Data.Converters.IMultiValueConverter DropRing =
+        new Avalonia.Data.Converters.FuncMultiValueConverter<object?, bool>(values =>
+        {
+            var pair = values.ToList();
+
+            return pair.Count == 2
+                   && pair[0] is string path
+                   && pair[1] is string target
+                   && target.Length > 0
+                   && Vaktari.Core.FileSystem.PathRules.Same(path, target);
+        });
+
+    /// <summary>
+    /// The sidebar row's fill: the place you are in, or the place a drop would
+    /// land in, which is a stronger wash of the same accent.
+    ///
+    /// **A place gave no sign whatever that it was a target.** Dragging onto
+    /// "Downloads" looked exactly like dragging past it, so the only way to
+    /// learn where the files went was to release and go and look. The rows are
+    /// one line tall and stacked, which is precisely where a target has to say
+    /// which one it is.
+    ///
+    /// A fill rather than a ring: a border appearing on one row would move
+    /// every row below it, and the row you are aiming at is the one that must
+    /// hold still.
+    /// </summary>
+    public static readonly Avalonia.Data.Converters.IMultiValueConverter PlaceRowFill =
+        new Avalonia.Data.Converters.FuncMultiValueConverter<object?, object?>(values =>
+        {
+            var pair = values.ToList();
+
+            var accent = Avalonia.Application.Current?.Resources["AccentDim"]
+                as Avalonia.Media.ISolidColorBrush;
+
+            if (accent is null) return Avalonia.Media.Brushes.Transparent;
+
+            // 28% for a drop target against the current row's 7%: it has to
+            // read at a glance from the corner of the eye, while a pointer
+            // carrying files is somewhere else.
+            byte alpha = pair.Count == 2 && pair[1] is true ? (byte)72
+                       : pair.Count == 2 && pair[0] is true ? (byte)18
+                       : (byte)0;
+
+            return alpha == 0
+                ? Avalonia.Media.Brushes.Transparent
+                : new Avalonia.Media.SolidColorBrush(
+                    Avalonia.Media.Color.FromArgb(alpha, accent.Color.R, accent.Color.G, accent.Color.B));
+        });
+
+    /// <summary>
+    /// The same answer as <see cref="DropRing"/>, as a brush.
+    ///
+    /// A brush rather than a visibility so the ring can keep a constant
+    /// thickness: a border that appears and disappears reflows the row under
+    /// the pointer, which is the one row that must hold still while you aim at
+    /// it.
+    /// </summary>
+    public static readonly Avalonia.Data.Converters.IMultiValueConverter DropRingBrush =
+        new Avalonia.Data.Converters.FuncMultiValueConverter<object?, object?>(values =>
+        {
+            var pair = values.ToList();
+
+            var here = pair.Count == 2
+                       && pair[0] is string path
+                       && pair[1] is string target
+                       && target.Length > 0
+                       && Vaktari.Core.FileSystem.PathRules.Same(path, target);
+
+            return here
+                ? Avalonia.Application.Current?.Resources["AccentColour"]
+                : Avalonia.Media.Brushes.Transparent;
+        });
+
     /// <summary>Accent along the active side's tab bar, transparent on the other.</summary>
     public static readonly IValueConverter ActiveEdge =
         new FuncValueConverter<bool, object?>(active =>

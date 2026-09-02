@@ -837,6 +837,17 @@ public sealed partial class PaneViewModel : ObservableObject, IDisposable
     /// <summary>Highlights the pane a drop would land in.</summary>
     [ObservableProperty] private bool _isDropTarget;
 
+    /// <summary>
+    /// The folder row a drop would land IN, as opposed to the pane it is over.
+    ///
+    /// **The outline round the pane was never the question.** Which pane the
+    /// pointer is in is obvious; what you cannot see is whether releasing puts
+    /// the files into the folder under the pointer or into the folder being
+    /// listed — two different places, one of them a mistake you then have to
+    /// find and undo. Empty means the drop lands in the current folder.
+    /// </summary>
+    [ObservableProperty] private string _dropTargetPath = "";
+
     // ---- dynamic columns -----------------------------------------------
 
     /// <summary>

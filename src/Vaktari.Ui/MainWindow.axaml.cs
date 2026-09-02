@@ -2292,7 +2292,7 @@ public partial class MainWindow : Window
                 ? DragDropEffects.Move
                 : DragDropEffects.None;
 
-            HighlightDropTarget(null);
+            HighlightDropTarget(null, place: VirtualPaths.Trash);
             StopDragScroll();
             return;
         }
@@ -2339,7 +2339,7 @@ public partial class MainWindow : Window
             // Copy: there is no original to take away. A move out of an archive
             // is not a thing the archive would survive.
             e.DragEffects = DragDropEffects.Copy;
-            HighlightDropTarget(place is null ? pane : null);
+            HighlightDropTarget(place is null ? pane : null, spot.Folder, spot.Place);
             return;
         }
 
@@ -2353,8 +2353,9 @@ public partial class MainWindow : Window
         e.DragEffects = effect;
 
         // A place is its own target; highlighting a pane for it would point at
-        // the wrong half of the window.
-        HighlightDropTarget(place is null ? pane : null);
+        // the wrong half of the window. The row and the place are marked
+        // whichever it is, so the ring is on the thing the files will go into.
+        HighlightDropTarget(place is null ? pane : null, spot.Folder, spot.Place);
     }
 
     /// <summary>
@@ -2518,13 +2519,35 @@ public partial class MainWindow : Window
         StopDragScroll();
     }
 
-    private void HighlightDropTarget(PaneViewModel? pane)
+    /// <summary>
+    /// Marks what a drop would land in: the pane, the folder row inside it, and
+    /// the sidebar place.
+    ///
+    /// **Only the pane was ever marked, and the pane is the one thing that was
+    /// never in doubt.** What a drag could not tell you is whether releasing
+    /// puts the files into the folder under the pointer or into the folder
+    /// being listed — different places, and finding out meant releasing and
+    /// looking. All three are cleared together, because a stale ring on a row
+    /// you have moved off is worse than none.
+    /// </summary>
+    private void HighlightDropTarget(PaneViewModel? pane, string? row = null, string? place = null)
     {
         foreach (var group in new[] { _shell.Left, _shell.Right })
         {
             if (group is null) continue;
-            foreach (var tab in group.Tabs) tab.IsDropTarget = ReferenceEquals(tab, pane);
+
+            foreach (var tab in group.Tabs)
+            {
+                var here = ReferenceEquals(tab, pane);
+
+                tab.IsDropTarget = here;
+                tab.DropTargetPath = here ? row ?? "" : "";
+            }
         }
+
+        foreach (var group in _shell.Sidebar.Groups)
+            foreach (var row2 in group.Places)
+                row2.IsDropTarget = place is not null && PathRules.Same(row2.Path, place);
     }
 
     private void OnDrop(object? sender, DragEventArgs e)

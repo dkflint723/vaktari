@@ -1970,6 +1970,21 @@
                                    FontSize="{DynamicResource FontSizeSmall}" FontFamily="{DynamicResource AppMonoFamily}"
                                    VerticalAlignment="Center"/>
                       </Grid>
+                      <!-- **Where the drop lands.** The pane took an outline while a drag
+                           was over it, and which pane the pointer is in was never the
+                           question; what a drag could not tell you is whether releasing
+                           puts the files into the folder under the pointer or into the
+                           folder being listed. Constant thickness with a transparent
+                           brush when this is not the target, so the row you are aiming
+                           at does not move while you aim at it. -->
+                      <Border IsHitTestVisible="False" CornerRadius="3" BorderThickness="1.4">
+                        <Border.BorderBrush>
+                          <MultiBinding Converter="{x:Static vm:FileConverters.DropRingBrush}">
+                            <Binding Path="FullPath"/>
+                            <Binding Path="$parent[ListBox].((vm:PaneViewModel)DataContext).DropTargetPath"/>
+                          </MultiBinding>
+                        </Border.BorderBrush>
+                      </Border>
                     </Panel>
                     </StackPanel>
                   </DataTemplate>
@@ -2103,6 +2118,21 @@
                                      TextTrimming="CharacterEllipsis"/>
                         </DockPanel>
                       </Panel>
+                      <!-- **Where the drop lands.** The pane took an outline while a drag
+                           was over it, and which pane the pointer is in was never the
+                           question; what a drag could not tell you is whether releasing
+                           puts the files into the folder under the pointer or into the
+                           folder being listed. Constant thickness with a transparent
+                           brush when this is not the target, so the row you are aiming
+                           at does not move while you aim at it. -->
+                      <Border IsHitTestVisible="False" CornerRadius="3" BorderThickness="1.4">
+                        <Border.BorderBrush>
+                          <MultiBinding Converter="{x:Static vm:FileConverters.DropRingBrush}">
+                            <Binding Path="FullPath"/>
+                            <Binding Path="$parent[ListBox].((vm:PaneViewModel)DataContext).DropTargetPath"/>
+                          </MultiBinding>
+                        </Border.BorderBrush>
+                      </Border>
                     </Panel>
                   </DataTemplate>
                 </ListBox.ItemTemplate>
@@ -2218,6 +2248,21 @@
                                    FontSize="{DynamicResource FontSizeSmall}"
                                    TextWrapping="Wrap" MaxLines="2" TextTrimming="CharacterEllipsis"/>
                       </StackPanel>
+                      <!-- **Where the drop lands.** The pane took an outline while a drag
+                           was over it, and which pane the pointer is in was never the
+                           question; what a drag could not tell you is whether releasing
+                           puts the files into the folder under the pointer or into the
+                           folder being listed. Constant thickness with a transparent
+                           brush when this is not the target, so the row you are aiming
+                           at does not move while you aim at it. -->
+                      <Border IsHitTestVisible="False" CornerRadius="3" BorderThickness="1.4">
+                        <Border.BorderBrush>
+                          <MultiBinding Converter="{x:Static vm:FileConverters.DropRingBrush}">
+                            <Binding Path="FullPath"/>
+                            <Binding Path="$parent[ListBox].((vm:PaneViewModel)DataContext).DropTargetPath"/>
+                          </MultiBinding>
+                        </Border.BorderBrush>
+                      </Border>
                     </Panel>
                   </DataTemplate>
                 </ListBox.ItemTemplate>
@@ -2521,12 +2566,21 @@
                             <Button ContextRequested="OnPlaceContextRequested" Command="{Binding $parent[Window].((vm:ShellViewModel)DataContext).GoToPlaceCommand}"
                                     CommandParameter="{Binding Path}"
                                     AutomationProperties.Name="{Binding Label}"
-                                    Background="{Binding IsCurrent, Converter={x:Static vm:FileConverters.CurrentRowFill}}"
                                     BorderThickness="0"
                                     DragDrop.AllowDrop="True"
                                     HorizontalAlignment="Stretch"
                                     HorizontalContentAlignment="Left"
                                     Padding="12,6" Opacity="{Binding Opacity}">
+                              <!-- The wash says both "you are here" and "the drop
+                                   lands here", at two strengths of the one accent.
+                                   A fill rather than a ring, because a border would
+                                   move every row below it as it appeared. -->
+                              <Button.Background>
+                                <MultiBinding Converter="{x:Static vm:FileConverters.PlaceRowFill}">
+                                  <Binding Path="IsCurrent"/>
+                                  <Binding Path="IsDropTarget"/>
+                                </MultiBinding>
+                              </Button.Background>
                               <!-- **Places could be added from two places and
                                    removed from none.** Ctrl+D and the menu both
                                    pinned one; the only way back out was editing
