@@ -111,6 +111,51 @@ public static partial class XdgTrash
     }
 
     /// <summary>
+    /// The trash to actually write into, having made sure it exists.
+    ///
+    /// **A volume whose top directory the user cannot write to had no trash at
+    /// all.** RootFor is careful to fall back to the home trash when a volume
+    /// will not say where it is mounted — and nothing guarded the very next
+    /// step. Creating $topdir/.Trash-$uid needs write permission on the TOP of
+    /// the volume, and plenty of mounts hand out a writable subtree under a
+    /// root-owned top: a data mount, /srv, /opt on its own filesystem, a stick
+    /// whose top belongs to root. Deleting a file from one of those threw
+    /// straight out of CreateDirectory, so the file could not be deleted at all
+    /// — while the user's own home trash was available the whole time, and is
+    /// what the spec names as the fallback.
+    ///
+    /// Falling back is only ever a downgrade in tidiness, because the file
+    /// crosses to the home volume, and it only ever happens where the
+    /// alternative is not deleting the file.
+    /// </summary>
+    internal static string PrepareRoot(string preferred)
+    {
+        try
+        {
+            Directory.CreateDirectory(Path.Combine(preferred, "files"));
+            Directory.CreateDirectory(Path.Combine(preferred, "info"));
+
+            return preferred;
+        }
+        catch (Exception e) when (e is IOException or UnauthorizedAccessException)
+        {
+            var home = TrashRoot;
+
+            // The home trash IS the one that just failed: there is nowhere left
+            // to fall back to, and swallowing it here would hide the real
+            // reason from the per-item report the caller builds.
+            if (string.Equals(preferred, home, StringComparison.Ordinal)) throw;
+
+            Vaktari.Core.Quiet.Swallowed("trash", e);
+
+            Directory.CreateDirectory(Path.Combine(home, "files"));
+            Directory.CreateDirectory(Path.Combine(home, "info"));
+
+            return home;
+        }
+    }
+
+    /// <summary>
     /// Moves one item to the trash and returns the name it was given there, so
     /// an undo can find it again.
     /// </summary>
@@ -121,12 +166,9 @@ public static partial class XdgTrash
         // The trash on the volume the file lives on, so a delete is a rename
         // rather than a copy across devices — and so the entry stays with the
         // drive it came from.
-        var root = RootFor(full);
+        var root = PrepareRoot(RootFor(full));
         var filesDir = Path.Combine(root, "files");
         var infoDir = Path.Combine(root, "info");
-
-        Directory.CreateDirectory(filesDir);
-        Directory.CreateDirectory(infoDir);
 
         var name = ReserveName(Path.GetFileName(full), full, root);
 
