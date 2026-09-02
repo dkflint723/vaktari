@@ -394,6 +394,12 @@ public sealed partial class SidebarViewModel : ObservableObject
             foreach (var group in groups)
                 Groups.Add(new PlaceGroupViewModel(group));
 
+            // This PC is drawn under the first group — the home folders — so
+            // that group has to know it is the first one. Set here rather than
+            // computed on the item, because a group has no idea what it sits
+            // among.
+            for (var i = 0; i < Groups.Count; i++) Groups[i].IsFirst = i == 0;
+
             // The rows are new objects, so the current-location mark has to be
             // re-applied — a refresh would otherwise silently clear the
             // highlight and leave the sidebar looking like nothing is open.
@@ -470,6 +476,13 @@ public sealed partial class SidebarViewModel : ObservableObject
 
 public sealed class PlaceGroupViewModel(PlaceGroup group)
 {
+    /// <summary>
+    /// Whether this is the first group in the sidebar. Only the This PC row
+    /// reads it: that row is drawn under the home folders, and a DataTemplate
+    /// cannot ask where it sits.
+    /// </summary>
+    public bool IsFirst { get; set; }
+
     public string Label { get; } = group.Label;
     public IReadOnlyList<PlaceItemViewModel> Places { get; } =
         group.Places.Select(p => new PlaceItemViewModel(p)).ToList();

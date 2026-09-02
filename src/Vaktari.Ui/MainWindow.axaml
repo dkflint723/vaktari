@@ -2414,35 +2414,6 @@
 
             <StackPanel>
 
-              <!-- **This PC, above the places.** The sidebar lists the drives
-                   individually, which is not the same thing as somewhere you
-                   can open, sort, select in, or put in a tab — and it is where
-                   a drive root now goes when you press Up. Fixed rather than a
-                   group, like Recent below: it exists whether or not anything
-                   is attached. -->
-              <Button Command="{Binding Sidebar.OpenComputerCommand}"
-                      Background="Transparent" BorderThickness="0"
-                      HorizontalAlignment="Stretch"
-                      HorizontalContentAlignment="Left" Padding="12,7"
-                      Margin="0,6,0,0">
-                <DockPanel>
-                  <Border DockPanel.Dock="Left" Width="3" Margin="0,2,6,2" CornerRadius="2"
-                          Background="{DynamicResource AccentColour}"
-                          IsVisible="{Binding Sidebar.IsComputerCurrent}"/>
-                  <Path DockPanel.Dock="Left" Margin="0,0,9,0"
-                        Width="{DynamicResource IconSize}" Height="{DynamicResource IconSize}" Stretch="Uniform"
-                        VerticalAlignment="Center"
-                        Stroke="{DynamicResource ViewText}"
-                        StrokeThickness="{DynamicResource IconStroke}"
-                        StrokeLineCap="Round" StrokeJoin="Round"
-                        th:SidebarIcon.Token="device-desktop"/>
-                  <TextBlock Text="{Binding Sidebar.ComputerLabel}"
-                             FontSize="{DynamicResource FontSizeBase}"
-                             TextTrimming="CharacterEllipsis"
-                             VerticalAlignment="Center"/>
-                </DockPanel>
-              </Button>
-
               <ItemsControl ItemsSource="{Binding Sidebar.Groups}">
                 <ItemsControl.ItemTemplate>
                   <DataTemplate x:DataType="vm:PlaceGroupViewModel">
@@ -2615,6 +2586,45 @@
                           </DataTemplate>
                         </ItemsControl.ItemTemplate>
                       </ItemsControl>
+                      <!-- **This PC, under the home folders.** The sidebar
+                           lists the drives individually, which is not the same
+                           thing as somewhere you can open, sort, select in or
+                           put in a tab — and it is where a drive root goes when
+                           you press Up. Fixed rather than a group, like Recent
+                           below: it exists whether or not anything is attached.
+
+                           Drawn here, after the first group's rows, rather than
+                           above the whole sidebar. Those are the folders
+                           somebody opens twenty times a day and a machine-level
+                           entry does not belong over the top of them; Explorer
+                           puts its own This PC under Quick access for the same
+                           reason.
+
+                           Bindings reach out through the Window because inside
+                           this template the DataContext is the group. -->
+                      <Button IsVisible="{Binding IsFirst}"
+                              Command="{Binding $parent[Window].((vm:ShellViewModel)DataContext).Sidebar.OpenComputerCommand}"
+                              Background="Transparent" BorderThickness="0"
+                              HorizontalAlignment="Stretch"
+                              HorizontalContentAlignment="Left" Padding="12,7"
+                              Margin="0,4,0,0">
+                        <DockPanel>
+                          <Border DockPanel.Dock="Left" Width="3" Margin="0,2,6,2" CornerRadius="2"
+                                  Background="{DynamicResource AccentColour}"
+                                  IsVisible="{Binding $parent[Window].((vm:ShellViewModel)DataContext).Sidebar.IsComputerCurrent}"/>
+                          <Path DockPanel.Dock="Left" Margin="0,0,9,0"
+                                Width="{DynamicResource IconSize}" Height="{DynamicResource IconSize}" Stretch="Uniform"
+                                VerticalAlignment="Center"
+                                Stroke="{DynamicResource ViewText}"
+                                StrokeThickness="{DynamicResource IconStroke}"
+                                StrokeLineCap="Round" StrokeJoin="Round"
+                                th:SidebarIcon.Token="device-desktop"/>
+                          <TextBlock Text="{Binding $parent[Window].((vm:ShellViewModel)DataContext).Sidebar.ComputerLabel}"
+                                     FontSize="{DynamicResource FontSizeBase}"
+                                     TextTrimming="CharacterEllipsis"
+                                     VerticalAlignment="Center"/>
+                        </DockPanel>
+                      </Button>
                     </StackPanel>
                   </DataTemplate>
                 </ItemsControl.ItemTemplate>
