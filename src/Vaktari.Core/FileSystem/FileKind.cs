@@ -28,7 +28,19 @@ public static class FileKind
 
     public static string Describe(FileEntry entry)
     {
-        if (entry.IsDirectory) return "Folder";
+        // **A link was drawn as the thing it points at, everywhere.** The
+        // Symlink flag has been set correctly by both providers since they were
+        // written and read by nothing at all — no binding, no converter, no
+        // view-model property — so a symlinked folder, a junction and a mount
+        // point were indistinguishable from the real thing in every layout, and
+        // deleting one is a very different act from deleting the other.
+        //
+        // A FOLDER only, here. A symlink to a file already carries its own
+        // type — "PNG file" says more than "Link" would — and losing that to
+        // say "this is a link" trades one fact for another. A folder has no
+        // extension to lose, so this is free. The emblem is what marks the
+        // rest, and that is a drawing rather than a word.
+        if (entry.IsDirectory) return entry.IsSymlink ? "Folder link" : "Folder";
 
         var extension = entry.Extension;
 

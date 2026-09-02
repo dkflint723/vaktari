@@ -134,9 +134,21 @@ public sealed class LinuxFileSystemProvider : IFileSystemProvider
             var isDir = (File.GetAttributes(path) & FileAttributes.Directory) != 0;
             var name = Path.GetFileName(path);
 
+            // **This worked the flags out from scratch and got fewer of them.**
+            // ToFlags, a dozen lines up, also sets Symlink and ReadOnly — so a
+            // row that arrived through the WATCHER differed from the same row
+            // from enumeration in two bits nobody could see. FileEntry is a
+            // record struct compared by every member, so the two were unequal:
+            // the selection would not resolve onto a freshly created file, and
+            // a symlink that appeared while you watched was drawn as the thing
+            // it points at.
+            var attributes = File.GetAttributes(path);
+
             var flags = EntryFlags.None;
             if (isDir) flags |= EntryFlags.Directory;
             if (name.StartsWith('.')) flags |= EntryFlags.Hidden;
+            if ((attributes & FileAttributes.ReparsePoint) != 0) flags |= EntryFlags.Symlink;
+            if ((attributes & FileAttributes.ReadOnly) != 0) flags |= EntryFlags.ReadOnly;
 
             return ValueTask.FromResult<FileEntry?>(new FileEntry(
                 name,

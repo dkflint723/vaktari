@@ -148,4 +148,41 @@ public sealed class FileKindTests
         Assert.Equal("LNK file", FileKind.Describe(File("Chrome.lnk")));
         Assert.Equal("Chrome.lnk", FileKind.DisplayName(File("Chrome.lnk")));
     }
+
+    // ---- a link is not the thing it points at -------------------------------
+
+    /// <summary>
+    /// **The Symlink flag was set correctly by both providers and read by
+    /// nothing.** A symlinked folder, a junction and a mount point were drawn
+    /// exactly like the real thing in every layout — and deleting a link is a
+    /// very different act from deleting what it points at.
+    ///
+    /// A folder, because a folder has no extension to lose. A symlink to a file
+    /// keeps its own type: "PNG file" says more than "Link" would.
+    /// </summary>
+    [Fact]
+    public void A_symlinked_folder_says_it_is_a_link()
+    {
+        var link = new FileEntry(
+            "shared", Path.Combine(Path.GetTempPath(), "shared"), 0,
+            DateTimeOffset.UnixEpoch, EntryFlags.Directory | EntryFlags.Symlink);
+
+        Assert.Equal("Folder link", FileKind.Describe(link));
+    }
+
+    [Fact]
+    public void A_real_folder_still_says_Folder()
+        => Assert.Equal("Folder", FileKind.Describe(File("things", directory: true)));
+
+    /// <summary>A symlinked file keeps the type its extension gives it, which
+    /// is the more useful of the two facts.</summary>
+    [Fact]
+    public void A_symlinked_file_keeps_its_own_type()
+    {
+        var link = new FileEntry(
+            "photo.png", Path.Combine(Path.GetTempPath(), "photo.png"), 1,
+            DateTimeOffset.UnixEpoch, EntryFlags.Symlink);
+
+        Assert.Equal("PNG file", FileKind.Describe(link));
+    }
 }
