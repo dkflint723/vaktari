@@ -1999,7 +1999,7 @@
                                    FontSize="{DynamicResource FontSizeSmall}"
                                    Foreground="{DynamicResource ViewDimText}"
                                    VerticalAlignment="Center" TextTrimming="CharacterEllipsis"/>
-                        <TextBlock Grid.Column="4" Width="{DynamicResource ColSize}" Classes="meta" Text="{Binding Converter={x:Static vm:FileConverters.Size}}" TextAlignment="Right"
+                        <TextBlock Grid.Column="4" Width="{DynamicResource ColSize}" Classes="meta" th:RowMetadata.Size="{Binding}" TextAlignment="Right"
                                    IsVisible="{Binding $parent[ListBox].((vm:PaneViewModel)DataContext).ShowSize}"
                                    FontSize="{DynamicResource FontSizeSmall}" FontFamily="{DynamicResource AppMonoFamily}" Foreground="{DynamicResource ViewDimText}"
                                    VerticalAlignment="Center"/>

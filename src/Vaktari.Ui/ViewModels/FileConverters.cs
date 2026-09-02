@@ -13,11 +13,6 @@ namespace Vaktari.Ui.ViewModels;
 public static class FileConverters
 {
     /// <summary>
-    /// Human-readable size. Folders get an em dash rather than "0", which is
-    /// actively misleading: a folder is not empty just because its own inode
-    /// has no length.
-    /// </summary>
-    /// <summary>
     /// The folder an entry lives in, with the home directory shown as `~`.
     ///
     /// Only used by the recent listings, where rows span the whole filesystem
@@ -107,18 +102,6 @@ public static class FileConverters
             }
 
             return parent;
-        });
-
-    public static readonly IValueConverter Size =
-        new FuncValueConverter<FileEntry, string>(entry =>
-        {
-            if (entry.FullPath is null) return "";
-            if (entry.IsDirectory) return "—";
-
-            // The sixth and last copy of this. It was the only one already
-            // using binary unit names, which is why the Size column and the
-            // status bar beside it disagreed about the same file.
-            return ByteSize.Format(entry.Length);
         });
 
     /// <summary>

@@ -19,7 +19,14 @@ public sealed class WindowsMetadataProvider : IFileMetadataProvider
     public bool CanDescribe(string path, bool isDirectory) =>
         isDirectory || Measurable.Contains(Path.GetExtension(path));
 
-    public ValueTask<string?> DescribeAsync(string path, bool isDirectory, CancellationToken ct)
+    /// <summary>
+    /// **Off the UI thread, now that something calls it.** This was fully
+    /// synchronous, which was harmless while nothing did — the whole provider
+    /// path was dead code. Once the viewport asks it per folder row, an
+    /// enumeration on a slow share stutters scrolling. The Linux twin already
+    /// does this and says the same thing.
+    /// </summary>
+    public async ValueTask<string?> DescribeAsync(string path, bool isDirectory, CancellationToken ct)
     {
         try
         {
@@ -28,22 +35,27 @@ public sealed class WindowsMetadataProvider : IFileMetadataProvider
                 // Top level only. Counting recursively is what makes a
                 // properties dialog hang on a home directory, and this runs for
                 // every folder row in the viewport.
-                var count = 0;
-                foreach (var _ in Directory.EnumerateFileSystemEntries(path))
+                return await Task.Run(() =>
                 {
-                    ct.ThrowIfCancellationRequested();
-                    if (++count > 9999) return ValueTask.FromResult<string?>("9999+ items");
-                }
+                    var count = 0;
 
-                return ValueTask.FromResult<string?>(count == 1 ? "1 item" : $"{count} items");
+                    foreach (var _ in Directory.EnumerateFileSystemEntries(path))
+                    {
+                        ct.ThrowIfCancellationRequested();
+                        if (++count > 9999) return "9999+ items";
+                    }
+
+                    return count == 1 ? "1 item" : $"{count} items";
+                }, ct).ConfigureAwait(false);
             }
 
-            return ValueTask.FromResult(
-                ImageSize.TryRead(path) is { } size ? $"{size.Width} × {size.Height}" : null);
+            return await Task.Run(
+                () => ImageSize.TryRead(path) is { } size ? $"{size.Width} × {size.Height}" : null,
+                ct).ConfigureAwait(false);
         }
         catch (Exception e) when (e is IOException or UnauthorizedAccessException)
         {
-            return ValueTask.FromResult<string?>(null);
+            return null;
         }
     }
 
