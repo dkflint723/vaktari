@@ -673,8 +673,13 @@
             </TabStrip.Styles>
             <TabStrip.ItemTemplate>
               <DataTemplate x:DataType="vm:PaneViewModel">
-                <StackPanel Orientation="Horizontal" Spacing="11">
-                  <TextBlock Text="{Binding Title}" FontSize="{DynamicResource FontSizeBase}" VerticalAlignment="Center"/>
+                <!-- **A DockPanel, not a horizontal StackPanel.** A StackPanel
+                     measures its children with infinite width, so the title's
+                     TextTrimming below could never fire in one — the rule this
+                     file already keeps for the sidebar's network rows. Docking
+                     the close button first leaves the title a real width to
+                     trim into. -->
+                <DockPanel LastChildFill="True">
                   <!-- The only close affordance in the strip, so it does not get
                        to be the smallest and faintest thing in the window. It
                        pinned at font size 9, half opacity and 2px padding while
@@ -683,15 +688,51 @@
                        tracks the scale, and the dim comes from the colour scheme
                        (ViewDimText) rather than a literal opacity, which put the
                        effective contrast outside anything Plasma could set. -->
-                  <Button Content="&#x2715;"
+                  <Button DockPanel.Dock="Right" Content="&#x2715;"
                           FontSize="{DynamicResource FontSizeSmall}"
                           Foreground="{DynamicResource ViewDimText}"
                           Background="Transparent" BorderThickness="0"
-                          Padding="6,3" VerticalAlignment="Center"
+                          Padding="6,3" Margin="11,0,0,0" VerticalAlignment="Center"
                           AutomationProperties.Name="close tab  (ctrl+w)" ToolTip.Tip="close tab  (ctrl+w)"
                           Command="{Binding $parent[Window].((vm:ShellViewModel)DataContext).CloseTabCommand}"
                           CommandParameter="{Binding}"/>
-                </StackPanel>
+
+                  <!-- **Capped and trimmed.** One folder called
+                       "Screenshots from the trip to Norway 2024" made a tab
+                       hundreds of pixels wide and pushed every other tab off
+                       the strip. The full path is in the tooltip, which is
+                       where a trimmed label belongs. -->
+                  <TextBlock Text="{Binding Title}" FontSize="{DynamicResource FontSizeBase}"
+                             VerticalAlignment="Center"
+                             MaxWidth="220" TextTrimming="CharacterEllipsis"
+                             ToolTip.Tip="{Binding CurrentPath}"/>
+
+                  <!-- **A tab had no menu at all.** With a dozen open, closing
+                       them one at a time was the only route; both references
+                       offer these three. The commands are on the shell, so the
+                       bindings reach out through the Window the way the rest of
+                       this file's shell-level rows do. -->
+                  <DockPanel.ContextMenu>
+                    <ContextMenu>
+                      <MenuItem Header="Duplicate"
+                                Command="{Binding $parent[Window].((vm:ShellViewModel)DataContext).DuplicateTabCommand}"
+                                CommandParameter="{Binding}"/>
+                      <Separator/>
+                      <MenuItem Header="Close" InputGesture="Ctrl+W"
+                                Command="{Binding $parent[Window].((vm:ShellViewModel)DataContext).CloseTabCommand}"
+                                CommandParameter="{Binding}"/>
+                      <MenuItem Header="Close other tabs"
+                                Command="{Binding $parent[Window].((vm:ShellViewModel)DataContext).CloseOtherTabsCommand}"
+                                CommandParameter="{Binding}"/>
+                      <MenuItem Header="Close tabs to the right"
+                                Command="{Binding $parent[Window].((vm:ShellViewModel)DataContext).CloseTabsToTheRightCommand}"
+                                CommandParameter="{Binding}"/>
+                      <Separator/>
+                      <MenuItem Header="Reopen closed tab" InputGesture="Ctrl+Shift+T"
+                                Command="{Binding $parent[Window].((vm:ShellViewModel)DataContext).ReopenClosedTabCommand}"/>
+                    </ContextMenu>
+                  </DockPanel.ContextMenu>
+                </DockPanel>
               </DataTemplate>
             </TabStrip.ItemTemplate>
           </TabStrip>
@@ -2236,6 +2277,9 @@
   <Window.KeyBindings>
     <KeyBinding Gesture="Ctrl+T"         Command="{Binding NewTabCommand}"/>
     <KeyBinding Gesture="Ctrl+W"         Command="{Binding CloseTabCommand}"/>
+    <!-- What every browser answers, and both references. Closing a tab used to
+         throw its state away, so there was nothing to put back. -->
+    <KeyBinding Gesture="Ctrl+Shift+T"   Command="{Binding ReopenClosedTabCommand}"/>
     <KeyBinding Gesture="Ctrl+Q"         Command="{Binding QuitCommand}"/>
     <KeyBinding Gesture="Ctrl+Tab"       Command="{Binding NextTabCommand}"/>
     <KeyBinding Gesture="Ctrl+Shift+Tab" Command="{Binding PreviousTabCommand}"/>

@@ -1718,8 +1718,11 @@ public sealed partial class ShellViewModel : ObservableObject, IDisposable
 
     [RelayCommand]
     private void NewTab()
-        => ActiveGroup.AddTab(ActiveTab?.CurrentPath
-                              ?? Environment.GetFolderPath(Environment.SpecialFolder.UserProfile));
+        // Carrying the current view: hidden files, layout, sort, grouping and
+        // zoom. A new tab that resets all five is a new tab you have to set up.
+        => ActiveGroup.AddTab(
+            ActiveTab?.CurrentPath ?? Environment.GetFolderPath(Environment.SpecialFolder.UserProfile),
+            like: ActiveTab);
 
     [RelayCommand]
     private void OpenInNewTab(FileEntry? entry)
@@ -1730,8 +1733,39 @@ public sealed partial class ShellViewModel : ObservableObject, IDisposable
         // RelayCommand<FileEntry> could not accept that and threw
         // ArgumentException from the menu rather than doing nothing; taking
         // FileEntry? is what lets the command be handed the empty case at all.
-        if (entry is { IsDirectory: true } folder) ActiveGroup.AddTab(folder.FullPath);
+        // In the BACKGROUND, which is what the phrase means: you ask for a new
+        // tab rather than opening the folder precisely so you can carry on
+        // where you are. It used to jump to the new one.
+        if (entry is { IsDirectory: true } folder)
+            ActiveGroup.AddTab(folder.FullPath, like: ActiveTab, activate: false);
     }
+
+    // ---- the tab strip's own menu ------------------------------------------
+    //
+    // A tab had no right-click menu at all: no Duplicate, no Close others, no
+    // Close to the right. With a dozen open, closing them one at a time is the
+    // only route, and both references offer all three.
+
+    [RelayCommand]
+    private void DuplicateTab(PaneViewModel? pane)
+    {
+        var from = pane ?? ActiveTab;
+
+        if (from is not null) ActiveGroup.AddTab(from.CurrentPath, like: from);
+    }
+
+    [RelayCommand]
+    private void CloseOtherTabs(PaneViewModel? pane) => ActiveGroup.CloseOtherTabs(pane);
+
+    [RelayCommand]
+    private void CloseTabsToTheRight(PaneViewModel? pane) => ActiveGroup.CloseTabsToTheRight(pane);
+
+    /// <summary>
+    /// Ctrl+Shift+T. Closing a tab used to throw its whole state away — where
+    /// it was, its history, its view — so a tab closed by accident was gone.
+    /// </summary>
+    [RelayCommand]
+    private void ReopenClosedTab() => ActiveGroup.ReopenClosedTab();
 
     /// <summary>
     /// Opens a folder by path — used when the desktop hands one over, either on

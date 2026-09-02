@@ -978,6 +978,42 @@ public sealed partial class PaneViewModel : ObservableObject, IDisposable
     /// </summary>
     public void RefreshScale() => OnPropertyChanged(nameof(IconScale));
 
+    /// <summary>
+    /// Starts this pane looking like another one.
+    ///
+    /// **A new tab used to start from nothing** — hidden files off, Details,
+    /// sorted by name, ungrouped, at 100% — so opening one while working with
+    /// hidden files showing meant setting it all up again. Both references
+    /// carry the current view across.
+    ///
+    /// Under the reload guard, because these are set before the pane has
+    /// navigated anywhere and each setter would otherwise ask for a listing
+    /// that has no path yet.
+    /// </summary>
+    public void AdoptViewOf(PaneViewModel other)
+    {
+        _suppressReload = true;
+
+        try
+        {
+            ShowHidden = other.ShowHidden;
+            View = other.View;
+            Sort = other.Sort;
+            SortDescending = other.SortDescending;
+            GroupBy = other.GroupBy;
+            FontScale = other.FontScale;
+            IconScale = other.IconScale;
+
+            HideSizeColumn = other.HideSizeColumn;
+            HideModifiedColumn = other.HideModifiedColumn;
+            ShowTypeColumn = other.ShowTypeColumn;
+        }
+        finally
+        {
+            _suppressReload = false;
+        }
+    }
+
     // ---- which columns this pane shows ------------------------------------
     //
     // **Per pane, the way sort and grouping are.** A reference listing beside

@@ -435,11 +435,29 @@ public sealed partial class PaneGroupViewModel : ObservableObject
         => AddTab(ActiveTab?.CurrentPath
                   ?? Environment.GetFolderPath(Environment.SpecialFolder.UserProfile));
 
-    public PaneViewModel AddTab(string path)
+    /// <summary>
+    /// Opens a tab, optionally carrying the current one's view over and
+    /// optionally without stealing focus.
+    ///
+    /// **A new tab used to start from nothing.** Ctrl+T reset hidden files,
+    /// the layout, the sort, the grouping and the zoom, so somebody working
+    /// with hidden files showing got a tab without them and had to set it all
+    /// up again. Explorer and Dolphin both carry the current view across.
+    ///
+    /// And "open in new tab" — from the menu or a middle-click — jumped to the
+    /// new tab, which is the opposite of what the phrase means: you ask for it
+    /// in the background precisely so you can carry on where you are.
+    /// </summary>
+    public PaneViewModel AddTab(string path, PaneViewModel? like = null, bool activate = true)
     {
         var pane = _createPane();
+
+        if (like is not null) pane.AdoptViewOf(like);
+
         Tabs.Add(pane);
-        ActiveTab = pane;
+
+        if (activate) ActiveTab = pane;
+
         _ = pane.NavigateAsync(path);
         return pane;
     }
@@ -465,11 +483,64 @@ public sealed partial class PaneGroupViewModel : ObservableObject
         var index = Tabs.IndexOf(pane);
         var wasActive = ActiveTab == pane;
 
+        // **Remembered before it is torn down.** Closing a tab threw its whole
+        // state away — where it was, its history, its view — so Ctrl+Shift+T
+        // had nothing to put back, and a tab closed by accident was gone.
+        // Bounded, because this is a convenience and not a second session file.
+        _closed.Push(pane.ToTabState());
+
+        while (_closed.Count > 10) _closed.Pop();
+
         Tabs.Remove(pane);
         pane.Dispose();
 
         if (wasActive || ActiveTab is null)
             ActiveTab = Tabs[Math.Clamp(index, 0, Tabs.Count - 1)];
+    }
+
+    /// <summary>The tabs closed here, most recent first.</summary>
+    private readonly Stack<TabState> _closed = new();
+
+    public bool CanReopenTab => _closed.Count > 0;
+
+    /// <summary>
+    /// Puts back the last tab closed on this side, where it was and with its
+    /// history — Ctrl+Shift+T, which every browser and both references answer
+    /// and this did not.
+    /// </summary>
+    public PaneViewModel? ReopenClosedTab()
+    {
+        if (_closed.Count == 0) return null;
+
+        var pane = AddRestoredTab(_closed.Pop());
+
+        ActiveTab = pane;
+        pane.RefreshIfUnloaded();
+
+        return pane;
+    }
+
+    /// <summary>Closes every tab but this one. Explorer and Dolphin both offer
+    /// it, and with a dozen tabs open it is the only practical way back.</summary>
+    public void CloseOtherTabs(PaneViewModel? keep)
+    {
+        keep ??= ActiveTab;
+        if (keep is null) return;
+
+        foreach (var pane in Tabs.Where(t => !ReferenceEquals(t, keep)).ToList())
+            CloseTab(pane);
+    }
+
+    /// <summary>Closes everything to the right of this tab.</summary>
+    public void CloseTabsToTheRight(PaneViewModel? from)
+    {
+        from ??= ActiveTab;
+        if (from is null) return;
+
+        var at = Tabs.IndexOf(from);
+        if (at < 0) return;
+
+        foreach (var pane in Tabs.Skip(at + 1).ToList()) CloseTab(pane);
     }
 
     public void Cycle(int delta)

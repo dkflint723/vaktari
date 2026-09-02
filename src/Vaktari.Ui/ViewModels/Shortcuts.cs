@@ -44,6 +44,7 @@ public static class Shortcuts
         [
             new("Ctrl+T", "New tab"),
             new("Ctrl+W", "Close tab, or the window when it is the last one"),
+            new("Ctrl+Shift+T", "Reopen the last closed tab"),
             new("Ctrl+Q", "Close the window"),
             new("Ctrl+1…9", "Jump to a tab"),
             new("Tab", "Move to the other pane, when split"),
