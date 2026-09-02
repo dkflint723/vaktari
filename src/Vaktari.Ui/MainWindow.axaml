@@ -1885,7 +1885,8 @@
                                and clamped to it. -->
                           <TextBlock Text="{Binding Name}" HorizontalAlignment="Left"
                                      FontSize="{DynamicResource FontSizeBase}" VerticalAlignment="Center"
-                                     TextTrimming="CharacterEllipsis"/>
+                                     TextTrimming="CharacterEllipsis"
+                                     Opacity="{Binding Converter={x:Static vm:FileConverters.HiddenFade}}"/>
 
                           <!-- **Two files can sit here looking identically
                                named.** One space before the extension is legal,

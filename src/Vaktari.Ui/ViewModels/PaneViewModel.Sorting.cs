@@ -98,7 +98,13 @@ public sealed partial class PaneViewModel
         if (GroupBy != GroupMode.None)
         {
             var group = Grouping.CompareGroups(a, b, GroupBy, _groupNow);
-            if (group != 0) return group;
+
+            // **Descending flips the bands as well as the rows inside them.**
+            // It reversed the rows and left the band order alone, so a
+            // descending listing read Today, Yesterday, This week downwards
+            // while the files inside each ran the other way — two directions in
+            // one list. Explorer turns both over together.
+            if (group != 0) return SortDescending ? -group : group;
         }
 
         // Directories first, always — the convention every file manager follows

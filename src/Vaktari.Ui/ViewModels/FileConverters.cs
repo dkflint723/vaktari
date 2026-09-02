@@ -132,6 +132,27 @@ public static class FileConverters
     /// set in small caps with tracking; <c>Place.Label</c> is data read off the
     /// desktop's places list and is never rewritten to suit a heading.
     /// </summary>
+    /// <summary>
+    /// Ghosts a hidden or system file, the way both references do.
+    ///
+    /// **With "show hidden files" on, they looked exactly like real content.**
+    /// desktop.ini, thumbs.db, .DS_Store and every dotfile sat in the listing
+    /// at full strength, indistinguishable from the folder's actual contents —
+    /// which is the whole reason the setting is off by default and the whole
+    /// reason turning it on is survivable elsewhere.
+    ///
+    /// Opacity rather than a colour, for the same reason the cut mark uses it:
+    /// it survives every theme, reads the same on a selected row as an
+    /// unselected one, and does not have to be undone for the icon and each
+    /// column separately.
+    /// </summary>
+    public static readonly IValueConverter HiddenFade =
+        new FuncValueConverter<FileEntry, double>(entry =>
+            entry.FullPath is not null
+            && (entry.IsHidden || (entry.Flags & EntryFlags.System) != 0)
+                ? 0.55
+                : 1.0);
+
     public static readonly IValueConverter Upper =
         new FuncValueConverter<string?, string>(s => s?.ToUpperInvariant() ?? "");
 

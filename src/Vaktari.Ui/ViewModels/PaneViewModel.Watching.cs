@@ -254,6 +254,13 @@ public sealed partial class PaneViewModel
             break;
         }
 
+        // **The bands go stale otherwise.** Headers are computed once per
+        // rebuild, and a watcher event is not one — so deleting the first row
+        // of a band took its heading with it, and a file arriving at the top of
+        // one got none. Any download into a grouped folder left the headings
+        // wrong until a manual refresh.
+        RecomputeGroups(Entries.ToList());
+
         SettleSoon();
     }
 
@@ -316,6 +323,10 @@ public sealed partial class PaneViewModel
                 var visibleAt = FindSortedIndex(Entries, value);
                 Entries.Insert(visibleAt, value);
             }
+
+            // Same reason as the removal above: a row arriving at the top of a
+            // band is precisely when a heading has to appear.
+            RecomputeGroups(Entries.ToList());
 
             SettleSoon();
         });
