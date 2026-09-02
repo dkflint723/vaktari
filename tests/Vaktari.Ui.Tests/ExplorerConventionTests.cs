@@ -5,6 +5,9 @@ using Avalonia.Headless;
 using Avalonia.Headless.XUnit;
 using Avalonia.Input;
 using Vaktari.Ui.Input;
+using Vaktari.Ui.ViewModels;
+using Vaktari.Core.Session;
+using Vaktari.Core.FileSystem;
 using Xunit;
 
 namespace Vaktari.Ui.Tests;
@@ -16,7 +19,7 @@ namespace Vaktari.Ui.Tests;
 /// Each of these is invisible until it is missing, and then it reads as the
 /// application being wrong rather than as a feature nobody wrote.
 /// </summary>
-public sealed class ExplorerConventionTests
+public sealed class ExplorerConventionTests : OwnedViewModels
 {
     // ---- renaming ----------------------------------------------------------
 
@@ -74,6 +77,86 @@ public sealed class ExplorerConventionTests
     }
 
     // ---- dragging ----------------------------------------------------------
+
+    // ---- which way a column sorts the first time it is clicked --------------
+
+    /// <summary>Hands back a fixed listing, so the order under test is the
+    /// comparator's and not the disk's.</summary>
+    private sealed class Canned(IReadOnlyList<FileEntry> rows) : IFileSystemProvider
+    {
+        public async IAsyncEnumerable<IReadOnlyList<FileEntry>> EnumerateAsync(
+            string path, ListingOptions options,
+            [System.Runtime.CompilerServices.EnumeratorCancellation] CancellationToken ct)
+        {
+            await Task.CompletedTask;
+            yield return rows;
+        }
+
+        public ValueTask<FileEntry?> GetEntryAsync(string path, CancellationToken ct)
+            => ValueTask.FromResult<FileEntry?>(null);
+
+        public IDisposable Watch(string path, Action<FileSystemChange> onChange) => new Nothing();
+
+        public ValueTask<bool> IsReachableAsync(string path, TimeSpan timeout, CancellationToken ct)
+            => ValueTask.FromResult(true);
+
+        public string Combine(string basePath, string name) => Path.Combine(basePath, name);
+        public string? GetParent(string path) => Path.GetDirectoryName(path);
+        public bool IsCaseSensitive => false;
+
+        private sealed class Nothing : IDisposable { public void Dispose() { } }
+    }
+
+    private static FileEntry Row(string name, DateTimeOffset when)
+        => new(name, Path.Combine(Path.GetTempPath(), name), 1, when, EntryFlags.None);
+
+    [Theory]
+    [InlineData(SortField.Modified, true)]
+    [InlineData(SortField.Size, true)]
+    [InlineData(SortField.Name, false)]
+    [InlineData(SortField.Kind, false)]
+    public void A_column_knows_which_way_it_sorts_first(SortField field, bool descending)
+        => Assert.Equal(descending, SortDefaults.DescendingFirst(field));
+
+    /// <summary>
+    /// **The first click on "modified" put the oldest file on top.** The
+    /// download that has just finished is the reason anybody clicks that
+    /// heading, and it landed at the very bottom of the folder.
+    ///
+    /// Asserts the row ORDER, not just the flag: a direction nothing read would
+    /// satisfy the flag and leave the listing exactly as it was.
+    /// </summary>
+    [AvaloniaFact]
+    public async Task The_first_click_on_modified_puts_the_newest_file_on_top()
+    {
+        var now = DateTimeOffset.Now;
+
+        var pane = Own(new PaneViewModel(
+            new Canned([Row("old.txt", now.AddDays(-9)), Row("new.txt", now)]))
+        {
+            ViewportWidth = 1400,
+        });
+
+        await pane.NavigateAsync(Path.GetTempPath());
+
+        pane.SortByCommand.Execute("modified");
+
+        Assert.True(pane.SortDescending);
+        Assert.Equal("new.txt", pane.Entries[0].Name);
+
+        // The second click still reverses, which is the other half of it.
+        pane.SortByCommand.Execute("modified");
+
+        Assert.False(pane.SortDescending);
+        Assert.Equal("old.txt", pane.Entries[0].Name);
+
+        // Name is not one of the two. Flipping the default unconditionally
+        // passes everything above and fails here.
+        pane.SortByCommand.Execute("name");
+
+        Assert.False(pane.SortDescending);
+        Assert.Equal("new.txt", pane.Entries[0].Name);
+    }
 
     private static readonly string OnC = OperatingSystem.IsWindows() ? @"C:\work.txt" : "/work/a.txt";
     private static readonly string AlsoC = OperatingSystem.IsWindows() ? @"C:\other" : "/other";

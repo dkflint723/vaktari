@@ -54,10 +54,12 @@ public sealed class GroupingAndGhostingTests : OwnedViewModels
 
         var ascending = Headers(pane);
 
-        pane.SortByCommand.Execute("modified");   // ascending
+        // Newest first: the first click on a date column is descending, which
+        // is what Explorer does and what SortDefaults now encodes.
+        pane.SortByCommand.Execute("modified");
         var first = Headers(pane).First();
 
-        pane.SortByCommand.Execute("modified");   // descending
+        pane.SortByCommand.Execute("modified");   // and now oldest first
         var flipped = Headers(pane).First();
 
         Assert.NotEqual(first, flipped);

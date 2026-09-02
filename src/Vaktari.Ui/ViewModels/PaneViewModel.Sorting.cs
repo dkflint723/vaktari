@@ -2,6 +2,7 @@ using CommunityToolkit.Mvvm.Input;
 using Vaktari.Core;
 using Vaktari.Core.FileSystem;
 using Vaktari.Core.Session;
+using Vaktari.Ui.Input;
 
 namespace Vaktari.Ui.ViewModels;
 
@@ -26,8 +27,34 @@ public sealed partial class PaneViewModel
             _ => SortField.Name,
         };
 
-        if (Sort == target) SortDescending = !SortDescending;
-        else { Sort = target; SortDescending = false; }
+        if (Sort == target)
+        {
+            SortDescending = !SortDescending;
+        }
+        else
+        {
+            // **The first click on modified put the oldest file on top**, and
+            // on size the empty ones — see SortDefaults for why those two are
+            // the exceptions.
+            //
+            // Both assignments under the guard, because Sort and SortDescending
+            // each resort on their own: a click that moves both would otherwise
+            // sort the folder twice and rebuild the row collection twice,
+            // dropping and restoring the selection in between.
+            _suppressReload = true;
+
+            try
+            {
+                Sort = target;
+                SortDescending = SortDefaults.DescendingFirst(target);
+            }
+            finally
+            {
+                _suppressReload = false;
+            }
+
+            ResortInPlace();
+        }
 
         NotifySortGlyphs();
     }
@@ -71,11 +98,11 @@ public sealed partial class PaneViewModel
     /// <summary>Sorting by type was implemented from the start and had no way
     /// to be reached — there is no type column to click.</summary>
     [RelayCommand]
-    private void SortByKind()
-    {
-        if (Sort == SortField.Kind) SortDescending = !SortDescending;
-        else { Sort = SortField.Kind; SortDescending = false; }
-    }
+    // **One line rather than a second copy of SortBy's body.** The copy was
+    // exactly where the first-click direction would have been forgotten: the
+    // menu's Sort by > Type resetting to ascending while the heading it mirrors
+    // had learned better.
+    private void SortByKind() => SortBy("kind");
 
     [RelayCommand]
     private void ToggleSortDirection() => SortDescending = !SortDescending;

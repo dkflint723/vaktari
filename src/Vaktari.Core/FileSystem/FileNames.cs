@@ -74,13 +74,33 @@ public static class FileNames
                 : $"a name cannot contain {bad}";
         }
 
-        // Reserved with or without an extension: a file called CON.txt cannot
-        // be created either.
-        if (Reserved.Contains(Path.GetFileNameWithoutExtension(name)))
-            return $"\"{Path.GetFileNameWithoutExtension(name)}\" is a name Windows reserves for a device";
+        // **A second extension hid it.** Reserved with or without an extension
+        // — a file called CON.txt cannot be created either — but
+        // GetFileNameWithoutExtension strips only the LAST one, so "CON.tar.gz"
+        // was checked as "CON.tar", missed the list, and went through to the
+        // filesystem to be refused there instead, with Windows's own wording.
+        // A device name is resolved from the text before the FIRST dot, so this
+        // has to be too.
+        var device = DeviceStem(name);
+
+        if (Reserved.Contains(device))
+            return $"\"{device}\" is a name Windows reserves for a device";
 
         return null;
     }
+
+    /// <summary>
+    /// What Windows will read this name as when it decides whether it names a
+    /// device: everything before the first dot, without trailing spaces.
+    ///
+    /// "CON.tar.gz", "con.txt" and "CON .txt" all come back as "CON". A dotfile
+    /// like ".gitignore" comes back empty, which is in no list.
+    ///
+    /// Spaces are trimmed here as well as in <see cref="Clean"/>, because Clean
+    /// trims the end of the WHOLE name and the space in "CON .txt" is in the
+    /// middle of it.
+    /// </summary>
+    private static string DeviceStem(string name) => name.Split('.', 2)[0].TrimEnd(' ');
 
     private static readonly HashSet<string> Reserved =
         new(StringComparer.OrdinalIgnoreCase)

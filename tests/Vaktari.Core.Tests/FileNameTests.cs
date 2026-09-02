@@ -133,6 +133,39 @@ public class FileNameTests
     }
 
     /// <summary>
+    /// **The one a second extension hid.** Windows resolves a device name from
+    /// the text before the FIRST dot, so "CON.tar.gz" is the console exactly as
+    /// "CON.txt" is — but the check asked GetFileNameWithoutExtension, which
+    /// strips only the last extension and answered "CON.tar". The name walked
+    /// straight past the sentence written for it and was refused by the
+    /// filesystem instead, in Windows's words rather than ours.
+    ///
+    /// A WindowsFact rather than the body-guard its neighbour uses: a skip is
+    /// reported, and a silent pass on Linux is not.
+    /// </summary>
+    [WindowsFact]
+    public void A_device_name_is_refused_however_many_extensions_follow()
+    {
+        Assert.NotNull(FileNames.Refuse("CON.tar.gz"));
+        Assert.NotNull(FileNames.Refuse("nul.tar.bz2"));
+        Assert.NotNull(FileNames.Refuse("COM1.a.b.c"));
+
+        // The message names the device rather than "CON.tar": the quoted text
+        // is what the person is being asked to change.
+        Assert.Contains("\"CON\"", FileNames.Refuse("CON.tar.gz")!);
+
+        // Windows ignores a space before the dot, and Clean only trims the end
+        // of the whole name, so this one reaches the check with its space.
+        Assert.NotNull(FileNames.Refuse("CON .txt"));
+
+        // The counterweight. Matching any name that merely begins with a device
+        // word would pass everything above and fail all of these.
+        Assert.Null(FileNames.Refuse("CONTENTS.tar.gz"));
+        Assert.Null(FileNames.Refuse("archive.tar.gz"));
+        Assert.Null(FileNames.Refuse(".con"));
+    }
+
+    /// <summary>
     /// A trailing space is trimmed rather than refused: Clean already removes
     /// it, so reporting it as a fault would reject a name the application is
     /// perfectly willing to use.
