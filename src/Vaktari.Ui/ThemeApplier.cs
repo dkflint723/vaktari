@@ -80,7 +80,13 @@ public static class ThemeApplier
         // ViewBackground the original already passed at 4.62:1, so that was the
         // panel case only. Light: #5f5f6d clears every surface by a wider
         // margin, because on a pale ground there is room to.
-        ("ViewDimText",     "#909099", "#5f5f6d"),
+        // Raised again, for the surface the last pass did not check. #909099
+        // clears AA on the listing and the panel and measures 4.44:1 on the
+        // window chrome — five hundredths under, on the surface that carries
+        // the column headers, the status bar, the inactive tab titles and the
+        // breadcrumb ancestors. #9a9aa3 clears all four and is not a colour
+        // anybody can tell apart from the old one.
+        ("ViewDimText",     "#9a9aa3", "#5f5f6d"),
 
         ("SeparatorColour", "#34343c", "#d5d5e0"),
         ("BorderColour",    "#34343c", "#d5d5e0"),
@@ -103,6 +109,12 @@ public static class ThemeApplier
         ("AccentDim",       "#386d6df0", "#384f4fd0"),
 
         ("ChipBackground",  "#31313a", "#e2e2ec"),
+
+        // **Two windows asked for this and nothing defined it**, so the theme
+        // cards in settings and the conflict dialog's panel drew with no
+        // background at all — whatever was behind them showed through. It is
+        // the listing's alternating row shade, which is what both wanted.
+        ("ViewAlternateRow", "#26262d", "#f4f4f8"),
 
         // **Hover flips from a white wash to a black one.** A translucent white
         // over a pale surface is very nearly nothing; the point of the wash is

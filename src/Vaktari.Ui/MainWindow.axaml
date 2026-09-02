@@ -1028,6 +1028,7 @@
                              names are data, not labels, and must never be
                              parsed for mnemonics. -->
                         <Button Command="{Binding Open}"
+                                AutomationProperties.Name="{Binding Name}"
                                 Background="Transparent" BorderThickness="0"
                                 Padding="4,2" CornerRadius="3">
                           <TextBlock Text="{Binding Name}"
@@ -1688,6 +1689,7 @@
                       </Grid.ColumnDefinitions>
                   <Border Grid.Column="0" Width="{DynamicResource ThumbSize}" Margin="0,0,8,0"/>
                   <Button Grid.Column="1" Command="{Binding SortByCommand}" CommandParameter="name"
+                          AutomationProperties.Name="sort by name"
                           Background="Transparent" BorderThickness="0" Padding="0"
                           HorizontalAlignment="Stretch" HorizontalContentAlignment="Left">
                     <TextBlock FontSize="{DynamicResource FontSizeSmall}"
@@ -1708,6 +1710,7 @@
                        the row template warns goes wrong quietly. -->
                   <Button Grid.Column="3" Width="{DynamicResource ColType}" Margin="8,0,0,0"
                           Command="{Binding SortByCommand}" CommandParameter="kind"
+                          AutomationProperties.Name="sort by type"
                           IsVisible="{Binding ShowType}"
                           Background="Transparent" BorderThickness="0" Padding="0"
                           HorizontalContentAlignment="Left">
@@ -1717,6 +1720,7 @@
                     </TextBlock>
                   </Button>
                   <Button Grid.Column="4" Width="{DynamicResource ColSize}" Command="{Binding SortByCommand}" CommandParameter="size"
+                          AutomationProperties.Name="sort by size"
                           IsVisible="{Binding ShowSize}"
                           Background="Transparent" BorderThickness="0" Padding="0"
                           HorizontalContentAlignment="Right">
@@ -1726,6 +1730,7 @@
                     </TextBlock>
                   </Button>
                   <Button Grid.Column="5" Width="{DynamicResource ColModified}" Command="{Binding SortByCommand}" CommandParameter="modified"
+                          AutomationProperties.Name="sort by date modified"
                           IsVisible="{Binding ShowModified}"
                           Background="Transparent" BorderThickness="0" Padding="0"
                           HorizontalContentAlignment="Right">
@@ -1775,6 +1780,17 @@
                   </Style>
                   <Style Selector="ListBoxItem:selected:pointerover /template/ ContentPresenter">
                     <Setter Property="Background" Value="Transparent"/>
+                  </Style>
+
+                  <!-- **The secondary columns keep their dim colour over the
+                       selection fill**, which drops them to 3.40:1 in the dark
+                       theme and 4.30:1 in the light one — both under AA, on the
+                       row the user is actually looking at. The dim grey was
+                       chosen against the listing ground, not against the
+                       accent. Full text colour while the row is selected: the
+                       columns are secondary to the NAME, not to the row. -->
+                  <Style Selector="ListBoxItem:selected TextBlock.meta">
+                    <Setter Property="Foreground" Value="{DynamicResource ViewText}"/>
                   </Style>
                 </ListBox.Styles>
                 <ListBox.ItemsPanel>
@@ -1914,7 +1930,7 @@
                              listing, where entries span the filesystem and the
                              name alone identifies nothing. -->
                         <TextBlock Grid.Column="2" Width="{DynamicResource ColPathWide}" Margin="8,0,0,0"
-                                   Text="{Binding Converter={x:Static vm:FileConverters.ParentPath}}"
+                                   Classes="meta" Text="{Binding Converter={x:Static vm:FileConverters.ParentPath}}"
                                    ToolTip.Tip="{Binding Converter={x:Static vm:FileConverters.PathTip}}"
                                    IsVisible="{Binding $parent[ListBox].((vm:PaneViewModel)DataContext).ShowParentPath}"
                                    FontSize="{DynamicResource FontSizeSmall}"
@@ -1927,19 +1943,19 @@
                              something a column can be filled from while it
                              scrolls. -->
                         <TextBlock Grid.Column="3" Width="{DynamicResource ColType}" Margin="8,0,0,0"
-                                   Text="{Binding Converter={x:Static vm:FileConverters.Kind}}"
+                                   Classes="meta" Text="{Binding Converter={x:Static vm:FileConverters.Kind}}"
                                    IsVisible="{Binding $parent[ListBox].((vm:PaneViewModel)DataContext).ShowType}"
                                    FontSize="{DynamicResource FontSizeSmall}"
                                    Foreground="{DynamicResource ViewDimText}"
                                    VerticalAlignment="Center" TextTrimming="CharacterEllipsis"/>
-                        <TextBlock Grid.Column="4" Width="{DynamicResource ColSize}" Text="{Binding Converter={x:Static vm:FileConverters.Size}}" TextAlignment="Right"
+                        <TextBlock Grid.Column="4" Width="{DynamicResource ColSize}" Classes="meta" Text="{Binding Converter={x:Static vm:FileConverters.Size}}" TextAlignment="Right"
                                    IsVisible="{Binding $parent[ListBox].((vm:PaneViewModel)DataContext).ShowSize}"
                                    FontSize="{DynamicResource FontSizeSmall}" FontFamily="{DynamicResource AppMonoFamily}" Foreground="{DynamicResource ViewDimText}"
                                    VerticalAlignment="Center"/>
                         <!-- Shaded by age: a single-hue lightness ramp, and the date itself
                              is still right there, so the colour is a shortcut rather than
                              the only signal. -->
-                        <TextBlock Grid.Column="5" Width="{DynamicResource ColModified}" Text="{Binding LastWriteTime, Converter={x:Static vm:FileConverters.Modified}}" TextAlignment="Right"
+                        <TextBlock Grid.Column="5" Width="{DynamicResource ColModified}" Classes="meta" Text="{Binding LastWriteTime, Converter={x:Static vm:FileConverters.Modified}}" TextAlignment="Right"
                                    IsVisible="{Binding $parent[ListBox].((vm:PaneViewModel)DataContext).ShowModified}"
                                    Foreground="{Binding LastWriteTime, Converter={x:Static vm:AgeConverters.Brush}}"
                                    ToolTip.Tip="{Binding LastWriteTime, Converter={x:Static vm:AgeConverters.Description}}"
@@ -2496,6 +2512,7 @@
                                  drag simply died over it. -->
                             <Button ContextRequested="OnPlaceContextRequested" Command="{Binding $parent[Window].((vm:ShellViewModel)DataContext).GoToPlaceCommand}"
                                     CommandParameter="{Binding Path}"
+                                    AutomationProperties.Name="{Binding Label}"
                                     Background="{Binding IsCurrent, Converter={x:Static vm:FileConverters.CurrentRowFill}}"
                                     BorderThickness="0"
                                     DragDrop.AllowDrop="True"
@@ -2655,6 +2672,7 @@
                                  Bindings reach out through the Window, since
                                  the DataContext here is the place. -->
                             <Button IsVisible="{Binding LeadsTheSidebar}"
+                                    AutomationProperties.Name="{Binding $parent[Window].((vm:ShellViewModel)DataContext).Sidebar.ComputerLabel}"
                                     Command="{Binding $parent[Window].((vm:ShellViewModel)DataContext).Sidebar.OpenComputerCommand}"
                                     Background="Transparent" BorderThickness="0"
                                     HorizontalAlignment="Stretch"

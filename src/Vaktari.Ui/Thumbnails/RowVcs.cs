@@ -93,15 +93,57 @@ public static class RowVcs
     /// `Unmodified` draws NOTHING. Marking every clean file in a repository
     /// would be noise in exactly the folders where the feature matters most.
     /// </summary>
-    private static (string Glyph, string Colour) Mark(VcsState state) => state switch
+    private static (string Glyph, string Colour) Mark(VcsState state)
     {
-        VcsState.Modified   => ("M", "#E69F00"),
-        VcsState.Added      => ("A", "#009E73"),
-        VcsState.Deleted    => ("D", "#D55E00"),
-        VcsState.Untracked  => ("?", "#56B4E9"),
-        VcsState.Conflicted => ("!", "#CC79A7"),
-        _                   => ("", ""),
-    };
+        // **The palette was chosen for a dark listing and used on both.** These
+        // are the Okabe-Ito colourblind-safe hues, which is why they were
+        // picked — but on a white listing M measured 2.20:1, ? 2.25 and ! 2.99,
+        // all far under the 4.5:1 a single letter at 11px needs. The letter is
+        // the signal here and the colour is the decoration, so an illegible
+        // letter is the whole mark gone.
+        //
+        // Same hues, walked down for the light ground rather than replaced:
+        // the point of this palette is that the hues stay distinguishable to a
+        // colourblind reader, and swapping them would give that up to fix
+        // contrast.
+        var dark = IsDarkListing;
+
+        return state switch
+        {
+            VcsState.Modified   => ("M", dark ? "#E69F00" : "#8A6100"),
+            VcsState.Added      => ("A", dark ? "#009E73" : "#006147"),
+            VcsState.Deleted    => ("D", dark ? "#D55E00" : "#8C3E00"),
+            VcsState.Untracked  => ("?", dark ? "#56B4E9" : "#1F6F9E"),
+            VcsState.Conflicted => ("!", dark ? "#CC79A7" : "#8E4571"),
+            _                   => ("", ""),
+        };
+    }
+
+    /// <summary>
+    /// Whether the listing is dark, so a mark can be drawn to be read on it.
+    ///
+    /// Asked of the resolved theme rather than of a setting: the palette can
+    /// come from the desktop, and the only honest question is what colour the
+    /// surface actually ended up.
+    /// </summary>
+    private static bool IsDarkListing
+    {
+        get
+        {
+            if (Avalonia.Application.Current?.Resources
+                    .TryGetResource("ViewBackground", null, out var value) == true
+                && value is Avalonia.Media.ISolidColorBrush brush)
+            {
+                // Rec. 601 luma is enough to answer "is this dark"; nothing here
+                // needs the full relative-luminance ramp.
+                var c = brush.Color;
+
+                return (0.299 * c.R + 0.587 * c.G + 0.114 * c.B) < 128;
+            }
+
+            return true;
+        }
+    }
 
     /// <summary>
     /// For a container that must DISAPPEAR when there is no mark, rather than
