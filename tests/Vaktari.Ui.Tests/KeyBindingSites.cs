@@ -67,7 +67,7 @@ internal static class KeyBindingSites
 
             var label = Regex.Match(
                 line,
-                @"^case Key\.(\w+)(?: when e\.KeyModifiers (?:==|\.HasFlag\() ?\(?([^)\r\n:]*)\)?\)?)?:");
+                CaseLabel);
 
             if (label.Success)
             {
@@ -92,6 +92,61 @@ internal static class KeyBindingSites
 
         return found;
     }
+
+    /// <summary>
+    /// Every gesture the code-behind has a case for, whatever the body does.
+    ///
+    /// **Separate from <see cref="CodeBehind"/> on purpose.** That one answers
+    /// "which command does this key run", so it credits only labels followed by
+    /// a command call — the right rule when the question is what a key DOES.
+    /// This one answers "is this key handled at all", which is the question the
+    /// F1 list has to be checked against: Backspace, Space and Tab all do their
+    /// work inline rather than through a command, and by the stricter reading
+    /// they look unbound.
+    /// </summary>
+    internal static HashSet<string> CodeBehindHandled()
+    {
+        var found = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
+        foreach (var raw in File.ReadAllLines(Source("MainWindow.axaml.cs")))
+        {
+            var line = raw.Trim();
+
+            var label = Regex.Match(line, CaseLabel);
+
+            if (label.Success)
+            {
+                found.Add(Gesture(label.Groups[1].Value, label.Groups[2].Value));
+                continue;
+            }
+
+            // **Not every key is answered by the switch.** Quick preview and the
+            // split's Tab are plain guards in their own handlers — `if (e.Key ==
+            // Key.Space && ...)` — and reading only case labels called both of
+            // them unbound while both worked.
+            var guard = Regex.Match(line, @"e\.Key (?:==|!=) Key\.(\w+)");
+
+            if (!guard.Success) continue;
+
+            var modifiers = Regex.Match(line, @"e\.KeyModifiers ?(?:==|!=|\.HasFlag\() ?\(?([^)&|;]*)");
+
+            found.Add(Gesture(guard.Groups[1].Value,
+                              modifiers.Success ? modifiers.Groups[1].Value : ""));
+        }
+
+        return found;
+    }
+
+    /// <summary>
+    /// One case label of the OnWindowKeyDown switch.
+    ///
+    /// **The space mattered.** The earlier spelling required one between
+    /// <c>e.KeyModifiers</c> and what follows it — which the <c>==</c> form has
+    /// and <c>.HasFlag(</c> does not. So every HasFlag label failed to match,
+    /// and Ctrl+A, Shift+Delete and Alt+Enter read as handled nowhere.
+    /// </summary>
+    private const string CaseLabel =
+        @"^case Key\.(\w+)(?: when e\.KeyModifiers ?(?:==|\.HasFlag\() ?\(?([^)\r\n:]*)\)?\)?)?:";
 
     private static string Gesture(string key, string modifiers)
     {

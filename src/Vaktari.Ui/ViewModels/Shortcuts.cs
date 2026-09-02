@@ -55,6 +55,7 @@ public static class Shortcuts
             new("F3", "Split the window"),
             new("F11", "Details panel"),
             new("Ctrl+B", "Sidebar"),
+            new("F9", "Sidebar"),
         ]),
 
         new("Finding things",

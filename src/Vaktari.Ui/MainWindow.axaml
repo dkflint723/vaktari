@@ -410,6 +410,15 @@
                             FontSize="{DynamicResource FontSizeSmall}"
                             IsChecked="{Binding ActiveTab.ShowHidden}"/>
 
+                  <!-- **The sidebar could only be toggled with Ctrl+B.** There
+                       was no entry anywhere for it, so hiding it was something
+                       you had to already know how to do — and getting it back
+                       was the same problem with the sidebar gone. -->
+                  <CheckBox Content="Sidebar  (ctrl+b or f9)"
+                            FontSize="{DynamicResource FontSizeSmall}"
+                            IsChecked="{Binding $parent[Window].((vm:ShellViewModel)DataContext).Sidebar.IsPanelVisible, Mode=OneWay}"
+                            Command="{Binding $parent[Window].((vm:ShellViewModel)DataContext).Sidebar.CycleRailCommand}"/>
+
                   <Border Height="1" Background="{DynamicResource SeparatorColour}"/>
 
                   <!-- One grid for both rows, so the labels and the steppers
@@ -2403,6 +2412,8 @@
     <KeyBinding Gesture="Ctrl+OemMinus"  Command="{Binding ZoomOutCommand}"/>
     <KeyBinding Gesture="Ctrl+D0"        Command="{Binding ZoomResetCommand}"/>
     <KeyBinding Gesture="Ctrl+B"         Command="{Binding Sidebar.CycleRailCommand}"/>
+    <!-- Dolphin's own gesture for the same panel, and free here. -->
+    <KeyBinding Gesture="F9"            Command="{Binding Sidebar.CycleRailCommand}"/>
     <!-- Ctrl+H is what every file manager on this desktop uses for hidden files;
          it existed only as a checkbox in the layout flyout. -->
     <KeyBinding Gesture="Ctrl+H"         Command="{Binding ActiveTab.ToggleHiddenCommand}"/>

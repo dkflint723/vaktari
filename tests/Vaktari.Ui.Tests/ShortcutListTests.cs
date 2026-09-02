@@ -89,6 +89,65 @@ public sealed class ShortcutListTests
             + "— a key nobody can find is a key nobody uses.");
     }
 
+    /// <summary>
+    /// Every printed gesture that looks like a key, as opposed to "middle click"
+    /// or "drag" — those are real entries and no parser can find them in a
+    /// KeyBinding table.
+    /// </summary>
+    public static TheoryData<string> Listed
+    {
+        get
+        {
+            var data = new TheoryData<string>();
+            var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
+            // Pointer gestures and ranges are real entries that no key table
+            // can hold: "ctrl+drag" is a mouse gesture, "ctrl+1…9" is nine
+            // bindings written as one line, and the side buttons are not keys.
+            string[] notKeys = ["drag", "click", "wheel", "forward", "back", "…"];
+
+            foreach (var key in Shortcuts.All
+                         .SelectMany(g => g.Keys)
+                         .SelectMany(k => k.Keys.Split(" / ", StringSplitOptions.TrimEntries)))
+            {
+                if (key.Contains(' ')) continue;
+                if (notKeys.Any(w => key.Contains(w, StringComparison.OrdinalIgnoreCase))) continue;
+                if (seen.Add(key)) data.Add(key);
+            }
+
+            return data;
+        }
+    }
+
+    /// <summary>
+    /// **The direction nothing checked.** The list was kept honest one way
+    /// only: a gesture bound in the application had to be printed here, and
+    /// nothing stopped a gesture being printed here that the application does
+    /// not bind. That is the worse half — a key that does nothing when pressed
+    /// reads as the application being broken, while a key that works but is not
+    /// printed is merely undiscovered.
+    ///
+    /// It went unnoticed because both halves are usually written in one sitting.
+    /// It was caught when an edit adding F9 landed in the list and not in the
+    /// markup, and every test still passed.
+    /// </summary>
+    [Theory]
+    [MemberData(nameof(Listed))]
+    public void Every_listed_key_is_actually_bound(string printed)
+    {
+        // "Handled at all", not "runs a command": Backspace, Space and Tab do
+        // their work inline, and by the stricter reading they look unbound.
+        var bound = KeyBindingSites.Markup().Keys
+            .Concat(KeyBindingSites.CodeBehindHandled())
+            .Select(Readable)
+            .ToList();
+
+        Assert.True(
+            bound.Any(b => string.Equals(b, printed, StringComparison.OrdinalIgnoreCase)),
+            $"{printed} is printed in the F1 list and bound nowhere — pressing it "
+            + "does nothing, which reads as the application being broken.");
+    }
+
     /// <summary>Nothing is listed twice under the same heading, which reads as
     /// a mistake even when both lines are true.</summary>
     [Fact]
