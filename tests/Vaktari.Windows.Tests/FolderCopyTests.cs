@@ -196,4 +196,78 @@ public sealed class FolderCopyTests : IDisposable
         Assert.Equal(["already-here.txt"], NamesIn(Path.Combine(destination, "work")));
         Assert.Equal(["b.txt"], NamesIn(Path.Combine(destination, "work 2")));
     }
+
+    // ---- a folder cannot go inside itself -----------------------------------
+
+    /// <summary>
+    /// **The plan is built by walking the source**, so a destination inside it
+    /// feeds the copy its own output; on a move it dismantles the tree it is
+    /// halfway through reading. Explorer and Dolphin both refuse.
+    /// </summary>
+    [Fact]
+    public async Task A_folder_cannot_be_copied_into_itself()
+    {
+        var alpha = Dir("Alpha");
+        File_(@"Alpha\x.txt");
+
+        var ops = new WindowsFileOperations();
+        var handle = await Done(ops.Copy([alpha], alpha, _ => ValueTask.FromResult(ConflictResolution.KeepBoth)));
+
+        Assert.Equal(OperationState.Failed, handle.State);
+        Assert.Equal(["x.txt"], NamesIn(alpha));
+    }
+
+    [Fact]
+    public async Task A_folder_cannot_be_moved_into_its_own_subfolder()
+    {
+        var alpha = Dir("Alpha");
+        var inside = Dir("Alpha", "sub");
+        File_(@"Alpha\x.txt");
+
+        var ops = new WindowsFileOperations();
+        var handle = await Done(ops.Move([alpha], inside, _ => ValueTask.FromResult(ConflictResolution.KeepBoth)));
+
+        Assert.Equal(OperationState.Failed, handle.State);
+        Assert.True(Directory.Exists(alpha), "the source folder was consumed");
+        Assert.Equal(["sub", "x.txt"], NamesIn(alpha));
+        Assert.Empty(NamesIn(inside));
+    }
+
+    /// <summary>
+    /// Dropping a selection onto a folder that is IN that selection is the same
+    /// shape — the destination is one of the sources — and a six-pixel twitch
+    /// over a selected folder was enough to start it.
+    /// </summary>
+    [Fact]
+    public async Task Dropping_a_selection_onto_one_of_its_own_folders_is_refused()
+    {
+        var target = Dir("target");
+        var friend = File_(@"friend.txt");
+
+        var ops = new WindowsFileOperations();
+        var handle = await Done(ops.Move(
+            [target, friend], target, _ => ValueTask.FromResult(ConflictResolution.KeepBoth)));
+
+        Assert.Equal(OperationState.Failed, handle.State);
+        Assert.True(System.IO.File.Exists(friend), "the sibling was moved into the folder");
+        Assert.Empty(NamesIn(target));
+    }
+
+    /// <summary>
+    /// And copying into the PARENT is untouched, which is what makes Duplicate
+    /// work — the guard must not reach it.
+    /// </summary>
+    [Fact]
+    public async Task Copying_a_folder_into_its_parent_is_still_allowed()
+    {
+        var alpha = Dir("Alpha");
+        File_(@"Alpha\x.txt");
+
+        var ops = new WindowsFileOperations();
+        var handle = await Done(ops.Copy([alpha], _root, _ => ValueTask.FromResult(ConflictResolution.KeepBoth)));
+
+        Assert.NotEqual(OperationState.Failed, handle.State);
+        Assert.True(Directory.Exists(Path.Combine(_root, "Alpha - Copy")));
+    }
+
 }

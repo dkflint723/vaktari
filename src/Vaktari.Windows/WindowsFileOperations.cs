@@ -527,6 +527,38 @@ public sealed class WindowsFileOperations : IFileOperations
                         return;
                     }
 
+
+                // **A folder cannot be copied or moved into itself.** Neither
+                // into itself nor into one of its own subfolders: the plan is
+                // built by walking the source, and the destination is inside
+                // what is being walked, so a copy feeds itself and a MOVE
+                // dismantles the tree it is halfway through reading. Explorer
+                // and Dolphin both refuse outright.
+                //
+                // This also covers dropping a selection onto a folder that is
+                // part of that selection — the destination IS one of the
+                // sources — which a six-pixel twitch over a selected folder was
+                // enough to start.
+                //
+                // Checked here rather than at each caller so every route is
+                // covered at once: Ctrl+V, Copy to, Move to and a drop.
+                // Deduplicating into the PARENT is untouched, which is what
+                // makes Duplicate still work.
+                foreach (var source in sources)
+                {
+                    if (!Directory.Exists(source)) continue;
+                    if (!PathRules.Contains(source, destination)) continue;
+
+                    var name = PathRules.LeafName(source);
+
+                    handle.Failed(new IOException(
+                        PathRules.Same(source, destination)
+                            ? $"\"{name}\" cannot be copied into itself."
+                            : $"\"{name}\" cannot be copied into a folder inside it."));
+
+                    return;
+                }
+
                 var unreadable = new List<(string Path, Exception Error)>();
                 var plan = BuildPlan(sources, destination, handle.Token, unreadable);
 

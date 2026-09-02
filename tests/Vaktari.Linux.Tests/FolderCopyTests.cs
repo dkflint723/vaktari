@@ -140,4 +140,56 @@ public sealed class FolderCopyTests : IDisposable
         Assert.Equal(["already-here.txt"], NamesIn(Path.Combine(destination, "work")));
         Assert.Equal(["b.txt"], NamesIn(Path.Combine(destination, "work 2")));
     }
+
+    // ---- a folder cannot go inside itself -----------------------------------
+
+    [Fact]
+    public async Task A_folder_cannot_be_copied_into_itself()
+    {
+        var alpha = Dir("Alpha");
+        File_("Alpha/x.txt");
+
+        var ops = new LinuxFileOperations();
+        var handle = ops.Copy([alpha], alpha, _ => ValueTask.FromResult(ConflictResolution.KeepBoth));
+
+        await handle.Completion;
+
+        Assert.Equal(OperationState.Failed, handle.State);
+        Assert.Equal(["x.txt"], NamesIn(alpha));
+    }
+
+    [Fact]
+    public async Task A_folder_cannot_be_moved_into_its_own_subfolder()
+    {
+        var alpha = Dir("Alpha");
+        var inside = Dir("Alpha", "sub");
+        File_("Alpha/x.txt");
+
+        var ops = new LinuxFileOperations();
+        var handle = ops.Move([alpha], inside, _ => ValueTask.FromResult(ConflictResolution.KeepBoth));
+
+        await handle.Completion;
+
+        Assert.Equal(OperationState.Failed, handle.State);
+        Assert.True(Directory.Exists(alpha), "the source folder was consumed");
+        Assert.Empty(NamesIn(inside));
+    }
+
+    /// <summary>Copying into the PARENT is untouched, which is what makes
+    /// Duplicate work.</summary>
+    [Fact]
+    public async Task Copying_a_folder_into_its_parent_is_still_allowed()
+    {
+        var alpha = Dir("Alpha");
+        File_("Alpha/x.txt");
+
+        var ops = new LinuxFileOperations();
+        var handle = ops.Copy([alpha], _root, _ => ValueTask.FromResult(ConflictResolution.KeepBoth));
+
+        await handle.Completion;
+
+        Assert.NotEqual(OperationState.Failed, handle.State);
+        Assert.Equal(2, Directory.GetDirectories(_root).Length);
+    }
+
 }
