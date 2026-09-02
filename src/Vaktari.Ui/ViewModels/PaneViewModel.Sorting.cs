@@ -82,18 +82,30 @@ public sealed partial class PaneViewModel
 
     private int Compare(FileEntry a, FileEntry b)
     {
-        // Directories first, always — the convention every file manager follows
-        // and users notice immediately when it's missing.
-        if (a.IsDirectory != b.IsDirectory)
-            return a.IsDirectory ? -1 : 1;
-
-        // The group is a PRIMARY key. Without this, grouping by size while
+        // The group is the PRIMARY key. Without this, grouping by size while
         // sorted by name interleaves the bands and every group holds one file.
+        //
+        // **Ahead of directories-first, which is why every band used to appear
+        // twice.** Folders-first ran first, so the order was [every folder, by
+        // band][every file, by band] — and the header is emitted wherever the
+        // label changes, so "Today" came up once over the folders and again
+        // over the files. Explorer and Dolphin both put a folder and a file
+        // modified today under one "Today".
+        //
+        // Grouping by Size or Kind is unaffected: both give folders a band of
+        // their own ("Folders"), so they still sort ahead of everything else by
+        // the group key itself rather than by the tie-break below.
         if (GroupBy != GroupMode.None)
         {
             var group = Grouping.CompareGroups(a, b, GroupBy, _groupNow);
             if (group != 0) return group;
         }
+
+        // Directories first, always — the convention every file manager follows
+        // and users notice immediately when it's missing. Inside a band when
+        // there is one, which is where it belongs.
+        if (a.IsDirectory != b.IsDirectory)
+            return a.IsDirectory ? -1 : 1;
 
         // Span comparison rather than Extension.ToString(): sorting 200k entries
         // by kind would otherwise allocate a string per comparison, millions of

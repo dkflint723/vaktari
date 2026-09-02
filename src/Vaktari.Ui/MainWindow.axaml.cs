@@ -560,6 +560,17 @@ public partial class MainWindow : Window
             if (row is null && visual is TextBlock or Image or Avalonia.Controls.Shapes.Path)
                 return null;
 
+            // **The scrollbar lives INSIDE the list**, so the walk used to
+            // reach the ListBox from it and call it empty space: pressing the
+            // scrollbar cleared the selection, and dragging the thumb drew a
+            // rubber band down the side of the listing while the view scrolled
+            // under it. Scrolling is not a selection gesture in any file
+            // manager.
+            if (visual is Avalonia.Controls.Primitives.ScrollBar
+                       or Avalonia.Controls.Primitives.Thumb
+                       or RepeatButton)
+                return null;
+
             if (visual is ListBoxItem hit) { row = hit; continue; }
 
             if (visual is not ListBox found) continue;
@@ -713,7 +724,14 @@ public partial class MainWindow : Window
         //
         // Only when the press did NOT land on an item: an item click focuses
         // itself, and stealing that would break selection.
-        FocusListIfEmptySpace(e.Source, e.KeyModifiers);
+        // **Left button only.** This clears the selection, and it ran for every
+        // button — so right-clicking the blank half of a full-width row, which
+        // is where people aim for the context menu, collapsed a five-file
+        // selection to nothing before the menu opened. The next Delete took one
+        // file, or none. Explorer and Dolphin both keep the selection when you
+        // right-click inside it.
+        if (properties.IsLeftButtonPressed)
+            FocusListIfEmptySpace(e.Source, e.KeyModifiers);
 
         // Recorded here so a drag can start on the first move past the
         // threshold rather than on the press itself.
@@ -735,9 +753,17 @@ public partial class MainWindow : Window
         _dragRight = properties.PointerUpdateKind == PointerUpdateKind.RightButtonPressed
                      && EntryAt(e.Source) is not null;
 
-        _dragSource = (properties.IsLeftButtonPressed && _bandList is null) || _dragRight
-            ? PaneAt(e.Source)
-            : null;
+        // **From a ROW, the way the right button already required.** The left
+        // arm asked only "is this a pane, and not a band", which is true of the
+        // column headings, the tab strip, the transfer bar and the preview
+        // overlay — so a six-pixel twitch while pressing any of them began
+        // dragging the current selection, and a drop moved real files. The
+        // right arm had had EntryAt all along.
+        _dragSource =
+            (properties.IsLeftButtonPressed && _bandList is null && EntryAt(e.Source) is not null)
+            || _dragRight
+                ? PaneAt(e.Source)
+                : null;
         _dragTrigger = _dragSource is null ? null : e;
 
         // **Snapshotted before the listing sees the press.** This handler is
@@ -3167,6 +3193,14 @@ public partial class MainWindow : Window
         _lastOpenPath = entry.FullPath;
         _lastOpenAt = now;
 
+        // **Forgotten once it has been acted on.** The row that was just opened
+        // stayed remembered as "clicked once", so opening a folder, pressing
+        // Back, and clicking that folder a single time to rename it entered it
+        // again — the click before the double-click was still counting, minutes
+        // later. There is deliberately no time limit on the pair, which is what
+        // made the stale value reach so far.
+        _lastTapPath = null;
+
         _ = _shell.ActiveTab?.OpenAsync(entry);
     }
 
@@ -3185,6 +3219,21 @@ public partial class MainWindow : Window
     private void OnTapped(object? sender, TappedEventArgs e)
     {
         if (EntryAt(e.Source) is not { } entry) return;
+
+        // **A modified click is a selection gesture and never an open.**
+        // Ctrl+click to add a file to a selection LAUNCHED it in single-click
+        // mode, and in double-click mode two Ctrl+clicks on the same row did —
+        // so extending a selection opened whatever it passed over. Shift+click
+        // to select a range did the same to the far end of the range.
+        //
+        // The remembered row is cleared as well as the open suppressed: the
+        // second half of a two-click open must not be able to arrive from a
+        // gesture that was never asking for one.
+        if (e.KeyModifiers is not KeyModifiers.None)
+        {
+            _lastTapPath = null;
+            return;
+        }
 
         if (OpensOnSingleClick)
         {
@@ -3249,6 +3298,10 @@ public partial class MainWindow : Window
         // The normal path, restored. TryOpen drops a duplicate if the fallback
         // in OnTapped has already acted on this same row.
         if (OpensOnSingleClick) return;
+
+        // Same rule as OnTapped: Ctrl+double-click is still a selection
+        // gesture, and Explorer does not open on it either.
+        if (e.KeyModifiers is not KeyModifiers.None) return;
 
         if (EntryAt(e.Source) is { } entry) TryOpen(entry);
     }
