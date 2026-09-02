@@ -104,15 +104,30 @@ public sealed partial class BatchRenameViewModel : ObservableObject
 
         var done = 0;
 
-        foreach (var row in Preview.Where(r => r.IsValid && r.IsChanged).ToList())
+        // **In an order the file system will accept, not the order shown.**
+        // Renumbering asks for img001 to become img002 while img002 still holds
+        // that name, and applying the rows top to bottom failed on the first
+        // one — so the commonest batch rename there is reported "stopped after
+        // 0". Sequence walks each chain from its far end and pays for a staging
+        // move only where there is a genuine cycle.
+        foreach (var step in Core.BatchRename.Sequence(Preview))
         {
-            var entry = _entries.FirstOrDefault(e => e.FullPath == row.FullPath);
+            var entry = _entries.FirstOrDefault(e => e.FullPath == step.FullPath);
             if (entry.FullPath is null) continue;
+
+            // Where the file is NOW, which a staging move has changed.
+            var moving = entry with
+            {
+                FullPath = step.FromPath,
+                Name = Path.GetFileName(step.FromPath),
+            };
 
             try
             {
-                await _rename(entry, row.NewName).ConfigureAwait(true);
-                done++;
+                await _rename(moving, step.NewName).ConfigureAwait(true);
+
+                // A staging move is machinery, not a name anybody asked for.
+                if (!step.IsTemporary) done++;
             }
             catch (Exception ex)
             {

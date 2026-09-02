@@ -44,6 +44,26 @@ public sealed record RenamePreview(
 }
 
 /// <summary>
+/// One filesystem rename, in the order it has to be performed.
+/// </summary>
+/// <param name="FullPath">Where the row started — its identity, matching
+/// <see cref="RenamePreview.FullPath"/>.</param>
+/// <param name="FromPath">Where the file actually is when this step runs, which
+/// is not <paramref name="FullPath"/> once a staging move has shifted it.</param>
+/// <param name="NewName">The leaf to rename to.</param>
+/// <param name="IsTemporary">A staging move rather than a name anybody asked
+/// for, so it is not counted when reporting how many files were renamed.</param>
+public sealed record RenameStep(
+    string FullPath, string FromPath, string NewName, bool IsTemporary)
+{
+    /// <summary>Where the file sits once this step has run.</summary>
+    public string ToPath
+        => Path.GetDirectoryName(FromPath) is { Length: > 0 } parent
+            ? Path.Combine(parent, NewName)
+            : NewName;
+}
+
+/// <summary>
 /// Works out what a batch rename would do, without doing any of it.
 ///
 /// Separated from the renaming itself so the preview and the execution cannot
@@ -187,4 +207,110 @@ public static class BatchRename
         { Length: > 255 } => "longer than 255 characters",
         _ => null,
     };
+
+    /// <summary>
+    /// The plan, put into an order the file system will actually accept.
+    ///
+    /// **A rename onto a name another selected file still holds cannot go
+    /// first.** Renumbering img001…img003 to start at 2 asks for img001 to
+    /// become img002 while img002 is still called img002, and both executors
+    /// refuse that with "already exists here" — so the commonest batch rename
+    /// there is stopped after zero files. The preview was right; the ORDER was
+    /// wrong, and nothing had an order at all.
+    ///
+    /// <see cref="Plan"/> already guarantees what makes an order possible: each
+    /// new name is claimed once, so old-to-new is one-to-one, and a target held
+    /// by a file that is NOT being renamed is reported as a problem instead of
+    /// planned. What remains decomposes into chains and cycles.
+    ///
+    /// A chain drains from the far end and needs no temporary at all — that is
+    /// the whole of the renumbering case. Only a true cycle, which is a swap,
+    /// needs a staging name, and needs exactly one.
+    /// </summary>
+    /// <param name="staging">Overridable so a test can name the temporary.</param>
+    public static IReadOnlyList<RenameStep> Sequence(
+        IReadOnlyList<RenamePreview> plan, Func<string>? staging = null)
+    {
+        staging ??= () => ".vaktari-rename-" + Guid.NewGuid().ToString("N");
+
+        var names = StringComparer.FromComparison(PathRules.Comparison);
+
+        var pending = plan.Where(r => r.IsValid && r.IsChanged).ToList();
+
+        // Who holds a name now, and who is asking for it.
+        var held = new Dictionary<string, RenamePreview>(names);
+        var wants = new Dictionary<string, RenamePreview>(names);
+
+        foreach (var row in pending)
+        {
+            held[row.OldName] = row;
+            wants[row.NewName] = row;
+        }
+
+        var steps = new List<RenameStep>(pending.Count + 1);
+        var done = new HashSet<string>(names);
+
+        // Where each row currently sits, which a staging move changes.
+        var at = pending.ToDictionary(r => r.FullPath, r => r.FullPath, names);
+
+        // ---- the chains first ---------------------------------------------
+        //
+        // A row whose new name nobody currently holds can go immediately, and
+        // doing so frees its OLD name for whoever wanted that. Draining
+        // repeatedly walks each chain from its far end inwards.
+        bool moved;
+
+        do
+        {
+            moved = false;
+
+            foreach (var row in pending)
+            {
+                if (done.Contains(row.OldName)) continue;
+
+                // Free if nobody holds that name, or the holder has already moved.
+                if (held.TryGetValue(row.NewName, out var holder)
+                    && !done.Contains(holder.OldName)
+                    && !ReferenceEquals(holder, row))
+                    continue;
+
+                steps.Add(new RenameStep(row.FullPath, at[row.FullPath], row.NewName, false));
+                done.Add(row.OldName);
+                moved = true;
+            }
+        }
+        while (moved);
+
+        // ---- and then the cycles -------------------------------------------
+        //
+        // Everything still pending is in a cycle: every one of these wants a
+        // name held by another that has not moved. Break each with one staging
+        // move, which turns the cycle into a chain, and drain it.
+        foreach (var start in pending)
+        {
+            if (done.Contains(start.OldName)) continue;
+
+            var parked = staging();
+
+            steps.Add(new RenameStep(start.FullPath, at[start.FullPath], parked, true));
+            at[start.FullPath] = new RenameStep(start.FullPath, at[start.FullPath], parked, true).ToPath;
+            done.Add(start.OldName);
+
+            // Follow the cycle back: whoever wanted the name just vacated can
+            // move, and so on, until we return to the file now parked.
+            var freed = start.OldName;
+
+            while (wants.TryGetValue(freed, out var next) && !done.Contains(next.OldName))
+            {
+                steps.Add(new RenameStep(next.FullPath, at[next.FullPath], next.NewName, false));
+                done.Add(next.OldName);
+                freed = next.OldName;
+            }
+
+            // The parked file takes the name its own move left free.
+            steps.Add(new RenameStep(start.FullPath, at[start.FullPath], start.NewName, false));
+        }
+
+        return steps;
+    }
 }
