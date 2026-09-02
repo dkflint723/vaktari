@@ -32,6 +32,13 @@ public static class PathVariables
 
         var text = typed.Trim();
 
+        // **A quoted path is what Explorer's own "Copy as path" produces**, so
+        // it is the likeliest thing to arrive here from a paste — and it failed
+        // with a raw Win32 error naming Vaktari's own working directory,
+        // because the quotes made it a relative path. Stripped only as a
+        // matching pair: a quote in the middle of a name is part of the name.
+        if (text.Length >= 2 && text[0] == '"' && text[^1] == '"') text = text[1..^1];
+
         // The virtual listings — vaktari:trash and vaktari:recent-files — need
         // no guard here and deliberately do not get one: they carry no %, no $
         // and no leading ~, so every pass below leaves them exactly as they

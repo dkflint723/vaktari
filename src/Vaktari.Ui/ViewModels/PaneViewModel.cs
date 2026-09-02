@@ -1089,7 +1089,26 @@ public sealed partial class PaneViewModel : ObservableObject, IDisposable
 
 
     /// <summary>An empty listing used to look identical to one still loading.</summary>
-    public bool IsEmpty => IsLoaded && !IsLoading && Entries.Count == 0 && !HasLoadError;
+    /// <summary>
+    /// The folder really has nothing in it — as distinct from a filter that
+    /// matched nothing, which is a different sentence.
+    /// </summary>
+    public bool IsEmpty =>
+        IsLoaded && !IsLoading && Entries.Count == 0 && !HasLoadError
+        && string.IsNullOrWhiteSpace(FilterText);
+
+    /// <summary>
+    /// **"This folder is empty" over a folder full of files reads as data
+    /// loss.** Typing a filter that matched nothing printed exactly that, and
+    /// the way out — clear the filter — was the one thing the message gave no
+    /// reason to try. Explorer says "No items match your search"; this says
+    /// which filter, because the box may be somewhere the eye is not.
+    /// </summary>
+    public bool HasNoMatches =>
+        IsLoaded && !IsLoading && Entries.Count == 0 && !HasLoadError
+        && !string.IsNullOrWhiteSpace(FilterText);
+
+    public string NoMatchesLine => $"nothing here matches \u201c{FilterText}\u201d";
 
     /// <summary>
     /// Why this folder could not be listed, shown in the listing itself.
@@ -1155,6 +1174,8 @@ public sealed partial class PaneViewModel : ObservableObject, IDisposable
         // now, so there is nothing left to rescue anyone from.
 
         OnPropertyChanged(nameof(IsEmpty));
+        OnPropertyChanged(nameof(HasNoMatches));
+        OnPropertyChanged(nameof(NoMatchesLine));
         OnPropertyChanged(nameof(Summary));
         OnPropertyChanged(nameof(ShareTargetLabel));
     }
@@ -2177,9 +2198,12 @@ public sealed partial class PaneViewModel : ObservableObject, IDisposable
 
     private void ApplyFilter()
     {
+        // Through the same predicate the live watcher uses, so a file arriving
+        // while a filter is up is judged by exactly the rule that built the
+        // list it is joining.
         var filtered = string.IsNullOrWhiteSpace(FilterText)
             ? _all
-            : _all.Where(e => e.Name.Contains(FilterText, StringComparison.OrdinalIgnoreCase)).ToList();
+            : _all.Where(MatchesFilter).ToList();
 
         _groupNow = DateTimeOffset.Now;
 
@@ -2469,9 +2493,28 @@ public sealed partial class PaneViewModel : ObservableObject, IDisposable
         }
     }
 
+    /// <summary>
+    /// Whether a row survives the filter.
+    ///
+    /// **A pattern is used when it looks like one.** The same "*.png" works in
+    /// the search box and hid everything here, because this only ever asked
+    /// whether the name CONTAINED the text — and no name contains an asterisk.
+    /// Dolphin offers plain, glob and regex as modes; a filter that simply
+    /// notices the wildcard needs no mode and no extra control.
+    /// </summary>
     private bool MatchesFilter(FileEntry entry)
-        => string.IsNullOrWhiteSpace(FilterText)
-           || entry.Name.Contains(FilterText, StringComparison.OrdinalIgnoreCase);
+    {
+        if (string.IsNullOrWhiteSpace(FilterText)) return true;
+
+        return LooksLikeAPattern(FilterText)
+            ? System.IO.Enumeration.FileSystemName.MatchesSimpleExpression(FilterText, entry.Name,
+                                                     ignoreCase: true)
+            : entry.Name.Contains(FilterText, StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static bool LooksLikeAPattern(string text)
+        => text.Contains('*', StringComparison.Ordinal)
+           || text.Contains('?', StringComparison.Ordinal);
 
     /// <summary>Binary search for the insertion point under the current sort,
     /// so a new file lands where it belongs instead of forcing a re-sort.</summary>

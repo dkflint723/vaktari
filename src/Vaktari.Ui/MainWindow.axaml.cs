@@ -3568,6 +3568,13 @@ public partial class MainWindow : Window
         // because the gesture finally goes through them.
         if (e.Key == Key.Space && e.KeyModifiers == KeyModifiers.None)
         {
+            // **Not while a name is being typed.** Space is part of a filename
+            // far more often than it is a shortcut: "new folder" toggled the
+            // preview on the fourth keystroke and discarded the prefix, so
+            // every two-word name in the folder was unreachable by typing.
+            // Left unhandled, so the type-ahead handler downstream gets it.
+            if (_shell.ActiveTab?.IsTypeAheadActive == true) return;
+
             e.Handled = true;
             _shell.ActiveTab?.TogglePreview();
             return;

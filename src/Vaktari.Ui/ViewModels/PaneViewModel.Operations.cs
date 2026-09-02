@@ -321,8 +321,22 @@ public sealed partial class PaneViewModel
         // path, which is the same hazard delete has and is just as invisible.
         if (RefusedInBin()) return;
 
+        // **Four of five selections used to vanish.** F2 renamed the focused
+        // row and ignored the rest without a word. Explorer renumbers them all
+        // and Dolphin opens its batch dialog; Vaktari has that dialog already,
+        // so several files go there and one goes to the inline prompt.
+        if (Selection.Count > 1)
+        {
+            BatchRenameRequested?.Invoke(this, EventArgs.Empty);
+            return;
+        }
+
         if (SelectedEntry is { } entry) RenameRequested?.Invoke(this, entry);
     }
+
+    /// <summary>Raised when F2 is pressed on more than one row; the shell owns
+    /// the dialog.</summary>
+    public event EventHandler? BatchRenameRequested;
 
     /// <summary>
     /// Renames, and says so by throwing.

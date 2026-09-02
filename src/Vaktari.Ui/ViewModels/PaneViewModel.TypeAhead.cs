@@ -15,6 +15,18 @@ public sealed partial class PaneViewModel
 
     private DateTime _typeAheadAt;
 
+    /// <summary>
+    /// True while a prefix is still being typed.
+    ///
+    /// **A space is part of a filename far more often than it is a shortcut.**
+    /// Space toggles the preview, so typing "new folder" flipped a 360-pixel
+    /// overlay open on the fourth keystroke and threw the prefix away — which
+    /// made every two-word name in the folder unreachable by typing. While a
+    /// word is in progress the space belongs to it.
+    /// </summary>
+    public bool IsTypeAheadActive
+        => _typeAhead.Length > 0 && DateTime.UtcNow - _typeAheadAt <= TypeAheadWindow;
+
     /// <summary>How long a partial prefix survives before the next keystroke
     /// starts a new search. Long enough to type a word, short enough that a
     /// keystroke a minute later is obviously a fresh start.</summary>

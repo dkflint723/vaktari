@@ -1055,6 +1055,21 @@ public sealed partial class ShellViewModel : ObservableObject, IDisposable
     [RelayCommand]
     private void BatchRename() => BatchRenameRequested?.Invoke(this, EventArgs.Empty);
 
+    /// <summary>
+    /// F2 on more than one row asks for the batch dialog rather than renaming
+    /// the focused one and ignoring the rest.
+    /// </summary>
+    private void WireBatchRename(PaneViewModel pane)
+    {
+        pane.BatchRenameRequested -= OnPaneAskedForBatchRename;
+        pane.BatchRenameRequested += OnPaneAskedForBatchRename;
+    }
+
+    private void OnPaneAskedForBatchRename(object? sender, EventArgs e)
+    {
+        if (ReferenceEquals(sender, ActiveTab)) BatchRenameRequested?.Invoke(this, EventArgs.Empty);
+    }
+
     [RelayCommand]
     private void ShowProperties()
     {
@@ -1189,13 +1204,44 @@ public sealed partial class ShellViewModel : ObservableObject, IDisposable
     /// already exists for share URLs and mount paths — the view owns the
     /// clipboard, so the shell asks rather than reaches.
     /// </summary>
+    /// <summary>
+    /// Every selected path, the way Explorer's verb of the same name gives
+    /// them: one per line, quoted on Windows.
+    ///
+    /// **It copied one.** Selecting five files and choosing "Copy as path" put
+    /// a single path on the clipboard and said nothing about the other four —
+    /// and the Windows verb that would have done it properly is filtered out of
+    /// the hosted menu as a duplicate of this one.
+    ///
+    /// Quoted only on Windows, because that is where the shell's own version
+    /// quotes and where a path with a space in it needs them to survive being
+    /// pasted into a command line. A quoted path pasted back into the address
+    /// bar is understood.
+    /// </summary>
     [RelayCommand]
     private void CopyLocation()
     {
-        var path = ActiveTab?.SelectedEntry?.FullPath ?? ActiveTab?.CurrentPath;
+        if (ActiveTab is not { } pane) return;
 
-        if (!string.IsNullOrEmpty(path)) CopyTextRequested?.Invoke(this, path);
+        var paths = pane.Selection.Count > 0
+            ? pane.Selection.Select(e => e.FullPath).OfType<string>().ToList()
+            : pane.SelectedEntry?.FullPath is { Length: > 0 } one ? [one]
+            : new List<string> { pane.CurrentPath };
+
+        paths = paths.Where(p => p.Length > 0).ToList();
+
+        if (paths.Count == 0) return;
+
+        var text = string.Join(
+            Environment.NewLine,
+            OperatingSystem.IsWindows() ? paths.Select(Quoted) : paths);
+
+        CopyTextRequested?.Invoke(this, text);
     }
+
+    private static string Quoted(string path) => QUOTE_CHAR + path + QUOTE_CHAR;
+
+    private const string QUOTE_CHAR = "\"";
 
     /// <summary>
     /// Pins the selected folder rather than the current one, which is what a
@@ -1396,6 +1442,7 @@ public sealed partial class ShellViewModel : ObservableObject, IDisposable
         };
         pane.OperationStarted += OnOperationStarted;
         pane.PropertyChanged += OnPaneChanged;
+        WireBatchRename(pane);
         PaneCreated?.Invoke(this, pane);
         return pane;
     }

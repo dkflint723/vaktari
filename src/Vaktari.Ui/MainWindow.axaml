@@ -2167,6 +2167,17 @@
                          FontSize="{DynamicResource FontSizeBase}"
                          Foreground="{DynamicResource ViewDimText}"/>
 
+              <!-- **And a filter that matched nothing said the same thing**,
+                   which over a folder full of files reads as data loss — and
+                   the way out, clearing the filter, was the one thing the
+                   message gave no reason to try. It names the filter, because
+                   the box may be somewhere the eye is not. -->
+              <TextBlock Text="{Binding NoMatchesLine}"
+                         IsVisible="{Binding HasNoMatches}" IsHitTestVisible="False"
+                         HorizontalAlignment="Center" VerticalAlignment="Center"
+                         FontSize="{DynamicResource FontSizeBase}"
+                         Foreground="{DynamicResource ViewDimText}"/>
+
               <!-- And a listing that FAILED looked identical to both. A tab
                    whose folder has been deleted drew column headings over
                    nothing, with its only explanation in a status bar that
