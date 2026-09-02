@@ -19,7 +19,7 @@ namespace Vaktari.Ui.Tests;
 /// apartment thread per right-click. Both failures look like nothing at all
 /// from the outside, which is why they are pinned here.
 /// </summary>
-public sealed class ShellMenuBindingTests : IDisposable
+public sealed class ShellMenuBindingTests : OwnedViewModels
 {
     private sealed class FakeShellMenu : IShellMenu
     {
@@ -86,9 +86,9 @@ public sealed class ShellMenuBindingTests : IDisposable
 
     public ShellMenuBindingTests() => PaneViewModel.ShellMenu = _provider;
 
-    public void Dispose() => PaneViewModel.ShellMenu = null;
+    public override void Dispose() => PaneViewModel.ShellMenu = null;
 
-    private static PaneViewModel Pane() =>
+    private PaneViewModel Pane() =>
         new(new InertFileSystem()) { CurrentPath = Path.GetTempPath() };
 
     [AvaloniaFact]
@@ -258,11 +258,11 @@ public sealed class ShellMenuBindingTests : IDisposable
     [AvaloniaFact]
     public async Task The_bin_and_recent_offer_no_shell_menu()
     {
-        Assert.False(new PaneViewModel(new InertFileSystem())
-            { CurrentPath = VirtualPaths.Trash }.HasShellMenu);
+        Assert.False(Own(new PaneViewModel(new InertFileSystem())
+            { CurrentPath = VirtualPaths.Trash }).HasShellMenu);
 
-        Assert.False(new PaneViewModel(new InertFileSystem())
-            { CurrentPath = VirtualPaths.Files }.HasShellMenu);
+        Assert.False(Own(new PaneViewModel(new InertFileSystem())
+            { CurrentPath = VirtualPaths.Files }).HasShellMenu);
 
         Assert.True(Pane().HasShellMenu);
     }

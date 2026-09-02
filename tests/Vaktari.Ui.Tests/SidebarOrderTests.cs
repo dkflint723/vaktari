@@ -64,7 +64,7 @@ public sealed class SidebarOrderTests : OwnedViewModels
     /// above the list — the fault was entirely about where in the markup it
     /// sat.
     /// </summary>
-    [Fact]
+    [AvaloniaFact]
     public void The_row_is_drawn_inside_the_place_template()
     {
         var markup = XDocument.Load(

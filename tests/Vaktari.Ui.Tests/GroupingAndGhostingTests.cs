@@ -104,7 +104,7 @@ public sealed class GroupingAndGhostingTests : OwnedViewModels
 
     // ---- hidden files are ghosted -------------------------------------------
 
-    [Fact]
+    [AvaloniaFact]
     public void A_hidden_file_is_ghosted()
     {
         var faded = FileConverters.HiddenFade.Convert(
@@ -114,7 +114,7 @@ public sealed class GroupingAndGhostingTests : OwnedViewModels
         Assert.Equal(0.55, Assert.IsType<double>(faded), 3);
     }
 
-    [Fact]
+    [AvaloniaFact]
     public void A_system_file_is_ghosted_too()
     {
         var faded = FileConverters.HiddenFade.Convert(
@@ -124,7 +124,7 @@ public sealed class GroupingAndGhostingTests : OwnedViewModels
         Assert.Equal(0.55, Assert.IsType<double>(faded), 3);
     }
 
-    [Fact]
+    [AvaloniaFact]
     public void An_ordinary_file_is_not()
     {
         var faded = FileConverters.HiddenFade.Convert(

@@ -13,7 +13,7 @@ namespace Vaktari.Ui.Tests;
 /// so picking five images and pressing Enter opened one — silently, with
 /// nothing to say the other four had been dropped.
 /// </summary>
-public sealed class MultiSelectionActionTests
+public sealed class MultiSelectionActionTests : OwnedViewModels
 {
     private sealed class Inert : IFileSystemProvider
     {
@@ -61,12 +61,12 @@ public sealed class MultiSelectionActionTests
         => new(name, Path.Combine(Path.GetTempPath(), name), 1, DateTimeOffset.UnixEpoch,
             directory ? EntryFlags.Directory : EntryFlags.None);
 
-    private static PaneViewModel Pane(RecordingLauncher launcher, params FileEntry[] selected)
+    private PaneViewModel Pane(RecordingLauncher launcher, params FileEntry[] selected)
     {
-        var pane = new PaneViewModel(new Inert(), null, launcher)
+        var pane = Own(new PaneViewModel(new Inert(), null, launcher)
         {
             CurrentPath = Path.GetTempPath(),
-        };
+        });
 
         foreach (var entry in selected) pane.SelectedEntries.Add(entry);
 

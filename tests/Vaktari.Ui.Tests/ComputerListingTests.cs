@@ -15,7 +15,7 @@ namespace Vaktari.Ui.Tests;
 /// failed as a missing directory. The sidebar lists the drives, but a sidebar
 /// is not somewhere you can sort, select in, or open two of in tabs.
 /// </summary>
-public sealed class ComputerListingTests
+public sealed class ComputerListingTests : OwnedViewModels
 {
     private static PlaceGroup Group(string label, params Place[] places)
         => new(label, places);
@@ -34,7 +34,7 @@ public sealed class ComputerListingTests
     private static string P(string name)
         => OperatingSystem.IsWindows() ? $@"{name}:\" : $"/mnt/{name}";
 
-    [Fact]
+    [AvaloniaFact]
     public void Every_drive_becomes_a_row()
     {
         var rows = ComputerListing.Build(
@@ -56,7 +56,7 @@ public sealed class ComputerListingTests
     /// user folders here would make This PC a second copy of the sidebar
     /// rather than an answer to "what is attached to this machine".
     /// </summary>
-    [Fact]
+    [AvaloniaFact]
     public void User_folders_and_pins_are_not_drives()
     {
         var rows = ComputerListing.Build(
@@ -76,7 +76,7 @@ public sealed class ComputerListingTests
     /// is also pinned — and two rows for one drive is the sort of thing nobody
     /// notices until they select both and act on them.
     /// </summary>
-    [Fact]
+    [AvaloniaFact]
     public void One_drive_appearing_twice_is_still_one_row()
     {
         var rows = ComputerListing.Build(
@@ -90,7 +90,7 @@ public sealed class ComputerListingTests
 
     /// <summary>Opening a drive navigates into it, so the rows have to be
     /// directories — everything downstream keys on that flag.</summary>
-    [Fact]
+    [AvaloniaFact]
     public void A_drive_row_opens_like_a_folder()
     {
         var rows = ComputerListing.Build(
@@ -99,12 +99,12 @@ public sealed class ComputerListingTests
         Assert.True(rows[0].IsDirectory);
     }
 
-    [Fact]
+    [AvaloniaFact]
     public void Nothing_attached_is_an_empty_listing_rather_than_a_failure()
         => Assert.Empty(ComputerListing.Build([]));
 
     /// <summary>The size column says how big the drive is, rather than zero.</summary>
-    [Fact]
+    [AvaloniaFact]
     public void A_drive_reports_its_capacity()
     {
         var rows = ComputerListing.Build(
@@ -118,10 +118,10 @@ public sealed class ComputerListingTests
     [AvaloniaFact]
     public async Task Typing_the_name_opens_it()
     {
-        var pane = new PaneViewModel(new Inert(), null, null)
+        var pane = Own(new PaneViewModel(new Inert(), null, null)
         {
             CurrentPath = Path.GetTempPath(),
-        };
+        });
 
         pane.PathText = Vaktari.Core.Naming.ComputerTitle;
 
@@ -140,7 +140,7 @@ public sealed class ComputerListingTests
     {
         var root = Path.GetPathRoot(Path.GetTempPath())!;
 
-        var pane = new PaneViewModel(new Inert(), null, null) { CurrentPath = root };
+        var pane = Own(new PaneViewModel(new Inert(), null, null) { CurrentPath = root });
 
         Assert.True(pane.CanGoUp, "the top of a drive is not the top of the machine");
 
@@ -153,10 +153,10 @@ public sealed class ComputerListingTests
     [AvaloniaFact]
     public void The_machine_has_nothing_above_it()
     {
-        var pane = new PaneViewModel(new Inert(), null, null)
+        var pane = Own(new PaneViewModel(new Inert(), null, null)
         {
             CurrentPath = VirtualPaths.Computer,
-        };
+        });
 
         Assert.False(pane.CanGoUp);
     }
@@ -170,10 +170,10 @@ public sealed class ComputerListingTests
     [AvaloniaFact]
     public void The_location_bar_never_shows_the_internal_scheme()
     {
-        var pane = new PaneViewModel(new Inert(), null, null)
+        var pane = Own(new PaneViewModel(new Inert(), null, null)
         {
             CurrentPath = VirtualPaths.Computer,
-        };
+        });
 
         Assert.Equal(Vaktari.Core.Naming.ComputerTitle, pane.DisplayPath);
         Assert.DoesNotContain("vaktari:", pane.DisplayPath);
@@ -183,10 +183,10 @@ public sealed class ComputerListingTests
     [AvaloniaFact]
     public void A_real_folder_still_shows_its_path()
     {
-        var pane = new PaneViewModel(new Inert(), null, null)
+        var pane = Own(new PaneViewModel(new Inert(), null, null)
         {
             CurrentPath = Path.GetTempPath(),
-        };
+        });
 
         Assert.Equal(Path.GetTempPath(), pane.DisplayPath);
     }
@@ -196,7 +196,7 @@ public sealed class ComputerListingTests
     /// the listing carries the epoch — which the column rendered as
     /// "31 Dec 1969", a date that reads as real and is not.
     /// </summary>
-    [Fact]
+    [AvaloniaFact]
     public void A_drive_shows_no_date_rather_than_the_epoch()
     {
         var shown = FileConverters.Modified.Convert(
@@ -206,7 +206,7 @@ public sealed class ComputerListingTests
         Assert.Equal("", shown);
     }
 
-    [Fact]
+    [AvaloniaFact]
     public void A_real_date_is_still_shown()
     {
         var shown = FileConverters.Modified.Convert(

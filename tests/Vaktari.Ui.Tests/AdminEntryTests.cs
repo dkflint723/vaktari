@@ -1,3 +1,4 @@
+using Avalonia.Headless.XUnit;
 using Vaktari.Core.FileSystem;
 using Vaktari.Ui.ViewModels;
 using Xunit;
@@ -17,7 +18,7 @@ namespace Vaktari.Ui.Tests;
 /// start a new process elevated; the system shows its own consent dialog and
 /// makes the decision, and nothing here can or should bypass it.
 /// </summary>
-public sealed class AdminEntryTests
+public sealed class AdminEntryTests : OwnedViewModels
 {
     private sealed class InertFileSystem : IFileSystemProvider
     {
@@ -62,12 +63,12 @@ public sealed class AdminEntryTests
         public void OpenWith(string path, LaunchOption option) { }
     }
 
-    private static PaneViewModel Pane(FakeLauncher launcher, string? selected = null)
+    private PaneViewModel Pane(FakeLauncher launcher, string? selected = null)
     {
-        var pane = new PaneViewModel(new InertFileSystem(), null, launcher)
+        var pane = Own(new PaneViewModel(new InertFileSystem(), null, launcher)
         {
             CurrentPath = Path.GetTempPath(),
-        };
+        });
 
         if (selected is not null)
             pane.SelectedEntry = new FileEntry(
@@ -85,7 +86,7 @@ public sealed class AdminEntryTests
     /// hidden. The admin TERMINAL keeps the gate — that one is an extended
     /// verb by the same convention.
     /// </summary>
-    [Fact]
+    [AvaloniaFact]
     public void An_ordinary_right_click_on_an_executable_offers_elevation()
     {
         var pane = Pane(new FakeLauncher(true), @"C:\tools\setup.exe");
@@ -96,7 +97,7 @@ public sealed class AdminEntryTests
         Assert.False(pane.ShowAdminEntries);
     }
 
-    [Fact]
+    [AvaloniaFact]
     public void Holding_shift_adds_the_extended_section()
     {
         var pane = Pane(new FakeLauncher(true), @"C:\tools\setup.exe");
@@ -113,7 +114,7 @@ public sealed class AdminEntryTests
     /// offering it for every file would be an entry that silently fails on most
     /// of them.
     /// </summary>
-    [Theory]
+    [AvaloniaTheory]
     [InlineData(@"C:\tools\setup.exe", true)]
     [InlineData(@"C:\tools\install.msi", true)]
     [InlineData(@"C:\tools\go.bat", true)]
@@ -133,7 +134,7 @@ public sealed class AdminEntryTests
     /// A desktop with no elevation route we should be using says so, and the
     /// section never appears — which is every desktop but Windows today.
     /// </summary>
-    [Fact]
+    [AvaloniaFact]
     public void A_platform_that_cannot_elevate_never_offers_it()
     {
         var pane = Pane(new FakeLauncher(false), @"C:\tools\setup.exe");
@@ -149,22 +150,22 @@ public sealed class AdminEntryTests
     /// elevated launch there would run whatever occupies that path now — with
     /// administrator rights, which makes it the worst place for that mistake.
     /// </summary>
-    [Fact]
+    [AvaloniaFact]
     public void The_bin_and_recent_never_offer_it()
     {
         foreach (var listing in new[] { VirtualPaths.Trash, VirtualPaths.Files })
         {
-            var pane = new PaneViewModel(new InertFileSystem(), null, new FakeLauncher(true))
+            var pane = Own(new PaneViewModel(new InertFileSystem(), null, new FakeLauncher(true))
             {
                 CurrentPath = listing,
                 AdminRequested = true,
-            };
+            });
 
             Assert.False(pane.ShowAdminEntries, listing);
         }
     }
 
-    [Fact]
+    [AvaloniaFact]
     public void Choosing_it_hands_the_file_to_the_system()
     {
         var launcher = new FakeLauncher(true);
@@ -181,7 +182,7 @@ public sealed class AdminEntryTests
     /// trusts its own entry's visibility is one keyboard binding away from
     /// elevating a text file.
     /// </summary>
-    [Fact]
+    [AvaloniaFact]
     public void The_command_refuses_what_the_menu_would_not_offer()
     {
         var launcher = new FakeLauncher(true);
@@ -193,7 +194,7 @@ public sealed class AdminEntryTests
         Assert.Null(launcher.Elevated);
     }
 
-    [Fact]
+    [AvaloniaFact]
     public void An_admin_terminal_opens_in_this_folder()
     {
         var launcher = new FakeLauncher(true);
@@ -205,7 +206,7 @@ public sealed class AdminEntryTests
         Assert.Equal(Path.GetTempPath(), launcher.ElevatedTerminalIn);
     }
 
-    [Fact]
+    [AvaloniaFact]
     public void Without_shift_the_admin_terminal_command_does_nothing()
     {
         var launcher = new FakeLauncher(true);

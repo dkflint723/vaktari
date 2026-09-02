@@ -23,7 +23,7 @@ namespace Vaktari.Ui.Tests;
 /// listing bound to it, and an item template reaching back up. If that resolves
 /// here it resolves in the real templates, which are the same shape.
 /// </summary>
-public sealed class CutFadeBindingTests
+public sealed class CutFadeBindingTests : OwnedViewModels
 {
     private const string Markup = """
         <Window xmlns="https://github.com/avaloniaui"
@@ -52,7 +52,7 @@ public sealed class CutFadeBindingTests
         CutMarks.Clear();
 
         var window = (Window)AvaloniaRuntimeXamlLoader.Load(Markup);
-        var shell = new ShellViewModel(new InertFileSystem());
+        var shell = Own(new ShellViewModel(new InertFileSystem()));
 
         window.DataContext = shell;
 

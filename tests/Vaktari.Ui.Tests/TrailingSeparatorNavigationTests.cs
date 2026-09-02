@@ -138,7 +138,7 @@ public sealed class TrailingSeparatorNavigationTests : OwnedViewModels
     /// The two spellings are one folder as far as the watcher's own test is
     /// concerned. This is the comparison that was failing, exercised directly.
     /// </summary>
-    [Fact]
+    [AvaloniaFact]
     public void The_watchers_own_comparison_accepts_both_spellings()
     {
         var child = Path.Combine(_folder, "one.txt");

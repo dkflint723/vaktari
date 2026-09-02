@@ -108,7 +108,7 @@ public sealed class OperationBarTests : OwnedViewModels
     /// property the visibility was bound to, so a view-model-only test would
     /// pass against the bug.
     /// </summary>
-    [Fact]
+    [AvaloniaFact]
     public void The_bar_is_not_bound_to_the_operation_any_more()
     {
         var markup = File.ReadAllText(

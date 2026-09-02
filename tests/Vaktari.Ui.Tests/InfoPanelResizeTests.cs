@@ -1,3 +1,4 @@
+using Avalonia.Headless.XUnit;
 using Vaktari.Core.FileSystem;
 using Vaktari.Ui.ViewModels;
 using Xunit;
@@ -19,7 +20,7 @@ namespace Vaktari.Ui.Tests;
 /// the panel disappears — so without a clamp the handle would let you drag the
 /// panel until it vanished, which is a fault rather than a resize.
 /// </summary>
-public sealed class InfoPanelResizeTests
+public sealed class InfoPanelResizeTests : OwnedViewModels
 {
     private sealed class InertFileSystem : IFileSystemProvider
     {
@@ -48,17 +49,17 @@ public sealed class InfoPanelResizeTests
 
     /// <summary>A group with one tab and a known width, which is all the resize
     /// rule reads.</summary>
-    private static PaneGroupViewModel Group(double width)
+    private PaneGroupViewModel Group(double width)
     {
-        var group = new PaneGroupViewModel(() => new PaneViewModel(new InertFileSystem()));
-        group.Tabs.Add(new PaneViewModel(new InertFileSystem()));
+        var group = new PaneGroupViewModel(() => Own(new PaneViewModel(new InertFileSystem())));
+        group.Tabs.Add(Own(new PaneViewModel(new InertFileSystem())));
         group.ActiveTab = group.Tabs[0];
         group.GroupWidth = width;
 
         return group;
     }
 
-    [Fact]
+    [AvaloniaFact]
     public void Dragging_the_handle_left_widens_the_panel()
     {
         var group = Group(1400);
@@ -72,7 +73,7 @@ public sealed class InfoPanelResizeTests
         Assert.Equal(before + 60, group.InfoWidth);
     }
 
-    [Fact]
+    [AvaloniaFact]
     public void Dragging_it_right_narrows_the_panel()
     {
         var group = Group(1400);
@@ -87,7 +88,7 @@ public sealed class InfoPanelResizeTests
     /// The one that matters: a drag long enough to squeeze the listing out must
     /// stop, not carry the panel past the point where the group hides it.
     /// </summary>
-    [Fact]
+    [AvaloniaFact]
     public void The_panel_cannot_be_dragged_until_it_disappears()
     {
         var group = Group(1400);
@@ -98,7 +99,7 @@ public sealed class InfoPanelResizeTests
             $"width {group.InfoWidth} in a 1400 group leaves no listing");
     }
 
-    [Fact]
+    [AvaloniaFact]
     public void It_cannot_be_dragged_away_to_nothing_either()
     {
         var group = Group(1400);
@@ -113,7 +114,7 @@ public sealed class InfoPanelResizeTests
     /// a width it cannot show. 500 is under the 420 minimum listing plus the
     /// 220 floor, so there is no answer that satisfies both.
     /// </summary>
-    [Fact]
+    [AvaloniaFact]
     public void A_window_too_narrow_for_both_leaves_the_width_alone()
     {
         var group = Group(500);
@@ -131,7 +132,7 @@ public sealed class InfoPanelResizeTests
     /// panel gone, and its handle gone with it — and getting it back meant
     /// finding a window as wide as the one it was dragged in.
     /// </summary>
-    [Fact]
+    [AvaloniaFact]
     public void Narrowing_the_window_takes_the_width_back_rather_than_stranding_it()
     {
         var group = Group(2400);
@@ -151,7 +152,7 @@ public sealed class InfoPanelResizeTests
     /// It gives room back, but only to the floor. Below that there is nothing
     /// left to read and the old hide-until-there-is-room behaviour is right.
     /// </summary>
-    [Fact]
+    [AvaloniaFact]
     public void A_window_with_no_room_at_all_still_hides_the_panel()
     {
         var group = Group(2400);
@@ -169,7 +170,7 @@ public sealed class InfoPanelResizeTests
     /// which nothing noticed, because until the handle worked the width was a
     /// value nothing could change.
     /// </summary>
-    [Fact]
+    [AvaloniaFact]
     public void A_drag_announces_itself_so_the_session_is_written()
     {
         var group = Group(1400);
@@ -184,7 +185,7 @@ public sealed class InfoPanelResizeTests
     /// <summary>A drag that changes nothing says nothing: the handle fires
     /// continuously, and a dirty flag per pixel of a clamped drag would write
     /// the session over and over.</summary>
-    [Fact]
+    [AvaloniaFact]
     public void A_drag_that_moves_nothing_is_not_announced()
     {
         var group = Group(1400);
@@ -203,10 +204,10 @@ public sealed class InfoPanelResizeTests
     /// handle still has to work — a drag during startup must not be swallowed
     /// or clamped against a zero-width group.
     /// </summary>
-    [Fact]
+    [AvaloniaFact]
     public void Before_the_first_measure_the_drag_still_lands()
     {
-        var group = new PaneGroupViewModel(() => new PaneViewModel(new InertFileSystem()));
+        var group = new PaneGroupViewModel(() => Own(new PaneViewModel(new InertFileSystem())));
         var before = group.InfoWidth;
 
         group.ResizeInfoBy(-50);

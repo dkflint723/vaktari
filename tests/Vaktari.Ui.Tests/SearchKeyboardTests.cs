@@ -99,7 +99,7 @@ public sealed class SearchKeyboardTests : OwnedViewModels
     /// control, not of the view model — a view-model-only test would pass with
     /// the popup still keyboard-dead.
     /// </summary>
-    [Fact]
+    [AvaloniaFact]
     public void The_results_are_a_selectable_list_not_buttons()
     {
         var markup = XDocument.Load(

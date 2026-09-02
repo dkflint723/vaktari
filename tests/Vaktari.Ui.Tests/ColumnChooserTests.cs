@@ -209,7 +209,7 @@ public sealed class ColumnChooserTests : OwnedViewModels
     /// silently — headings sliding one column left is the kind of thing that
     /// ships.
     /// </summary>
-    [Fact]
+    [AvaloniaFact]
     public void The_heading_grid_and_the_row_grid_still_agree()
     {
         var grids = Markup()
@@ -231,7 +231,7 @@ public sealed class ColumnChooserTests : OwnedViewModels
     /// both grids. Renumbering the columns after it is the edit the row
     /// template warns "goes wrong quietly".
     /// </summary>
-    [Fact]
+    [AvaloniaFact]
     public void The_type_column_took_the_empty_slot_in_both_grids()
     {
         var inColumnThree = Markup()
@@ -246,7 +246,7 @@ public sealed class ColumnChooserTests : OwnedViewModels
     /// binding that reaches the shell would make the choice global again by
     /// accident, and nothing else would notice until both panes moved at once.
     /// </summary>
-    [Fact]
+    [AvaloniaFact]
     public void The_chooser_binds_to_its_own_pane()
     {
         var rows = Markup()

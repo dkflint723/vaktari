@@ -13,7 +13,7 @@ namespace Vaktari.Ui.Tests;
 /// the listing already carries, rather than a disk lookup inside a predicate
 /// the menu evaluates for every item it opens over.
 /// </summary>
-public sealed class MountMenuGateTests : IDisposable
+public sealed class MountMenuGateTests : OwnedViewModels
 {
     private readonly IDiskImages? _saved = PaneViewModel.DiskImages;
 
@@ -23,7 +23,7 @@ public sealed class MountMenuGateTests : IDisposable
     /// runs afterwards — an order-dependent failure somewhere else entirely,
     /// which is the worst kind to chase.
     /// </summary>
-    public void Dispose() => PaneViewModel.DiskImages = _saved;
+    public override void Dispose() => PaneViewModel.DiskImages = _saved;
 
     private sealed class Inert : IFileSystemProvider
     {
@@ -74,14 +74,14 @@ public sealed class MountMenuGateTests : IDisposable
         public Task UnmountAsync(string imagePath, CancellationToken ct) => Task.CompletedTask;
     }
 
-    private static PaneViewModel Pane(FakeImages images, string name, bool directory = false)
+    private PaneViewModel Pane(FakeImages images, string name, bool directory = false)
     {
         PaneViewModel.DiskImages = images;
 
-        var pane = new PaneViewModel(new Inert(), null, null)
+        var pane = Own(new PaneViewModel(new Inert(), null, null)
         {
             CurrentPath = Path.GetTempPath(),
-        };
+        });
 
         pane.SelectedEntry = new FileEntry(
             name, Path.Combine(Path.GetTempPath(), name), 0, DateTimeOffset.UnixEpoch,
@@ -158,7 +158,7 @@ public sealed class MountMenuGateTests : IDisposable
 
         foreach (var listing in new[] { VirtualPaths.Trash, VirtualPaths.Files })
         {
-            var pane = new PaneViewModel(new Inert(), null, null) { CurrentPath = listing };
+            var pane = Own(new PaneViewModel(new Inert(), null, null) { CurrentPath = listing });
 
             pane.SelectedEntry = new FileEntry(
                 "holiday.iso", Path.Combine(Path.GetTempPath(), "holiday.iso"),
