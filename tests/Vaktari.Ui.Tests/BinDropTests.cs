@@ -118,28 +118,14 @@ public sealed class BinDropTests
             + "bin arms, completes and says nothing");
     }
 
-    /// <summary>The text of one method of MainWindow, read from the source.</summary>
+    /// <summary>
+    /// The text of one method of MainWindow, read from the source.
+    ///
+    /// Through RepoSource, which normalises line endings. Read raw, this scan
+    /// found nothing on a Windows agent — the repository stores LF and git
+    /// hands out CRLF — and fell back to the whole file, so the assertion
+    /// quietly widened from "inside this method" to "anywhere at all".
+    /// </summary>
     private static string Body(string declaration)
-    {
-        var source = File.ReadAllText(
-            Path.Combine(Repo(), "src", "Vaktari.Ui", "MainWindow.axaml.cs"));
-
-        var at = source.IndexOf(declaration, StringComparison.Ordinal);
-        Assert.True(at > 0, $"{declaration} is not declared the way this test looks for it");
-
-        // To the start of the next member at the same indentation.
-        var end = source.IndexOf("\n    }\n", at, StringComparison.Ordinal);
-
-        return source[at..(end < 0 ? source.Length : end)];
-    }
-
-    private static string Repo()
-    {
-        var here = AppContext.BaseDirectory;
-
-        while (here is not null && !File.Exists(Path.Combine(here, "Vaktari.slnx")))
-            here = Path.GetDirectoryName(here);
-
-        return here ?? throw new InvalidOperationException("could not find the repository root");
-    }
+        => RepoSource.Body(RepoSource.Ui("MainWindow.axaml.cs"), declaration);
 }

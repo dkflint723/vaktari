@@ -105,24 +105,8 @@ public sealed class WindowTitleTests : OwnedViewModels
     [InlineData("private void OnTabStripSelectionChanged")]
     public void The_title_is_asked_again_when_the_folder_changes(string site)
     {
-        var source = File.ReadAllText(
-            Path.Combine(Repo(), "src", "Vaktari.Ui", "MainWindow.axaml.cs"));
-
-        var at = source.IndexOf(site, StringComparison.Ordinal);
-        Assert.True(at > 0, $"{site} is not written the way this test looks for it");
-
-        var end = source.IndexOf("\n    }\n", at, StringComparison.Ordinal);
-
-        Assert.Contains("RefreshTitle()", source[at..(end < 0 ? source.Length : end)]);
+        Assert.Contains("RefreshTitle()",
+                        RepoSource.Body(RepoSource.Ui("MainWindow.axaml.cs"), site));
     }
 
-    private static string Repo()
-    {
-        var here = AppContext.BaseDirectory;
-
-        while (here is not null && !File.Exists(Path.Combine(here, "Vaktari.slnx")))
-            here = Path.GetDirectoryName(here);
-
-        return here ?? throw new InvalidOperationException("could not find the repository root");
-    }
 }

@@ -1373,7 +1373,71 @@ public sealed partial class PaneViewModel : ObservableObject, IDisposable
                            && (PathRules.IsRoot(CurrentPath)
                                || !string.IsNullOrEmpty(_fs.GetParent(CurrentPath)));
 
-        public async Task NavigateAsync(string path)
+        /// <summary>
+    /// Whether a listing built with this hidden setting would hold that entry
+    /// at all. Static and pure, so the decision can be read without a listing
+    /// behind it.
+    /// </summary>
+    public static bool NeedsHiddenShown(FileEntry entry, bool showHidden)
+        => !showHidden && entry.IsConcealed;
+
+    /// <summary>The row on screen for a path, or null. Null rather than
+    /// FirstOrDefault, because default(FileEntry) has a null FullPath and
+    /// assigning THAT is a different kind of nothing.</summary>
+    private FileEntry? RowFor(string? path)
+    {
+        foreach (var row in Entries)
+            if (PathRules.Same(row.FullPath, path)) return row;
+
+        return null;
+    }
+
+    /// <summary>
+    /// Goes to where something lives and highlights it.
+    ///
+    /// **Selecting the search backend's own entry selected nothing.** FileEntry
+    /// is a record struct with structural equality over all five members, the
+    /// listings bind SelectedItem to SelectedEntry, and a ListBox resolves
+    /// SelectedItem by equality against the rows it holds — so the hit had to
+    /// match the row in size, timestamp and flags as well as path, and it
+    /// routinely did not. The Linux search provider sets Directory and Hidden
+    /// and nothing else, while the file system provider also sets Symlink and
+    /// ReadOnly, so choosing any read-only file or symlink landed you in the
+    /// right folder with nothing lit and the selection empty.
+    ///
+    /// **And a hidden hit had no row to select at all.** Both search backends
+    /// return hidden and system files; the listing excludes them while
+    /// ShowHidden is off. Turning it on is the only answer that shows what was
+    /// asked for — landing on a folder that provably cannot contain the result
+    /// is the worse surprise.
+    /// </summary>
+    public async Task RevealAsync(FileEntry entry)
+    {
+        var folder = entry.IsDirectory
+            ? entry.FullPath
+            : Path.GetDirectoryName(entry.FullPath);
+
+        if (string.IsNullOrEmpty(folder)) return;
+
+        // Before the listing is built, so it is built once and already holds
+        // the row rather than being rebuilt underneath the selection.
+        if (NeedsHiddenShown(entry, ShowHidden)) ShowHidden = true;
+
+        await NavigateAsync(folder).ConfigureAwait(true);
+
+        // The row the LISTING has, not the one search handed over.
+        if (RowFor(entry.FullPath) is { } row)
+        {
+            SelectedEntry = row;
+            Reselect([row.FullPath!]);
+        }
+        else
+        {
+            Status = $"{PathRules.LeafName(entry.FullPath)} is no longer there";
+        }
+    }
+
+    public async Task NavigateAsync(string path)
     {
         if (string.IsNullOrWhiteSpace(path)) return;
 

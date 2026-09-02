@@ -21,9 +21,7 @@ namespace Vaktari.Ui.Tests;
 /// </summary>
 public sealed class PropertiesGateTests
 {
-    private static string Source()
-        => File.ReadAllText(
-            Path.Combine(Repo(), "src", "Vaktari.Ui", "MainWindow.axaml.cs"));
+    private static string Source() => RepoSource.Ui("MainWindow.axaml.cs");
 
     /// <summary>
     /// **Alt+Enter went round the gate.** It called the window's own
@@ -63,13 +61,8 @@ public sealed class PropertiesGateTests
     [AvaloniaFact]
     public void A_path_that_has_gone_opens_no_sheet()
     {
-        var at = Source().IndexOf(
-            "private void ShowPropertiesFor(IReadOnlyList<string> paths)", StringComparison.Ordinal);
-
-        Assert.True(at > 0, "ShowPropertiesFor is not declared the way this test looks for it");
-
-        var end = Source().IndexOf("\n    }\n", at, StringComparison.Ordinal);
-        var body = Source()[at..(end < 0 ? Source().Length : end)];
+        var body = RepoSource.Body(
+            Source(), "private void ShowPropertiesFor(IReadOnlyList<string> paths)");
 
         Assert.True(body.Contains("File.Exists(p) || Directory.Exists(p)"),
             "the sheet is opened without checking the path is still there, so it "

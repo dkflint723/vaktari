@@ -84,8 +84,7 @@ public sealed class TabDropTests : OwnedViewModels
     [AvaloniaFact]
     public void The_tab_strip_accepts_drops_in_the_markup()
     {
-        var markup = File.ReadAllText(
-            Path.Combine(Repo(), "src", "Vaktari.Ui", "MainWindow.axaml"));
+        var markup = RepoSource.Ui("MainWindow.axaml");
 
         var at = markup.IndexOf("<TabStrip ItemsSource=\"{Binding Tabs}\"", StringComparison.Ordinal);
         Assert.True(at > 0, "the tab strip is not declared the way this looks for it");
@@ -102,11 +101,9 @@ public sealed class TabDropTests : OwnedViewModels
     [AvaloniaFact]
     public void A_drag_resting_on_a_tab_is_noticed_before_it_is_refused()
     {
-        var source = File.ReadAllText(
-            Path.Combine(Repo(), "src", "Vaktari.Ui", "MainWindow.axaml.cs"));
-
-        var body = source[source.IndexOf(
-            "private void OnDragOver(object? sender, DragEventArgs e)", StringComparison.Ordinal)..];
+        var body = RepoSource.Body(
+            RepoSource.Ui("MainWindow.axaml.cs"),
+            "private void OnDragOver(object? sender, DragEventArgs e)");
 
         var hover = body.IndexOf("HoverTab(TabAt(e.Source))", StringComparison.Ordinal);
         var refusal = body.IndexOf("if (!spot.Exists)", StringComparison.Ordinal);
@@ -125,25 +122,6 @@ public sealed class TabDropTests : OwnedViewModels
     [InlineData("private void OnDragLeave(object? sender, DragEventArgs e)")]
     [InlineData("private void OnDrop(object? sender, DragEventArgs e)")]
     public void Ending_a_drag_stops_the_switch(string declaration)
-    {
-        var source = File.ReadAllText(
-            Path.Combine(Repo(), "src", "Vaktari.Ui", "MainWindow.axaml.cs"));
-
-        var at = source.IndexOf(declaration, StringComparison.Ordinal);
-        Assert.True(at > 0, $"{declaration} is not declared the way this looks for it");
-
-        var end = source.IndexOf("\n    }\n", at, StringComparison.Ordinal);
-
-        Assert.Contains("HoverTab(null)", source[at..(end < 0 ? source.Length : end)]);
-    }
-
-    private static string Repo()
-    {
-        var here = AppContext.BaseDirectory;
-
-        while (here is not null && !File.Exists(Path.Combine(here, "Vaktari.slnx")))
-            here = Path.GetDirectoryName(here);
-
-        return here ?? throw new InvalidOperationException("could not find the repository root");
-    }
+        => Assert.Contains("HoverTab(null)",
+                           RepoSource.Body(RepoSource.Ui("MainWindow.axaml.cs"), declaration));
 }

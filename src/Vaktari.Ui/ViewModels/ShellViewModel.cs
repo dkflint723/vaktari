@@ -85,19 +85,11 @@ public sealed partial class ShellViewModel : ObservableObject, IDisposable
         // place that knows which pane is active.
         Sidebar.AttachNavigation(path => _ = ActiveTab?.NavigateAsync(path));
 
-        Sidebar.Search.ResultChosen += (_, entry) =>
-        {
-            var folder = entry.IsDirectory
-                ? entry.FullPath
-                : Path.GetDirectoryName(entry.FullPath);
-
-            if (folder is null || ActiveTab is not { } pane) return;
-
-            _ = pane.NavigateAsync(folder).ContinueWith(
-                _ => Avalonia.Threading.Dispatcher.UIThread.Post(
-                    () => pane.SelectedEntry = entry),
-                TaskScheduler.Default);
-        };
+        // The whole of "go there and light it up" belongs to the pane, which is
+        // the only thing that knows what rows it actually has. Assembling it
+        // here meant selecting the search backend's own entry, which is equal
+        // to the listing's row only by luck.
+        Sidebar.Search.ResultChosen += (_, entry) => _ = ActiveTab?.RevealAsync(entry);
 
         Left = CreateGroup();
         ActiveGroup = Left;

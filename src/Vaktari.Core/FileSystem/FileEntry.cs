@@ -37,6 +37,12 @@ public readonly record struct FileEntry(
     public bool IsHidden    => (Flags & EntryFlags.Hidden) != 0;
     public bool IsSymlink   => (Flags & EntryFlags.Symlink) != 0;
 
+    /// <summary>
+    /// Concealed by the LISTING's rule rather than by the platform's: Windows
+    /// hides System alongside Hidden, and the flags carry them separately.
+    /// </summary>
+    public bool IsConcealed => IsHidden || (Flags & EntryFlags.System) != 0;
+
     public ReadOnlySpan<char> Extension
     {
         get

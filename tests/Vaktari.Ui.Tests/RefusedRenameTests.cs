@@ -102,19 +102,8 @@ public sealed class RefusedRenameTests
     [Fact]
     public void The_window_decides_before_it_closes_the_bar()
     {
-        var here = AppContext.BaseDirectory;
-
-        while (here is not null && !File.Exists(Path.Combine(here, "Vaktari.slnx")))
-            here = Path.GetDirectoryName(here);
-
-        var source = File.ReadAllText(
-            Path.Combine(here!, "src", "Vaktari.Ui", "MainWindow.axaml.cs"));
-
-        var at = source.IndexOf("private void ConfirmPrompt()", StringComparison.Ordinal);
-        Assert.True(at > 0, "ConfirmPrompt is not declared the way this test looks for it");
-
-        var end = source.IndexOf("\n    }\n", at, StringComparison.Ordinal);
-        var body = source[at..(end < 0 ? source.Length : end)];
+        var body = RepoSource.Body(
+            RepoSource.Ui("MainWindow.axaml.cs"), "private void ConfirmPrompt()");
 
         var decided = body.IndexOf("RenamePrompt.Decide(", StringComparison.Ordinal);
         var closed = body.IndexOf("ClosePrompt();", StringComparison.Ordinal);

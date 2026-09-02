@@ -134,22 +134,14 @@ public sealed class NewTabGestureTests
     [AvaloniaFact]
     public void The_gesture_opens_behind_rather_than_handing_over()
     {
-        var here = AppContext.BaseDirectory;
-
-        while (here is not null && !File.Exists(Path.Combine(here, "Vaktari.slnx")))
-            here = Path.GetDirectoryName(here);
-
-        var source = File.ReadAllText(
-            Path.Combine(here!, "src", "Vaktari.Ui", "MainWindow.axaml.cs"));
+        var source = RepoSource.Ui("MainWindow.axaml.cs");
 
         Assert.Contains("_shell.OpenBehind(opening)", source);
         Assert.DoesNotContain("_shell.OpenInNewTab(folder)", source);
 
-        var shell = File.ReadAllText(
-            Path.Combine(here!, "src", "Vaktari.Ui", "ViewModels", "ShellViewModel.cs"));
-
-        var behind = shell[shell.IndexOf("public void OpenBehind(string path)", StringComparison.Ordinal)..];
-
-        Assert.Contains("activate: false", behind[..behind.IndexOf("\n    }\n", StringComparison.Ordinal)]);
+        Assert.Contains(
+            "activate: false",
+            RepoSource.Body(RepoSource.Ui("ViewModels", "ShellViewModel.cs"),
+                            "public void OpenBehind(string path)"));
     }
 }
