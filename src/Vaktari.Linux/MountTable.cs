@@ -21,50 +21,12 @@ namespace Vaktari.Linux;
 internal static class MountTable
 {
     /// <summary>
-    /// The kernel escapes space, tab, newline and backslash in both the device
-    /// and the mount point.
-    ///
-    /// **One left-to-right scan, never chained Replace calls.** Unescaping
-    /// \134 first turns every remaining escape into a literal backslash
-    /// followed by digits, so "\1340 40" and a real "\040" become
-    /// indistinguishable — a folder named with a backslash would silently
-    /// resolve to a different path than the one mounted. Left to right, each
-    /// escape is consumed once and its output is never re-examined.
+    /// The same unescaping, in the one place both this and the volume lookup
+    /// can reach — the drag path needs it too, and two copies of an octal
+    /// decoder are two chances to get "\" wrong.
     /// </summary>
     internal static string Unescape(string field)
-    {
-        if (field.IndexOf('\\') < 0) return field;
-
-        var built = new System.Text.StringBuilder(field.Length);
-
-        for (var i = 0; i < field.Length; i++)
-        {
-            if (field[i] == '\\' && i + 3 < field.Length)
-            {
-                var code = field.AsSpan(i + 1, 3);
-
-                var replacement = code switch
-                {
-                    "040" => ' ',
-                    "011" => '\t',
-                    "012" => '\n',
-                    "134" => '\\',
-                    _ => '\0',
-                };
-
-                if (replacement != '\0')
-                {
-                    built.Append(replacement);
-                    i += 3;
-                    continue;
-                }
-            }
-
-            built.Append(field[i]);
-        }
-
-        return built.ToString();
-    }
+        => Vaktari.Core.FileSystem.Volumes.UnescapeMountField(field);
 
     /// <summary>
     /// Whether this line describes a volume a person would recognise as a drive.

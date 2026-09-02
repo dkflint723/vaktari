@@ -32,29 +32,20 @@ public static class DragEffect
         // desktop does.
         if (!internalDrag) return DragIntent.Copy;
 
-        return sources.Count > 0 && sources.All(s => SameVolume(s, destination))
+        if (sources.Count == 0) return DragIntent.Copy;
+
+        // **Read once, asked many times.** SameVolume used to read the whole
+        // mount table on every call, and this asks it once per file — so a
+        // plain drag of a 200-file selection was 200 mount-table reads for
+        // every drag-over event, and drag-over fires continuously while the
+        // pointer moves.
+        var mounts = Vaktari.Core.FileSystem.Volumes.MountPoints();
+
+        return sources.All(s => Vaktari.Core.FileSystem.Volumes.Same(s, destination, mounts))
             ? DragIntent.Move
             : DragIntent.Copy;
     }
 
-    /// <summary>
-    /// Whether two paths live on the same volume.
-    ///
-    /// Unknown counts as different, which errs towards copying — the answer
-    /// that leaves the original where it was. A network path has no drive
-    /// letter, and treating two unrelated shares as one volume would move files
-    /// across a network on a plain drag.
-    /// </summary>
-    /// <summary>
-    /// **Was Path.GetPathRoot, which is a no-op on Linux.** Every absolute path
-    /// there has the root "/", so this always answered "same volume" and a
-    /// plain drag to a USB stick or a network mount MOVED the files - the one
-    /// case that should copy and leave the original where it is. Volumes.Same
-    /// keeps the root comparison on Windows, where a drive letter really is the
-    /// volume, and compares mount points elsewhere.
-    /// </summary>
-    private static bool SameVolume(string a, string b)
-        => Vaktari.Core.FileSystem.Volumes.Same(a, b);
 
     private static StringComparison Comparison =>
         OperatingSystem.IsWindows() ? StringComparison.OrdinalIgnoreCase : StringComparison.Ordinal;
