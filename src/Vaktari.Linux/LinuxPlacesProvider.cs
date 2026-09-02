@@ -61,9 +61,23 @@ public sealed class LinuxPlacesProvider : IPlacesProvider, IDisposable
     {
         if (_watch is not null) return;
 
-        _watch = new DeviceWatch(() => MountLines is { } lines
-            ? MountTable.Signature(lines())
-            : MountTable.Snapshot());
+        // **The devices are part of the signature now, not just the mounts.**
+        // The watcher only ever read /proc/mounts, so plugging in a stick that
+        // the desktop does not automount changed nothing it could see — and the
+        // volume this provider now offers to mount would not have appeared
+        // until something else happened to refresh the sidebar.
+        _watch = new DeviceWatch(() =>
+        {
+            var mounts = MountLines is { } lines
+                ? MountTable.Signature(lines())
+                : MountTable.Snapshot();
+
+            var devices = FilesystemDevices is { } fake
+                ? fake()
+                : ReadFilesystemDevices();
+
+            return mounts + "|" + string.Join('|', devices.OrderBy(d => d, StringComparer.Ordinal));
+        });
 
         _watch.Changed += (_, _) => PlacesChanged?.Invoke(this, EventArgs.Empty);
         _watch.Start();
@@ -195,6 +209,41 @@ public sealed class LinuxPlacesProvider : IPlacesProvider, IDisposable
     }
 
     /// <summary>Volume label to device, reversed from /dev/disk/by-label.</summary>
+    /// <summary>
+    /// Every device that carries a filesystem, mounted or not.
+    ///
+    /// **/proc/mounts was the only source**, so a partition that is not mounted
+    /// simply did not exist as far as the sidebar was concerned — and a stick
+    /// plugged into a desktop that does not automount never appeared at all.
+    /// Dolphin lists every volume, greyed, and mounts it when you click.
+    ///
+    /// by-uuid rather than lsblk or blkid: a device with a filesystem has a
+    /// UUID symlink, the directory is world-readable, and it needs no external
+    /// tool and no root. The same trick ReadVolumeLabels already uses next
+    /// door.
+    /// </summary>
+    private static IReadOnlyList<string> ReadFilesystemDevices()
+    {
+        var devices = new List<string>();
+
+        try
+        {
+            foreach (var link in Directory.EnumerateFileSystemEntries("/dev/disk/by-uuid"))
+            {
+                var target = new FileInfo(link).ResolveLinkTarget(returnFinalTarget: true);
+
+                if (target is not null) devices.Add(target.FullName);
+            }
+        }
+        catch { /* no by-uuid directory — then there is nothing to offer */ }
+
+        return devices;
+    }
+
+    /// <summary>Stands in for /dev/disk/by-uuid, so the rules above can be
+    /// tested on a machine with one disk and nothing removable.</summary>
+    internal Func<IReadOnlyList<string>>? FilesystemDevices { get; init; }
+
     private static Dictionary<string, string> ReadVolumeLabels()
     {
         var map = new Dictionary<string, string>(StringComparer.Ordinal);
@@ -297,6 +346,36 @@ public sealed class LinuxPlacesProvider : IPlacesProvider, IDisposable
             });
         }
 
+        // **Everything with a filesystem that is not mounted**, listed dimmed
+        // rather than left out. IsAvailable has meant exactly this since the
+        // record was written — "false for an unmounted volume, rendered dimmed
+        // and in place, never hidden" — and nothing had ever produced one.
+        var offered = FilesystemDevices is { } fakeDevices
+            ? fakeDevices()
+            : ReadFilesystemDevices();
+
+        foreach (var device in offered)
+        {
+            if (seenDevices.Contains(device)) continue;
+
+            // A loop device with a filesystem is a mounted disk image, which
+            // has its own row and its own way of going away.
+            if (device.StartsWith("/dev/loop", StringComparison.Ordinal)) continue;
+
+            devices.Add(new Place
+            {
+                Id = UnmountedPrefix + device,
+                Label = labels.TryGetValue(device, out var name) ? name : Path.GetFileName(device),
+
+                // No mount point to open. Clicking asks for one instead, which
+                // is what IsAvailable=false tells the sidebar to do.
+                Path = "",
+                Kind = PlaceKind.RemovableDevice,
+                Icon = "device-drive",
+                IsAvailable = false,
+            });
+        }
+
         return (devices, network);
     }
 
@@ -346,7 +425,56 @@ public sealed class LinuxPlacesProvider : IPlacesProvider, IDisposable
         return ValueTask.CompletedTask;
     }
 
-    public ValueTask MountAsync(string id, CancellationToken ct) => ValueTask.CompletedTask;
+    /// <summary>The prefix an unmounted volume's id carries, so mounting knows
+    /// which device to ask for.</summary>
+    private const string UnmountedPrefix = "unmounted:";
+
+    /// <summary>
+    /// Mounts a volume that is listed but not mounted.
+    ///
+    /// **This was `ValueTask.CompletedTask`** — the sidebar had a mount call and
+    /// nothing behind it, which is the same as not offering one.
+    ///
+    /// udisksctl rather than mount(8): it is the unprivileged path every
+    /// desktop already uses, it puts the volume under /run/media/$USER where
+    /// the rest of this provider expects to find it, and it needs no sudo. The
+    /// same tool the ejector next door already speaks.
+    /// </summary>
+    public async ValueTask MountAsync(string id, CancellationToken ct)
+    {
+        if (!id.StartsWith(UnmountedPrefix, StringComparison.Ordinal)) return;
+
+        var device = id[UnmountedPrefix.Length..];
+
+        if (device.Length == 0) return;
+
+        try
+        {
+            using var process = System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo
+            {
+                FileName = "udisksctl",
+                ArgumentList = { "mount", "-b", device },
+                RedirectStandardOutput = true,
+                RedirectStandardError = true,
+                UseShellExecute = false,
+            });
+
+            if (process is null) return;
+
+            await process.WaitForExitAsync(ct).ConfigureAwait(false);
+        }
+        catch (Exception ex)
+        {
+            // A desktop without udisks2 is a real configuration, and failing to
+            // mount is not a reason to take the window with it.
+            Vaktari.Core.Quiet.Swallowed("mount", ex);
+        }
+
+        // Whether it worked or not, the sidebar should re-read: on success the
+        // volume has a mount point now, and on failure it should stop looking
+        // like something is happening.
+        PlacesChanged?.Invoke(this, EventArgs.Empty);
+    }
     /// <summary>Stands in for the real tool, so the rules above it are testable
     /// on a machine with no udisks2 and no removable drive.</summary>
     internal IEjector? EjectorOverride { get; init; }
