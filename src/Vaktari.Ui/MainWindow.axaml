@@ -1933,9 +1933,26 @@
                                to grab for a rubber band. Trimming still fires: a
                                Left-aligned child is measured against the available width
                                and clamped to it. -->
+                          <!-- **The name was the one trimmed thing with nothing to
+                               say what it trimmed.** Every other column in the row
+                               tips; this one ellipsizes and stayed unreadable, so a
+                               long name in a narrow pane could only be read by
+                               pressing F2 and then Escape.
+
+                               A long delay, not the usual hover speed: the tip
+                               repeats the label whenever the name DOES fit, and a
+                               tooltip that pops over text you can already read is
+                               noise. Same 1200ms the address bar uses for its own
+                               duplicate-of-visible-text tip.
+
+                               On the TextBlock and not the row: over blank row
+                               space, or over the size and modified cells, a
+                               different tip is the right answer. -->
                           <TextBlock Text="{Binding Name}" HorizontalAlignment="Left"
                                      FontSize="{DynamicResource FontSizeBase}" VerticalAlignment="Center"
                                      TextTrimming="CharacterEllipsis"
+                                     ToolTip.Tip="{Binding Converter={x:Static vm:FileConverters.NameTip}}"
+                                     ToolTip.ShowDelay="1200"
                                      Opacity="{Binding Converter={x:Static vm:FileConverters.HiddenFade}}"/>
 
                           <!-- **Two files can sit here looking identically
@@ -2139,9 +2156,12 @@
                                measured with infinite width and its ellipsis
                                never appeared — a long filename in compact view
                                simply ran past the cell and was clipped. -->
+                          <!-- Trims, so it tips. See the details row. -->
                           <TextBlock Text="{Binding Name}" VerticalAlignment="Center"
                                      FontSize="{DynamicResource FontSizeBase}"
-                                     TextTrimming="CharacterEllipsis"/>
+                                     TextTrimming="CharacterEllipsis"
+                                     ToolTip.Tip="{Binding Converter={x:Static vm:FileConverters.NameTip}}"
+                                     ToolTip.ShowDelay="1200"/>
                         </DockPanel>
                       </Panel>
                       <!-- **Where the drop lands.** The pane took an outline while a drag
@@ -2270,9 +2290,13 @@
                                        Foreground="{DynamicResource ViewBackground}"/>
                           </Border>
                         </Panel>
+                        <!-- Two lines and then an ellipsis, so this one hides the
+                             most of all. See the details row. -->
                         <TextBlock Text="{Binding Name}" TextAlignment="Center"
                                    FontSize="{DynamicResource FontSizeSmall}"
-                                   TextWrapping="Wrap" MaxLines="2" TextTrimming="CharacterEllipsis"/>
+                                   TextWrapping="Wrap" MaxLines="2" TextTrimming="CharacterEllipsis"
+                                   ToolTip.Tip="{Binding Converter={x:Static vm:FileConverters.NameTip}}"
+                                   ToolTip.ShowDelay="1200"/>
                       </StackPanel>
                       <!-- **Where the drop lands.** The pane took an outline while a drag
                            was over it, and which pane the pointer is in was never the

@@ -377,6 +377,11 @@ public partial class MainWindow : Window
         DataContext = _shell;
 
         PromptInput.KeyDown += OnPromptKeyDown;
+
+        // The reason arrives while the name is being typed, not only when Enter
+        // is pressed: a colon is refused the moment it appears, which is when
+        // it can be fixed without thinking about it.
+        PromptInput.TextChanged += OnPromptTextChanged;
         PromptConfirm.Click += (_, _) => ConfirmPrompt();
         PromptCancel.Click += (_, _) => ClosePrompt();
 
@@ -3313,6 +3318,34 @@ public partial class MainWindow : Window
         var name = PromptInput?.Text ?? "";
         var entry = _renameTarget;
 
+        // **A refused name used to close the bar and report afterwards.** By
+        // the time "that name is not one Windows will take" reached the status
+        // line, the box holding the typed name was gone — so correcting one
+        // character meant F2 and retyping the lot. A name of nothing but spaces
+        // matched no case at all below and vanished without a word.
+        //
+        // Asked while the box is still open, so a refusal can stay in it.
+        if (mode == PromptMode.Rename)
+        {
+            var decision = Input.RenamePrompt.Decide(name, entry.Name);
+
+            if (decision.Verdict == Input.RenameVerdict.Refused)
+            {
+                if (PromptHint is not null)
+                    PromptHint.Text = $"{decision.Reason} — esc to cancel";
+
+                PromptInput?.Focus();
+                return;
+            }
+
+            ClosePrompt();
+
+            if (decision.Verdict == Input.RenameVerdict.Rename)
+                _ = target?.RenameAsync(entry, decision.Name);
+
+            return;
+        }
+
         ClosePrompt();
 
         switch (mode)
@@ -3329,16 +3362,10 @@ public partial class MainWindow : Window
                 _ = target?.EmptyTrashAsync();
                 break;
 
-            // **Tidied first, as Explorer does.** Windows drops a trailing
-            // space or dot at the API level, so a name typed with one asks for
-            // something and gets something else — and the file it leaves behind
-            // can be awkward for other tools to open or remove. The line below
-            // has always trimmed for the same reason; renaming did not.
-            case PromptMode.Rename
-                when Vaktari.Core.FileSystem.FileNames.Clean(name) is { Length: > 0 } tidy
-                     && tidy != entry.Name:
-                _ = target?.RenameAsync(entry, tidy);
-                break;
+            // Rename is answered above, before the bar closes, so that a
+            // refusal can keep the typed name on screen. Tidying still happens
+            // there: Windows drops a trailing space or dot at the API level, so
+            // a name typed with one asks for something and gets something else.
 
             case PromptMode.Connect when !string.IsNullOrWhiteSpace(name):
                 _ = _shell.ConnectToAsync(name.Trim());
@@ -3575,6 +3602,19 @@ public partial class MainWindow : Window
         // The rename box and every confirmation leave through here, and the
         // control they were focusing has just been hidden.
         FocusListingSoon();
+    }
+
+    /// <summary>
+    /// Keeps the hint line under the rename box honest as the name is typed.
+    ///
+    /// Only for a rename: the connect prompt takes a server address, which
+    /// these rules have nothing to say about, and the confirmations have no box.
+    /// </summary>
+    private void OnPromptTextChanged(object? sender, TextChangedEventArgs e)
+    {
+        if (_prompt != PromptMode.Rename || PromptHint is null) return;
+
+        PromptHint.Text = Input.RenamePrompt.HintFor(PromptInput?.Text, _renameTarget.Name);
     }
 
     private void OnPromptKeyDown(object? sender, KeyEventArgs e)

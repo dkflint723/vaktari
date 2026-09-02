@@ -44,6 +44,30 @@ public static class FileConverters
         new FuncValueConverter<FileEntry, string?>(entry =>
             Settings.AppSettings.Current.General.ShowTooltips ? entry.FullPath : null);
 
+    /// <summary>
+    /// The whole filename, for a name that did not fit its column.
+    ///
+    /// **A trimmed name could only be read by renaming it.** The name is the
+    /// one thing in a row with no tooltip: the modified column explains its
+    /// shading, the look-alike chip explains itself, the recent listing's path
+    /// column pops the full path — and the name, which is the only column that
+    /// ellipsizes, said nothing. In a narrow split pane, or a grid tile with two
+    /// lines, "Q3-forecast-…-final.xlsx" could be read only by pressing F2 to
+    /// see the edit box and Escape to get out again.
+    ///
+    /// The bare name, not name-and-path: the path already has its own tip in
+    /// the one listing whose rows span the filesystem, and two tips saying
+    /// overlapping things would disagree about width and content.
+    ///
+    /// Gated in the converter for the same reason PathTip is.
+    /// </summary>
+    public static readonly IValueConverter NameTip =
+        new FuncValueConverter<FileEntry, string?>(entry =>
+            Settings.AppSettings.Current.General.ShowTooltips
+            && !string.IsNullOrEmpty(entry.Name)
+                ? entry.Name
+                : null);
+
     public static readonly IValueConverter ParentPath =
         new FuncValueConverter<FileEntry, string>(entry =>
         {
