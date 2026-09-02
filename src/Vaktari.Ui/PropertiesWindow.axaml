@@ -1,10 +1,14 @@
+<!-- **The title said "properties" and nothing else.** The view model has
+     worked out the name of what is being described since it was written, and
+     the window never asked for it — so several of these open at once were
+     indistinguishable in the taskbar, which is exactly when several are open. -->
 <Window xmlns="https://github.com/avaloniaui"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:fs="clr-namespace:Vaktari.Core.FileSystem;assembly=Vaktari.Core"
         xmlns:vm="clr-namespace:Vaktari.Ui.ViewModels"
         x:Class="Vaktari.Ui.PropertiesWindow"
         x:DataType="vm:PropertiesViewModel"
-        Title="properties"
+        Title="{Binding Title, FallbackValue=properties}"
         Background="{DynamicResource AppBackground}"
         Foreground="{DynamicResource ViewText}"
         FontFamily="{DynamicResource AppFontFamily}"

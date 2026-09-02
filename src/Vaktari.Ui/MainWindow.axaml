@@ -414,7 +414,16 @@
                        was no entry anywhere for it, so hiding it was something
                        you had to already know how to do — and getting it back
                        was the same problem with the sidebar gone. -->
-                  <CheckBox Content="Sidebar  (ctrl+b or f9)"
+<!-- F1 was the only way to the shortcut sheet, which is a
+                       circular arrangement: the list of keys could only be
+                       reached by knowing one of them. -->
+                  <Button Content="Keyboard shortcuts…" Padding="0" MinHeight="0"
+                          Background="Transparent" BorderThickness="0"
+                          HorizontalAlignment="Left"
+                          FontSize="{DynamicResource FontSizeSmall}"
+                          Command="{Binding $parent[Window].((vm:ShellViewModel)DataContext).ShowShortcutsCommand}"/>
+
+                                    <CheckBox Content="Sidebar  (ctrl+b or f9)"
                             FontSize="{DynamicResource FontSizeSmall}"
                             IsChecked="{Binding $parent[Window].((vm:ShellViewModel)DataContext).Sidebar.IsPanelVisible, Mode=OneWay}"
                             Command="{Binding $parent[Window].((vm:ShellViewModel)DataContext).Sidebar.CycleRailCommand}"/>
@@ -2582,6 +2591,8 @@
                             <Button ContextRequested="OnPlaceContextRequested" Command="{Binding $parent[Window].((vm:ShellViewModel)DataContext).GoToPlaceCommand}"
                                     CommandParameter="{Binding Path}"
                                     AutomationProperties.Name="{Binding Label}"
+                                    ToolTip.Tip="{Binding Path}"
+                                    ToolTip.ShowDelay="900"
                                     BorderThickness="0"
                                     DragDrop.AllowDrop="True"
                                     HorizontalAlignment="Stretch"
