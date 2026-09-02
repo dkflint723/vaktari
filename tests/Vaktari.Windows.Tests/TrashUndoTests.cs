@@ -104,7 +104,7 @@ public sealed class TrashUndoTests
         // the "after", exactly as a real recycle would put it there.
         var arriving = new ArrivingBin(bin, () => bin.Arrive("R1A2B3", file));
 
-        var ops = new WindowsFileOperations { Bin = arriving, RecycleOverride = _ => true };
+        var ops = new WindowsFileOperations { Bin = arriving, RecycleOverride = _ => new RecycleResult(0, false) };
 
         var handle = ops.Trash([file]);
         await handle.Completion;
@@ -135,7 +135,7 @@ public sealed class TrashUndoTests
 
         var arriving = new ArrivingBin(bin, () => bin.Arrive("NEW222", file));
 
-        var ops = new WindowsFileOperations { Bin = arriving, RecycleOverride = _ => true };
+        var ops = new WindowsFileOperations { Bin = arriving, RecycleOverride = _ => new RecycleResult(0, false) };
 
         await ops.Trash([file]).Completion;
         await ops.UndoAsync(CancellationToken.None);
@@ -154,7 +154,7 @@ public sealed class TrashUndoTests
         using var tree = new TempTree();
         var file = tree.Write("notes.txt", "keep me");
 
-        var ops = new WindowsFileOperations { Bin = null, RecycleOverride = _ => true };
+        var ops = new WindowsFileOperations { Bin = null, RecycleOverride = _ => new RecycleResult(0, false) };
 
         await ops.Trash([file]).Completion;
 
@@ -171,7 +171,7 @@ public sealed class TrashUndoTests
         using var tree = new TempTree();
         var file = tree.Write("notes.txt", "keep me");
 
-        var ops = new WindowsFileOperations { Bin = new ThrowingBin(), RecycleOverride = _ => true };
+        var ops = new WindowsFileOperations { Bin = new ThrowingBin(), RecycleOverride = _ => new RecycleResult(0, false) };
 
         var handle = ops.Trash([file]);
         await handle.Completion;

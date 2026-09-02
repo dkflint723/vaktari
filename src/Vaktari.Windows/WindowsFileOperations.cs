@@ -59,10 +59,14 @@ public sealed class WindowsFileOperations : IFileOperations
     /// worth testing here — which items the undo remembers, what happens when
     /// the bin cannot be read — is about the bookkeeping around
     /// SHFileOperation, not the call, and a test suite that genuinely recycles
-    /// leaves litter on the machine that ran it. Returns false to stand for the
-    /// user declining the nuke warning.
+    /// leaves litter on the machine that ran it.
+    ///
+    /// **It returns the shell's own answer rather than a bool.** The wording of
+    /// a refusal, and the per-path re-run that names which file refused, are
+    /// both decided from the status code, and neither is reachable from
+    /// true/false.
     /// </summary>
-    internal Func<IReadOnlyList<string>, bool>? RecycleOverride { get; init; }
+    internal Func<IReadOnlyList<string>, RecycleResult>? RecycleOverride { get; init; }
 
     /// <summary>
     /// The Recycle Bin, via SHFileOperation.
@@ -84,14 +88,61 @@ public sealed class WindowsFileOperations : IFileOperations
     /// be agreed to. Removing it turns this method into <see cref="Delete"/>
     /// without saying so.
     /// </summary>
+    /// <summary>
+    /// One call to the shell, owning the memory it marshals.
+    ///
+    /// Extracted because the refusal path calls it AGAIN, once per path, to
+    /// learn which file the single status code was about — and one finally at
+    /// the top of Trash could only ever free the first allocation.
+    /// </summary>
+    private static RecycleResult Recycle(IReadOnlyList<string> full)
+    {
+        var from = Native.DoubleNullTerminated(full);
+
+        try
+        {
+            var operation = new Native.SHFILEOPSTRUCTW
+            {
+                wFunc = Native.FO_DELETE,
+                pFrom = from,
+                fFlags = Native.FOF_ALLOWUNDO
+                       | Native.FOF_NOCONFIRMATION
+                       | Native.FOF_WANTNUKEWARNING
+                       | Native.FOF_SILENT
+                       | Native.FOF_NOERRORUI,
+            };
+
+            var status = Native.SHFileOperation(ref operation);
+
+            return new RecycleResult(status, operation.fAnyOperationsAborted != 0);
+        }
+        finally
+        {
+            Marshal.FreeHGlobal(from);
+        }
+    }
+
+    /// <summary>
+    /// Records whatever reached the bin, so it can be taken back out.
+    ///
+    /// **A refusal used to return before this.** A batch that stumbled on its
+    /// last file lost the undo for every file ahead of it, which is precisely
+    /// the moment somebody reaches for Ctrl+Z. Wrapped so that no exit from
+    /// Trash can skip it by forgetting to repeat two lines.
+    /// </summary>
+    private void RememberArrivals(ITrashMaintenance? bin, HashSet<string>? before)
+    {
+        var landed = Arrivals(bin, before);
+
+        if (landed.Count > 0) Remember(new UndoTrash(bin!, landed));
+    }
+
     public IOperationHandle Trash(IReadOnlyList<string> paths)
     {
         var handle = new OperationHandle();
 
         _ = Task.Run(() =>
         {
-            nint from = 0;
-
             // **Noted before the recycle, so the undo can find what moved.**
             // SHFileOperation reports nothing about what it recycled, which is
             // why this was undoable on Linux and not here. The bin knows,
@@ -106,8 +157,8 @@ public sealed class WindowsFileOperations : IFileOperations
                 handle.Begin(paths.Count, totalBytes: 0);
 
                 // SHFileOperation wants absolute paths — a relative one is
-                // resolved against the process's working directory, which is
-                // not the folder being listed.
+                // resolved against the process working directory, which is not
+                // the folder being listed.
                 // Same stripping, and the shell is no better at it: the path
                 // reaching SHFileOperation has already lost the trailing
                 // character, so the bin would swallow the neighbouring file.
@@ -122,74 +173,74 @@ public sealed class WindowsFileOperations : IFileOperations
 
                 var full = paths.Select(Path.GetFullPath).ToList();
 
-                if (RecycleOverride is { } fake)
+                RecycleResult Attempt(IReadOnlyList<string> some)
+                    => RecycleOverride is { } fake ? fake(some) : Recycle(some);
+
+                var outcome = Attempt(full);
+
+                // Aborted covers the user declining the warning about a file too
+                // big for the bin, which is a cancellation rather than a failure.
+                if (outcome.Aborted)
                 {
-                    if (!fake(full))
-                    {
-                        handle.Cancelled();
-                        return;
-                    }
-
-                    for (var i = 0; i < paths.Count; i++) handle.ItemFinished();
-
-                    var faked = Arrivals(bin, before);
-                    if (faked.Count > 0) Remember(new UndoTrash(bin!, faked));
-
-                    handle.Complete();
-                    return;
-                }
-
-                from = Native.DoubleNullTerminated(full);
-
-                var operation = new Native.SHFILEOPSTRUCTW
-                {
-                    wFunc = Native.FO_DELETE,
-                    pFrom = from,
-                    fFlags = Native.FOF_ALLOWUNDO
-                           | Native.FOF_NOCONFIRMATION
-                           | Native.FOF_WANTNUKEWARNING
-                           | Native.FOF_SILENT
-                           | Native.FOF_NOERRORUI,
-                };
-
-                var status = Native.SHFileOperation(ref operation);
-
-                // Aborted covers the user declining the nuke warning, which is
-                // a cancellation rather than a failure — nothing was deleted and
-                // nothing went wrong.
-                if (operation.fAnyOperationsAborted != 0)
-                {
+                    // **What did go still has to be undoable.** The bin may
+                    // already hold everything but the one file the warning was
+                    // about, and returning here left all of them with no way
+                    // back.
+                    RememberArrivals(bin, before);
                     handle.Cancelled();
                     return;
                 }
 
-                if (status != 0)
+                if (outcome.Status == 0)
                 {
-                    handle.Failed(new IOException(
-                        $"The Recycle Bin refused the operation (SHFileOperation returned {status})."));
-                    return;
+                    // One SHFileOperation covers the whole batch, so there is no
+                    // per-item progress along the way — but the count the handle
+                    // was opened with still has to be reached, or trashing three
+                    // files finishes reading "1/3".
+                    for (var i = 0; i < full.Count; i++) handle.ItemFinished();
+                }
+                else if (full.Count == 1)
+                {
+                    handle.ItemFailed(full[0], RecycleRefusal.For(outcome.Status));
+                }
+                else
+                {
+                    // **One number for a whole batch names nothing.** The shell
+                    // reports a single int for however many paths it was given,
+                    // so a file held open by another program produced
+                    // "SHFileOperation returned 32" and left the person to work
+                    // out which of their twenty files it was. Asked one at a
+                    // time, it answers one at a time.
+                    foreach (var one in full)
+                    {
+                        // Skipped, not re-asked: the batch call may have
+                        // recycled several before it refused, and asking again
+                        // would answer "not there any more" — a success
+                        // reported as a failure.
+                        if (!File.Exists(one) && !Directory.Exists(one))
+                        {
+                            handle.ItemFinished();
+                            continue;
+                        }
+
+                        var each = Attempt([one]);
+
+                        if (each.Aborted) handle.ItemFailed(one, new OperationCanceledException());
+                        else if (each.Status != 0) handle.ItemFailed(one, RecycleRefusal.For(each.Status));
+                        else handle.ItemFinished();
+                    }
                 }
 
-                // One SHFileOperation covers the whole batch, so there is no
-                // per-item progress to report along the way — but the count the
-                // handle was opened with still has to be reached, or trashing
-                // three files finishes reading "1/3".
-                for (var i = 0; i < paths.Count; i++) handle.ItemFinished();
+                RememberArrivals(bin, before);
 
-                // What the bin gained is what we just put in it.
-                var landed = Arrivals(bin, before);
-
-                if (landed.Count > 0) Remember(new UndoTrash(bin!, landed));
-
+                // Completed with Problems rather than Failed: the ones that went
+                // really did go, and the status line reports what was left
+                // behind. Delete and the Linux engine already do this.
                 handle.Complete();
             }
             catch (Exception ex)
             {
                 handle.Failed(ex);
-            }
-            finally
-            {
-                if (from != 0) Marshal.FreeHGlobal(from);
             }
         });
 

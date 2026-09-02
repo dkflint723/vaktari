@@ -56,7 +56,7 @@ public sealed class UndoCopyTests : IDisposable
                     else if (File.Exists(path)) File.Delete(path);
                 }
 
-                return true;
+                return new RecycleResult(0, false);
             },
         };
     }
