@@ -288,7 +288,54 @@ public sealed partial class PaneViewModel
         var paths = SelectionPaths();
         if (paths.Count == 0) return;
 
+        // **Delete, Delete, Delete did not work.** After the rows went, nothing
+        // was selected, so the next Delete had nothing to act on and the
+        // keyboard had lost its place entirely. Both references move to the
+        // next row. Chosen before the operation, because afterwards the rows
+        // it refers to are gone.
+        SelectAfterRemoving(paths);
+
         Track(_ops.Trash(paths));
+    }
+
+    /// <summary>
+    /// Picks what to select once these rows have gone: the first row after the
+    /// last of them, or the new last row when the deletion reached the end.
+    ///
+    /// Recorded as a PATH rather than an index, because the rows arrive back
+    /// through the watcher one at a time and any index is stale by then.
+    /// </summary>
+    private void SelectAfterRemoving(IReadOnlyList<string> going)
+    {
+        var doomed = new HashSet<string>(going, StringComparer.Ordinal);
+
+        var survivors = Entries
+            .Select(e => e.FullPath)
+            .OfType<string>()
+            .Where(p => !doomed.Contains(p))
+            .ToList();
+
+        if (survivors.Count == 0)
+        {
+            _selectAfterRemoval = null;
+            return;
+        }
+
+        // The first survivor at or after the last doomed row, else the last.
+        var lastDoomed = Entries
+            .Select((e, i) => (e.FullPath, i))
+            .Where(x => x.FullPath is { } p && doomed.Contains(p))
+            .Select(x => x.i)
+            .DefaultIfEmpty(-1)
+            .Max();
+
+        var next = Entries
+            .Select((e, i) => (e.FullPath, i))
+            .Where(x => x.i > lastDoomed && x.FullPath is { } p && !doomed.Contains(p))
+            .Select(x => x.FullPath)
+            .FirstOrDefault();
+
+        _selectAfterRemoval = next ?? survivors[^1];
     }
 
     /// <summary>

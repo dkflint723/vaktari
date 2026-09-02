@@ -2925,6 +2925,17 @@ public partial class MainWindow : Window
     /// </summary>
     private void OnPaneEditorClosed(object? sender, PropertyChangedEventArgs e)
     {
+        // **Navigating left the keyboard on whatever was clicked.** A
+        // breadcrumb, a sidebar place, Back, Up — each is a Button, and it kept
+        // focus afterwards, so the arrow keys did nothing and Enter re-clicked
+        // the button that had just taken you somewhere. Both references put the
+        // keyboard in the listing once you arrive.
+        if (e.PropertyName == nameof(PaneViewModel.CurrentPath))
+        {
+            FocusListingSoon();
+            return;
+        }
+
         if (e.PropertyName is not (nameof(PaneViewModel.IsFilterVisible)
                                    or nameof(PaneViewModel.IsPathEditing)))
             return;

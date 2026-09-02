@@ -261,8 +261,28 @@ public sealed partial class PaneViewModel
         // wrong until a manual refresh.
         RecomputeGroups(Entries.ToList());
 
+        // **Where the keyboard goes once the row it was on has gone.** Chosen
+        // before the delete, applied here, when the row it names is finally on
+        // screen without the ones that went — so Delete, Delete, Delete walks
+        // down a list the way it does in both references.
+        if (_selectAfterRemoval is { } wanted
+            && Entries.FirstOrDefault(e => e.FullPath == wanted) is { FullPath: not null } row)
+        {
+            _selectAfterRemoval = null;
+
+            SelectedEntry = row;
+
+            var selection = SelectedEntries;
+
+            selection.Clear();
+            selection.Add(row);
+        }
+
         SettleSoon();
     }
+
+    /// <summary>The row to select once a deletion has finished arriving.</summary>
+    private string? _selectAfterRemoval;
 
     private async Task AddOrUpdateAsync(string path, int generation)
     {

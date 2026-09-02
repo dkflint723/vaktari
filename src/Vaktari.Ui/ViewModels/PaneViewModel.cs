@@ -2329,6 +2329,13 @@ public sealed partial class PaneViewModel : ObservableObject, IDisposable
             _restoringView = false;
         }
 
+        // **The filter followed you into the next folder.** Type "report" to
+        // find something, open a folder from the results, and the new folder
+        // came up filtered by a word that has nothing to do with it — reading
+        // as an empty folder. Explorer and Dolphin both drop the filter when
+        // you leave. Cleared before the load so nothing renders through it.
+        if (!PathRules.Same(CurrentPath, path)) FilterText = "";
+
         CurrentPath = path;
         PathText = path;
         IsLoading = true;

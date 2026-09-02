@@ -154,10 +154,46 @@ public sealed partial class PaneViewModel
         // the operating system's own "The directory name is invalid." over an
         // empty listing. The route that receives paths FROM the desktop already
         // resolves a file to its folder; the typed route never learned to.
+        // **"..", "src", "../sibling" — all of them went nowhere.** A relative
+        // path was handed to the enumerator as written, so it resolved against
+        // the process's working directory rather than the folder on screen,
+        // and typing ".." in a folder took you somewhere unrelated or nowhere
+        // at all. Explorer and Dolphin both resolve against the current folder,
+        // which is the only reading that makes sense in an address bar.
+        typed = AgainstCurrentFolder(typed);
+
         if (!Directory.Exists(typed) && File.Exists(typed))
             return OpenTypedFileAsync(typed);
 
         return NavigateAsync(typed);
+    }
+
+    /// <summary>
+    /// Roots a relative path against the folder on screen.
+    ///
+    /// Left alone when it is already rooted, when the listing is virtual (This
+    /// PC has no folder to be relative to), or when the combination is not a
+    /// path at all — a name with a colon in it on Windows would throw, and a
+    /// typed name that cannot be resolved should reach the ordinary "not there"
+    /// message rather than an exception.
+    /// </summary>
+    private string AgainstCurrentFolder(string typed)
+    {
+        if (typed.Length == 0) return typed;
+        if (VirtualPaths.IsVirtual(typed)) return typed;
+        if (Path.IsPathRooted(typed)) return typed;
+
+        if (CurrentPath.Length == 0 || VirtualPaths.IsVirtual(CurrentPath)) return typed;
+
+        try
+        {
+            return Path.GetFullPath(typed, CurrentPath);
+        }
+        catch (Exception ex) when (ex is ArgumentException or NotSupportedException
+                                      or PathTooLongException)
+        {
+            return typed;
+        }
     }
 
     /// <summary>
