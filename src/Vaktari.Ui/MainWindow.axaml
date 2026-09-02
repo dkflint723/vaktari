@@ -951,7 +951,7 @@
                           <ListBox.ItemTemplate>
                             <DataTemplate x:DataType="fs:FileEntry">
                               <StackPanel Margin="12,7">
-                                <TextBlock Text="{Binding Name}" FontSize="{DynamicResource FontSizeBase}"
+                                <TextBlock Text="{Binding Converter={x:Static vm:FileConverters.DisplayName}}" FontSize="{DynamicResource FontSizeBase}"
                                            TextTrimming="CharacterEllipsis"/>
                                 <TextBlock Text="{Binding FullPath}" FontSize="{DynamicResource FontSizeTiny}"
                                            Foreground="{DynamicResource ViewDimText}"
@@ -1948,7 +1948,7 @@
                                On the TextBlock and not the row: over blank row
                                space, or over the size and modified cells, a
                                different tip is the right answer. -->
-                          <TextBlock Text="{Binding Name}" HorizontalAlignment="Left"
+                          <TextBlock Text="{Binding Converter={x:Static vm:FileConverters.DisplayName}}" HorizontalAlignment="Left"
                                      FontSize="{DynamicResource FontSizeBase}" VerticalAlignment="Center"
                                      TextTrimming="CharacterEllipsis"
                                      ToolTip.Tip="{Binding Converter={x:Static vm:FileConverters.NameTip}}"
@@ -2157,7 +2157,7 @@
                                never appeared — a long filename in compact view
                                simply ran past the cell and was clipped. -->
                           <!-- Trims, so it tips. See the details row. -->
-                          <TextBlock Text="{Binding Name}" VerticalAlignment="Center"
+                          <TextBlock Text="{Binding Converter={x:Static vm:FileConverters.DisplayName}}" VerticalAlignment="Center"
                                      FontSize="{DynamicResource FontSizeBase}"
                                      TextTrimming="CharacterEllipsis"
                                      ToolTip.Tip="{Binding Converter={x:Static vm:FileConverters.NameTip}}"
@@ -2292,7 +2292,7 @@
                         </Panel>
                         <!-- Two lines and then an ellipsis, so this one hides the
                              most of all. See the details row. -->
-                        <TextBlock Text="{Binding Name}" TextAlignment="Center"
+                        <TextBlock Text="{Binding Converter={x:Static vm:FileConverters.DisplayName}}" TextAlignment="Center"
                                    FontSize="{DynamicResource FontSizeSmall}"
                                    TextWrapping="Wrap" MaxLines="2" TextTrimming="CharacterEllipsis"
                                    ToolTip.Tip="{Binding Converter={x:Static vm:FileConverters.NameTip}}"

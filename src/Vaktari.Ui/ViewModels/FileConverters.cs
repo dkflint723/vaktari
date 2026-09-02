@@ -45,6 +45,19 @@ public static class FileConverters
             Settings.AppSettings.Current.General.ShowTooltips ? entry.FullPath : null);
 
     /// <summary>
+    /// The name as a listing shows it.
+    ///
+    /// **A shortcut listed as "Chrome.lnk".** Windows marks lnkfile
+    /// NeverShowExt, so Desktop and the Start Menu — folders that are nothing
+    /// but shortcuts — read here as a wall of ".lnk" while every other window
+    /// on the machine showed plain names. The sidebar already agreed with
+    /// Explorer, and the shortcut writer's own comment claimed the listing did
+    /// too; only the listing did not.
+    /// </summary>
+    public static readonly IValueConverter DisplayName =
+        new FuncValueConverter<FileEntry, string>(FileKind.DisplayName);
+
+    /// <summary>
     /// The whole filename, for a name that did not fit its column.
     ///
     /// **A trimmed name could only be read by renaming it.** The name is the

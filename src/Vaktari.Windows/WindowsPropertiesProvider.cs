@@ -81,9 +81,14 @@ public sealed class WindowsPropertiesProvider : IPropertiesProvider
 
         var extension = Path.GetExtension(path);
 
-        return string.IsNullOrEmpty(extension)
-            ? "File"
-            : $"{extension.TrimStart('.').ToUpperInvariant()} file";
+        if (string.IsNullOrEmpty(extension)) return "File";
+
+        // The same word the listing's Type column uses, from the same
+        // predicate. Two copies of this fact would drift into a properties
+        // window that says "LNK file" beside a row that says "Shortcut".
+        if (FileKind.IsShortcut(extension.AsSpan().TrimStart('.'))) return "Shortcut";
+
+        return $"{extension.TrimStart('.').ToUpperInvariant()} file";
     }
 
     private static IReadOnlyList<PropertyGroup> BuildGroups(FileAttributes attributes)

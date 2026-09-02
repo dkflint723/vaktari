@@ -73,4 +73,79 @@ public sealed class FileKindTests
         Assert.Equal("PNG file", second);
         Assert.Same(first, second);
     }
+
+    // ---- a Windows shortcut is not an "LNK file" ----------------------------
+
+    /// <summary>
+    /// The predicate both the Type column and the properties window ask.
+    /// Platform-blind on purpose, so this one runs on the Linux agent too — the
+    /// Windows facts below skip there, and a fix nothing can fail is not a fix.
+    /// </summary>
+    [Theory]
+    [InlineData("lnk", true)]
+    [InlineData("LNK", true)]
+    [InlineData("Lnk", true)]
+    [InlineData("link", false)]
+    [InlineData("txt", false)]
+    [InlineData("", false)]
+    public void The_shortcut_extension_is_recognised_whatever_its_case(string extension, bool is_)
+        => Assert.Equal(is_, FileKind.IsShortcut(extension));
+
+    /// <summary>
+    /// **Nothing may allocate per row.** DisplayName runs once per visible row
+    /// per bind, and a substring for every ordinary file would be an allocation
+    /// while scrolling — the one cost this class exists to avoid.
+    /// </summary>
+    [Fact]
+    public void An_ordinary_name_is_handed_straight_back()
+    {
+        var entry = File("notes.txt");
+
+        Assert.Same(entry.Name, FileKind.DisplayName(entry));
+    }
+
+    /// <summary>
+    /// **Explorer never says "LNK file" and never shows the extension.**
+    /// lnkfile carries NeverShowExt, so Desktop and the Start Menu — folders
+    /// that are nothing but shortcuts — read here as a wall of "Chrome.lnk /
+    /// LNK file" while every other window on the machine said "Chrome /
+    /// Shortcut". The sidebar already agreed with Explorer; only the listing
+    /// did not.
+    /// </summary>
+    [WindowsFact]
+    public void A_shortcut_is_called_one_and_loses_its_extension()
+    {
+        Assert.Equal("Shortcut", FileKind.Describe(File("Chrome.lnk")));
+        Assert.Equal("Chrome", FileKind.DisplayName(File("Chrome.lnk")));
+
+        // However it is spelled on disk.
+        Assert.Equal("Shortcut", FileKind.Describe(File("Chrome.LNK")));
+        Assert.Equal("Chrome", FileKind.DisplayName(File("Chrome.LNK")));
+    }
+
+    /// <summary>A file whose whole name is ".lnk" has a name, not an extension,
+    /// and hiding it would leave a row with nothing in it.</summary>
+    [WindowsFact]
+    public void A_file_named_only_lnk_keeps_every_character()
+        => Assert.Equal(".lnk", FileKind.DisplayName(File(".lnk")));
+
+    /// <summary>A folder called "things.lnk" is a folder.</summary>
+    [WindowsFact]
+    public void A_folder_is_untouched_however_it_is_named()
+    {
+        Assert.Equal("Folder", FileKind.Describe(File("things.lnk", directory: true)));
+        Assert.Equal("things.lnk", FileKind.DisplayName(File("things.lnk", directory: true)));
+    }
+
+    /// <summary>
+    /// On Linux a .lnk is an opaque file from another operating system that
+    /// nothing here can follow, so calling it a shortcut would promise a hop
+    /// that does not exist.
+    /// </summary>
+    [PosixFact]
+    public void Elsewhere_a_lnk_file_is_just_a_file()
+    {
+        Assert.Equal("LNK file", FileKind.Describe(File("Chrome.lnk")));
+        Assert.Equal("Chrome.lnk", FileKind.DisplayName(File("Chrome.lnk")));
+    }
 }

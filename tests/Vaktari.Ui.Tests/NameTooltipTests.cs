@@ -54,8 +54,12 @@ public sealed class NameTooltipTests
         var silent = listings
             .Select(l => (
                 List: (string)l.Attribute("ItemsSource")!,
+                // The name cell is the one bound through DisplayName, which
+                // hides a Windows shortcut's extension the way Explorer does.
                 Name: l.Descendants(Avalonia + "TextBlock")
-                       .Single(t => (string?)t.Attribute("Text") == "{Binding Name}")))
+                       .Single(t => ((string?)t.Attribute("Text"))
+                                    ?.Contains("FileConverters.DisplayName",
+                                               StringComparison.Ordinal) == true)))
             .Where(x => ((string?)x.Name.Attribute("ToolTip.Tip"))
                         ?.Contains("NameTip", StringComparison.Ordinal) != true)
             .Select(x => x.List)
@@ -84,6 +88,21 @@ public sealed class NameTooltipTests
         foreach (var tip in tips)
             Assert.True(int.Parse((string)tip.Attribute("ToolTip.ShowDelay")!) >= 1000,
                         "the name tip pops at hover speed over text that already fits");
+    }
+
+    /// <summary>
+    /// And every listing shows the display name, so a Windows shortcut loses
+    /// its extension in all four places rows are drawn rather than in the one
+    /// that was easiest to reach.
+    /// </summary>
+    [AvaloniaFact]
+    public void Every_row_template_shows_the_display_name()
+    {
+        var shown = Markup().Descendants(Avalonia + "TextBlock")
+            .Count(t => ((string?)t.Attribute("Text"))
+                        ?.Contains("FileConverters.DisplayName", StringComparison.Ordinal) == true);
+
+        Assert.Equal(4, shown);
     }
 
     [AvaloniaFact]
