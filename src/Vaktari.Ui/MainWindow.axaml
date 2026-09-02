@@ -2466,7 +2466,7 @@
                                  or a drive is how a lot of filing gets done,
                                  and the sidebar accepting nothing meant the
                                  drag simply died over it. -->
-                            <Button Command="{Binding $parent[Window].((vm:ShellViewModel)DataContext).GoToPlaceCommand}"
+                            <Button ContextRequested="OnPlaceContextRequested" Command="{Binding $parent[Window].((vm:ShellViewModel)DataContext).GoToPlaceCommand}"
                                     CommandParameter="{Binding Path}"
                                     Background="{Binding IsCurrent, Converter={x:Static vm:FileConverters.CurrentRowFill}}"
                                     BorderThickness="0"
@@ -2505,7 +2505,6 @@
                                             IsVisible="{Binding HasRealPath}"
                                             Command="{Binding $parent[Window].((vm:ShellViewModel)DataContext).CopyPlacePathCommand}"
                                             CommandParameter="{Binding}"/>
-                                  <Separator/>
                                   <!-- Above "Remove from places", and with no
                                        separator between them: Avalonia collapses
                                        none, and the two are mutually exclusive
@@ -2522,9 +2521,13 @@
                                             Command="{Binding $parent[Window].((vm:ShellViewModel)DataContext).RemovePlaceCommand}"
                                             CommandParameter="{Binding}"/>
                                   <Separator IsVisible="{Binding HasRealPath}"/>
+                                  <!-- No InputGesture. Alt+Enter opens properties
+                                       for the LISTING's selection, not for the
+                                       sidebar row under the pointer — and a
+                                       printed shortcut that does something else
+                                       is worse than none. -->
                                   <MenuItem Header="Properties"
                                             IsVisible="{Binding HasRealPath}"
-                                            InputGesture="Alt+Enter"
                                             Command="{Binding $parent[Window].((vm:ShellViewModel)DataContext).ShowPlacePropertiesCommand}"
                                             CommandParameter="{Binding}"/>
                                 </ContextMenu>

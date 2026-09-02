@@ -1144,15 +1144,33 @@ public partial class MainWindow : Window
     /// </summary>
     private void OnPlaceMenuOpening(object? sender, CancelEventArgs e)
     {
-        // **Nothing is cancelled any more, and that is the fix.** Every row now
-        // carries Open in new tab, so there is no such thing as an empty place
-        // menu — which is what this handler existed to hide. The check remains
-        // as the guard it always was: a row that somehow has no entries at all
-        // should still not pop a sliver of menu background at the cursor.
-        if (sender is Control { DataContext: PlaceItemViewModel row }
+        // **A ContextMenu is its own popup root and inherits no DataContext.**
+        // This asked `sender` for one, got null every single time, and so
+        // cancelled the menu for EVERY row — the pinned ones and the ejectable
+        // drives it was written to allow included. The sidebar menu had never
+        // opened for anything, and had it opened, CanEject, IsUserPinned and
+        // every CommandParameter inside it would have bound against nothing.
+        //
+        // PlacementTarget is no help either: it is still null when Opening
+        // fires. OnPlaceContextRequested below hands the row over first, from
+        // the button, where the DataContext is real.
+        if (sender is ContextMenu { DataContext: PlaceItemViewModel row }
             && row.Path.Length > 0) return;
 
         e.Cancel = true;
+    }
+
+    /// <summary>
+    /// Gives a sidebar row's menu the row, before it opens.
+    ///
+    /// The button is the only place the DataContext is real — the menu is a
+    /// separate popup root and inherits nothing — and ContextRequested is the
+    /// one event raised on the button while there is still time to act.
+    /// </summary>
+    private void OnPlaceContextRequested(object? sender, ContextRequestedEventArgs e)
+    {
+        if (sender is Control { DataContext: PlaceItemViewModel row, ContextMenu: { } menu })
+            menu.DataContext = row;
     }
 
     /// <summary>
