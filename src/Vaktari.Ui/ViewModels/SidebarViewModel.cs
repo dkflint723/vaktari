@@ -394,11 +394,18 @@ public sealed partial class SidebarViewModel : ObservableObject
             foreach (var group in groups)
                 Groups.Add(new PlaceGroupViewModel(group));
 
-            // This PC is drawn under the first group — the home folders — so
-            // that group has to know it is the first one. Set here rather than
-            // computed on the item, because a group has no idea what it sits
-            // among.
-            for (var i = 0; i < Groups.Count; i++) Groups[i].IsFirst = i == 0;
+            // This PC is drawn directly under the Home row, so that row has to
+            // know it is the one. Set here rather than computed on the item: a
+            // place has no idea what it sits among, and "the first row in the
+            // sidebar" is a fact about the sidebar rather than about the place.
+            var first = true;
+
+            foreach (var group in Groups)
+                foreach (var place in group.Places)
+                {
+                    place.LeadsTheSidebar = first;
+                    first = false;
+                }
 
             // The rows are new objects, so the current-location mark has to be
             // re-applied — a refresh would otherwise silently clear the
@@ -476,13 +483,6 @@ public sealed partial class SidebarViewModel : ObservableObject
 
 public sealed class PlaceGroupViewModel(PlaceGroup group)
 {
-    /// <summary>
-    /// Whether this is the first group in the sidebar. Only the This PC row
-    /// reads it: that row is drawn under the home folders, and a DataTemplate
-    /// cannot ask where it sits.
-    /// </summary>
-    public bool IsFirst { get; set; }
-
     public string Label { get; } = group.Label;
     public IReadOnlyList<PlaceItemViewModel> Places { get; } =
         group.Places.Select(p => new PlaceItemViewModel(p)).ToList();
@@ -525,6 +525,12 @@ public sealed partial class PlaceItemViewModel(Place place) : ObservableObject
     /// nothing and said nothing.
     /// </summary>
     public bool CanEject { get; } = place.CanEject;
+
+    /// <summary>
+    /// Whether this is the very first row in the sidebar — Home. This PC is
+    /// drawn immediately under it, and a DataTemplate cannot ask where it sits.
+    /// </summary>
+    public bool LeadsTheSidebar { get; set; }
 
     /// <summary>
     /// Whether this row names a real folder. The bin and the two recent

@@ -43,6 +43,33 @@ public sealed class AccentContrastTests
         return (hi + 0.05) / (lo + 0.05);
     }
 
+    /// <summary>
+    /// Applies a theme to a throwaway window and hands back the resolved
+    /// colours, then closes it.
+    ///
+    /// **Closing matters more than it looks.** A Window builds a Compositor,
+    /// and one left open is torn down later on whatever thread xunit happens to
+    /// be on — which surfaces as "the calling thread cannot access this object"
+    /// in the CLEANUP of some unrelated test that merely ran afterwards. These
+    /// tests leaked six of them, and that is what CI caught.
+    /// </summary>
+    private static Dictionary<string, Color> Under(Vaktari.Core.ThemePalette palette,
+                                                   params string[] keys)
+    {
+        var window = new Window();
+
+        try
+        {
+            ThemeApplier.Apply(window, palette);
+
+            return keys.ToDictionary(key => key, key => Resolved(window, key));
+        }
+        finally
+        {
+            window.Close();
+        }
+    }
+
     private static Color Resolved(Window window, string key)
     {
         Assert.True(Avalonia.Application.Current!.Resources.TryGetResource(key, null, out var value),
@@ -62,16 +89,11 @@ public sealed class AccentContrastTests
     [InlineData(false)]
     public void Accent_text_is_readable_on_every_surface(bool dark)
     {
-        var window = new Window();
-
-        ThemeApplier.Apply(window, Palette(dark));
-
-        var text = Resolved(window, "AccentText");
+        var colours = Under(Palette(dark), [.. Grounds, "AccentText"]);
 
         foreach (var key in Grounds)
         {
-            var ground = Resolved(window, key);
-            var ratio = Contrast(text, ground);
+            var ratio = Contrast(colours["AccentText"], colours[key]);
 
             Assert.True(ratio >= AA,
                 $"AccentText on {key} is {ratio:0.00}:1 in the {(dark ? "dark" : "light")} theme, "
@@ -91,18 +113,16 @@ public sealed class AccentContrastTests
     [InlineData("#000000")]   // the pathological case
     public void A_desktop_accent_is_made_readable_too(string hex)
     {
-        var window = new Window();
-
-        ThemeApplier.Apply(window, new Vaktari.Core.ThemePalette
-        {
-            IsDark = true,
-            Colours = new Dictionary<string, string> { [Vaktari.Core.ThemeRole.Accent] = hex },
-        });
-
-        var text = Resolved(window, "AccentText");
+        var colours = Under(
+            new Vaktari.Core.ThemePalette
+            {
+                IsDark = true,
+                Colours = new Dictionary<string, string> { [Vaktari.Core.ThemeRole.Accent] = hex },
+            },
+            [.. Grounds, "AccentText"]);
 
         foreach (var key in Grounds)
-            Assert.True(Contrast(text, Resolved(window, key)) >= AA,
+            Assert.True(Contrast(colours["AccentText"], colours[key]) >= AA,
                         $"a desktop accent of {hex} stayed unreadable on {key}");
     }
 
@@ -113,12 +133,10 @@ public sealed class AccentContrastTests
     [AvaloniaFact]
     public void The_fill_accent_is_left_as_the_designer_chose_it()
     {
-        var window = new Window();
+        var colours = Under(Palette(dark: true), "AccentColour", "AccentText");
 
-        ThemeApplier.Apply(window, Palette(dark: true));
-
-        Assert.Equal(Color.Parse("#6d6df0"), Resolved(window, "AccentColour"));
-        Assert.NotEqual(Resolved(window, "AccentColour"), Resolved(window, "AccentText"));
+        Assert.Equal(Color.Parse("#6d6df0"), colours["AccentColour"]);
+        Assert.NotEqual(colours["AccentColour"], colours["AccentText"]);
     }
 
     /// <summary>

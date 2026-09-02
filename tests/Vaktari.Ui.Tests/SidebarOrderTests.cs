@@ -11,30 +11,35 @@ namespace Vaktari.Ui.Tests;
 /// Where This PC sits in the sidebar.
 ///
 /// It led the whole list, above the group headings, which put a machine-level
-/// row over the folders somebody opens twenty times a day. It belongs under
-/// them — Explorer puts its own This PC under Quick access for the same reason.
+/// row over the folders somebody opens twenty times a day. It sits directly
+/// under Home now.
 ///
-/// A DataTemplate cannot ask where it sits, so the first group is told, and the
-/// row is drawn from inside that group's template.
+/// A DataTemplate cannot ask where it sits, so the first ROW is told it leads
+/// the sidebar and draws This PC beneath itself.
 /// </summary>
 public sealed class SidebarOrderTests
 {
     private static readonly XNamespace Avalonia = "https://github.com/avaloniaui";
 
+    private static IEnumerable<PlaceItemViewModel> AllRows(ShellViewModel shell)
+        => shell.Sidebar.Groups.SelectMany(g => g.Places);
+
     [AvaloniaFact]
-    public async Task Only_the_first_group_draws_the_computer_row()
+    public async Task Only_the_home_row_draws_the_computer_row()
     {
         var shell = new ShellViewModel(new Inert(), places: new ThreeGroups());
         shell.Start(null, Path.GetTempPath());
 
         await shell.Sidebar.ReloadAsync();
 
-        Assert.True(shell.Sidebar.Groups.Count >= 2, "need more than one group to mean anything");
+        var rows = AllRows(shell).ToList();
 
-        Assert.True(shell.Sidebar.Groups[0].IsFirst);
+        Assert.True(rows.Count >= 3, "need several rows for this to mean anything");
+        Assert.Equal("Home", rows[0].Label);
+        Assert.True(rows[0].LeadsTheSidebar);
 
-        foreach (var group in shell.Sidebar.Groups.Skip(1))
-            Assert.False(group.IsFirst, $"{group.Label} would draw a second This PC");
+        foreach (var row in rows.Skip(1))
+            Assert.False(row.LeadsTheSidebar, $"{row.Label} would draw a second This PC");
     }
 
     /// <summary>
@@ -50,16 +55,17 @@ public sealed class SidebarOrderTests
         await shell.Sidebar.ReloadAsync();
         await shell.Sidebar.ReloadAsync();
 
-        Assert.True(shell.Sidebar.Groups[0].IsFirst);
-        Assert.Single(shell.Sidebar.Groups, g => g.IsFirst);
+        Assert.True(AllRows(shell).First().LeadsTheSidebar);
+        Assert.Single(AllRows(shell), row => row.LeadsTheSidebar);
     }
 
     /// <summary>
-    /// And it really is drawn from inside the group template rather than above
-    /// the list — the fault was entirely about where in the markup it sat.
+    /// And it really is drawn from inside the place row's template rather than
+    /// above the list — the fault was entirely about where in the markup it
+    /// sat.
     /// </summary>
     [Fact]
-    public void The_row_is_drawn_inside_the_group_template()
+    public void The_row_is_drawn_inside_the_place_template()
     {
         var markup = XDocument.Load(
             Path.Combine(Repo(), "src", "Vaktari.Ui", "MainWindow.axaml"));
@@ -69,13 +75,14 @@ public sealed class SidebarOrderTests
             .Single(b => ((string?)b.Attribute("Command") ?? "").Contains("OpenComputerCommand",
                                                                          StringComparison.Ordinal));
 
-        Assert.Equal("{Binding IsFirst}", (string?)row.Attribute("IsVisible"));
+        Assert.Equal("{Binding LeadsTheSidebar}", (string?)row.Attribute("IsVisible"));
 
-        // Inside a DataTemplate, which is what puts it among the group's rows.
+        // Inside the PLACE template, which is what puts it beside Home rather
+        // than at the end of the group.
         Assert.Contains(row.Ancestors(Avalonia + "DataTemplate"),
                         t => (string?)t.Attribute(
                                  XNamespace.Get("http://schemas.microsoft.com/winfx/2006/xaml")
-                                 + "DataType") == "vm:PlaceGroupViewModel");
+                                 + "DataType") == "vm:PlaceItemViewModel");
     }
 
     private static string Repo()
