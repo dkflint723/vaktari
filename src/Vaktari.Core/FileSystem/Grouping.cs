@@ -85,7 +85,16 @@ public static class Grouping
     /// <summary>Lower rank sorts first, so newest-first matches the labels.</summary>
     private static int DateRank(DateTimeOffset when, DateTimeOffset now)
     {
-        var day = when.Date;
+        // **In the same frame as `now`, which is the frame the column uses.**
+        // Both providers store LastWriteTimeUtc, so `when.Date` was the UTC
+        // calendar day while `today` was the local one — and west of Greenwich
+        // an evening save is already tomorrow in UTC. A file saved at 6pm was
+        // labelled "Later" while the Modified cell on the same row, which calls
+        // ToLocalTime, said today.
+        //
+        // ToOffset rather than ToLocalTime so a caller that passes a `now` in
+        // some other zone gets bands in that zone rather than this machine's.
+        var day = when.ToOffset(now.Offset).Date;
         var today = now.Date;
 
         if (day > today) return 0;
@@ -121,7 +130,9 @@ public static class Grouping
     /// </summary>
     private static string DateBand(DateTimeOffset when, DateTimeOffset now)
     {
-        var day = when.Date;
+        // Same frame as DateRank above, and for the same reason — the two must
+        // agree or a row sorts into one band under another band's heading.
+        var day = when.ToOffset(now.Offset).Date;
         var today = now.Date;
 
         if (day > today) return "Later";

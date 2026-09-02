@@ -1294,6 +1294,41 @@ public sealed partial class ShellViewModel : ObservableObject
     [ObservableProperty] private string _operationStatus = "";
     [ObservableProperty] private IOperationHandle? _activeOperation;
 
+    /// <summary>
+    /// Whether the transfer bar is on screen.
+    ///
+    /// **The bar used to follow ActiveOperation alone, so every failure was
+    /// written and hidden in the same instant.** The completion handler sets
+    /// the message — "failed: …", or which files were left behind — and then,
+    /// six lines later, clears ActiveOperation because nothing is running any
+    /// more. The bar went with it. The comment above that message says "a
+    /// failure stays on screen"; it could not.
+    ///
+    /// So: visible while something is running, and visible while there is
+    /// something to say.
+    /// </summary>
+    public bool ShowOperationBar => ActiveOperation is not null || OperationStatus.Length > 0;
+
+    /// <summary>True only in the after-the-fact state, where there is a message
+    /// but nothing left to pause or cancel.</summary>
+    public bool OperationFinished => ActiveOperation is null && OperationStatus.Length > 0;
+
+    partial void OnActiveOperationChanged(IOperationHandle? value) => NotifyOperationBar();
+    partial void OnOperationStatusChanged(string value) => NotifyOperationBar();
+
+    private void NotifyOperationBar()
+    {
+        OnPropertyChanged(nameof(ShowOperationBar));
+        OnPropertyChanged(nameof(OperationFinished));
+    }
+
+    /// <summary>
+    /// Puts the last message away. Needed because the bar now outlives the
+    /// operation: without it a failure would sit there until the next copy.
+    /// </summary>
+    [RelayCommand]
+    private void DismissOperationStatus() => OperationStatus = "";
+
     // ---- construction --------------------------------------------------
 
     private PaneGroupViewModel CreateGroup()

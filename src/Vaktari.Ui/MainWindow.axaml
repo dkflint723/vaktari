@@ -2306,19 +2306,36 @@
       </StackPanel>
     </Border>
 
+    <!-- **Not bound to ActiveOperation.** It was, and every failure message
+         was therefore written and hidden in the same instant: the completion
+         handler sets "failed: …" or names the files left behind, then clears
+         ActiveOperation because nothing is running any more, and the bar went
+         with it. Nobody ever learned which file did not arrive.
+
+         ShowOperationBar is "something is running OR there is something to
+         say"; the pause and cancel buttons still follow the operation, because
+         there is nothing to pause once it has finished. -->
     <Border DockPanel.Dock="Bottom" Padding="8,5" Background="{DynamicResource AppBackground}"
-            IsVisible="{Binding ActiveOperation, Converter={x:Static ObjectConverters.IsNotNull}}">
+            IsVisible="{Binding ShowOperationBar}">
       <StackPanel Orientation="Horizontal" Spacing="10">
         <TextBlock Text="{Binding OperationStatus}" FontFamily="monospace"
-                   FontSize="{DynamicResource FontSizeSmall}" VerticalAlignment="Center"/>
+                   FontSize="{DynamicResource FontSizeSmall}" VerticalAlignment="Center"
+                   TextWrapping="Wrap"/>
         <!-- Pause was implemented in full and unreachable: the handle has a
              real gate and both engines wait on it between items and inside the
              byte loop, so stopping a large copy mid-flight has always worked
              and nothing could ask for it. -->
         <Button Content="{Binding PauseLabel}" FontSize="{DynamicResource FontSizeSmall}" Padding="8,2"
+                IsVisible="{Binding ActiveOperation, Converter={x:Static ObjectConverters.IsNotNull}}"
                 Command="{Binding PauseOperationCommand}"/>
         <Button Content="cancel" FontSize="{DynamicResource FontSizeSmall}" Padding="8,2"
+                IsVisible="{Binding ActiveOperation, Converter={x:Static ObjectConverters.IsNotNull}}"
                 Command="{Binding CancelOperationCommand}"/>
+        <!-- The bar now outlives the operation, so the message needs a way to
+             go away that is not "wait for the next copy". -->
+        <Button Content="dismiss" FontSize="{DynamicResource FontSizeSmall}" Padding="8,2"
+                IsVisible="{Binding OperationFinished}"
+                Command="{Binding DismissOperationStatusCommand}"/>
       </StackPanel>
     </Border>
 
