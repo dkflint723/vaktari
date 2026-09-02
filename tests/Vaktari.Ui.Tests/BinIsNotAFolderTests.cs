@@ -1,3 +1,4 @@
+using Avalonia.Headless.XUnit;
 using Vaktari.Core.FileSystem;
 using Vaktari.Ui;
 using Vaktari.Ui.ViewModels;
@@ -28,7 +29,7 @@ namespace Vaktari.Ui.Tests;
 /// only honest test of "this must never be called" is one where calling it
 /// would be observable.
 /// </summary>
-public sealed class BinIsNotAFolderTests
+public sealed class BinIsNotAFolderTests : OwnedViewModels
 {
     /// <summary>
     /// Records what it was asked to do and does none of it. Every method that
@@ -98,13 +99,13 @@ public sealed class BinIsNotAFolderTests
         private sealed class Nothing : IDisposable { public void Dispose() { } }
     }
 
-    private static (PaneViewModel Pane, RecordingOperations Ops) InTheBin()
+    private (PaneViewModel Pane, RecordingOperations Ops) InTheBin()
     {
         var ops = new RecordingOperations();
-        var pane = new PaneViewModel(new InertFileSystem(), ops)
+        var pane = Own(new PaneViewModel(new InertFileSystem(), ops)
         {
             CurrentPath = VirtualPaths.Trash,
-        };
+        });
 
         // The row's path is where the file USED to live — the detail that makes
         // this dangerous. A file of that name may well exist there again.
@@ -115,7 +116,39 @@ public sealed class BinIsNotAFolderTests
         return (pane, ops);
     }
 
-    [Fact]
+    /// <summary>
+    /// **A bin row could be picked up and dragged, and the drag did nothing.**
+    /// The payload is the path the item used to occupy, which is gone, so every
+    /// target read an empty set: the cursor showed a drag, the button came up,
+    /// and there was no effect and no message. A gesture that completes and
+    /// achieves nothing cannot be told apart from a broken application.
+    /// </summary>
+    [AvaloniaFact]
+    public void Rows_in_the_bin_cannot_be_dragged_out()
+    {
+        var (pane, _) = InTheBin();
+
+        Assert.False(pane.CanDragOut());
+        Assert.Contains("Restore", pane.Status);
+    }
+
+    /// <summary>Not a blanket refusal: an ordinary folder drags, and says
+    /// nothing while doing it.</summary>
+    [AvaloniaFact]
+    public void Rows_anywhere_else_still_drag()
+    {
+        var pane = Own(new PaneViewModel(new InertFileSystem(), new RecordingOperations())
+        {
+            CurrentPath = Path.GetTempPath(),
+        });
+
+        var before = pane.Status;
+
+        Assert.True(pane.CanDragOut());
+        Assert.Equal(before, pane.Status);
+    }
+
+    [AvaloniaFact]
     public void Shift_delete_on_a_bin_row_destroys_nothing()
     {
         var (pane, ops) = InTheBin();
@@ -125,7 +158,7 @@ public sealed class BinIsNotAFolderTests
         Assert.Empty(ops.Calls);
     }
 
-    [Fact]
+    [AvaloniaFact]
     public void Delete_on_a_bin_row_bins_nothing_a_second_time()
     {
         var (pane, ops) = InTheBin();
@@ -140,7 +173,7 @@ public sealed class BinIsNotAFolderTests
     /// the same hazard as the delete, and just as invisible, since the row goes
     /// on showing the old name either way.
     /// </summary>
-    [Fact]
+    [AvaloniaFact]
     public void Rename_is_not_offered_on_a_bin_row()
     {
         var (pane, _) = InTheBin();
@@ -152,7 +185,7 @@ public sealed class BinIsNotAFolderTests
         Assert.False(asked);
     }
 
-    [Fact]
+    [AvaloniaFact]
     public void Pasting_into_the_bin_does_not_create_a_folder_called_vaktari_trash()
     {
         var (pane, ops) = InTheBin();
@@ -175,7 +208,7 @@ public sealed class BinIsNotAFolderTests
     /// directory and copied into it, the exact failure the paste guard exists
     /// to stop.
     /// </summary>
-    [Fact]
+    [AvaloniaFact]
     public void Duplicating_a_binned_row_copies_nothing()
     {
         var (pane, ops) = InTheBin();
@@ -185,24 +218,24 @@ public sealed class BinIsNotAFolderTests
         Assert.Empty(ops.Calls);
     }
 
-    [Fact]
+    [AvaloniaFact]
     public void Duplicating_from_recent_copies_nothing()
     {
         var ops = new RecordingOperations();
-        var pane = new PaneViewModel(new InertFileSystem(), ops)
+        var pane = Own(new PaneViewModel(new InertFileSystem(), ops)
         {
             CurrentPath = VirtualPaths.Files,
             SelectedEntry = new FileEntry(
                 "notes.txt", Path.Combine(Path.GetTempPath(), "notes.txt"),
                 0, DateTimeOffset.Now, EntryFlags.None),
-        };
+        });
 
         pane.DuplicateSelected();
 
         Assert.Empty(ops.Calls);
     }
 
-    [Fact]
+    [AvaloniaFact]
     public void The_refusal_names_what_to_do_instead()
     {
         var (pane, _) = InTheBin();
@@ -218,17 +251,17 @@ public sealed class BinIsNotAFolderTests
     /// command is broken outright, so the same call in a real folder must still
     /// reach the file system — the fake throws to prove it got there.
     /// </summary>
-    [Fact]
+    [AvaloniaFact]
     public void In_a_real_folder_the_same_commands_still_act()
     {
         var ops = new RecordingOperations();
-        var pane = new PaneViewModel(new InertFileSystem(), ops)
+        var pane = Own(new PaneViewModel(new InertFileSystem(), ops)
         {
             CurrentPath = Path.GetTempPath(),
             SelectedEntry = new FileEntry(
                 "notes.txt", Path.Combine(Path.GetTempPath(), "notes.txt"),
                 0, DateTimeOffset.Now, EntryFlags.None),
-        };
+        });
 
         Assert.Throws<InvalidOperationException>(() => pane.DeleteSelected());
         Assert.Throws<InvalidOperationException>(() => pane.TrashSelected());
@@ -242,17 +275,17 @@ public sealed class BinIsNotAFolderTests
     /// Deleting from Recent is legitimate, though: the file is really there.
     /// Only the DESTINATION is refused.
     /// </summary>
-    [Fact]
+    [AvaloniaFact]
     public void Recent_refuses_the_destination_but_not_the_selection()
     {
         var ops = new RecordingOperations();
-        var pane = new PaneViewModel(new InertFileSystem(), ops)
+        var pane = Own(new PaneViewModel(new InertFileSystem(), ops)
         {
             CurrentPath = VirtualPaths.Files,
             SelectedEntry = new FileEntry(
                 "notes.txt", Path.Combine(Path.GetTempPath(), "notes.txt"),
                 0, DateTimeOffset.Now, EntryFlags.None),
-        };
+        });
 
         pane.PasteInto([Path.Combine(Path.GetTempPath(), "other.txt")], move: true);
         Assert.Empty(ops.Calls);
@@ -266,14 +299,14 @@ public sealed class BinIsNotAFolderTests
     /// argument rather than CurrentPath. Guarding the wrong one here would have
     /// broken Copy-to and folder drops from Recent while looking correct.
     /// </summary>
-    [Fact]
+    [AvaloniaFact]
     public void A_real_folder_row_inside_a_virtual_listing_is_still_a_destination()
     {
         var ops = new RecordingOperations();
-        var pane = new PaneViewModel(new InertFileSystem(), ops)
+        var pane = Own(new PaneViewModel(new InertFileSystem(), ops)
         {
             CurrentPath = VirtualPaths.Files,
-        };
+        });
 
         Assert.Throws<InvalidOperationException>(() => pane.PasteIntoFolder(
             Path.GetTempPath(),

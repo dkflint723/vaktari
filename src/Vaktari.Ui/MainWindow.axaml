@@ -1009,7 +1009,15 @@
                 <!-- The DISPLAY path, not CurrentPath: a virtual listing's path
                      is an internal scheme, and the tooltip was showing
                      "vaktari:computer" to anyone who hovered the bar. -->
+                <!-- Crumbs take drops: dragging a file onto an ancestor is the
+                     shortest way to move it up two levels, and it is what both
+                     references do. The destination comes from the segment under
+                     the pointer, so the crumb has to be able to be a target at
+                     all — without AllowDrop the drag never reaches it and the
+                     pane underneath answers with its own folder, which is where
+                     the file already is. -->
                 <ItemsControl DockPanel.Dock="Left" ItemsSource="{Binding ActiveTab.Breadcrumbs}"
+                              DragDrop.AllowDrop="True"
                               ToolTip.Tip="{Binding ActiveTab.DisplayPath}"
                               ToolTip.ShowDelay="1200">
                   <ItemsControl.ItemsPanel>

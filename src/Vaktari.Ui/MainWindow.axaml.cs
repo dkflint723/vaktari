@@ -1495,6 +1495,69 @@ public partial class MainWindow : Window
         return false;
     }
 
+    /// <summary>
+    /// Everything a drag needs to know about what is under the pointer.
+    ///
+    /// **Drag-over and drop used to work this out separately, and disagreed.**
+    /// OnDrop had mapped the bin's row to Trash; OnDragOver never considered
+    /// it, so the cursor showed no-drop and the toolkit — which delivers a drop
+    /// only where the drag-over said yes — never delivered one. The branch in
+    /// OnDrop was unreachable code that read like a working feature. One
+    /// answer, read by both handlers, is the only arrangement in which they
+    /// cannot drift apart again.
+    /// </summary>
+    private readonly record struct DropTarget(
+        bool IsBin, string? Place, string? Crumb, string? Folder, PaneViewModel? Pane)
+    {
+        /// <summary>Somewhere a drop could land. False refuses the drag.</summary>
+        public bool Exists => IsBin || Place is not null || Crumb is not null || Pane is not null;
+
+        /// <summary>
+        /// The folder a drop goes into. Empty for the bin, which is a verb
+        /// rather than a place to put things.
+        ///
+        /// A crumb outranks the pane below it and is outranked by a sidebar
+        /// place, which is the order the pointer is actually over them in.
+        /// </summary>
+        public string Destination => Explicit ?? Pane?.CurrentPath ?? "";
+
+        /// <summary>
+        /// A folder the pointer is over in its own right — a place, a crumb or
+        /// a folder row — as opposed to falling back to the folder being
+        /// listed. The right-button drop menu needs the difference: it offers
+        /// to put things INTO what you pointed at, and pointing at nothing in
+        /// particular is not the same as pointing at the current folder.
+        /// </summary>
+        public string? Explicit => Place ?? Crumb ?? Folder;
+    }
+
+    private static DropTarget TargetAt(object? source) => new(
+        TrashRowAt(source), PlaceAt(source), CrumbAt(source),
+        FolderRowAt(source), PaneAt(source));
+
+    /// <summary>
+    /// The breadcrumb segment under the pointer.
+    ///
+    /// **Dragging onto an ancestor did nothing**, though it is the shortest way
+    /// to move something up two levels and both Explorer and Dolphin take it.
+    /// The crumbs sit above the listing, so a drag over them found the pane and
+    /// offered the pane's own folder — the drop went where the file already
+    /// was, which is a no-op that looks like a bug.
+    /// </summary>
+    private static string? CrumbAt(object? source)
+    {
+        for (var visual = source as Visual; visual is not null;
+             visual = visual.GetVisualParent())
+        {
+            if (visual is Control { DataContext: PathSegment crumb }
+                && crumb.FullPath.Length > 0
+                && !VirtualPaths.IsVirtual(crumb.FullPath))
+                return crumb.FullPath;
+        }
+
+        return null;
+    }
+
     /// <summary>The folder row under the pointer, if the drop should go into it
     /// rather than into the directory being listed.</summary>
     private static string? FolderRowAt(object? source)
@@ -2036,6 +2099,50 @@ public partial class MainWindow : Window
         _bandScroll = null;
     }
 
+    /// <summary>The listing under the pointer, whatever part of a row it is
+    /// over.</summary>
+    private static ListBox? ListAt(object? source)
+    {
+        for (var visual = source as Visual; visual is not null;
+             visual = visual.GetVisualParent())
+        {
+            if (visual is ListBox list) return list;
+        }
+
+        return null;
+    }
+
+    /// <summary>
+    /// Scrolls the listing while a DRAG rests near its top or bottom edge.
+    ///
+    /// **A folder that was off-screen could not be dropped into.** The listing
+    /// held still for the whole drag, so reaching anything below the fold meant
+    /// abandoning the drag, scrolling, and starting again — and in a folder of
+    /// any size that is most of it. Both references scroll at the edges.
+    ///
+    /// It borrows the rubber band's timer, which is safe because a band and a
+    /// file drag cannot both be in progress: the band needs a left press on
+    /// empty space, and by the time a drag is running that press has been spent
+    /// on the drag.
+    /// </summary>
+    private void DragScroll(DragEventArgs e)
+    {
+        if (ListAt(e.Source) is not { } list)
+        {
+            StopDragScroll();
+            return;
+        }
+
+        _bandList = list;
+        AutoScroll(list, e.GetPosition(BandLayer));
+    }
+
+    private void StopDragScroll()
+    {
+        StopBandScroll();
+        _bandList = null;
+    }
+
     private static ScrollViewer? Scroller(Visual root)
     {
         foreach (var child in root.GetVisualChildren())
@@ -2074,6 +2181,11 @@ public partial class MainWindow : Window
                 : pane.SelectedEntry is { } one ? [one.FullPath] : [];
 
         if (paths.Count == 0) return;
+
+        // Asked before a payload is built, so the refusal reaches the status bar
+        // instead of the drag reaching a target that cannot say why it failed.
+        if (!pane.CanDragOut()) return;
+
         if (TopLevel.GetTopLevel(this)?.StorageProvider is not { } storage) return;
 
         _dragging = true;
@@ -2158,17 +2270,41 @@ public partial class MainWindow : Window
 
         // The sidebar first: a place row has no pane above it, so asking for
         // one would refuse the drop before the place was ever considered.
-        var place = PlaceAt(e.Source);
+        var spot = TargetAt(e.Source);
 
-        if (place is null && PaneAt(e.Source) is null)
+        if (!spot.Exists)
         {
             e.DragEffects = DragDropEffects.None;
             HighlightDropTarget(null);
+            StopDragScroll();
             return;
         }
 
-        var pane = PaneAt(e.Source);
-        var destination = place ?? FolderRowAt(e.Source) ?? pane?.CurrentPath ?? "";
+        // **The bin is a verb, not a folder**, so it is answered here rather
+        // than falling through to the destination rules below — which would ask
+        // what it costs to copy into "vaktari:trash" and refuse.
+        //
+        // Move, because that is what dropping on the bin does to the original,
+        // and it is the effect Explorer's own cursor shows over the Recycle Bin.
+        if (spot.IsBin)
+        {
+            e.DragEffects = Input.DroppedFileReader.Offered(e.DataTransfer).Count > 0
+                ? DragDropEffects.Move
+                : DragDropEffects.None;
+
+            HighlightDropTarget(null);
+            StopDragScroll();
+            return;
+        }
+
+        // Near an edge of the listing, keep it moving — checked on every
+        // drag-over rather than only where the drop would be accepted, because
+        // scrolling is how you REACH somewhere that would accept it.
+        DragScroll(e);
+
+        var place = spot.Place;
+        var pane = spot.Pane;
+        var destination = spot.Destination;
 
         // A virtual listing is a view, not a folder, so its background has
         // nowhere to put anything. The paste path refuses it too, but that
@@ -2376,7 +2512,11 @@ public partial class MainWindow : Window
         }
     }
 
-    private void OnDragLeave(object? sender, DragEventArgs e) => HighlightDropTarget(null);
+    private void OnDragLeave(object? sender, DragEventArgs e)
+    {
+        HighlightDropTarget(null);
+        StopDragScroll();
+    }
 
     private void HighlightDropTarget(PaneViewModel? pane)
     {
@@ -2390,13 +2530,16 @@ public partial class MainWindow : Window
     private void OnDrop(object? sender, DragEventArgs e)
     {
         HighlightDropTarget(null);
+        StopDragScroll();
 
         // **The bin takes drops.** Its row is AllowDrop with a comment about
         // taking them "the way the tree and Quick access do in Explorer", and
         // nothing ever mapped one to IFileOperations.Trash — PlaceAt refuses a
         // virtual path, and the bin's path is the virtual vaktari:trash, so the
         // drop landed nowhere and looked like the row was simply dead.
-        if (TrashRowAt(e.Source) && _shell.ActiveTab is { } binPane)
+        var spot = TargetAt(e.Source);
+
+        if (spot.IsBin && _shell.ActiveTab is { } binPane)
         {
             var offered = Input.DroppedFileReader.Offered(e.DataTransfer);
 
@@ -2404,16 +2547,16 @@ public partial class MainWindow : Window
             return;
         }
 
-        // A sidebar place is a destination in its own right, and has no pane
-        // above it to ask about.
-        var place = PlaceAt(e.Source);
-        var pane = PaneAt(e.Source) ?? (place is null ? null : _shell.ActiveTab);
+        // A sidebar place and a breadcrumb are destinations in their own right,
+        // and neither is guaranteed to have a pane above it to ask about — so
+        // the active tab stands in as the pane that reports what happened.
+        var pane = spot.Pane ?? (spot.Exists ? _shell.ActiveTab : null);
 
         if (pane is null) return;
 
         // Dropping onto a folder row means into that folder, not into the
         // directory being listed — that is what the pointer was over.
-        var target = place ?? FolderRowAt(e.Source);
+        var target = spot.Explicit;
         var destination = target ?? pane.CurrentPath;
 
         var intent = IntentFor(

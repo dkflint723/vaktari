@@ -262,6 +262,28 @@ public sealed partial class PaneViewModel
     }
 
     /// <summary>
+    /// Whether the rows on show can be picked up and dragged somewhere.
+    ///
+    /// **In the bin they could be, and the drag did nothing whatever.** A binned
+    /// row carries the path the item used to occupy, and that path is gone — so
+    /// the drag armed, the cursor showed a payload, every target read an empty
+    /// set, and releasing the button had no effect and said nothing. A gesture
+    /// that completes and achieves nothing is worse than one that is refused,
+    /// because there is no way to tell it from the application being broken.
+    ///
+    /// Refused rather than restored: putting a binned item back is the trash
+    /// backend's own operation, not a copy from a path that no longer exists,
+    /// and Restore already does it. This says so.
+    /// </summary>
+    public bool CanDragOut()
+    {
+        if (!IsTrashListing) return true;
+
+        Status = $"cannot drag out of {Vaktari.Core.Naming.TheBin} — use Restore";
+        return false;
+    }
+
+    /// <summary>
     /// Refuses a write whose DESTINATION is one of the virtual listings.
     ///
     /// **In the bin, CurrentPath is the literal string "vaktari:trash"**, and on
