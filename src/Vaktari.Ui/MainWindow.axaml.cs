@@ -2787,19 +2787,54 @@ public partial class MainWindow : Window
         pane.RenameRequested -= OnRenameRequested;
         pane.RenameRequested += OnRenameRequested;
 
-        pane.PropertyChanged -= OnPaneFilterToggled;
-        pane.PropertyChanged += OnPaneFilterToggled;
+        pane.PropertyChanged -= OnPaneEditorClosed;
+        pane.PropertyChanged += OnPaneEditorClosed;
     }
 
     /// <summary>Focus now happens through FocusBehavior.FocusOnVisible in the
     /// markup, since there is no field to focus from here.</summary>
-    private void OnPaneFilterToggled(object? sender, PropertyChangedEventArgs e)
+    /// <summary>
+    /// Hands the keyboard back to the listing when an inline editor closes.
+    ///
+    /// **Every one of them used to drop focus on the floor.** Press Escape in
+    /// the filter, or Enter in the path box, and focus was left on a control
+    /// that had just been collapsed to nothing — so the arrow keys, Enter,
+    /// Delete, Home, End and type-ahead were all dead until F6 or a click.
+    /// Explorer and Dolphin both put the keyboard back in the view.
+    /// </summary>
+    private void OnPaneEditorClosed(object? sender, PropertyChangedEventArgs e)
     {
-        if (e.PropertyName != nameof(PaneViewModel.IsFilterVisible)) return;
-        if (sender is not PaneViewModel pane || !pane.IsFilterVisible) return;
+        if (e.PropertyName is not (nameof(PaneViewModel.IsFilterVisible)
+                                   or nameof(PaneViewModel.IsPathEditing)))
+            return;
 
+        if (sender is not PaneViewModel pane) return;
 
+        // Only on the way out. Both boxes focus themselves on the way in.
+        if (pane.IsFilterVisible || pane.IsPathEditing) return;
+
+        FocusListingSoon();
     }
+
+    /// <summary>
+    /// Puts the keyboard back in the listing on the next pass, and only if
+    /// nothing else has claimed it.
+    ///
+    /// Posted because the control being left is still collapsing: focusing now
+    /// measures against a tree that is about to change. Guarded on the focused
+    /// element because closing one editor is sometimes how another one opens —
+    /// Ctrl+F from the path box moves the keyboard to the search box ON
+    /// PURPOSE, and snatching it back would be worse than leaving it nowhere.
+    /// </summary>
+    private void FocusListingSoon()
+        => Dispatcher.UIThread.Post(
+            () =>
+            {
+                if (FocusManager?.GetFocusedElement() is TextBox) return;
+
+                ActiveListing()?.Focus();
+            },
+            DispatcherPriority.Background);
 
     // ---- inline prompt -------------------------------------------------
 
@@ -3127,6 +3162,10 @@ public partial class MainWindow : Window
         if (PromptInput is not null) PromptInput.IsVisible = false;
         if (PromptConfirm is not null) PromptConfirm.IsVisible = false;
         if (PromptCancel is not null) PromptCancel.IsVisible = false;
+
+        // The rename box and every confirmation leave through here, and the
+        // control they were focusing has just been hidden.
+        FocusListingSoon();
     }
 
     private void OnPromptKeyDown(object? sender, KeyEventArgs e)

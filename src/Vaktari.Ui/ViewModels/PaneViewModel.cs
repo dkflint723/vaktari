@@ -82,6 +82,15 @@ public sealed partial class PaneViewModel : ObservableObject, IDisposable
     {
         WatchSelections();
 
+        // **The count and the empty state follow the rows now.** Both are
+        // computed from Entries.Count, and nothing raised them when the WATCHER
+        // changed the listing — only a navigation did. So a finished download
+        // left "36 items" beside 37 rows, and a folder emptied by something
+        // else went on saying it had files. Worse in the other direction: a
+        // folder that was empty when you arrived kept "this folder is empty"
+        // printed across the middle of it while real rows appeared underneath.
+        Entries.CollectionChanged += (_, _) => NotifyListingState();
+
         _templates = templates;
         _fs = fs;
         _ops = ops;
@@ -2263,6 +2272,16 @@ public sealed partial class PaneViewModel : ObservableObject, IDisposable
         CurrentPath = path;
         PathText = path;
         IsLoading = true;
+
+        // **Cleared here, or a failed load leaves the last SUCCESSFUL one's
+        // answer standing.** IsLoaded is only ever set true, at the end of a
+        // load that worked, so after a failure it still said yes — and two
+        // guards read it. Navigating again to the same path returned early as
+        // "already there", so plugging the drive in and retyping the path did
+        // nothing at all and the only way forward was to visit some other
+        // folder first. The same stale yes recorded the dead path in Recent
+        // locations, which is exactly what that check exists to prevent.
+        IsLoaded = false;
         LoadError = "";
         _all.Clear();
         Entries.Reset();
@@ -2487,13 +2506,51 @@ public sealed partial class PaneViewModel : ObservableObject, IDisposable
 
         _groupNow = DateTimeOffset.Now;
 
+        var keep = SelectedPaths();
+
         var items = _all.Count > 0 ? _all.ToList() : Entries.ToList();
         items.Sort(Compare);
 
         RecomputeGroups(items);
         Entries.ReplaceAll(items);
 
+        Reselect(keep);
         RefreshConfusable();
+    }
+
+    /// <summary>What is selected, by path, so it can survive the rows being
+    /// replaced by equal-but-different ones.</summary>
+    private List<string> SelectedPaths()
+        => SelectedEntries.Select(e => e.FullPath).OfType<string>().ToList();
+
+    /// <summary>
+    /// Puts the selection back after the rows have been rebuilt.
+    ///
+    /// **ReplaceAll clears the collection the view binds its selection to**, so
+    /// every rebuild dropped it: F5 lost your place in a long folder, and
+    /// sorting or filtering with files selected quietly deselected them.
+    /// Explorer and Dolphin both keep the selection across all three.
+    ///
+    /// By path rather than by value: FileEntry is a record struct carrying a
+    /// timestamp and a length, so the row for a file that changed while the
+    /// listing was open is not equal to the one that was selected.
+    /// </summary>
+    private void Reselect(List<string> paths)
+    {
+        if (paths.Count == 0) return;
+
+        var wanted = new HashSet<string>(paths, StringComparer.Ordinal);
+        var selection = SelectedEntries;
+
+        selection.Clear();
+
+        foreach (var entry in Entries)
+            if (entry.FullPath is { } path && wanted.Contains(path))
+                selection.Add(entry);
+
+        // The focused row too, or the keyboard would carry on from wherever it
+        // happened to be rather than from what is selected.
+        if (selection.Count > 0) SelectedEntry = selection[0];
     }
 
     /// <summary>

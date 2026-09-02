@@ -118,7 +118,21 @@ public sealed partial class PaneViewModel
     {
         var created = _all.FirstOrDefault(e => e.FullPath == path);
 
-        if (created.FullPath is not null) RenameRequested?.Invoke(this, created);
+        if (created.FullPath is null) return;
+
+        // **Selected as well as renamed.** The prompt opened on the new folder
+        // while the listing had nothing selected at all, so cancelling the
+        // rename — or just pressing Enter to keep the name — left the keyboard
+        // pointing at nothing and the new folder no easier to find than before.
+        // Both references select what they have just made.
+        SelectedEntry = created;
+
+        var selection = SelectedEntries;
+
+        selection.Clear();
+        selection.Add(created);
+
+        RenameRequested?.Invoke(this, created);
     }
 
     /// <summary>
