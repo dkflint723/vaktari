@@ -309,8 +309,13 @@ public sealed class LinuxPlacesProvider : IPlacesProvider, IDisposable
             // drives all reporting identical free space.
             if (!seenDevices.Add(source)) continue;
 
-            var removable = mountPoint.StartsWith("/run/media", StringComparison.Ordinal)
-                         || mountPoint.StartsWith("/media", StringComparison.Ordinal);
+            // **The mount point alone was the whole answer**, so a USB disk
+            // given a stable /mnt/backup line in fstab came out a fixed disk
+            // with no eject button — and the eject command refuses before an
+            // ejector is reached, so the only safe way to unplug it was a
+            // terminal. The kernel knows; /sys is text and never touches the
+            // mounted filesystem, so asking cannot block on a yanked stick.
+            var removable = BlockDevices.IsRemovable(mountPoint, BlockDevices.TraitsFor(source));
 
             // Optical media, by the filesystem it carries or the device it came
             // from. Both are needed: a data CD is iso9660 and a video disc is
