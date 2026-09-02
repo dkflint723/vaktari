@@ -2244,6 +2244,27 @@ public sealed partial class PaneViewModel : ObservableObject, IDisposable
 
 
 
+    /// <summary>
+    /// Escape pressed in the LISTING, as opposed to inside the filter box.
+    ///
+    /// **It closed a filter bar that was meant to stay open.** The startup
+    /// setting "show the filter bar" opens it deliberately, for people who
+    /// filter constantly — and any Escape in the listing took it away again,
+    /// for a key people press to mean "never mind" about anything at all. The
+    /// way back was a chip two levels into a menu.
+    ///
+    /// Closing the box is something you do TO the box, so it stays on the box's
+    /// own Escape. This one clears the text and the pending cut, which are the
+    /// two things Escape has always promised here.
+    /// </summary>
+    [RelayCommand]
+    public void DismissInListing()
+    {
+        if (FilterText.Length > 0) FilterText = "";
+
+        CutMarks.Clear();
+    }
+
     [RelayCommand]
     public void ClearFilter()
     {

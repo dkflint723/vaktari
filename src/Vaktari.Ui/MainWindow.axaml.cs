@@ -3894,8 +3894,13 @@ public partial class MainWindow : Window
         // no filter showing, the key did nothing and the sheet was lying.
         // Not marked handled: Escape has other meanings further down, and this
         // one is harmless to whichever of them the user meant.
+        //
+        // DismissInListing rather than ClearFilter: the latter also closes the
+        // bar once the text is empty, which is right from inside the box and
+        // wrong from out here — it took away a bar the startup setting had
+        // deliberately opened.
         if (e.Key == Key.Escape && e.KeyModifiers == KeyModifiers.None)
-            _shell.ActiveTab?.ClearFilter();
+            _shell.ActiveTab?.DismissInListing();
 
         // Ctrl+1..9 jumps to a tab, browser-style.
         if (e.KeyModifiers == KeyModifiers.Control &&

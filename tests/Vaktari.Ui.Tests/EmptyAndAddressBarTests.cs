@@ -117,6 +117,84 @@ public sealed class EmptyAndAddressBarTests : OwnedViewModels
         Assert.Contains("Text=\"{Binding EmptyText}\"", markup);
     }
 
+    // ---- Escape means two different things ----------------------------------
+
+    /// <summary>
+    /// **Escape in the listing closed a filter bar that was meant to stay.**
+    /// The startup setting opens it deliberately, for people who filter
+    /// constantly, and a key pressed to mean "never mind" about anything at all
+    /// took it away — with the way back a chip two levels into a menu.
+    /// </summary>
+    [AvaloniaFact]
+    public void Escape_in_the_listing_leaves_the_filter_bar_open()
+    {
+        var pane = At(Path.GetTempPath());
+
+        pane.IsFilterVisible = true;
+
+        pane.DismissInListing();
+
+        Assert.True(pane.IsFilterVisible);
+    }
+
+    /// <summary>It still does the two things Escape has always promised
+    /// here.</summary>
+    [AvaloniaFact]
+    public void Escape_in_the_listing_still_clears_the_filter_and_the_cut()
+    {
+        var pane = At(Path.GetTempPath());
+
+        pane.IsFilterVisible = true;
+        pane.FilterText = "report";
+        CutMarks.Mark([Path.Combine(Path.GetTempPath(), "a.txt")]);
+
+        pane.DismissInListing();
+
+        Assert.Equal("", pane.FilterText);
+        Assert.Empty(CutMarks.Paths);
+        Assert.True(pane.IsFilterVisible);
+    }
+
+    /// <summary>
+    /// From inside the box it still closes, because closing the box is
+    /// something you do TO the box. Losing that would be a worse bug than the
+    /// one this fixes: the filter would have no keyboard way out at all.
+    /// </summary>
+    [AvaloniaFact]
+    public void Escape_inside_the_box_still_closes_it_once_it_is_empty()
+    {
+        var pane = At(Path.GetTempPath());
+
+        pane.IsFilterVisible = true;
+        pane.FilterText = "report";
+
+        pane.ClearFilter();
+        Assert.True(pane.IsFilterVisible);
+
+        pane.ClearFilter();
+        Assert.False(pane.IsFilterVisible);
+    }
+
+    /// <summary>
+    /// And the listing's Escape reaches the new rule rather than the old one.
+    /// The two commands differ by one line, so calling the wrong one leaves
+    /// every view-model test above passing and the bug exactly as it was.
+    /// </summary>
+    [AvaloniaFact]
+    public void The_listing_asks_for_the_listing_rule()
+    {
+        var here = AppContext.BaseDirectory;
+
+        while (here is not null && !File.Exists(Path.Combine(here, "Vaktari.slnx")))
+            here = Path.GetDirectoryName(here);
+
+        var source = File.ReadAllText(
+            Path.Combine(here!, "src", "Vaktari.Ui", "MainWindow.axaml.cs"));
+
+        Assert.Contains("_shell.ActiveTab?.DismissInListing()", source);
+        Assert.DoesNotContain("_shell.ActiveTab?.ClearFilter()", source);
+    }
+
     // ---- the address bar keeps what you typed --------------------------------
 
     [AvaloniaFact]
