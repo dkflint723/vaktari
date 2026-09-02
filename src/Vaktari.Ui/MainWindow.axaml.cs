@@ -1045,10 +1045,8 @@ public partial class MainWindow : Window
             // the old rule, and a visibility binding needs telling.
             _shell.OnSettingsChanged();
 
-            Title = model.Result.Startup.ShowFullPathInTitleBar
-                    && _shell.ActiveTab is { } pane
-                ? $"{pane.CurrentPath} — Vaktari"
-                : "Vaktari";
+            _fullPathInTitle = model.Result.Startup.ShowFullPathInTitleBar;
+            RefreshTitle();
         };
 
         window.ShowDialog(this);
@@ -1693,6 +1691,10 @@ public partial class MainWindow : Window
     {
         if (sender is not Avalonia.Controls.Primitives.TabStrip strip
             || strip.SelectedItem is not { } selected) return;
+
+        // Switching tabs changes the folder on screen as surely as navigating
+        // does, and the title has to say so.
+        RefreshTitle();
 
         Dispatcher.UIThread.Post(
             () => strip.ContainerFromItem(selected)?.BringIntoView(),
@@ -2959,9 +2961,8 @@ public partial class MainWindow : Window
     /// </summary>
     private void ApplyStartupPreferences(StartupSettings startup)
     {
-        Title = startup.ShowFullPathInTitleBar && _shell.ActiveTab is { } titled
-            ? $"{titled.CurrentPath} — Vaktari"
-            : "Vaktari";
+        _fullPathInTitle = startup.ShowFullPathInTitleBar;
+        RefreshTitle();
 
         if (startup.BeginInSplitView && !_shell.IsSplit)
             _shell.ToggleSplitCommand.Execute(null);
@@ -3148,6 +3149,7 @@ public partial class MainWindow : Window
         // keyboard in the listing once you arrive.
         if (e.PropertyName == nameof(PaneViewModel.CurrentPath))
         {
+            RefreshTitle();
             FocusListingSoon();
             return;
         }
@@ -3174,6 +3176,36 @@ public partial class MainWindow : Window
     /// Ctrl+F from the path box moves the keyboard to the search box ON
     /// PURPOSE, and snatching it back would be worse than leaving it nowhere.
     /// </summary>
+    private bool _fullPathInTitle;
+
+    /// <summary>
+    /// The window's title, from the folder on screen.
+    ///
+    /// **It never followed navigation.** The title was worked out twice — once
+    /// at startup and once after the settings dialog closed — so with the
+    /// full-path option on it named the startup folder for the whole session,
+    /// and with it off the title bar read "Vaktari" and nothing else, ever.
+    ///
+    /// That is not really about the title bar. The taskbar button and the
+    /// alt-tab list show the same string, and that is where a window's title
+    /// earns its keep: with four of these open there were four identical
+    /// entries and no way to tell which was which without looking inside.
+    ///
+    /// The folder's name always; the whole path only when it was asked for.
+    /// </summary>
+    private void RefreshTitle() => Title = TitleFor(_shell.ActiveTab, _fullPathInTitle);
+
+    /// <summary>The string itself, apart from the window, so it can be read
+    /// without building one.</summary>
+    private static string TitleFor(PaneViewModel? pane, bool fullPath)
+    {
+        if (pane is null || pane.CurrentPath.Length == 0) return "Vaktari";
+
+        var shown = fullPath ? pane.DisplayPath : pane.Title;
+
+        return shown.Length > 0 ? $"{shown} — Vaktari" : "Vaktari";
+    }
+
     private void FocusListingSoon()
         => Dispatcher.UIThread.Post(
             () =>
