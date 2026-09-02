@@ -1068,6 +1068,16 @@ public partial class MainWindow : Window
 
     private void ShowPropertiesFor(string path) => ShowPropertiesFor([path]);
 
+    /// <summary>
+    /// What a confirmation is about: the multi-selection, or the one focused
+    /// row when nothing is properly selected. Both prompts read it the same
+    /// way, and the count they used to print was derived from exactly this.
+    /// </summary>
+    private static IReadOnlyList<FileEntry> Chosen(PaneViewModel pane)
+        => pane.Selection.Count > 0
+            ? pane.Selection.ToList()
+            : pane.SelectedEntry is { } one ? [one] : [];
+
     private void ShowPropertiesFor(IReadOnlyList<string> paths)
     {
         if (paths.Count == 0) return;
@@ -3481,12 +3491,12 @@ public partial class MainWindow : Window
         if (PromptBar is null) return;
         if (_shell.ActiveTab is null) return;
 
-        var count = ViewModels.PaneViewModel.Trash?.List().Count ?? 0;
-        if (count == 0) { _shell.ActiveTab.Status = $"{Naming.TheBin} is already empty"; return; }
+        var held = ViewModels.PaneViewModel.Trash?.List() ?? [];
+        if (held.Count == 0) { _shell.ActiveTab.Status = $"{Naming.TheBin} is already empty"; return; }
 
         _prompt = PromptMode.ConfirmEmptyTrash;
 
-        PromptLabel.Text = $"permanently delete {count:N0} item(s) from {Naming.TheBin}? this cannot be undone";
+        PromptLabel.Text = ViewModels.Confirmations.EmptyBin(held);
         PromptInput.IsVisible = false;
         PromptConfirm.Content = $"empty {Naming.BinName}";
         PromptConfirm.IsVisible = true;
@@ -3502,15 +3512,16 @@ public partial class MainWindow : Window
         if (PromptBar is null) return;
         if (_shell.ActiveTab is not { } pane) return;
 
-        var count = pane.Selection.Count > 0
-            ? pane.Selection.Count
-            : pane.SelectedEntry is null ? 0 : 1;
+        // **The entries, not just how many of them.** A count cannot name the
+        // one thing being destroyed, and one thing is the case where naming it
+        // costs nothing at all.
+        var chosen = Chosen(pane);
 
-        if (count == 0) return;
+        if (chosen.Count == 0) return;
 
         _prompt = PromptMode.ConfirmDelete;
 
-        PromptLabel.Text = $"permanently delete {count} item(s)? this cannot be undone";
+        PromptLabel.Text = ViewModels.Confirmations.Delete(chosen);
         PromptInput.IsVisible = false;
         PromptConfirm.Content = "delete permanently";
         PromptConfirm.IsVisible = true;
@@ -3533,15 +3544,13 @@ public partial class MainWindow : Window
         if (PromptBar is null) return;
         if (_shell.ActiveTab is not { } pane) return;
 
-        var count = pane.Selection.Count > 0
-            ? pane.Selection.Count
-            : pane.SelectedEntry is null ? 0 : 1;
+        var chosen = Chosen(pane);
 
-        if (count == 0) return;
+        if (chosen.Count == 0) return;
 
         _prompt = PromptMode.ConfirmTrash;
 
-        PromptLabel.Text = $"move {count} item(s) to {Naming.TheBin}?";
+        PromptLabel.Text = ViewModels.Confirmations.MoveToBin(chosen);
         PromptInput.IsVisible = false;
         PromptConfirm.Content = $"move to {Naming.TheBin}";
         PromptConfirm.IsVisible = true;

@@ -99,7 +99,11 @@ public sealed partial class PaneViewModel
         }
         catch (Exception ex)
         {
-            Status = $"could not create from template: {ex.Message}";
+            // The same sentence new file and new folder give. A template
+            // deleted out from under the menu is the common case, and "that
+            // file is not there any more" says it; System.IO makes the reader
+            // parse a path to learn the same thing.
+            Status = Failures.Describe(ex, "make that file");
         }
     }
 

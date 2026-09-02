@@ -186,7 +186,13 @@ public sealed partial class PaneViewModel
         }
         catch (Exception ex)
         {
-            Status = $"could not create file: {ex.Message}";
+            // **The status bar spoke .NET here and English one method up.** A
+            // refused create said "could not create file: Access to the path
+            // 'D:\x\New file.txt' is denied.", while NewFolderAsync — same
+            // file, same gesture, one key different — said "you do not have
+            // permission to". The plain sentence already existed; this was the
+            // one create that did not ask for it.
+            Status = Failures.Describe(ex, "make that file");
         }
     }
 
