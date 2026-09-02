@@ -324,10 +324,23 @@ public sealed class WindowsFileOperations : IFileOperations
                     // pack files read-only.
                     ClearReadOnlyTree(path);
 
-                    if (Directory.Exists(path)) Directory.Delete(path, recursive: true);
-                    else File.Delete(path);
+                    // **Per item, the way the copy engine already does it.**
+                    // One try wrapped the whole loop, so a single file open in
+                    // another program abandoned every remaining item in the
+                    // selection — and the message named the exception rather
+                    // than the file, so nobody could tell which one stopped it
+                    // or what had already gone.
+                    try
+                    {
+                        if (Directory.Exists(path)) Directory.Delete(path, recursive: true);
+                        else File.Delete(path);
 
-                    handle.ItemFinished();
+                        handle.ItemFinished();
+                    }
+                    catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+                    {
+                        handle.ItemFailed(path, ex);
+                    }
                 }
 
                 handle.Complete();
@@ -566,6 +579,28 @@ public sealed class WindowsFileOperations : IFileOperations
 
                 var unreadable = new List<(string Path, Exception Error)>();
                 var plan = BuildPlan(sources, destination, handle.Token, unreadable);
+
+                // **Asked before a byte moves.** A fifty-gigabyte copy onto a
+                // drive with room for thirty filled the disk and then failed
+                // somewhere in the middle, leaving a part-written tree and a
+                // machine with nothing left. Explorer refuses up front and says
+                // how much short it is.
+                //
+                // A move within one volume is exempt: it is a rename and needs
+                // no space at all.
+                if (!move || !SameVolume(sources, destination))
+                {
+                    var needed = plan.Sum(p => p.Length);
+
+                    if (FreeSpaceOn(destination) is { } free && needed > free)
+                    {
+                        handle.Failed(new IOException(
+                            $"there is not enough room on {PathRules.LeafName(destination)}: "
+                            + $"{ByteSize.Format(needed)} needed, {ByteSize.Format(free)} free"));
+
+                        return;
+                    }
+                }
 
                 handle.Begin(plan.Count, plan.Sum(p => p.Length));
 
@@ -855,6 +890,43 @@ public sealed class WindowsFileOperations : IFileOperations
         }
 
         return false;
+    }
+
+    /// <summary>
+    /// What is left on the volume a path lives on, or null when it cannot be
+    /// asked — a network share often cannot, and refusing a copy because the
+    /// question failed would be worse than trying it.
+    /// </summary>
+    private static long? FreeSpaceOn(string path)
+    {
+        try
+        {
+            var root = Path.GetPathRoot(Path.GetFullPath(path));
+
+            return root is { Length: > 0 } ? new DriveInfo(root).AvailableFreeSpace : null;
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException
+                                      or ArgumentException or NotSupportedException)
+        {
+            return null;
+        }
+    }
+
+    /// <summary>Whether every source is on the same volume as the destination,
+    /// in which case a move is a rename and costs no space.</summary>
+    private static bool SameVolume(IReadOnlyList<string> sources, string destination)
+    {
+        try
+        {
+            var target = Path.GetPathRoot(Path.GetFullPath(destination));
+
+            return sources.All(s => string.Equals(
+                Path.GetPathRoot(Path.GetFullPath(s)), target, PathRules.Comparison));
+        }
+        catch (Exception ex) when (ex is IOException or ArgumentException or NotSupportedException)
+        {
+            return false;
+        }
     }
 
     private static bool IsLink(string path)

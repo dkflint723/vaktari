@@ -47,11 +47,29 @@ public sealed class LinuxFileOperations : IFileOperations
                     await handle.WaitIfPausedAsync().ConfigureAwait(false);
 
                     handle.ItemStarted(path);
-                    var name = XdgTrash.Trash(path);
-                    restored.Add((name, path));
-                    handle.ItemFinished();
+
+                    // **Per item.** One try wrapped the whole loop, so a single
+                    // file the user could not write abandoned every remaining
+                    // item in the selection, and the message named the
+                    // exception rather than the file.
+                    try
+                    {
+                        var name = XdgTrash.Trash(path);
+
+                        restored.Add((name, path));
+                        handle.ItemFinished();
+                    }
+                    catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+                    {
+                        handle.ItemFailed(path, ex);
+                    }
                 }
 
+                // **Whatever did reach the bin is undoable**, even when
+                // something else did not. Recorded outside the loop but
+                // unconditionally on what succeeded: the old code only got here
+                // if every single item went, so one failure lost the undo for
+                // all the rest as well.
                 if (restored.Count > 0)
                     Remember(new UndoTrash(restored));
 
@@ -85,10 +103,20 @@ public sealed class LinuxFileOperations : IFileOperations
 
                     handle.ItemStarted(path);
 
-                    if (Directory.Exists(path)) Directory.Delete(path, recursive: true);
-                    else File.Delete(path);
+                    // Per item, for the same reason as the trash above: a
+                    // permanent delete that stops at the first refusal, without
+                    // naming it, leaves the user with no idea what went.
+                    try
+                    {
+                        if (Directory.Exists(path)) Directory.Delete(path, recursive: true);
+                        else File.Delete(path);
 
-                    handle.ItemFinished();
+                        handle.ItemFinished();
+                    }
+                    catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+                    {
+                        handle.ItemFailed(path, ex);
+                    }
                 }
 
                 handle.Complete();
@@ -199,6 +227,24 @@ public sealed class LinuxFileOperations : IFileOperations
 
                 var unreadable = new List<(string Path, Exception Error)>();
                 var plan = BuildPlan(sources, destination, handle.Token, unreadable);
+
+                // Asked before a byte moves, the same as the Windows twin: a
+                // copy that fills the disk and then fails leaves a part-written
+                // tree and a machine with nothing left. A move within one
+                // volume is exempt, being a rename.
+                if (!move || !SameVolume(sources, destination))
+                {
+                    var needed = plan.Sum(p => p.Length);
+
+                    if (FreeSpaceOn(destination) is { } free && needed > free)
+                    {
+                        handle.Failed(new IOException(
+                            $"there is not enough room on {PathRules.LeafName(destination)}: "
+                            + $"{ByteSize.Format(needed)} needed, {ByteSize.Format(free)} free"));
+
+                        return;
+                    }
+                }
 
                 handle.Begin(plan.Count, plan.Sum(p => p.Length));
 
@@ -652,6 +698,46 @@ public sealed class LinuxFileOperations : IFileOperations
         }
 
         return false;
+    }
+
+    /// <summary>
+    /// What is left on the filesystem a path lives on, or null when it cannot
+    /// be asked — a network mount often cannot, and refusing a copy because the
+    /// question failed would be worse than trying it.
+    /// </summary>
+    private static long? FreeSpaceOn(string path)
+    {
+        try
+        {
+            return new DriveInfo(Path.GetFullPath(path)).AvailableFreeSpace;
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException
+                                      or ArgumentException or NotSupportedException)
+        {
+            return null;
+        }
+    }
+
+    /// <summary>
+    /// Whether every source is on the same filesystem as the destination, in
+    /// which case a move is a rename and costs no space.
+    ///
+    /// By mount point rather than by device: DriveInfo.Name on Linux is the
+    /// mount point, which is exactly the boundary a rename cannot cross.
+    /// </summary>
+    private static bool SameVolume(IReadOnlyList<string> sources, string destination)
+    {
+        try
+        {
+            var target = new DriveInfo(Path.GetFullPath(destination)).Name;
+
+            return sources.All(s =>
+                string.Equals(new DriveInfo(Path.GetFullPath(s)).Name, target, StringComparison.Ordinal));
+        }
+        catch (Exception ex) when (ex is IOException or ArgumentException or NotSupportedException)
+        {
+            return false;
+        }
     }
 
     private static string Redirect(string target, List<(string From, string To)> redirects)
