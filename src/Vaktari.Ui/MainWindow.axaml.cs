@@ -710,16 +710,19 @@ public partial class MainWindow : Window
                 return;
             }
 
-            if (FolderRowAt(e.Source) is { } folder)
-            {
-                _shell.OpenInNewTab(folder);
-                e.Handled = true;
-                return;
-            }
-
             // Anywhere else it means nothing, and is left alone rather than
             // swallowed — a middle click on the listing background is how some
             // desktops paste.
+        }
+
+        // The sidebar, the crumbs and the folder rows, by middle click and — on
+        // the two that are not selectable — by Ctrl+click. Behind the current
+        // tab, because that is what the gesture means.
+        if (NewTabTarget(e.Source, properties.PointerUpdateKind, e.KeyModifiers) is { } opening)
+        {
+            _shell.OpenBehind(opening);
+            e.Handled = true;
+            return;
         }
 
         // A click on empty listing space gives the LIST keyboard focus.
@@ -1589,6 +1592,87 @@ public partial class MainWindow : Window
         }
 
         return null;
+    }
+
+    /// <summary>
+    /// The sidebar row under the pointer, whatever it names.
+    ///
+    /// **Not <see cref="PlaceAt"/>, which answers a DROP.** That one refuses a
+    /// virtual path, because the bin and the two recent listings are not
+    /// folders anything can be copied into, and it refuses a share that is not
+    /// mounted. Opening is the other question: the row's own menu offers "Open
+    /// in new tab" on every row it draws, and a gesture that answers fewer rows
+    /// than the menu beside it reads as broken rather than as careful.
+    /// </summary>
+    private static string? PlaceRowAt(object? source)
+    {
+        for (var visual = source as Visual; visual is not null;
+             visual = visual.GetVisualParent())
+        {
+            if (visual is Control { DataContext: PlaceItemViewModel { Path.Length: > 0 } place })
+                return place.Path;
+        }
+
+        return null;
+    }
+
+    /// <summary>
+    /// The crumb under the pointer, virtual ones included — This PC is somewhere
+    /// you can be even though it is nowhere a file can land, which is the only
+    /// reason <see cref="CrumbAt"/> refuses it.
+    /// </summary>
+    private static string? CrumbRowAt(object? source)
+    {
+        for (var visual = source as Visual; visual is not null;
+             visual = visual.GetVisualParent())
+        {
+            if (visual is Control { DataContext: PathSegment { FullPath.Length: > 0 } crumb })
+                return crumb.FullPath;
+        }
+
+        return null;
+    }
+
+    /// <summary>
+    /// The folder a press asks for in a NEW tab, or null when it asks for
+    /// nothing of the kind.
+    ///
+    /// **A sidebar place and a breadcrumb answered neither gesture.** Middle
+    /// click reached only the tab strip and a folder row, and a Button ignores
+    /// a middle press altogether — so middle-clicking Documents in the sidebar,
+    /// or an ancestor in the path bar, did nothing at all, while the row's own
+    /// right-click menu offered "Open in new tab" and the F1 sheet advertised
+    /// the middle button. Both references open a tab from both.
+    ///
+    /// Ctrl+click is offered on the sidebar and the crumbs only. In the listing
+    /// that gesture already means "add this row to the selection", and taking
+    /// it would break the most-used modifier in the application to add a second
+    /// way of doing something the middle button already does.
+    ///
+    /// Place, then crumb, then folder row — the same order
+    /// <c>DropTarget.Explicit</c> reads them in, and the order the pointer is
+    /// physically over them in.
+    /// </summary>
+    private static string? NewTabTarget(
+        object? source, PointerUpdateKind kind, KeyModifiers modifiers)
+    {
+        var middle = kind is PointerUpdateKind.MiddleButtonPressed;
+
+        // Ctrl+middle is the pane-scale reset and keeps its own meaning. The
+        // handler returns on it long before this; saying so here is what lets
+        // the rule be read and tested on its own.
+        if (middle && modifiers.HasFlag(KeyModifiers.Control)) return null;
+
+        var ctrlLeft = kind is PointerUpdateKind.LeftButtonPressed
+                       && modifiers == KeyModifiers.Control;
+
+        if (!middle && !ctrlLeft) return null;
+
+        if (PlaceRowAt(source) is { } place) return place;
+        if (CrumbRowAt(source) is { } crumb) return crumb;
+
+        // The listing keeps Ctrl+click for extending a selection.
+        return middle ? FolderRowAt(source) : null;
     }
 
     /// <summary>The folder row under the pointer, if the drop should go into it

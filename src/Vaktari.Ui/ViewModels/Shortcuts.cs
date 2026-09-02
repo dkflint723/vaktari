@@ -52,6 +52,11 @@ public static class Shortcuts
             new("Ctrl+Shift+Tab", "Previous tab"),
             new("Middle click a tab", "Close it"),
             new("Middle click a folder", "Open it in a new tab"),
+            // The sheet promised the middle button on folders and the sidebar's
+            // own menu offered "Open in new tab" on every place — while the
+            // gesture reached neither a place nor a crumb.
+            new("Middle click a place or crumb", "Open it in a new tab"),
+            new("Ctrl+click a place or crumb", "Open it in a new tab"),
             new("F3", "Split the window"),
             new("F11", "Details panel"),
             new("Ctrl+B", "Sidebar"),

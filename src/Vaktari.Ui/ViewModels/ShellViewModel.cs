@@ -1775,6 +1775,25 @@ public sealed partial class ShellViewModel : ObservableObject, IDisposable
     /// repeatedly opening the same place from elsewhere does not stack up
     /// identical tabs.
     /// </summary>
+    /// <summary>
+    /// Opens a folder in a tab BEHIND the current one, which is what the middle
+    /// button means everywhere it works.
+    ///
+    /// **Separate from the overload below on purpose.** That one is the
+    /// desktop's handover — a second launch forwarded into this window — where
+    /// reusing an existing tab and jumping to it is right, because somebody
+    /// asked the desktop to show them that folder now. A middle click is the
+    /// opposite intention: it says "keep this open too, I am not finished
+    /// here", and answering it by moving you somewhere else, or by silently
+    /// doing nothing because a tab is already there, is the gesture failing.
+    /// </summary>
+    public void OpenBehind(string path)
+    {
+        if (string.IsNullOrWhiteSpace(path)) return;
+
+        ActiveGroup.AddTab(path, like: ActiveTab, activate: false);
+    }
+
     public void OpenInNewTab(string path)
     {
         if (string.IsNullOrWhiteSpace(path)) return;
