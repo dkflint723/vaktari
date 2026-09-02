@@ -64,7 +64,7 @@
     <Border DockPanel.Dock="Bottom" Margin="0,12,0,0">
       <DockPanel>
         <StackPanel DockPanel.Dock="Right" Orientation="Horizontal" Spacing="8">
-          <Button Content="Cancel" Padding="14,4" Command="{Binding CancelCommand}"/>
+          <Button Content="Cancel" Padding="14,4" IsCancel="True" Command="{Binding CancelCommand}"/>
           <Button Content="Rename" Padding="14,4"
                   IsEnabled="{Binding CanApply}" Command="{Binding ApplyCommand}"/>
         </StackPanel>

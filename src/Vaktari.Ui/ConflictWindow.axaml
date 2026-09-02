@@ -58,7 +58,7 @@
          click lands. Keep both is what the application did unasked until now,
          and stays the default. -->
     <StackPanel Orientation="Horizontal" Spacing="8" HorizontalAlignment="Right">
-      <Button Content="Cancel" Padding="14,5"
+      <Button Content="Cancel" Padding="14,5" IsCancel="True"
               Command="{Binding CancelCommand}"/>
       <Button Content="Overwrite" Padding="14,5"
               Command="{Binding OverwriteCommand}"/>

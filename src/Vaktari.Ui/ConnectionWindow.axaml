@@ -26,7 +26,7 @@
           <Button Content="Disconnect" Padding="12,4"
                   IsVisible="{Binding CanDisconnect}"
                   Command="{Binding DisconnectCommand}"/>
-          <Button Content="Close" Padding="12,4" Command="{Binding CloseCommand}"/>
+          <Button Content="Close" Padding="12,4" IsCancel="True" Command="{Binding CloseCommand}"/>
         </StackPanel>
         <TextBlock Text="{Binding Status}" VerticalAlignment="Center"
                    TextWrapping="Wrap"
