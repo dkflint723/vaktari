@@ -98,6 +98,14 @@ public sealed partial class PaneViewModel
         try
         {
             Directory.CreateDirectory(target);
+
+            // **Undoable, which it was not.** Ctrl+Z straight after
+            // Ctrl+Shift+N did nothing at all, because a create writes to the
+            // filesystem without passing through the copy engine and the undo
+            // history never heard about it. The undo puts the new folder in the
+            // bin, so nothing is destroyed.
+            _ops?.RecordCreation(target);
+
             await RefreshAsync().ConfigureAwait(true);
 
             // Straight into rename — the same hand-off NewFromTemplateAsync has
@@ -168,6 +176,9 @@ public sealed partial class PaneViewModel
                     | UnixFileMode.GroupRead | UnixFileMode.GroupExecute
                     | UnixFileMode.OtherRead | UnixFileMode.OtherExecute);
             }
+
+            // Undoable, the same way a new folder is: into the bin.
+            _ops?.RecordCreation(unique);
 
             await RefreshAsync().ConfigureAwait(true);
 

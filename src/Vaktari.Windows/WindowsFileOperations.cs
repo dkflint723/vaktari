@@ -472,6 +472,11 @@ public sealed class WindowsFileOperations : IFileOperations
     /// would move a file that has since been renamed, or put back something
     /// that was overwritten in the meantime.
     /// </summary>
+    public void RecordCreation(string path)
+    {
+        if (path.Length > 0) Remember(new UndoCreate(Trash, path));
+    }
+
     private void Remember(IUndoable action)
     {
         _redo.Clear();
@@ -765,10 +770,23 @@ public sealed class WindowsFileOperations : IFileOperations
                             Directory.Delete(directory);
                 }
 
-                // Copies are not undoable: undoing one means deleting files,
-                // and an undo that deletes is not a safe default.
-                if (move && landings.Count > 0)
+                if (landings.Count == 0)
+                {
+                    // nothing landed, nothing to take back
+                }
+                else if (move)
+                {
                     Remember(new UndoMove(landings));
+                }
+                else
+                {
+                    // **Undoable now, into the bin.** The old note here said a
+                    // copy could not be undone because undoing one means
+                    // deleting files. True, and the bin is the answer: nothing
+                    // is destroyed, and pasting into the wrong folder stops
+                    // being a mistake you have to clean up by hand.
+                    Remember(new UndoCopy(Trash, landings.Select(l => l.Target).ToList()));
+                }
 
                 handle.Complete();
             }
@@ -1114,6 +1132,67 @@ public sealed class WindowsFileOperations : IFileOperations
     private interface IUndoable
     {
         ValueTask<IUndoable?> UndoAsync(CancellationToken ct);
+    }
+
+
+    /// <summary>
+    /// Undoing a copy, by sending what arrived to the bin.
+    ///
+    /// **Copies were not undoable at all**, and the reason given was a good
+    /// one: undoing a copy means removing files, and an undo that deletes is
+    /// not a safe default. Pasting into the wrong folder is one of the easiest
+    /// mistakes a file manager lets you make, though, and Ctrl+Z doing nothing
+    /// at all is its own kind of unsafe — the files stay where they should not
+    /// be, and the person has to find and remove them by hand.
+    ///
+    /// The bin is what settles it. Explorer undoes a copy the same way, and
+    /// nothing is destroyed: what the undo takes away is sitting in the bin,
+    /// recoverable, exactly like anything else deleted from the listing.
+    ///
+    /// Only what this operation actually created, and only if it is still
+    /// there — a copy that landed on top of something the user then edited is
+    /// not this operation's to remove.
+    /// </summary>
+    private sealed class UndoCopy(
+        Func<IReadOnlyList<string>, IOperationHandle> trash,
+        IReadOnlyList<string> landed) : IUndoable
+    {
+        public async ValueTask<IUndoable?> UndoAsync(CancellationToken ct)
+        {
+            var here = landed
+                .Where(path => File.Exists(path) || Directory.Exists(path))
+                .ToList();
+
+            if (here.Count == 0) return null;
+
+            await trash(here).Completion.ConfigureAwait(false);
+
+            // No redo. Copying again would be a new act against sources that
+            // may have moved on, and the honest way back is the bin.
+            return null;
+        }
+    }
+
+    /// <summary>
+    /// Undoing the creation of a folder, a file or a template, the same way —
+    /// into the bin.
+    ///
+    /// New folder, new file and new-from-template all went straight to the
+    /// filesystem without passing through this layer, so none of them could be
+    /// taken back: Ctrl+Z immediately after Ctrl+Shift+N did nothing.
+    /// </summary>
+    private sealed class UndoCreate(
+        Func<IReadOnlyList<string>, IOperationHandle> trash,
+        string created) : IUndoable
+    {
+        public async ValueTask<IUndoable?> UndoAsync(CancellationToken ct)
+        {
+            if (!File.Exists(created) && !Directory.Exists(created)) return null;
+
+            await trash([created]).Completion.ConfigureAwait(false);
+
+            return null;
+        }
     }
 
     private sealed class UndoRename(string current, string original) : IUndoable

@@ -89,6 +89,10 @@ public sealed partial class PaneViewModel
             }
 
             await Task.Run(() => File.Copy(template.Path, unique)).ConfigureAwait(true);
+
+            // Undoable, the same way new folder and new file are: into the bin.
+            _ops.RecordCreation(unique);
+
             await RefreshAsync().ConfigureAwait(true);
 
             BeginRenameOf(unique);

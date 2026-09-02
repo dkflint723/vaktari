@@ -92,6 +92,17 @@ public interface IFileOperations
 
     ValueTask RenameAsync(string path, string newName, CancellationToken ct);
 
+    /// <summary>
+    /// Makes something that was just created undoable.
+    ///
+    /// New folder, new file and new-from-template write straight to the
+    /// filesystem rather than through a copy or a move, so the undo history
+    /// never heard about them and Ctrl+Z right after Ctrl+Shift+N did nothing.
+    /// The undo puts the new item in the bin, which is recoverable and is what
+    /// Explorer does.
+    /// </summary>
+    void RecordCreation(string path);
+
     bool CanUndo { get; }
     ValueTask UndoAsync(CancellationToken ct);
 

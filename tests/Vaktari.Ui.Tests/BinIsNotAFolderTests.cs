@@ -63,6 +63,8 @@ public sealed class BinIsNotAFolderTests
             throw new InvalidOperationException("rename reached the file system");
         }
 
+        public void RecordCreation(string path) => Calls.Add($"record: {path}");
+
         public bool CanUndo => false;
         public bool CanRedo => false;
         public ValueTask RedoAsync(CancellationToken ct) => ValueTask.CompletedTask;
