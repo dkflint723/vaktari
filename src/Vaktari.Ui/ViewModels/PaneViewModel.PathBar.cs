@@ -51,6 +51,13 @@ public sealed partial class PaneViewModel
     [RelayCommand]
     public void BeginEditPath()
     {
+        // **Pressing it twice wiped what had been typed.** Ctrl+L, Alt+D and a
+        // double-click on the bar all land here, and the second one reset the
+        // box to the folder you are in — so half a typed path went, silently,
+        // for a keystroke whose meaning is "put me in the address bar", which
+        // is where you already were. Both references just leave the text.
+        if (IsPathEditing) return;
+
         _completer.Reset();
 
         PathText = CurrentPath;

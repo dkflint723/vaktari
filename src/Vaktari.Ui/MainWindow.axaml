@@ -2298,7 +2298,7 @@
               </DockPanel>
 
               <!-- An empty listing looked identical to one still loading. -->
-              <TextBlock Text="this folder is empty"
+              <TextBlock Text="{Binding EmptyText}"
                          IsVisible="{Binding IsEmpty}" IsHitTestVisible="False"
                          HorizontalAlignment="Center" VerticalAlignment="Center"
                          FontSize="{DynamicResource FontSizeBase}"

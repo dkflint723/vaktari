@@ -1145,6 +1145,25 @@ public sealed partial class PaneViewModel : ObservableObject, IDisposable
         && string.IsNullOrWhiteSpace(FilterText);
 
     /// <summary>
+    /// What an empty listing says.
+    ///
+    /// **"This folder is empty" was printed over the bin, over Recent and over
+    /// This PC**, none of which is a folder. In the bin it is worse than
+    /// clumsy: "this folder is empty" over an empty bin invites the reading
+    /// that a folder somewhere has lost its contents, when what it means is
+    /// that nothing has been deleted lately. Dolphin says "Trash is empty";
+    /// Explorer never calls This PC a folder at all.
+    /// </summary>
+    public string EmptyText => CurrentPath switch
+    {
+        VirtualPaths.Trash    => $"{Vaktari.Core.Naming.TheBin} is empty",
+        VirtualPaths.Computer => "no drives found",
+        VirtualPaths.Files    => "no files opened lately",
+        VirtualPaths.Locations => "no folders visited lately",
+        _ => "this folder is empty",
+    };
+
+    /// <summary>
     /// **"This folder is empty" over a folder full of files reads as data
     /// loss.** Typing a filter that matched nothing printed exactly that, and
     /// the way out — clear the filter — was the one thing the message gave no
@@ -1975,6 +1994,7 @@ public sealed partial class PaneViewModel : ObservableObject, IDisposable
             OnPropertyChanged(nameof(IsRecentListing));
             OnPropertyChanged(nameof(IsTrashListing));
             OnPropertyChanged(nameof(DisplayPath));
+            OnPropertyChanged(nameof(EmptyText));
             OnPropertyChanged(nameof(Terminals));
             OnPropertyChanged(nameof(HasSeveralTerminals));
             OnPropertyChanged(nameof(CanActOnSelection));
