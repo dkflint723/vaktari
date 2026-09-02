@@ -628,7 +628,12 @@
               </Style>
             </ScrollViewer.Styles>
           <StackPanel Orientation="Horizontal">
+          <!-- Tabs take drops. A cross-tab move otherwise needs the split
+               view, which means opening the other side just to move one file;
+               and resting on a tab for a moment switches to it, so a drag can
+               reach a folder that is not on screen. Both references do each. -->
           <TabStrip ItemsSource="{Binding Tabs}" SelectedItem="{Binding ActiveTab}"
+                    DragDrop.AllowDrop="True"
                     SelectionChanged="OnTabStripSelectionChanged">
             <TabStrip.Styles>
               <!-- The active tab takes the *content* colour, so it reads as

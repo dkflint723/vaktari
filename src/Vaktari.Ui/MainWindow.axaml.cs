@@ -2143,6 +2143,50 @@ public partial class MainWindow : Window
         _bandList = null;
     }
 
+    private PaneViewModel? _hoverTab;
+    private DispatcherTimer? _hoverSwitch;
+
+    /// <summary>
+    /// Switches to a tab the pointer has rested on while dragging.
+    ///
+    /// **A file could not be dragged into another tab at all.** The only way
+    /// across was the split view — open the other side, drag, close it again —
+    /// for a move that both references do by hovering. Without the switch the
+    /// drop would also be blind: the destination would be a folder you cannot
+    /// see, which is not a thing to ask anyone to aim at.
+    ///
+    /// Six hundred milliseconds: long enough that dragging ACROSS the strip to
+    /// reach the listing does not shuffle through every tab on the way, short
+    /// enough not to feel stuck.
+    /// </summary>
+    private void HoverTab(PaneViewModel? tab)
+    {
+        if (ReferenceEquals(tab, _hoverTab)) return;
+
+        _hoverTab = tab;
+        _hoverSwitch?.Stop();
+        _hoverSwitch = null;
+
+        if (tab is null) return;
+
+        _hoverSwitch = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(600) };
+        _hoverSwitch.Tick += (_, _) =>
+        {
+            _hoverSwitch?.Stop();
+            _hoverSwitch = null;
+
+            // Read again rather than captured: the pointer may have moved on
+            // between the tick being queued and it running.
+            if (_hoverTab is not { } want) return;
+
+            foreach (var group in new[] { _shell.Left, _shell.Right })
+                if (group is not null && group.Tabs.Contains(want))
+                    group.ActiveTab = want;
+        };
+
+        _hoverSwitch.Start();
+    }
+
     private static ScrollViewer? Scroller(Visual root)
     {
         foreach (var child in root.GetVisualChildren())
@@ -2271,6 +2315,10 @@ public partial class MainWindow : Window
         // The sidebar first: a place row has no pane above it, so asking for
         // one would refuse the drop before the place was ever considered.
         var spot = TargetAt(e.Source);
+
+        // Before the refusal below: a tab strip is not a pane and not a place,
+        // so a drag resting on it would be refused and never counted as a hover.
+        HoverTab(TabAt(e.Source));
 
         if (!spot.Exists)
         {
@@ -2517,6 +2565,7 @@ public partial class MainWindow : Window
     {
         HighlightDropTarget(null);
         StopDragScroll();
+        HoverTab(null);
     }
 
     /// <summary>
@@ -2554,6 +2603,7 @@ public partial class MainWindow : Window
     {
         HighlightDropTarget(null);
         StopDragScroll();
+        HoverTab(null);
 
         // **The bin takes drops.** Its row is AllowDrop with a comment about
         // taking them "the way the tree and Quick access do in Explorer", and
