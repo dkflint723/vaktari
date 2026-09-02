@@ -2677,6 +2677,15 @@
                                             IsEnabled="{Binding CanClickEject}"
                                             Command="{Binding $parent[Window].((vm:ShellViewModel)DataContext).EjectPlaceCommand}"
                                             CommandParameter="{Binding}"/>
+                                  <!-- **Emptying the bin was reachable only from
+                                       inside the bin.** The command was bound in
+                                       one place, the band that appears once you
+                                       have navigated in — so the gesture both
+                                       references offer on the icon itself meant
+                                       going there first. -->
+                                  <MenuItem Header="{Binding $parent[Window].((vm:ShellViewModel)DataContext).EmptyBinLabel}"
+                                            IsVisible="{Binding IsBin}"
+                                            Command="{Binding $parent[Window].((vm:ShellViewModel)DataContext).EmptyTrashCommand}"/>
                                   <MenuItem Header="Remove from places"
                                             IsVisible="{Binding IsUserPinned}"
                                             Command="{Binding $parent[Window].((vm:ShellViewModel)DataContext).RemovePlaceCommand}"

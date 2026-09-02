@@ -515,6 +515,20 @@ public sealed partial class PlaceItemViewModel(Place place) : ObservableObject
     public bool IsAvailable { get; } = place.IsAvailable;
 
     /// <summary>
+    /// Whether this row IS the bin.
+    ///
+    /// **Emptying it was reachable only from inside it.** EmptyTrashCommand was
+    /// bound in exactly one place in the whole application — the button band
+    /// that appears once you have already navigated into the bin — so the
+    /// gesture everybody else offers on the icon itself required going there
+    /// first. Both references empty it from the row.
+    ///
+    /// PathRules.Same rather than ==, which is the comparison the drop walker
+    /// already uses for the same question.
+    /// </summary>
+    public bool IsBin { get; } = PathRules.Same(place.Path, VirtualPaths.Trash);
+
+    /// <summary>
     /// Whether the user put this here, and so whether they can take it away.
     ///
     /// **Nothing in the interface could remove a place.** Both platform

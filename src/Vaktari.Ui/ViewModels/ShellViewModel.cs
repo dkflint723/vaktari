@@ -1117,6 +1117,10 @@ public sealed partial class ShellViewModel : ObservableObject, IDisposable
     [RelayCommand]
     private void EmptyTrash() => EmptyTrashRequested?.Invoke(this, EventArgs.Empty);
 
+    /// <summary>"Empty the Recycle Bin" or "Empty the bin", named the way the
+    /// platform names it, as every other reference to it here is.</summary>
+    public string EmptyBinLabel => $"Empty {Core.Naming.TheBin}";
+
     /// <summary>
     /// Status bar visibility, straight off the preferences. Re-raised rather
     /// than stored, so there is one source of truth and no copy to fall out of
