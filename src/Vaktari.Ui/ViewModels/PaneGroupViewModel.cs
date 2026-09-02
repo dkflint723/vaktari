@@ -487,9 +487,16 @@ public sealed partial class PaneGroupViewModel : ObservableObject
         // state away — where it was, its history, its view — so Ctrl+Shift+T
         // had nothing to put back, and a tab closed by accident was gone.
         // Bounded, because this is a convenience and not a second session file.
-        _closed.Push(pane.ToTabState());
+        _closed.AddFirst(pane.ToTabState());
 
-        while (_closed.Count > 10) _closed.Pop();
+        // **The bound threw away the wrong end.** A Stack pops its TOP, which is
+        // the tab just closed — so once ten had been closed, the eleventh was
+        // pushed and immediately discarded, and every close after that was
+        // forgotten the instant it happened. Ctrl+Shift+T then put back the
+        // tenth-oldest closed tab, and the case the feature exists for — the
+        // tab you have just shut by accident — was the one case it could not
+        // do. The oldest is what a bounded history drops.
+        while (_closed.Count > 10) _closed.RemoveLast();
 
         Tabs.Remove(pane);
         pane.Dispose();
@@ -498,8 +505,9 @@ public sealed partial class PaneGroupViewModel : ObservableObject
             ActiveTab = Tabs[Math.Clamp(index, 0, Tabs.Count - 1)];
     }
 
-    /// <summary>The tabs closed here, most recent first.</summary>
-    private readonly Stack<TabState> _closed = new();
+    /// <summary>The tabs closed here, most recent first. A list rather than a
+    /// Stack so the bound can drop the OLDEST — see CloseTab.</summary>
+    private readonly LinkedList<TabState> _closed = new();
 
     public bool CanReopenTab => _closed.Count > 0;
 
@@ -512,7 +520,9 @@ public sealed partial class PaneGroupViewModel : ObservableObject
     {
         if (_closed.Count == 0) return null;
 
-        var pane = AddRestoredTab(_closed.Pop());
+        var pane = AddRestoredTab(_closed.First!.Value);
+
+        _closed.RemoveFirst();
 
         ActiveTab = pane;
         pane.RefreshIfUnloaded();

@@ -82,6 +82,61 @@ public sealed class CloseTabTests : OwnedViewModels
         Assert.Equal(0, asked);
     }
 
+    /// <summary>
+    /// **The bounded reopen history threw away the wrong end.** It was a Stack
+    /// trimmed with Pop, and Pop takes the TOP — the tab just closed. So after
+    /// ten closes the eleventh was pushed and discarded in the same breath, and
+    /// every close after that was forgotten the instant it happened. Ctrl+Shift+T
+    /// then put back the tenth-oldest closed tab, so the one case the feature
+    /// exists for, the tab you have just shut by accident, was the one case it
+    /// could not do.
+    ///
+    /// Twelve closes, because the bound is ten and the fault only shows past it.
+    /// </summary>
+    [AvaloniaFact]
+    public void Reopen_puts_back_the_last_tab_closed_even_past_the_bound()
+    {
+        var shell = Shell();
+        var group = shell.Left;
+
+        // Twelve tabs with names of their own, closed newest-last, so the one
+        // reopened says which it was.
+        for (var i = 0; i < 12; i++)
+            group.AddTab(Path.Combine(Path.GetTempPath(), "folder" + i));
+
+        for (var i = 0; i < 12; i++)
+            group.CloseTab(group.Tabs.First(t => t.CurrentPath.EndsWith("folder" + i, StringComparison.Ordinal)));
+
+        var back = group.ReopenClosedTab();
+
+        Assert.NotNull(back);
+        Assert.EndsWith("folder11", back!.CurrentPath);
+    }
+
+    /// <summary>Still bounded: a history that grew without limit would hold a
+    /// pane's whole state for every tab ever closed.</summary>
+    [AvaloniaFact]
+    public void The_reopen_history_stays_bounded()
+    {
+        var shell = Shell();
+        var group = shell.Left;
+
+        for (var i = 0; i < 14; i++)
+            group.AddTab(Path.Combine(Path.GetTempPath(), "folder" + i));
+
+        for (var i = 0; i < 14; i++)
+            group.CloseTab(group.Tabs.First(t => t.CurrentPath.EndsWith("folder" + i, StringComparison.Ordinal)));
+
+        var reopened = 0;
+        while (group.CanReopenTab && reopened < 40)
+        {
+            group.ReopenClosedTab();
+            reopened++;
+        }
+
+        Assert.Equal(10, reopened);
+    }
+
     [AvaloniaFact]
     public void Quitting_asks_the_window_to_close()
     {
