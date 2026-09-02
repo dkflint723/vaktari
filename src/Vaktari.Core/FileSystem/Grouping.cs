@@ -65,11 +65,18 @@ public static class Grouping
         }
     }
 
+    /// <summary>
+    /// **An accented name was banded under '#'.** "Écoles" and "Über" went into
+    /// the same band as ".gitignore" and "2024-report", because the test was
+    /// IsAsciiLetter on the raw first character — so a European folder scattered
+    /// its own names into the catch-all while the alphabet above them was full
+    /// of gaps. Folded, they band under E and U, where the sort now puts them.
+    /// </summary>
     private static char NameRank(string name)
     {
         if (name.Length == 0) return '#';
 
-        var first = char.ToUpperInvariant(name[0]);
+        var first = LatinFolding.FoldUpper(name[0]);
         return char.IsAsciiLetter(first) ? first : '#';
     }
 
@@ -111,7 +118,9 @@ public static class Grouping
     {
         if (name.Length == 0) return "#";
 
-        var first = char.ToUpperInvariant(name[0]);
+        // The band a name sorts into, so the heading and the order agree. See
+        // NameRank.
+        var first = LatinFolding.FoldUpper(name[0]);
         return char.IsAsciiLetter(first) ? first.ToString() : "#";
     }
 
