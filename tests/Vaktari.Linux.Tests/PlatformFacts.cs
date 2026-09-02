@@ -22,3 +22,13 @@ public sealed class PosixFactAttribute : FactAttribute
             Skip = "Needs a real POSIX filesystem; runs on Linux only.";
     }
 }
+
+/// <inheritdoc cref="PosixFactAttribute"/>
+public sealed class PosixTheoryAttribute : TheoryAttribute
+{
+    public PosixTheoryAttribute()
+    {
+        if (!OperatingSystem.IsLinux())
+            Skip = "Needs a real POSIX filesystem; runs on Linux only.";
+    }
+}

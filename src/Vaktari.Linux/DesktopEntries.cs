@@ -57,16 +57,53 @@ public static class DesktopEntries
     /// </summary>
     private static readonly SemaphoreSlim Sniffs = new(4, 4);
 
-    public static string QueryMimeType(string path)
+    /// <summary>
+    /// A budget of its own for the sniffs a person is waiting on.
+    ///
+    /// **Sharing the row-icon budget is what made "Open with" disappear.**
+    /// Sniffs is spent by the row icons from the thread pool, four at a time
+    /// and up to two seconds each — so a menu asking Wait(0) at the wrong
+    /// instant got nothing, and nothing meant ForFile returned an empty list
+    /// and the submenu was not drawn at all. Intermittently, which is the worst
+    /// way for a menu to be missing.
+    ///
+    /// Waiting on the same semaphore would not fix it: permits are handed out
+    /// unordered, so behind a queue of background spawns any bounded wait times
+    /// out just as often. The interactive callers get permits nobody else can
+    /// take. Two, because there is one selection and one properties dialog.
+    /// </summary>
+    private static readonly SemaphoreSlim AskedFor = new(2, 2);
+
+    /// <summary>
+    /// How long an interactive caller waits for one of its own two permits.
+    /// Long enough to outlast a stuck xdg-mime, which self-kills at two
+    /// seconds, and short enough that arrow-keying through extensionless files
+    /// cannot park threads indefinitely.
+    /// </summary>
+    private const int InteractiveWaitMs = 2500;
+
+    /// <summary>Background callers — the row icons. One try, never a wait.</summary>
+    public static string QueryMimeType(string path) => QueryMimeType(path, waiting: false);
+
+    /// <summary>
+    /// <paramref name="waiting"/> is true for a caller a person is sitting in
+    /// front of: the context menu, and the properties dialog. Those spend their
+    /// own budget and are willing to wait for it.
+    /// </summary>
+    internal static string QueryMimeType(string path, bool waiting)
     {
         if (MimeCache.TryGetValue(path, out var cached)) return cached;
 
-        // Try-acquire, never wait. A thread that blocks here is a pool thread
-        // taken out of circulation, which is the whole failure being fixed —
-        // so when the budget is spent we return "" and the row shows a generic
-        // icon. Deliberately NOT cached: the next pass over that row sniffs it
-        // properly, so the listing converges instead of freezing.
-        if (!Sniffs.Wait(0)) return "";
+        if (SniffOverride is { } stub) return stub(path, waiting);
+
+        // Background: try-acquire, never wait. A thread that blocks here is a
+        // pool thread taken out of circulation, which is the whole failure this
+        // budget exists for — so when it is spent we return "" and the row
+        // shows a generic icon. Deliberately NOT cached: the next pass over
+        // that row sniffs it properly, so the listing converges.
+        var budget = waiting ? AskedFor : Sniffs;
+
+        if (!budget.Wait(waiting ? InteractiveWaitMs : 0)) return "";
 
         try
         {
@@ -112,7 +149,7 @@ public static class DesktopEntries
         }
         finally
         {
-            Sniffs.Release();
+            budget.Release();
         }
     }
 
@@ -130,9 +167,29 @@ public static class DesktopEntries
         return mime;
     }
 
+    /// <summary>
+    /// Stands in for the sniff, and records which budget was asked against.
+    ///
+    /// The states worth testing — the budget spent, and a background caller
+    /// that must never wait — cannot be arranged from outside: they need four
+    /// other threads sniffing at the instant of the call. Null in the
+    /// application.
+    /// </summary>
+    internal static Func<string, bool, string>? SniffOverride { get; set; }
+
     public static IReadOnlyList<LaunchOption> ForFile(string path)
     {
-        var mime = QueryMimeType(path);
+        // **The glob database was never consulted for this menu**, though the
+        // row icons have read it since they were written — so every right-click
+        // on a file with an ordinary extension spawned an xdg-mime process to
+        // learn what "*.txt" already says. Reading a text file the desktop
+        // installed is free; spawning is not.
+        var mime = SharedMimeInfo.ForPath(path);
+
+        // Only what globs cannot answer reaches the sniff, and it waits,
+        // because somebody is looking at the menu.
+        if (string.IsNullOrEmpty(mime)) mime = QueryMimeType(path, waiting: true);
+
         if (string.IsNullOrEmpty(mime)) return [];
 
         // Ordered, deduplicated: the default handler first, then everything

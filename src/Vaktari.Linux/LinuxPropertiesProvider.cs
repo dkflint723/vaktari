@@ -38,7 +38,12 @@ public sealed class LinuxPropertiesProvider : IPropertiesProvider, IAccessEditor
 
     private static string DescribeKind(string path)
     {
-        var mime = DesktopEntries.QueryMimeType(path);
+        // Somebody is looking at this dialog, so it spends the interactive
+        // budget rather than competing with the row icons and coming back
+        // empty. Globs first, for the same reason the menu reads them.
+        var mime = SharedMimeInfo.ForPath(path) is { Length: > 0 } known
+            ? known
+            : DesktopEntries.QueryMimeType(path, waiting: true);
         return string.IsNullOrEmpty(mime) ? "File" : mime;
     }
 
