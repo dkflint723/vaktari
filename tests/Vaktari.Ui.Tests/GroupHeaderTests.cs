@@ -19,19 +19,19 @@ namespace Vaktari.Ui.Tests;
 /// their own; it was Name and Modified, which band folders and files the same
 /// way, that repeated.
 /// </summary>
-public sealed class GroupHeaderTests
+public sealed class GroupHeaderTests : OwnedViewModels
 {
     private static FileEntry Entry(string name, bool directory, DateTimeOffset when)
         => new(name, "/tmp/" + name, 10, when,
                directory ? EntryFlags.Directory : EntryFlags.None);
 
-    private static async Task<PaneViewModel> Listing(GroupMode mode, params FileEntry[] entries)
+    private async Task<PaneViewModel> Listing(GroupMode mode, params FileEntry[] entries)
     {
-        var pane = new PaneViewModel(new Canned(entries), null, null)
+        var pane = Own(new PaneViewModel(new Canned(entries), null, null)
         {
             ViewportWidth = 1400,
             GroupBy = mode,
-        };
+        });
 
         await pane.NavigateAsync(Path.GetTempPath());
 

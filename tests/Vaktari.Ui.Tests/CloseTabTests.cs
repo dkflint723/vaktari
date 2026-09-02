@@ -14,7 +14,7 @@ namespace Vaktari.Ui.Tests;
 /// did nothing. There was no Ctrl+Q either, so the keyboard could not close the
 /// window at all. Explorer and every browser close the window instead.
 /// </summary>
-public sealed class CloseTabTests
+public sealed class CloseTabTests : OwnedViewModels
 {
     private sealed class Inert : IFileSystemProvider
     {
@@ -41,9 +41,9 @@ public sealed class CloseTabTests
         private sealed class Nothing : IDisposable { public void Dispose() { } }
     }
 
-    private static ShellViewModel Shell()
+    private ShellViewModel Shell()
     {
-        var shell = new ShellViewModel(new Inert());
+        var shell = Own(new ShellViewModel(new Inert()));
         shell.Start(null, Path.GetTempPath());
         return shell;
     }

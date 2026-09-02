@@ -2630,6 +2630,15 @@ public sealed partial class PaneViewModel : ObservableObject, IDisposable
     public void Dispose()
     {
         _vcsRefresh?.Stop();
+
+        // **Every timer, or a tick lands on a pane that is gone.** The settle
+        // timer runs 200 ms after the last watcher event, so closing a tab
+        // while files were still arriving left one pending on a pane whose
+        // watcher and token source had already been torn down. In the tests it
+        // is worse than that: a tick can arrive after the headless session that
+        // created it has ended, which surfaces as "the calling thread cannot
+        // access this object" in the cleanup of whatever test ran next.
+        _settle?.Stop();
         _repoWatcher?.Dispose();
         _previewCts?.Cancel();
         _previewCts?.Dispose();

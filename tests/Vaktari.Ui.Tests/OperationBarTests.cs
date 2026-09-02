@@ -19,13 +19,13 @@ namespace Vaktari.Ui.Tests;
 /// never learned which file did not arrive. That is the whole reason the engine
 /// carries on past a locked file instead of stopping.
 /// </summary>
-public sealed class OperationBarTests
+public sealed class OperationBarTests : OwnedViewModels
 {
     private static readonly XNamespace Avalonia = "https://github.com/avaloniaui";
 
-    private static ShellViewModel Shell()
+    private ShellViewModel Shell()
     {
-        var shell = new ShellViewModel(new Inert());
+        var shell = Own(new ShellViewModel(new Inert()));
         shell.Start(null, Path.GetTempPath());
         return shell;
     }

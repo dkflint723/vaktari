@@ -25,11 +25,11 @@ namespace Vaktari.Ui.Tests;
 /// one pane's choice stays out of the other, and that choosing a column does
 /// not override the width rule keeping the name readable.
 /// </summary>
-public sealed class ColumnChooserTests
+public sealed class ColumnChooserTests : OwnedViewModels
 {
     private static readonly XNamespace Avalonia = "https://github.com/avaloniaui";
 
-    private static PaneViewModel Pane(double width = 1400)
+    private PaneViewModel Pane(double width = 1400)
         => new(new Inert(), null, null) { ViewportWidth = width };
 
     // ---- per pane, which is the point ---------------------------------------
@@ -120,7 +120,7 @@ public sealed class ColumnChooserTests
     public void Changing_the_choice_is_worth_saving()
     {
         var store = new Listening();
-        var shell = new ShellViewModel(new Inert(), store: store);
+        var shell = Own(new ShellViewModel(new Inert(), store: store));
 
         shell.Start(null, Path.GetTempPath());
 

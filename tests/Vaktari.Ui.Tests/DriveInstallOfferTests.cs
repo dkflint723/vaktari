@@ -12,7 +12,7 @@ namespace Vaktari.Ui.Tests;
 /// fetches the tool first when it must. The person asked to share; the steps
 /// between are Vaktari's errand, not theirs.
 /// </summary>
-public sealed class DriveInstallOfferTests
+public sealed class DriveInstallOfferTests : OwnedViewModels
 {
     private sealed class Inert : IFileSystemProvider
     {
@@ -41,9 +41,9 @@ public sealed class DriveInstallOfferTests
 
     private static readonly string Root = Path.Combine(Path.GetTempPath(), "proton-root");
 
-    private static ShellViewModel Shell(ProtonDriveLinks links)
+    private ShellViewModel Shell(ProtonDriveLinks links)
     {
-        var shell = new ShellViewModel(new Inert());
+        var shell = Own(new ShellViewModel(new Inert()));
         shell.Start(null, Path.GetTempPath());
         shell.UseDriveLinks(links, [], _ => { });
 

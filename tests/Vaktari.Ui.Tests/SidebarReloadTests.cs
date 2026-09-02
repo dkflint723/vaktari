@@ -15,7 +15,7 @@ namespace Vaktari.Ui.Tests;
 /// expects the row gone), and it broke it INVISIBLY: locally the follow-up
 /// landed fast enough that nothing noticed, and it failed on CI.
 /// </summary>
-public sealed class SidebarReloadTests
+public sealed class SidebarReloadTests : OwnedViewModels
 {
     private sealed class Inert : IFileSystemProvider
     {
@@ -83,10 +83,10 @@ public sealed class SidebarReloadTests
         public void Raise() => PlacesChanged?.Invoke(this, EventArgs.Empty);
     }
 
-    private static (ShellViewModel Shell, Changing Places) Fresh()
+    private (ShellViewModel Shell, Changing Places) Fresh()
     {
         var places = new Changing();
-        var shell = new ShellViewModel(new Inert(), places: places);
+        var shell = Own(new ShellViewModel(new Inert(), places: places));
         shell.Start(null, Path.GetTempPath());
 
         return (shell, places);

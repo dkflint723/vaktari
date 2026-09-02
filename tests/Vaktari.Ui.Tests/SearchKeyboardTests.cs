@@ -15,7 +15,7 @@ namespace Vaktari.Ui.Tests;
 /// and Dolphin, and here it dead-ended: a result could only be reached by
 /// clicking it, which makes the whole feature unusable without a pointer.
 /// </summary>
-public sealed class SearchKeyboardTests
+public sealed class SearchKeyboardTests : OwnedViewModels
 {
     private static readonly XNamespace Avalonia = "https://github.com/avaloniaui";
 
@@ -25,7 +25,7 @@ public sealed class SearchKeyboardTests
     [AvaloniaFact]
     public void Enter_opens_the_first_result()
     {
-        var shell = new ShellViewModel(new Inert());
+        var shell = Own(new ShellViewModel(new Inert()));
         shell.Start(null, Path.GetTempPath());
 
         var search = shell.Sidebar.Search;
@@ -45,7 +45,7 @@ public sealed class SearchKeyboardTests
     [AvaloniaFact]
     public void Enter_with_no_results_does_nothing()
     {
-        var shell = new ShellViewModel(new Inert());
+        var shell = Own(new ShellViewModel(new Inert()));
         shell.Start(null, Path.GetTempPath());
 
         var raised = 0;
@@ -64,7 +64,7 @@ public sealed class SearchKeyboardTests
     [AvaloniaFact]
     public void Down_asks_for_focus_in_the_results()
     {
-        var shell = new ShellViewModel(new Inert());
+        var shell = Own(new ShellViewModel(new Inert()));
         shell.Start(null, Path.GetTempPath());
 
         shell.Sidebar.Search.Results.ReplaceAll([Hit("prog.txt")]);
@@ -85,7 +85,7 @@ public sealed class SearchKeyboardTests
     [AvaloniaFact]
     public void Down_with_no_results_does_not_move_focus()
     {
-        var shell = new ShellViewModel(new Inert());
+        var shell = Own(new ShellViewModel(new Inert()));
         shell.Start(null, Path.GetTempPath());
 
         shell.Sidebar.FocusResultsListCommand.Execute(null);

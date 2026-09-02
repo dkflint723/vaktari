@@ -85,6 +85,15 @@ public sealed partial class PaneViewModel
         // Events can arrive after the user has navigated away, or mid-load.
         if (IsLoading || generation != _generation || CurrentPath != watchedPath) return;
 
+        // **Not per-file news, and handled before the child test** — the path
+        // on these IS the watched folder, so the check below would discard
+        // both.
+        if (change.Kind is ChangeKind.Lost or ChangeKind.Gone)
+        {
+            LostTrack(change.Kind);
+            return;
+        }
+
         // Direct children only — nothing nested is on screen.
         //
         // Compared as PATHS, not as strings. LoadListingAsync normalises what it
@@ -170,6 +179,69 @@ public sealed partial class PaneViewModel
         _vcsRefresh.Start();
     }
 
+    /// <summary>
+    /// The work that has to happen once the dust settles, rather than once per
+    /// event.
+    ///
+    /// **This is what froze the window on a big folder.** Every watcher event
+    /// recomputed the look-alike set over the WHOLE listing and rewrote the
+    /// count — measured at 28.9 ms a pass — on the UI thread. An extraction, a
+    /// build or a large download in the folder on screen fires thousands of
+    /// events, and the application stopped answering for as long as it took.
+    ///
+    /// Neither answer is needed per file: the count is read by eye and a
+    /// look-alike pair is about the folder, not about the row that just
+    /// arrived. Once things stop moving is soon enough, and the timer restarts
+    /// on every event so a steady stream costs one pass at the end rather than
+    /// one per file.
+    /// </summary>
+    private void SettleSoon()
+    {
+        _settle ??= new DispatcherTimer
+        {
+            Interval = TimeSpan.FromMilliseconds(200),
+        };
+
+        if (!_settleWired)
+        {
+            _settleWired = true;
+
+            _settle.Tick += (_, _) =>
+            {
+                _settle!.Stop();
+
+                UpdateCountStatus();
+                RefreshConfusable();
+            };
+        }
+
+        _settle.Stop();
+        _settle.Start();
+    }
+
+    private DispatcherTimer? _settle;
+    private bool _settleWired;
+
+    /// <summary>
+    /// The watcher has stopped being able to tell us what changed.
+    ///
+    /// Lost means events were dropped — the buffer overran — so what is on
+    /// screen may be wrong in any direction and the only honest answer is to
+    /// read the folder again. Gone means the folder itself is not there any
+    /// more, and the rows describe a place that no longer exists; reloading
+    /// says so properly, through the same failure path as any other unreadable
+    /// folder, rather than leaving the listing sitting on a phantom.
+    /// </summary>
+    private void LostTrack(ChangeKind kind)
+    {
+        Console.Error.WriteLine(
+            kind == ChangeKind.Gone
+                ? $"[vaktari] watch: the folder is gone, reloading · {CurrentPath}"
+                : $"[vaktari] watch: events were dropped, reloading · {CurrentPath}");
+
+        Detached(LoadAsync(CurrentPath), "reload");
+    }
+
     private void RemoveByPath(string path)
     {
         var masterIndex = _all.FindIndex(e => e.FullPath == path);
@@ -182,12 +254,7 @@ public sealed partial class PaneViewModel
             break;
         }
 
-        UpdateCountStatus();
-
-        // A row arriving or leaving can create or dissolve a look-alike pair —
-        // the second "notes .txt" appearing is precisely when the mark earns
-        // its keep, and the watcher is how that row arrives without a reload.
-        RefreshConfusable();
+        SettleSoon();
     }
 
     private async Task AddOrUpdateAsync(string path, int generation)
@@ -250,12 +317,7 @@ public sealed partial class PaneViewModel
                 Entries.Insert(visibleAt, value);
             }
 
-            UpdateCountStatus();
-
-        // A row arriving or leaving can create or dissolve a look-alike pair —
-        // the second "notes .txt" appearing is precisely when the mark earns
-        // its keep, and the watcher is how that row arrives without a reload.
-        RefreshConfusable();
+            SettleSoon();
         });
     }
 }

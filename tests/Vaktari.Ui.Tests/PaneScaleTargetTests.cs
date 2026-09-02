@@ -14,7 +14,7 @@ namespace Vaktari.Ui.Tests;
 /// wheel, which is a gesture rather than a control and cannot be reached from
 /// the keyboard.
 /// </summary>
-public sealed class PaneScaleTargetTests
+public sealed class PaneScaleTargetTests : OwnedViewModels
 {
     private sealed class InertFileSystem : IFileSystemProvider
     {
@@ -43,16 +43,16 @@ public sealed class PaneScaleTargetTests
 
     /// <summary>A shell with a tab in it. Start is what gives the window its
     /// first pane; a bare view model has none.</summary>
-    private static ShellViewModel Started()
+    private ShellViewModel Started()
     {
-        var shell = new ShellViewModel(new InertFileSystem());
+        var shell = Own(new ShellViewModel(new InertFileSystem()));
 
         shell.Start(null, Path.GetTempPath());
 
         return shell;
     }
 
-    private static ShellViewModel Split()
+    private ShellViewModel Split()
     {
         var shell = Started();
 
@@ -63,8 +63,8 @@ public sealed class PaneScaleTargetTests
         return shell;
     }
 
-    private static PaneViewModel LeftPane(ShellViewModel s) => s.Left.ActiveTab!;
-    private static PaneViewModel RightPane(ShellViewModel s) => s.Right!.ActiveTab!;
+    private PaneViewModel LeftPane(ShellViewModel s) => s.Left.ActiveTab!;
+    private PaneViewModel RightPane(ShellViewModel s) => s.Right!.ActiveTab!;
 
     [AvaloniaFact]
     public void The_left_pane_can_be_sized_from_the_menu_on_the_right()

@@ -23,7 +23,7 @@ namespace Vaktari.Ui.Tests;
 ///    are computed from Entries.Count and nothing raised them when the watcher
 ///    changed the rows — only a navigation did.
 /// </summary>
-public sealed class ListingStateTests
+public sealed class ListingStateTests : OwnedViewModels
 {
     private static FileEntry Entry(string name)
         => new(name, "/listing/" + name, 4, DateTimeOffset.UnixEpoch, EntryFlags.None);
@@ -38,7 +38,7 @@ public sealed class ListingStateTests
     public async Task Retyping_a_path_that_failed_tries_again()
     {
         var fs = new Flaky("/gone");
-        var pane = new PaneViewModel(fs, null, null) { ViewportWidth = 1400 };
+        var pane = Own(new PaneViewModel(fs, null, null) { ViewportWidth = 1400 });
 
         await pane.NavigateAsync("/here");
         Assert.True(pane.IsLoaded);
@@ -64,7 +64,7 @@ public sealed class ListingStateTests
     public async Task Navigating_to_where_you_already_are_still_does_nothing()
     {
         var fs = new Flaky(null);
-        var pane = new PaneViewModel(fs, null, null) { ViewportWidth = 1400 };
+        var pane = Own(new PaneViewModel(fs, null, null) { ViewportWidth = 1400 });
 
         await pane.NavigateAsync("/here");
         var attempts = fs.Attempts;
@@ -88,7 +88,7 @@ public sealed class ListingStateTests
     public async Task Sorting_keeps_what_was_selected()
     {
         var fs = new Flaky(null) { Rows = [Entry("a.txt"), Entry("b.txt"), Entry("c.txt")] };
-        var pane = new PaneViewModel(fs, null, null) { ViewportWidth = 1400 };
+        var pane = Own(new PaneViewModel(fs, null, null) { ViewportWidth = 1400 });
 
         await pane.NavigateAsync("/here");
 
@@ -115,7 +115,7 @@ public sealed class ListingStateTests
     public async Task Sorting_with_nothing_selected_selects_nothing()
     {
         var fs = new Flaky(null) { Rows = [Entry("a.txt"), Entry("b.txt")] };
-        var pane = new PaneViewModel(fs, null, null) { ViewportWidth = 1400 };
+        var pane = Own(new PaneViewModel(fs, null, null) { ViewportWidth = 1400 });
 
         await pane.NavigateAsync("/here");
 
@@ -134,7 +134,7 @@ public sealed class ListingStateTests
     public async Task The_item_count_follows_a_change_from_underneath()
     {
         var fs = new Flaky(null) { Rows = [Entry("a.txt"), Entry("b.txt")] };
-        var pane = new PaneViewModel(fs, null, null) { ViewportWidth = 1400 };
+        var pane = Own(new PaneViewModel(fs, null, null) { ViewportWidth = 1400 });
 
         await pane.NavigateAsync("/here");
 
@@ -156,7 +156,7 @@ public sealed class ListingStateTests
     public async Task The_empty_state_goes_away_when_a_file_appears()
     {
         var fs = new Flaky(null) { Rows = [] };
-        var pane = new PaneViewModel(fs, null, null) { ViewportWidth = 1400 };
+        var pane = Own(new PaneViewModel(fs, null, null) { ViewportWidth = 1400 });
 
         await pane.NavigateAsync("/here");
         Assert.True(pane.IsEmpty);

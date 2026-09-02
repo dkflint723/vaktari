@@ -17,7 +17,7 @@ namespace Vaktari.Ui.Tests;
 /// A DataTemplate cannot ask where it sits, so the first ROW is told it leads
 /// the sidebar and draws This PC beneath itself.
 /// </summary>
-public sealed class SidebarOrderTests
+public sealed class SidebarOrderTests : OwnedViewModels
 {
     private static readonly XNamespace Avalonia = "https://github.com/avaloniaui";
 
@@ -27,7 +27,7 @@ public sealed class SidebarOrderTests
     [AvaloniaFact]
     public async Task Only_the_home_row_draws_the_computer_row()
     {
-        var shell = new ShellViewModel(new Inert(), places: new ThreeGroups());
+        var shell = Own(new ShellViewModel(new Inert(), places: new ThreeGroups()));
         shell.Start(null, Path.GetTempPath());
 
         await shell.Sidebar.ReloadAsync();
@@ -49,7 +49,7 @@ public sealed class SidebarOrderTests
     [AvaloniaFact]
     public async Task It_survives_a_reload()
     {
-        var shell = new ShellViewModel(new Inert(), places: new ThreeGroups());
+        var shell = Own(new ShellViewModel(new Inert(), places: new ThreeGroups()));
         shell.Start(null, Path.GetTempPath());
 
         await shell.Sidebar.ReloadAsync();

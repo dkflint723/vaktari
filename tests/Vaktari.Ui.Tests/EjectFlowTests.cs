@@ -16,7 +16,7 @@ namespace Vaktari.Ui.Tests;
 /// The refusal then blames a program the person cannot find, because the
 /// program is us.
 /// </summary>
-public sealed class EjectFlowTests
+public sealed class EjectFlowTests : OwnedViewModels
 {
     private sealed class Inert : IFileSystemProvider
     {
@@ -106,12 +106,12 @@ public sealed class EjectFlowTests
         public void Raise() => PlacesChanged?.Invoke(this, EventArgs.Empty);
     }
 
-    private static (ShellViewModel Shell, OneStick Places, string Root) Fresh()
+    private (ShellViewModel Shell, OneStick Places, string Root) Fresh()
     {
         var root = Directory.CreateTempSubdirectory("vaktari-stick").FullName;
         var places = new OneStick(root);
 
-        var shell = new ShellViewModel(new Inert(), places: places);
+        var shell = Own(new ShellViewModel(new Inert(), places: places));
         shell.Start(null, Path.GetTempPath());
 
         return (shell, places, root);

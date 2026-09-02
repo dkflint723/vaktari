@@ -20,7 +20,7 @@ namespace Vaktari.Ui.Tests;
 /// to reach in the same change that made Tab-completion work on Windows paths,
 /// because every completion ends with a separator.
 /// </summary>
-public sealed class TrailingSeparatorNavigationTests : IDisposable
+public sealed class TrailingSeparatorNavigationTests : OwnedViewModels
 {
     private readonly string _folder =
         Path.Combine(Path.GetTempPath(), "vaktari-trailing-" + Guid.NewGuid().ToString("N"));
@@ -31,8 +31,14 @@ public sealed class TrailingSeparatorNavigationTests : IDisposable
         File.WriteAllText(Path.Combine(_folder, "one.txt"), "1");
     }
 
-    public void Dispose()
+    /// <summary>
+    /// Both teardowns, in order: the view models first so nothing is still
+    /// watching the folder when it goes.
+    /// </summary>
+    public override void Dispose()
     {
+        base.Dispose();
+
         // Only what this test built, under its own folder.
         try { Directory.Delete(_folder, recursive: true); } catch { }
     }
@@ -67,9 +73,9 @@ public sealed class TrailingSeparatorNavigationTests : IDisposable
         private sealed class Nothing : IDisposable { public void Dispose() { } }
     }
 
-    private static PaneViewModel Pane()
+    private PaneViewModel Pane()
     {
-        var shell = new ShellViewModel(new Inert());
+        var shell = Own(new ShellViewModel(new Inert()));
 
         shell.Start(null, Path.GetTempPath());
 

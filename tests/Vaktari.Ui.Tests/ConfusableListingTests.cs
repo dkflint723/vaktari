@@ -19,7 +19,7 @@ namespace Vaktari.Ui.Tests;
 /// The unit tests could not have caught it, because they tested the set. This
 /// one asks the pane, after the navigation a user actually performs.
 /// </summary>
-public sealed class ConfusableListingTests
+public sealed class ConfusableListingTests : OwnedViewModels
 {
     /// <summary>A provider that yields exactly the entries it is given.</summary>
     private sealed class Canned(IReadOnlyList<FileEntry> entries) : IFileSystemProvider
@@ -55,12 +55,12 @@ public sealed class ConfusableListingTests
     {
         var folder = Path.Combine(Path.GetTempPath(), "vaktari-confusable-listing");
 
-        var shell = new ShellViewModel(new Canned(
+        var shell = Own(new ShellViewModel(new Canned(
         [
             Entry(folder, "Ember Setup 0.1.0.exe"),
             Entry(folder, "Ember Setup 0.1.0 .exe"),
             Entry(folder, "report.pdf"),
-        ]));
+        ])));
 
         shell.Start(null, folder);
 

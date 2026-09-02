@@ -10,7 +10,7 @@ namespace Vaktari.Ui.Tests;
 /// carry the other pane as their first row, replacing the two extra top-level
 /// entries — four flat transfer rows collapsed to two submenus.
 /// </summary>
-public sealed class TransferTargetTests
+public sealed class TransferTargetTests : OwnedViewModels
 {
     private sealed class Inert : IFileSystemProvider
     {
@@ -45,7 +45,7 @@ public sealed class TransferTargetTests
     [AvaloniaFact]
     public void In_a_split_the_other_pane_is_the_first_target()
     {
-        var shell = new ShellViewModel(new Inert());
+        var shell = Own(new ShellViewModel(new Inert()));
         shell.Start(null, Path.GetTempPath());
 
         shell.ToggleSplitCommand.Execute(null);
@@ -68,7 +68,7 @@ public sealed class TransferTargetTests
     [AvaloniaFact]
     public void Without_a_split_it_is_absent()
     {
-        var shell = new ShellViewModel(new Inert());
+        var shell = Own(new ShellViewModel(new Inert()));
         shell.Start(null, Path.GetTempPath());
 
         Assert.False(shell.IsSplit);

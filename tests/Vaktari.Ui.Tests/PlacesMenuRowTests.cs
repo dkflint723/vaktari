@@ -11,7 +11,7 @@ namespace Vaktari.Ui.Tests;
 /// otherwise. The old menu showed both at once and left the reader to work
 /// out which acted on what.
 /// </summary>
-public sealed class PlacesMenuRowTests
+public sealed class PlacesMenuRowTests : OwnedViewModels
 {
     private sealed class Inert : IFileSystemProvider
     {
@@ -38,9 +38,9 @@ public sealed class PlacesMenuRowTests
         private sealed class Nothing : IDisposable { public void Dispose() { } }
     }
 
-    private static ShellViewModel Shell()
+    private ShellViewModel Shell()
     {
-        var shell = new ShellViewModel(new Inert());
+        var shell = Own(new ShellViewModel(new Inert()));
         shell.Start(null, Path.GetTempPath());
         return shell;
     }

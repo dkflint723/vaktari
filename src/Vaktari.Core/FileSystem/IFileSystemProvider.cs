@@ -1,6 +1,29 @@
 namespace Vaktari.Core.FileSystem;
 
-public enum ChangeKind { Added, Removed, Changed, Renamed }
+/// <summary>
+/// What a watcher is telling the listing.
+///
+/// **Lost and Gone are not per-file news**, and that is why they exist. A
+/// FileSystemWatcher has a fixed kernel buffer; overflow it — an extraction, a
+/// build, a large download — and it silently stops reporting, so the listing
+/// went quietly out of date with no way back but F5. And when the watched
+/// folder itself is deleted or its share drops, the pane sat on rows for a
+/// place that was no longer there.
+/// </summary>
+public enum ChangeKind
+{
+    Added,
+    Removed,
+    Changed,
+    Renamed,
+
+    /// <summary>Events were dropped. Whatever is on screen may be wrong;
+    /// reload.</summary>
+    Lost,
+
+    /// <summary>The watched folder is no longer there.</summary>
+    Gone,
+}
 
 public readonly record struct FileSystemChange(
     ChangeKind Kind,

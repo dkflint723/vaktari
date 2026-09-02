@@ -18,7 +18,7 @@ namespace Vaktari.Ui.ViewModels;
 /// active and nothing else; all the behaviour lives in PaneViewModel, which is
 /// what made split view an addition rather than a rewrite.
 /// </summary>
-public sealed partial class ShellViewModel : ObservableObject
+public sealed partial class ShellViewModel : ObservableObject, IDisposable
 {
     private readonly IFileSystemProvider _fs;
     private readonly IFileOperations? _ops;
@@ -2024,6 +2024,22 @@ public sealed partial class ShellViewModel : ObservableObject
                 if (ReferenceEquals(ActiveOperation, handle))
                     ActiveOperation = _running.Count > 0 ? _running[^1] : null;
             }), TaskScheduler.Default);
+    }
+
+    /// <summary>
+    /// Lets go of every pane, and with them every file watcher and every timer
+    /// the panes are holding.
+    ///
+    /// **Each pane keeps a watcher, two timers and a cancellation source**, and
+    /// nothing had a way to release the lot at once — the window tears down
+    /// per-group in two places and a test could not do it at all. A pane left
+    /// running after its owner has gone still ticks, and the tick lands on a
+    /// dispatcher that has moved on.
+    /// </summary>
+    public void Dispose()
+    {
+        Left?.DisposeAll();
+        Right?.DisposeAll();
     }
 
     // ---- session -------------------------------------------------------
