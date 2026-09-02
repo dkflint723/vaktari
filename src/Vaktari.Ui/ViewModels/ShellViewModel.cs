@@ -1921,6 +1921,38 @@ public sealed partial class ShellViewModel : ObservableObject, IDisposable
         if (place is { IsUserPinned: true }) _ = Sidebar.UnpinAsync(place.Id);
     }
 
+    /// <summary>Raised so the window can put a name in front of somebody. A
+    /// view model has no business owning a text prompt — the same shape the
+    /// properties and connect requests already use.</summary>
+    public event EventHandler<PlaceItemViewModel>? RenamePlaceRequested;
+
+    /// <summary>
+    /// Gives a pinned place a caption of its own.
+    ///
+    /// **Both providers have stored a per-pin label since they were written and
+    /// nothing could change it.** Two folders both called "src" pinned as two
+    /// rows called "src", and the only way to tell them apart was editing
+    /// places.json by hand.
+    ///
+    /// Only the rows the user made. Home, the drives and the shares are named
+    /// by the system, and renaming one would be a caption that vanished at the
+    /// next reload.
+    /// </summary>
+    [RelayCommand]
+    private void RenamePlace(PlaceItemViewModel? place)
+    {
+        if (place is { IsUserPinned: true }) RenamePlaceRequested?.Invoke(this, place);
+    }
+
+    /// <summary>The gate, apart from the prompt, so it can be read without
+    /// driving a text box.</summary>
+    public async Task RenamePlaceAsync(PlaceItemViewModel? place, string label)
+    {
+        if (place is not { IsUserPinned: true }) return;
+
+        await Sidebar.RenameAsync(place.Id, label).ConfigureAwait(false);
+    }
+
     // ---- what a sidebar row's menu offers everybody ------------------------
     //
     // **Right-clicking Home, Documents, a drive, a mapped drive or the bin

@@ -50,6 +50,25 @@ public interface IPlacesProvider
 
     ValueTask PinAsync(string path, string? label, CancellationToken ct);
     ValueTask UnpinAsync(string id, CancellationToken ct);
+
+    /// <summary>
+    /// Renames a pinned place.
+    ///
+    /// **Both providers have persisted a per-pin label since they were written,
+    /// and nothing could ever change it.** The import paths already set a
+    /// custom one — a shortcut's own filename on Windows, an xbel title or a
+    /// GTK bookmark's trailing label on Linux — so the field was read, written
+    /// and honoured everywhere except by the person whose sidebar it is. Two
+    /// folders both called "src" pinned as two rows called "src", and the only
+    /// way to tell them apart was to edit places.json by hand.
+    ///
+    /// The id is untouched: it is the path, so a rename disturbs neither the
+    /// ordering, nor the highlight on the row being viewed, nor a reorder in
+    /// flight.
+    ///
+    /// A blank label is a no-op rather than a blank row.
+    /// </summary>
+    ValueTask RenameAsync(string id, string label, CancellationToken ct);
     ValueTask ReorderAsync(IReadOnlyList<string> orderedIds, CancellationToken ct);
 
     ValueTask MountAsync(string id, CancellationToken ct);

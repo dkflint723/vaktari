@@ -413,6 +413,24 @@ public sealed class LinuxPlacesProvider : IPlacesProvider, IDisposable
         return ValueTask.CompletedTask;
     }
 
+    public ValueTask RenameAsync(string id, string label, CancellationToken ct)
+    {
+        var tidy = PlaceNames.Clean(label);
+        if (tidy.Length == 0) return ValueTask.CompletedTask;
+
+        var path = id.StartsWith("pin:", StringComparison.Ordinal) ? id[4..] : id;
+
+        // Ordinal, matching Pin and Unpin on this side. Two paths differing by
+        // case are two different places here, and quietly introducing the
+        // Windows comparison would make them one.
+        _pins = _pins
+            .Select(p => p.Path == path ? p with { Label = tidy } : p)
+            .ToList();
+
+        SavePins();
+        return ValueTask.CompletedTask;
+    }
+
     public ValueTask ReorderAsync(IReadOnlyList<string> orderedIds, CancellationToken ct)
     {
         var order = orderedIds

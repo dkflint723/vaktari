@@ -2686,6 +2686,14 @@
                                   <MenuItem Header="{Binding $parent[Window].((vm:ShellViewModel)DataContext).EmptyBinLabel}"
                                             IsVisible="{Binding IsBin}"
                                             Command="{Binding $parent[Window].((vm:ShellViewModel)DataContext).EmptyTrashCommand}"/>
+                                  <!-- Only the rows the user made. Home, the
+                                       drives and the shares are named by the
+                                       system, and a caption on one of those
+                                       would vanish at the next reload. -->
+                                  <MenuItem Header="Rename…"
+                                            IsVisible="{Binding IsUserPinned}"
+                                            Command="{Binding $parent[Window].((vm:ShellViewModel)DataContext).RenamePlaceCommand}"
+                                            CommandParameter="{Binding}"/>
                                   <MenuItem Header="Remove from places"
                                             IsVisible="{Binding IsUserPinned}"
                                             Command="{Binding $parent[Window].((vm:ShellViewModel)DataContext).RemovePlaceCommand}"

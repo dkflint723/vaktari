@@ -296,6 +296,23 @@ public sealed class WindowsPlacesProvider : IPlacesProvider, IDisposable
         return ValueTask.CompletedTask;
     }
 
+    public ValueTask RenameAsync(string id, string label, CancellationToken ct)
+    {
+        var tidy = PlaceNames.Clean(label);
+        if (tidy.Length == 0) return ValueTask.CompletedTask;
+
+        var path = id.StartsWith("pin:", StringComparison.Ordinal) ? id[4..] : id;
+
+        // Copy-on-write, never an in-place edit: _pins is handed out to readers
+        // on other threads, which is what its own comment requires.
+        _pins = _pins
+            .Select(p => PathRules.Same(p.Path, path) ? p with { Label = tidy } : p)
+            .ToList();
+
+        SavePins();
+        return ValueTask.CompletedTask;
+    }
+
     public ValueTask ReorderAsync(IReadOnlyList<string> orderedIds, CancellationToken ct)
     {
         var order = orderedIds

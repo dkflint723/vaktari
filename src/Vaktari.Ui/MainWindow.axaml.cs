@@ -327,6 +327,8 @@ public partial class MainWindow : Window
 
         _shell.ShortcutsRequested += (_, _) => new ShortcutsWindow().ShowDialog(this);
 
+        _shell.RenamePlaceRequested += OnRenamePlaceRequested;
+
         // Closing the last tab, and Ctrl+Q. The window is the only thing that
         // can close itself, and closing it runs the ordinary shutdown — the
         // session is saved on the way out exactly as it is for the title-bar
@@ -3337,7 +3339,7 @@ public partial class MainWindow : Window
 
     // ---- inline prompt -------------------------------------------------
 
-    private enum PromptMode { None, Rename, ConfirmDelete, ConfirmTrash, ConfirmEmptyTrash, Connect }
+    private enum PromptMode { None, Rename, RenamePlace, ConfirmDelete, ConfirmTrash, ConfirmEmptyTrash, Connect }
 
     private PromptMode _prompt = PromptMode.None;
 
@@ -3362,6 +3364,38 @@ public partial class MainWindow : Window
         or PromptMode.ConfirmTrash
         or PromptMode.ConfirmEmptyTrash;
     private FileEntry _renameTarget;
+
+    /// <summary>The pinned row being renamed, for the same reason
+    /// _renameTarget exists: the prompt bar is one bar for every prompt.</summary>
+    private PlaceItemViewModel? _renamePlace;
+
+    /// <summary>
+    /// Naming a pinned place.
+    ///
+    /// Its own prompt mode rather than reusing Rename: that one is about a file
+    /// and applies FileNames — a slash and a colon are refused there and are
+    /// perfectly good text for a caption, and nothing is written to disk under
+    /// this name.
+    /// </summary>
+    private void OnRenamePlaceRequested(object? sender, PlaceItemViewModel place)
+    {
+        if (PromptBar is null || PromptInput is null) return;
+
+        _prompt = PromptMode.RenamePlace;
+        _renamePlace = place;
+
+        PromptLabel.Text = "call it";
+        PromptInput.Text = place.Label;
+        PromptInput.IsVisible = true;
+        PromptConfirm.Content = "rename";
+        PromptConfirm.IsVisible = true;
+        PromptCancel.IsVisible = true;
+        PromptHint.Text = "enter to confirm · esc to cancel";
+        PromptBar.IsVisible = true;
+
+        PromptInput.Focus();
+        PromptInput.SelectAll();
+    }
 
     private void OnRenameRequested(object? sender, FileEntry entry)
     {
@@ -3434,6 +3468,10 @@ public partial class MainWindow : Window
 
         switch (mode)
         {
+            case PromptMode.RenamePlace:
+                _ = _shell.RenamePlaceAsync(_renamePlace, name);
+                break;
+
             case PromptMode.ConfirmDelete:
                 target?.DeleteSelectedCommand.Execute(null);
                 break;

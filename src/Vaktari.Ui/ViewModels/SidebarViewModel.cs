@@ -479,6 +479,22 @@ public sealed partial class SidebarViewModel : ObservableObject
         await places.UnpinAsync(id, CancellationToken.None).ConfigureAwait(false);
         await ReloadAsync().ConfigureAwait(false);
     }
+
+    /// <summary>
+    /// Gives a pinned place a name of its own. Reloaded explicitly for the same
+    /// reason unpinning is: a row that keeps its old caption reads as the
+    /// command having failed.
+    /// </summary>
+    public async Task RenameAsync(string id, string label)
+    {
+        if (_places is not { } places) return;
+
+        var tidy = Core.Places.PlaceNames.Clean(label);
+        if (tidy.Length == 0) return;
+
+        await places.RenameAsync(id, tidy, CancellationToken.None).ConfigureAwait(false);
+        await ReloadAsync().ConfigureAwait(false);
+    }
 }
 
 public sealed class PlaceGroupViewModel(PlaceGroup group)

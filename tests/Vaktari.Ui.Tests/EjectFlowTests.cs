@@ -100,6 +100,9 @@ public sealed class EjectFlowTests : OwnedViewModels
         public ValueTask MountAsync(string id, CancellationToken ct) => ValueTask.CompletedTask;
         public ValueTask PinAsync(string path, string? label, CancellationToken ct) => ValueTask.CompletedTask;
         public ValueTask UnpinAsync(string id, CancellationToken ct) => ValueTask.CompletedTask;
+
+        public ValueTask RenameAsync(string id, string label, CancellationToken ct)
+            => ValueTask.CompletedTask;
         public ValueTask ReorderAsync(IReadOnlyList<string> orderedIds, CancellationToken ct) => ValueTask.CompletedTask;
         public ValueTask<int> ImportExistingAsync(CancellationToken ct) => ValueTask.FromResult(0);
 
