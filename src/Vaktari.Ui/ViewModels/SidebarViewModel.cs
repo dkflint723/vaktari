@@ -38,6 +38,26 @@ public sealed partial class SidebarViewModel : ObservableObject
 
     public SearchViewModel Search { get; }
 
+    /// <summary>
+    /// Pulses true to put the keyboard in the results list.
+    ///
+    /// **Down in the search box had nowhere to go.** The results carried no
+    /// selection and could not take focus, so a search could only be finished
+    /// with the mouse. FocusBehavior.FocusWhen acts on the false-to-true edge,
+    /// so this is reset immediately and the property is a signal rather than a
+    /// state — the same shape the search box's own focus already uses.
+    /// </summary>
+    [ObservableProperty] private bool _focusResults;
+
+    [RelayCommand]
+    private void FocusResultsList()
+    {
+        if (Search.Results.Count == 0) return;
+
+        FocusResults = false;
+        FocusResults = true;
+    }
+
 
     [ObservableProperty] private RailState _rail = RailState.Full;
     [ObservableProperty] private double _width = 210;
@@ -492,6 +512,14 @@ public sealed partial class PlaceItemViewModel(Place place) : ObservableObject
     /// nothing and said nothing.
     /// </summary>
     public bool CanEject { get; } = place.CanEject;
+
+    /// <summary>
+    /// Whether this row names a real folder. The bin and the two recent
+    /// listings carry an internal scheme instead, so copying "their path" or
+    /// asking the desktop for their properties would be meaningless.
+    /// </summary>
+    public bool HasRealPath =>
+        Path.Length > 0 && !Vaktari.Ui.VirtualPaths.IsVirtual(Path);
 
     /// <summary>
     /// True while this drive is being ejected, which disables the row.

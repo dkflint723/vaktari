@@ -100,7 +100,7 @@
                 <TextBlock Text="{Binding Problem}"
                            IsVisible="{Binding !IsValid}"
                            FontSize="{DynamicResource FontSizeTiny}"
-                           Foreground="{DynamicResource AccentColour}"
+                           Foreground="{DynamicResource AccentText}"
                            TextWrapping="Wrap"/>
               </StackPanel>
             </Grid>

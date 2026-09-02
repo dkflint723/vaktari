@@ -1825,6 +1825,40 @@ public sealed partial class ShellViewModel : ObservableObject
         if (place is { IsUserPinned: true }) _ = Sidebar.UnpinAsync(place.Id);
     }
 
+    // ---- what a sidebar row's menu offers everybody ------------------------
+    //
+    // **Right-clicking Home, Documents, a drive, a mapped drive or the bin
+    // opened nothing at all.** The menu held two entries, both of which apply
+    // to almost no rows — Remove to the ones the user pinned, Eject to the ones
+    // that can be ejected — and the Opening handler cancelled the popup for
+    // everything else rather than show a sliver of empty menu. Correct for a
+    // menu with nothing in it, and the wrong fix: both references put Open in
+    // new tab and Properties on every node of the navigation pane.
+
+    [RelayCommand]
+    private void OpenPlaceInNewTab(PlaceItemViewModel? place)
+    {
+        if (place is { Path.Length: > 0 }) OpenInNewTab(place.Path);
+    }
+
+    [RelayCommand]
+    private void CopyPlacePath(PlaceItemViewModel? place)
+    {
+        if (place is { HasRealPath: true }) CopyTextRequested?.Invoke(this, place.Path);
+    }
+
+    /// <summary>The desktop's own properties dialog, the same one the listing
+    /// menu opens for a row.</summary>
+    [RelayCommand]
+    private void ShowPlaceProperties(PlaceItemViewModel? place)
+    {
+        if (place is { HasRealPath: true }) ShowPropertiesRequested?.Invoke(this, place.Path);
+    }
+
+    /// <summary>Raised so the window can put up the platform properties dialog;
+    /// a view model has no business owning one.</summary>
+    public event EventHandler<string>? ShowPropertiesRequested;
+
     /// <summary>
     /// Safely removes a drive, after getting out of its way.
     ///

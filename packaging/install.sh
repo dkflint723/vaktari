@@ -87,7 +87,7 @@ cat > "$APPS/vaktari.desktop" <<EOF
 Type=Application
 Name=Vaktari
 Comment=File manager
-Exec=vaktari %U
+Exec=vaktari %F
 Icon=vaktari
 Terminal=false
 # StartupWMClass is a SINGLE STRING, not a semicolon-separated list — the

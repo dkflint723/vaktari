@@ -814,6 +814,16 @@
                       <TextBox.KeyBindings>
                         <KeyBinding Gesture="Escape"
                                     Command="{Binding $parent[Window].((vm:ShellViewModel)DataContext).Sidebar.DismissSearchCommand}"/>
+                        <!-- **Enter did nothing here**, so type-then-Enter —
+                             the reflex in both Explorer and Dolphin — dead-ended
+                             and a result could only be reached with the mouse.
+                             Down is the other half: it puts the keyboard in the
+                             results, which are a real list now rather than a
+                             column of buttons. -->
+                        <KeyBinding Gesture="Enter"
+                                    Command="{Binding $parent[Window].((vm:ShellViewModel)DataContext).Sidebar.Search.OpenFirstCommand}"/>
+                        <KeyBinding Gesture="Down"
+                                    Command="{Binding $parent[Window].((vm:ShellViewModel)DataContext).Sidebar.FocusResultsListCommand}"/>
                       </TextBox.KeyBindings>
                     </TextBox>
                     <!-- Padding="0" collapsed the text presenter to the font's
@@ -854,25 +864,43 @@
                                  FontSize="{DynamicResource FontSizeTiny}"
                                  Foreground="{DynamicResource ViewDimText}"/>
                       <ScrollViewer>
-                        <ItemsControl ItemsSource="{Binding $parent[Window].((vm:ShellViewModel)DataContext).Sidebar.Search.Results}">
-                          <ItemsControl.ItemTemplate>
+                        <!-- **A ListBox, not a column of Buttons.** Buttons
+                             carry no selection, so there was nothing for an
+                             arrow key to move and nothing for Enter to open —
+                             the results were mouse-only. A real list brings
+                             arrow navigation, a visible focus and Enter for
+                             free; opening on selection is what the popup does
+                             anyway, since choosing a result is the only thing
+                             you can do with one. -->
+                        <ListBox x:Name="SearchResults"
+                                 local:FocusBehavior.FocusWhen="{Binding $parent[Window].((vm:ShellViewModel)DataContext).Sidebar.FocusResults}"
+                                 ItemsSource="{Binding $parent[Window].((vm:ShellViewModel)DataContext).Sidebar.Search.Results}"
+                                 SelectionMode="Single" Background="Transparent" Padding="0"
+                                 BorderThickness="0">
+                          <ListBox.KeyBindings>
+                            <KeyBinding Gesture="Enter"
+                                        Command="{Binding $parent[Window].((vm:ShellViewModel)DataContext).Sidebar.Search.OpenCommand}"
+                                        CommandParameter="{Binding #SearchResults.SelectedItem}"/>
+                            <KeyBinding Gesture="Escape"
+                                        Command="{Binding $parent[Window].((vm:ShellViewModel)DataContext).Sidebar.DismissSearchCommand}"/>
+                          </ListBox.KeyBindings>
+                          <ListBox.ItemTemplate>
                             <DataTemplate x:DataType="fs:FileEntry">
-                              <Button Command="{Binding $parent[Window].((vm:ShellViewModel)DataContext).Sidebar.Search.OpenCommand}"
-                                      CommandParameter="{Binding}"
-                                      Background="Transparent" BorderThickness="0"
-                                      HorizontalAlignment="Stretch" HorizontalContentAlignment="Left"
-                                      Padding="12,7">
-                                <StackPanel>
-                                  <TextBlock Text="{Binding Name}" FontSize="{DynamicResource FontSizeBase}"
-                                             TextTrimming="CharacterEllipsis"/>
-                                  <TextBlock Text="{Binding FullPath}" FontSize="{DynamicResource FontSizeTiny}"
-                                             Foreground="{DynamicResource ViewDimText}"
-                                             TextTrimming="CharacterEllipsis"/>
-                                </StackPanel>
-                              </Button>
+                              <StackPanel Margin="12,7">
+                                <TextBlock Text="{Binding Name}" FontSize="{DynamicResource FontSizeBase}"
+                                           TextTrimming="CharacterEllipsis"/>
+                                <TextBlock Text="{Binding FullPath}" FontSize="{DynamicResource FontSizeTiny}"
+                                           Foreground="{DynamicResource ViewDimText}"
+                                           TextTrimming="CharacterEllipsis"/>
+                              </StackPanel>
                             </DataTemplate>
-                          </ItemsControl.ItemTemplate>
-                        </ItemsControl>
+                          </ListBox.ItemTemplate>
+                          <ListBox.Styles>
+                            <Style Selector="ListBoxItem">
+                              <Setter Property="Padding" Value="0"/>
+                            </Style>
+                          </ListBox.Styles>
+                        </ListBox>
                       </ScrollViewer>
                     </DockPanel>
                   </Border>
@@ -1830,7 +1858,7 @@
                           <TextBlock Text="look-alike"
                                      Margin="8,0,0,0" VerticalAlignment="Center"
                                      FontSize="{DynamicResource FontSizeTiny}"
-                                     Foreground="{DynamicResource AccentColour}"
+                                     Foreground="{DynamicResource AccentText}"
                                      ToolTip.Tip="Another name here differs only by spacing or capitals.">
                             <TextBlock.IsVisible>
                               <MultiBinding Converter="{x:Static vm:FileConverters.Confusable}">
@@ -1990,7 +2018,7 @@
                           <TextBlock DockPanel.Dock="Right" Text="look-alike"
                                      Margin="6,0,2,0" VerticalAlignment="Center"
                                      FontSize="{DynamicResource FontSizeTiny}"
-                                     Foreground="{DynamicResource AccentColour}"
+                                     Foreground="{DynamicResource AccentText}"
                                      ToolTip.Tip="Another name here differs only by spacing or capitals.">
                             <TextBlock.IsVisible>
                               <MultiBinding Converter="{x:Static vm:FileConverters.Confusable}">
@@ -2463,6 +2491,21 @@
                                      cursor. Cancelling in Opening is the one
                                      hook that stops the popup itself. -->
                                 <ContextMenu Opening="OnPlaceMenuOpening">
+                                  <!-- **On every row, which is why the popup is
+                                       no longer cancelled for most of them.**
+                                       Home, Documents, a drive, a mapped drive
+                                       and the bin all used to open nothing at
+                                       all; both references offer at least Open
+                                       in new tab and Properties on every node
+                                       of the navigation pane. -->
+                                  <MenuItem Header="Open in new tab"
+                                            Command="{Binding $parent[Window].((vm:ShellViewModel)DataContext).OpenPlaceInNewTabCommand}"
+                                            CommandParameter="{Binding}"/>
+                                  <MenuItem Header="Copy path"
+                                            IsVisible="{Binding HasRealPath}"
+                                            Command="{Binding $parent[Window].((vm:ShellViewModel)DataContext).CopyPlacePathCommand}"
+                                            CommandParameter="{Binding}"/>
+                                  <Separator/>
                                   <!-- Above "Remove from places", and with no
                                        separator between them: Avalonia collapses
                                        none, and the two are mutually exclusive
@@ -2477,6 +2520,12 @@
                                   <MenuItem Header="Remove from places"
                                             IsVisible="{Binding IsUserPinned}"
                                             Command="{Binding $parent[Window].((vm:ShellViewModel)DataContext).RemovePlaceCommand}"
+                                            CommandParameter="{Binding}"/>
+                                  <Separator IsVisible="{Binding HasRealPath}"/>
+                                  <MenuItem Header="Properties"
+                                            IsVisible="{Binding HasRealPath}"
+                                            InputGesture="Alt+Enter"
+                                            Command="{Binding $parent[Window].((vm:ShellViewModel)DataContext).ShowPlacePropertiesCommand}"
                                             CommandParameter="{Binding}"/>
                                 </ContextMenu>
                               </Button.ContextMenu>
@@ -2730,7 +2779,7 @@
                                      IsVisible="{Binding !Reachable}"
                                      Margin="6,0,0,0"
                                      FontSize="{DynamicResource FontSizeTiny}"
-                                     Foreground="{DynamicResource AccentColour}"
+                                     Foreground="{DynamicResource AccentText}"
                                      VerticalAlignment="Center"/>
 
                           <TextBlock Text="{Binding Label}"

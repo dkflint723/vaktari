@@ -92,6 +92,11 @@ public static class ThemeApplier
         // The dark column keeps the mock's value.
         ("AccentColour",    "#6d6df0", "#4f4fd0"),
 
+        // AccentText is NOT here. It is derived from whatever AccentColour ends
+        // up being — see ReadableAccent — because the accent has three possible
+        // sources and a hand-written second value would only have covered one
+        // of them.
+
         // The checked segment is rgba(109,109,240,.22) in the mock, which is
         // the tint AccentDim is bound to everywhere it is used. Same 22% on the
         // light side, over a pale ground instead of a dark one.
@@ -307,8 +312,93 @@ public static class ThemeApplier
     /// value written earlier is exactly the bug that let a broken font setting
     /// ship — the log named the chosen font while the window rendered another.
     /// </summary>
+    /// <summary>
+    /// The accent, walked toward the text colour until it can be read on the
+    /// surfaces it is used over.
+    ///
+    /// Toward WindowText rather than simply lightened: on a dark theme that is
+    /// up and on a light one it is down, so one rule serves both without
+    /// asking which way "readable" points. The hue survives because the blend
+    /// is short — a few steps is enough for the cases that fail — and an accent
+    /// that already clears AA is returned untouched, which is what happens on
+    /// every light scheme here.
+    ///
+    /// Capped at twelve steps so a pathological desktop accent ends up as
+    /// something legible rather than looping; by then it is close enough to the
+    /// text colour to read regardless.
+    /// </summary>
+    private static Color ReadableAccent(Color accent, IResourceDictionary target, bool dark)
+    {
+        var grounds = new[] { "ChromeBrush", "ViewBackground", "AppBackground", "PanelBackground" }
+            .Select(key => target.TryGetResource(key, null, out var value)
+                           && value is ISolidColorBrush brush
+                ? brush.Color
+                : (Color?)null)
+            .OfType<Color>()
+            .ToList();
+
+        if (grounds.Count == 0) return accent;
+
+        var toward = target.TryGetResource("ViewText", null, out var textValue)
+                     && textValue is ISolidColorBrush text
+            ? text.Color
+            : dark ? Colors.White : Colors.Black;
+
+        var candidate = accent;
+
+        for (var step = 0; step < 12; step++)
+        {
+            if (grounds.All(ground => Contrast(candidate, ground) >= 4.5)) break;
+
+            candidate = Blend(candidate, toward, 0.12);
+        }
+
+        return candidate;
+    }
+
+    /// <summary>WCAG relative luminance, and the ratio built from it.</summary>
+    private static double Luminance(Color c)
+    {
+        static double Channel(byte v)
+        {
+            var s = v / 255.0;
+            return s <= 0.04045 ? s / 12.92 : Math.Pow((s + 0.055) / 1.055, 2.4);
+        }
+
+        return 0.2126 * Channel(c.R) + 0.7152 * Channel(c.G) + 0.0722 * Channel(c.B);
+    }
+
+    private static double Contrast(Color a, Color b)
+    {
+        var (x, y) = (Luminance(a), Luminance(b));
+        var (hi, lo) = x > y ? (x, y) : (y, x);
+
+        return (hi + 0.05) / (lo + 0.05);
+    }
+
     private static void Finish(IResourceDictionary target, ThemePalette? palette)
     {
+        // **The accent does two jobs and only one of them is read.** As a fill
+        // — the selected row's edge bar, the settings tab marker — contrast
+        // against the ground is a matter of taste. As TEXT it is a requirement,
+        // and the accent failed it: #6d6df0 measures 3.41:1 on the chrome and
+        // 3.78:1 on the listing, both under AA's 4.5:1 at the 11-12.5px these
+        // labels are actually set in, in the theme that is the default.
+        //
+        // Derived rather than written down beside the others, because the
+        // accent has three sources — the design scheme, the fallback scheme,
+        // and whatever the desktop hands over — and a second literal would have
+        // fixed exactly one of them. A desktop accent is somebody else's colour
+        // and can be anything at all.
+        //
+        // Here rather than beside the other accent-derived brushes, because
+        // those sit in the branch that only runs when a desktop palette is
+        // being followed — and AccentText has to exist on every path or the
+        // labels bound to it render with no colour at all.
+        if (target["AccentColour"] is ISolidColorBrush accentText)
+            target["AccentText"] = new SolidColorBrush(
+                ReadableAccent(accentText.Color, target, palette?.IsDark ?? true));
+
         // The file-age ramp is derived rather than hardcoded: fixed pale blues
         // disappear on a light scheme. Fresh files get full text colour,
         // ancient ones fade past the dim colour — a lightness ramp that holds

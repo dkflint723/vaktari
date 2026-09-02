@@ -48,6 +48,21 @@ public sealed partial class SearchViewModel : ObservableObject
     /// <summary>Raised when a result is chosen; the shell navigates to it.</summary>
     public event EventHandler<FileEntry>? ResultChosen;
 
+    /// <summary>
+    /// Opens the top result, which is what Enter means in a search box.
+    ///
+    /// **Enter did nothing at all.** The results were a list of buttons with no
+    /// selection and no keyboard route, so type-then-Enter — the reflex in both
+    /// Explorer and Dolphin — dead-ended, and a result could only be reached
+    /// with the mouse. That is an accessibility blocker as much as an
+    /// inconvenience.
+    /// </summary>
+    [RelayCommand]
+    public void OpenFirst()
+    {
+        if (Results.Count > 0) Open(Results[0]);
+    }
+
     [RelayCommand]
     public void Open(FileEntry? entry)
     {

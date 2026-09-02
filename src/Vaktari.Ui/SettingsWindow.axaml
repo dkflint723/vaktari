@@ -231,7 +231,7 @@
             <TextBlock Text="{Binding DefaultStatus}"
                        IsVisible="{Binding HasDefaultStatus}"
                        FontSize="{DynamicResource FontSizeTiny}"
-                       Foreground="{DynamicResource AccentColour}"
+                       Foreground="{DynamicResource AccentText}"
                        TextWrapping="Wrap"/>
           </StackPanel>
 
@@ -279,7 +279,7 @@
             <TextBlock Text="{Binding IconThemeProblem}"
                        IsVisible="{Binding HasIconThemeProblem}"
                        FontSize="{DynamicResource FontSizeTiny}"
-                       Foreground="{DynamicResource AccentColour}"
+                       Foreground="{DynamicResource AccentText}"
                        TextWrapping="Wrap"/>
 
             <TextBlock Text="Or point at an icon theme you downloaded — the folder holding index.theme. Vaktari reads the freedesktop format, which is what Papirus, Tela, Numix and most Linux icon sets are published as."
@@ -343,7 +343,7 @@
             <TextBlock Text="{Binding IconThemeStatus}"
                        IsVisible="{Binding HasIconThemeStatus}"
                        FontSize="{DynamicResource FontSizeTiny}"
-                       Foreground="{DynamicResource AccentColour}"
+                       Foreground="{DynamicResource AccentText}"
                        TextWrapping="Wrap"/>
 
             <!-- An archive from anywhere else goes through the same unpacking,
@@ -353,7 +353,7 @@
               <Button Content="Install from a file…"
                       Padding="0"
                       Background="Transparent" BorderThickness="0"
-                      Foreground="{DynamicResource AccentColour}"
+                      Foreground="{DynamicResource AccentText}"
                       FontSize="{DynamicResource FontSizeTiny}"
                       Command="{Binding PickIconThemeArchiveCommand}"
                       ToolTip.Tip="A .tar.gz, .tar.xz or .zip you downloaded yourself"/>
@@ -361,7 +361,7 @@
               <Button Content="Open the icon folder"
                       Padding="0"
                       Background="Transparent" BorderThickness="0"
-                      Foreground="{DynamicResource AccentColour}"
+                      Foreground="{DynamicResource AccentText}"
                       FontSize="{DynamicResource FontSizeTiny}"
                       Command="{Binding OpenIconFolderCommand}"
                       ToolTip.Tip="Where installed themes are kept"/>
@@ -369,7 +369,7 @@
               <Button Content="Find more icon themes"
                       Padding="0"
                       Background="Transparent" BorderThickness="0"
-                      Foreground="{DynamicResource AccentColour}"
+                      Foreground="{DynamicResource AccentText}"
                       FontSize="{DynamicResource FontSizeTiny}"
                       Command="{Binding GetMoreIconsCommand}"
                       ToolTip.Tip="Opens store.kde.org in your browser"/>

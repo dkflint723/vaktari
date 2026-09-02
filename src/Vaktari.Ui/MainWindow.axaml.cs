@@ -294,6 +294,10 @@ public partial class MainWindow : Window
         };
         _shell.PaneCreated += (_, pane) => WirePane(pane);
         _shell.PropertiesRequested += (_, _) => ShowProperties();
+
+        // A sidebar row names its own path rather than a selection, so it takes
+        // the same dialog by a different route.
+        _shell.ShowPropertiesRequested += (_, path) => ShowPropertiesFor(path);
         _shell.SettingsRequested += (_, _) => ShowSettings();
         _shell.EmptyTrashRequested += (_, _) => AskConfirmEmptyTrash();
 
@@ -1057,6 +1061,15 @@ public partial class MainWindow : Window
 
         if (paths.Count == 0) return;
 
+        ShowPropertiesFor(paths);
+    }
+
+    private void ShowPropertiesFor(string path) => ShowPropertiesFor([path]);
+
+    private void ShowPropertiesFor(IReadOnlyList<string> paths)
+    {
+        if (paths.Count == 0) return;
+
         // **The desktop's own dialog wins where it has one.** On Windows that
         // sheet carries Security, Details and the Unblock checkbox, and hosts
         // the pages other applications add to the shell — none of which this
@@ -1131,8 +1144,13 @@ public partial class MainWindow : Window
     /// </summary>
     private void OnPlaceMenuOpening(object? sender, CancelEventArgs e)
     {
+        // **Nothing is cancelled any more, and that is the fix.** Every row now
+        // carries Open in new tab, so there is no such thing as an empty place
+        // menu — which is what this handler existed to hide. The check remains
+        // as the guard it always was: a row that somehow has no entries at all
+        // should still not pop a sliver of menu background at the cursor.
         if (sender is Control { DataContext: PlaceItemViewModel row }
-            && (row.IsUserPinned || row.CanEject)) return;
+            && row.Path.Length > 0) return;
 
         e.Cancel = true;
     }
@@ -2534,6 +2552,30 @@ public partial class MainWindow : Window
     }
 
     /// <summary>
+    /// A path, whether the desktop handed over a path or a file:// URI.
+    ///
+    /// **The installed desktop entry said %U and this did not decode one**, so
+    /// on GNOME, Xfce, Cinnamon and plain xdg-open — every desktop that honours
+    /// %U literally — "open containing folder" arrived as
+    /// "file:///home/me/Documents", Directory.Exists said no, and the path was
+    /// dropped without a word. That was the primary Linux install route, and it
+    /// could not open a folder at all.
+    ///
+    /// packaging/install.sh now writes %F, matching brand/vaktari.desktop. This
+    /// stays because a portal or a D-Bus caller can still send a URI whatever
+    /// the Exec key says, and percent-decoding is the difference between
+    /// opening "My Documents" and opening nothing.
+    /// </summary>
+    private static string LocalPath(string raw)
+    {
+        if (!raw.StartsWith("file:", StringComparison.OrdinalIgnoreCase)) return raw;
+
+        return Uri.TryCreate(raw, UriKind.Absolute, out var uri) && uri.IsFile
+            ? uri.LocalPath
+            : raw;
+    }
+
+    /// <summary>
     /// Opens folders in tabs. Files resolve to the folder holding them, because
     /// "open containing folder" is the request the desktop actually sends.
     /// </summary>
@@ -2541,7 +2583,7 @@ public partial class MainWindow : Window
     {
         foreach (var raw in paths)
         {
-            var path = raw;
+            var path = LocalPath(raw);
 
             if (File.Exists(path) && Path.GetDirectoryName(path) is { Length: > 0 } parent)
                 path = parent;

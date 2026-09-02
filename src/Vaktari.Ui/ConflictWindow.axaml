@@ -47,7 +47,7 @@
     <TextBlock Text="{Binding Verdict}"
                IsVisible="{Binding Verdict.Length}"
                FontSize="{DynamicResource FontSizeSmall}"
-               Foreground="{DynamicResource AccentColour}"
+               Foreground="{DynamicResource AccentText}"
                TextWrapping="Wrap"/>
 
     <CheckBox Content="Do the same for the rest"

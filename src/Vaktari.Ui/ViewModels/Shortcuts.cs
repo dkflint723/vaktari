@@ -61,6 +61,11 @@ public static class Shortcuts
             new("Ctrl+F", "Search"),
             new("Ctrl+E", "Search"),
             new("Ctrl+I", "Filter this listing"),
+            // In the search box, where they had no effect at all until the
+            // results became a real list: Enter dead-ended and there was
+            // nothing for an arrow key to move.
+            new("Enter", "Open the first search result"),
+            new("↓", "Move into the search results"),
             new("Escape", "Clear the filter, and any pending cut"),
             new("Type any letters", "Jump to the first matching name"),
         ]),
