@@ -108,6 +108,18 @@ public sealed class WindowsFileOperations : IFileOperations
                 // SHFileOperation wants absolute paths — a relative one is
                 // resolved against the process's working directory, which is
                 // not the folder being listed.
+                // Same stripping, and the shell is no better at it: the path
+                // reaching SHFileOperation has already lost the trailing
+                // character, so the bin would swallow the neighbouring file.
+                // GetFullPath itself is where it happens, which is why the
+                // check comes first.
+                foreach (var path in paths)
+                    if (ReachablePath.Refuse(path) is { } unreachable)
+                    {
+                        handle.Failed(new IOException(unreachable));
+                        return;
+                    }
+
                 var full = paths.Select(Path.GetFullPath).ToList();
 
                 if (RecycleOverride is { } fake)
@@ -289,6 +301,18 @@ public sealed class WindowsFileOperations : IFileOperations
 
                     handle.ItemStarted(path);
 
+                    // **The wrong file, silently.** A name ending in a space or
+                    // a dot is stripped by the path layer before the call, so
+                    // deleting "report " deletes "report" and leaves "report "
+                    // standing. Refused per item rather than for the whole
+                    // batch: the other twenty files the user selected are fine
+                    // and should still go.
+                    if (ReachablePath.Refuse(path) is { } unreachable)
+                    {
+                        handle.ItemFailed(path, new IOException(unreachable));
+                        continue;
+                    }
+
                     // A read-only file refuses to delete on Windows where it
                     // would go on Linux, because the permission is on the file
                     // rather than its directory. The user asked for it to go.
@@ -360,6 +384,13 @@ public sealed class WindowsFileOperations : IFileOperations
         // listing for the current directory of drive D:.
         if (FileNames.Refuse(newName) is { } why)
             throw new ArgumentException(why, nameof(newName));
+
+        // The name being renamed FROM matters more than the one typed: a
+        // trailing space on the existing name means File.Move would rename the
+        // neighbour instead, and the row that was clicked would sit there
+        // apparently untouched.
+        if (ReachablePath.Refuse(path) is { } unreachable)
+            throw new IOException(unreachable);
 
         var directory = PathRules.Parent(Path.GetFullPath(path))
             ?? throw new IOException("A drive root cannot be renamed.");
@@ -482,6 +513,20 @@ public sealed class WindowsFileOperations : IFileOperations
             {
                 // Enumerating first means the progress bar is honest from the
                 // start rather than discovering the total as it goes.
+                // **Checked before the plan is built**, and for the whole
+                // operation rather than per item. A copy reads the source by
+                // name and writes the target by name; with a trailing space at
+                // either end the read would come from the neighbouring file and
+                // a move would then delete a source that was never copied. The
+                // destination counts too — a folder called "work " is a
+                // different folder to Windows than the one on screen.
+                foreach (var path in sources.Append(destination))
+                    if (ReachablePath.Refuse(path) is { } unreachable)
+                    {
+                        handle.Failed(new IOException(unreachable));
+                        return;
+                    }
+
                 var unreadable = new List<(string Path, Exception Error)>();
                 var plan = BuildPlan(sources, destination, handle.Token, unreadable);
 
