@@ -148,6 +148,57 @@ public sealed class BinIsNotAFolderTests : OwnedViewModels
         Assert.Equal(before, pane.Status);
     }
 
+    /// <summary>
+    /// **Opening a bin row opened the wrong file, or none at all.** The row
+    /// carries the path the item USED to occupy. Trash notes.txt, write a new
+    /// notes.txt, then press Enter on the bin row: the file that opens is the
+    /// NEW one, with nothing to say so. The same shape as the delete that took
+    /// the wrong file, and it reached the launcher rather than the file system,
+    /// so none of the guards there could catch it.
+    /// </summary>
+    [AvaloniaFact]
+    public async Task Enter_on_a_bin_row_opens_nothing()
+    {
+        var (pane, _) = InTheBin();
+
+        pane.Status = "";
+
+        await pane.OpenSelectedAsync();
+
+        // The refusal is the observable part. This pane has no launcher, so
+        // "nothing was opened" would hold with or without the guard and would
+        // prove nothing; the status line only appears when the guard fires.
+        Assert.Contains(Vaktari.Core.Naming.TheBin, pane.Status);
+    }
+
+    /// <summary>And the menu row goes with it, or the entry is drawn, enabled,
+    /// and refuses when pressed.</summary>
+    [AvaloniaFact]
+    public void The_open_row_is_not_offered_in_the_bin()
+    {
+        var (pane, _) = InTheBin();
+
+        Assert.True(pane.HasSelection);
+        Assert.False(pane.CanActOnSelection);
+
+        // And the row actually reads that, rather than HasSelection, which is
+        // true in the bin and was what it used to bind.
+        var here = AppContext.BaseDirectory;
+
+        while (here is not null && !File.Exists(Path.Combine(here, "Vaktari.slnx")))
+            here = Path.GetDirectoryName(here);
+
+        var markup = File.ReadAllText(
+            Path.Combine(here!, "src", "Vaktari.Ui", "MainWindow.axaml"));
+
+        var at = markup.IndexOf("Command=\"{Binding ActiveTab.OpenSelectedCommand}\"",
+                                StringComparison.Ordinal);
+
+        Assert.True(at > 0, "the Open row is not written the way this test looks for it");
+
+        Assert.Contains("CanActOnSelection", markup[at..markup.IndexOf("/>", at, StringComparison.Ordinal)]);
+    }
+
     [AvaloniaFact]
     public void Shift_delete_on_a_bin_row_destroys_nothing()
     {

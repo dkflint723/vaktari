@@ -1143,10 +1143,13 @@
                    does nothing is worse than none, which is why "Open with",
                    "Copy to", "Move to", "New", "More", "Scripts" and the share
                    entry — parents with no command of their own — stay bare. -->
+              <!-- CanActOnSelection, not HasSelection: a bin row names where a
+                   file used to be, and opening that path opens whatever is
+                   there now, if anything. -->
               <MenuItem Header="Open"
                                       Command="{Binding ActiveTab.OpenSelectedCommand}"
                                       InputGesture="Enter"
-                                      IsVisible="{Binding ActiveTab.HasSelection}"/>
+                                      IsVisible="{Binding ActiveTab.CanActOnSelection}"/>
               <!-- **Named, and the style anchored to that name, because a bare
                    `MenuItem > MenuItem` selector matches the MenuItem it is
                    DECLARED ON.** A style applies to its host as well as to the

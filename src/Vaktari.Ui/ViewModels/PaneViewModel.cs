@@ -1915,6 +1915,14 @@ public sealed partial class PaneViewModel : ObservableObject, IDisposable
     /// </summary>
     public async Task OpenSelectedAsync()
     {
+        // **Opening a bin row opened the wrong file, or none.** A binned row
+        // carries the path the item USED to occupy. If nothing is there now the
+        // gesture does nothing and says nothing; if a new file of that name has
+        // since been written, Enter opens THAT — a different file, with no sign
+        // anything unusual happened. The same shape as the delete that took the
+        // wrong file.
+        if (RefusedInBin()) return;
+
         var entries = EntriesToActOn();
 
         if (entries.Count == 0) return;

@@ -1072,6 +1072,26 @@ public partial class MainWindow : Window
     {
         if (paths.Count == 0) return;
 
+        // **A sheet for a path that has gone was confidently wrong rather than
+        // empty.** Windows answers a query about a file that is not there with
+        // a size of zero, 1601-01-01 for every date, and every attribute set —
+        // so the window filled itself in and looked authoritative. A row can go
+        // between being listed and being asked about, so refusing the bin and
+        // Recent is not enough on its own; this is a race as well as a gate.
+        var live = paths.Where(p => File.Exists(p) || Directory.Exists(p)).ToList();
+
+        if (live.Count == 0)
+        {
+            if (_shell.ActiveTab is { } gone)
+                gone.Status = paths.Count == 1
+                    ? $"{PathRules.LeafName(paths[0])} is no longer there"
+                    : "those items are no longer there";
+
+            return;
+        }
+
+        paths = live;
+
         // **The desktop's own dialog wins where it has one.** On Windows that
         // sheet carries Security, Details and the Unblock checkbox, and hosts
         // the pages other applications add to the shell — none of which this
@@ -3919,9 +3939,14 @@ public partial class MainWindow : Window
 
         switch (e.Key)
         {
+            // **Through the shell, not straight to the window.** Calling
+            // ShowProperties() here went round the gate that keeps the sheet
+            // out of the bin and Recent — both hold rows naming where a file
+            // USED to be — so the menu entry was correctly greyed out while
+            // Alt+Enter opened the sheet on a path that is not there.
             case Key.Enter when e.KeyModifiers.HasFlag(KeyModifiers.Alt):
                 e.Handled = true;
-                ShowProperties();
+                _shell.ShowPropertiesCommand.Execute(null);
                 break;
 
             case Key.Enter:
