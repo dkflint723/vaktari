@@ -552,12 +552,24 @@ public sealed class WindowsFileOperations : IFileOperations
                 var landings = new List<(string Source, string Target)>();
                 var skipped = new List<(string Source, string Target)>();
 
+                // Targets of folders the user chose to skip. Everything planned
+                // underneath one of them is skipped too.
+                var skippedRoots = new List<string>();
+
                 foreach (var item in plan)
                 {
                     handle.Token.ThrowIfCancellationRequested();
                     await handle.WaitIfPausedAsync().ConfigureAwait(false);
 
                     var target = Redirect(item.Target, redirects);
+
+                    // Under a folder that was skipped: skip it too, before the
+                    // conflict prompt can ask about it a second time.
+                    if (Under(target, skippedRoots))
+                    {
+                        handle.ItemFinished();
+                        continue;
+                    }
 
                     // **Pasting into the folder it already lives in.** The
                     // target then IS the source, so the conflict prompt could
@@ -575,7 +587,19 @@ public sealed class WindowsFileOperations : IFileOperations
                             continue;
                         }
 
-                        target = Deduplicate(target, item.Kind == ItemKind.Directory);
+                        // **The rename has to travel down.** Every descendant
+                        // was planned against the original name, and without a
+                        // redirect each one hit this same branch and was
+                        // deduplicated where it stood -- so duplicating a
+                        // folder produced an empty "A - Copy" and littered the
+                        // ORIGINAL with "x - Copy" twins of every file inside
+                        // it, reported as success. The KeepBoth branch below
+                        // has always recorded one.
+                        var deduped = Deduplicate(target, item.Kind == ItemKind.Directory);
+
+                        if (item.Kind == ItemKind.Directory) redirects.Add((target, deduped));
+
+                        target = deduped;
                     }
 
                     if (File.Exists(target) || Directory.Exists(target))
@@ -583,7 +607,19 @@ public sealed class WindowsFileOperations : IFileOperations
                         switch (await onConflict(new FileConflict(item.Source, target)).ConfigureAwait(false))
                         {
                             case ConflictResolution.Skip:
+                                // **The whole subtree, not just this entry.**
+                                // Skipping a folder skipped only the folder
+                                // itself: every file planned inside it still
+                                // went into the existing folder -- a merge
+                                // nobody asked for -- and on a move the source
+                                // folder was then deleted as "empty". Skip in
+                                // both references leaves the folder untouched
+                                // at both ends.
                                 skipped.Add((item.Source, target));
+
+                                if (item.Kind == ItemKind.Directory)
+                                    skippedRoots.Add(target);
+
                                 handle.ItemFinished();
                                 continue;
                             case ConflictResolution.KeepBoth:
@@ -751,6 +787,24 @@ public sealed class WindowsFileOperations : IFileOperations
         }
 
         return target;
+    }
+
+    /// <summary>
+    /// Whether a planned target sits at or beneath one of these roots. The same
+    /// prefix rule <see cref="Redirect"/> uses: the separator is part of the
+    /// test, so "work 2" is not treated as living inside "work".
+    /// </summary>
+    private static bool Under(string target, List<string> roots)
+    {
+        foreach (var root in roots)
+        {
+            if (string.Equals(target, root, PathRules.Comparison)) return true;
+
+            if (target.StartsWith(root + Path.DirectorySeparatorChar, PathRules.Comparison))
+                return true;
+        }
+
+        return false;
     }
 
     private static bool IsLink(string path)
