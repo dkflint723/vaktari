@@ -40,6 +40,25 @@ public sealed record TerminalOption(
     IReadOnlyList<string> Arguments)
 {
     /// <summary>
+    /// How this terminal is told to run a command rather than a shell.
+    ///
+    /// **A .desktop entry with Terminal=true was launched with no console.**
+    /// vim, nano and htop all ship such entries and all register against
+    /// text/plain, so they appeared in "Open with" for any text file — and
+    /// spawning their Exec directly gave them no tty. The process started,
+    /// Process.Start returned non-null so the launch reported success, and
+    /// nothing ever appeared: vim exits at once off a tty, htop lingers
+    /// invisibly.
+    ///
+    /// "-e" is the near-universal spelling and so the default for a terminal we
+    /// do not recognise. The exceptions are why this is a list rather than a
+    /// flag: gnome-terminal and xfce4-terminal both take a single STRING after
+    /// -e, so passing an argv there would run only the first word, and kitty
+    /// takes the command positionally with no flag at all.
+    /// </summary>
+    public IReadOnlyList<string> RunArguments { get; init; } = ["-e"];
+
+    /// <summary>
     /// True when the folder is passed by starting the process IN it rather
     /// than as an argument. Both are needed: cmd and PowerShell have no
     /// "start here" flag and inherit the working directory, while Windows

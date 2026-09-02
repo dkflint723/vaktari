@@ -153,8 +153,13 @@ public static class DesktopEntries
         foreach (var id in ids)
         {
             if (FindDesktopFile(id) is not { } file) continue;
-            var (name, _, noDisplay) = ReadEntry(file);
+            var (name, _, noDisplay, terminal) = ReadEntry(file);
             if (noDisplay || string.IsNullOrEmpty(name)) continue;
+
+            // Offered only if there is something to run it in. An entry that
+            // needs a console, on a machine with no terminal emulator, is a
+            // row that can only do nothing.
+            if (terminal && Terminals.Count == 0) continue;
 
             options.Add(new LaunchOption(name, id));
         }
@@ -223,10 +228,11 @@ public static class DesktopEntries
         return null;
     }
 
-    private static (string Name, string Exec, bool NoDisplay) ReadEntry(string desktopFile)
+    internal static (string Name, string Exec, bool NoDisplay, bool Terminal) ReadEntry(string desktopFile)
     {
         string name = "", exec = "";
         var noDisplay = false;
+        var terminal = false;
         var inMainSection = false;
 
         try
@@ -253,25 +259,57 @@ public static class DesktopEntries
                     noDisplay = true;
                 else if (line.StartsWith("Hidden=true", StringComparison.OrdinalIgnoreCase))
                     noDisplay = true;
+                // **Nothing read this key.** An entry that says it needs a
+                // console was launched without one: vim, nano and htop all
+                // ship such entries and all register against text/plain, so
+                // they appeared in "Open with" for any text file and did
+                // nothing visible when chosen.
+                else if (line.StartsWith("Terminal=true", StringComparison.OrdinalIgnoreCase))
+                    terminal = true;
             }
         }
         catch
         {
-            return ("", "", true);
+            return ("", "", true, false);
         }
 
-        return (name, exec, noDisplay);
+        return (name, exec, noDisplay, terminal);
     }
+
+    /// <summary>Which terminals this machine has, asked once.</summary>
+    internal static IReadOnlyList<Vaktari.Core.FileSystem.TerminalOption> Terminals { get; set; }
+        = new LinuxLauncher().Terminals;
+
+    /// <summary>
+    /// The argv for running a console application inside a terminal emulator.
+    ///
+    /// Separate and pure because the flags differ per terminal in ways that
+    /// cannot be guessed: gnome-terminal takes "--", kitty takes nothing at
+    /// all, and passing "-e" to either runs the wrong thing or nothing.
+    /// </summary>
+    internal static IReadOnlyList<string> InTerminal(
+        Vaktari.Core.FileSystem.TerminalOption terminal, IReadOnlyList<string> command)
+        => [terminal.Command, .. terminal.RunArguments, .. command];
 
     public static bool Launch(string desktopId, string path)
     {
         if (FindDesktopFile(desktopId) is not { } file) return false;
 
-        var (_, exec, _) = ReadEntry(file);
+        var (_, exec, _, terminal) = ReadEntry(file);
         if (string.IsNullOrEmpty(exec)) return false;
 
         var parts = SplitExec(exec, path);
         if (parts.Count == 0) return false;
+
+        // **A console application was spawned with no console.** Process.Start
+        // returned non-null, so the launch reported success, and nothing ever
+        // appeared — vim exits at once off a tty and htop lingers invisibly.
+        if (terminal)
+        {
+            if (Terminals.Count == 0) return false;
+
+            parts = [.. InTerminal(Terminals[0], parts)];
+        }
 
         try
         {

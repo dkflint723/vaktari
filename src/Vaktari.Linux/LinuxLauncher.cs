@@ -63,30 +63,39 @@ public sealed class LinuxLauncher : IApplicationLauncher
             var known = Known.FirstOrDefault(k =>
                 path.EndsWith("/" + k.Exe, StringComparison.Ordinal));
 
-            found.Add(new TerminalOption("terminal-env", wanted, path, known.Args ?? []));
+            // Same rule for the run flags: its own if we know it, and the
+            // near-universal -e if we do not.
+            found.Add(new TerminalOption("terminal-env", wanted, path, known.Args ?? [])
+            {
+                RunArguments = known.Run ?? ["-e"],
+            });
         }
 
-        foreach (var (id, name, exe, args) in Known)
+        foreach (var (id, name, exe, args, run) in Known)
         {
             if (found.Any(t => t.Command.EndsWith("/" + exe, StringComparison.Ordinal))) continue;
             if (OnPath(exe) is not { } located) continue;
 
-            found.Add(new TerminalOption(id, name, located, args));
+            found.Add(new TerminalOption(id, name, located, args) { RunArguments = run });
         }
 
         return found;
     }
 
-    private static readonly (string Id, string Name, string Exe, string[] Args)[] Known =
+    // The last column is how each one is told to RUN something rather than open
+    // a shell. Not all "-e": gnome-terminal deprecated its -e and takes a
+    // single string, xfce4-terminal's -e is the same shape, and kitty takes the
+    // command positionally with no flag at all.
+    private static readonly (string Id, string Name, string Exe, string[] Args, string[] Run)[] Known =
     [
-        ("konsole",        "Konsole",        "konsole",        ["--workdir", "{dir}"]),
-        ("gnome-terminal", "GNOME Terminal", "gnome-terminal", ["--working-directory", "{dir}"]),
-        ("alacritty",      "Alacritty",      "alacritty",      ["--working-directory", "{dir}"]),
-        ("kitty",          "kitty",          "kitty",          ["--directory", "{dir}"]),
-        ("wezterm",        "WezTerm",        "wezterm",        ["start", "--cwd", "{dir}"]),
-        ("foot",           "foot",           "foot",           ["--working-directory={dir}"]),
-        ("xfce4-terminal", "Xfce Terminal",  "xfce4-terminal", ["--working-directory={dir}"]),
-        ("xterm",          "xterm",          "xterm",          []),
+        ("konsole",        "Konsole",        "konsole",        ["--workdir", "{dir}"],           ["-e"]),
+        ("gnome-terminal", "GNOME Terminal", "gnome-terminal", ["--working-directory", "{dir}"], ["--"]),
+        ("alacritty",      "Alacritty",      "alacritty",      ["--working-directory", "{dir}"], ["-e"]),
+        ("kitty",          "kitty",          "kitty",          ["--directory", "{dir}"],         []),
+        ("wezterm",        "WezTerm",        "wezterm",        ["start", "--cwd", "{dir}"],      ["start", "--"]),
+        ("foot",           "foot",           "foot",           ["--working-directory={dir}"],    ["-e"]),
+        ("xfce4-terminal", "Xfce Terminal",  "xfce4-terminal", ["--working-directory={dir}"],    ["-x"]),
+        ("xterm",          "xterm",          "xterm",          [],                               ["-e"]),
     ];
 
     private static string? OnPath(string exe)
