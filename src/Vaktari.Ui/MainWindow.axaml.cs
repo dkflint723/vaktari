@@ -746,6 +746,10 @@ public partial class MainWindow : Window
         // them is what sat under the pointer — and arming both would race.
         _bandList = properties.IsLeftButtonPressed ? ListForEmptySpace(e.Source) : null;
         _bandOrigin = e.GetPosition(BandLayer);
+        _bandScrollAt = _bandList is { } armed && Scroller(armed) is { } view
+            ? view.Offset
+            : default;
+        _bandTaken.Clear();
         _bandAdditive = e.KeyModifiers.HasFlag(KeyModifiers.Control)
                         || e.KeyModifiers.HasFlag(KeyModifiers.Shift);
         _bandKept = null;
@@ -1356,6 +1360,29 @@ public partial class MainWindow : Window
     /// </summary>
     private List<object>? _bandKept;
 
+    /// <summary>
+    /// The scroll offset when the band started.
+    ///
+    /// **The origin was anchored to the window**, so auto-scrolling slid the
+    /// content out from under a rectangle that stayed put: the band never
+    /// covered more than one screenful, and everything swept past scrolled out
+    /// of it. Holding the offset lets the rectangle be re-expressed in content
+    /// terms every pass, so it keeps covering everything the drag has crossed.
+    /// </summary>
+    private Vector _bandScrollAt;
+
+    /// <summary>
+    /// What the band has selected so far.
+    ///
+    /// A row that has scrolled out of the viewport has no container and no
+    /// bounds, so it cannot be re-tested — and rebuilding the selection from
+    /// what is visible therefore DESELECTED it. Marquee-selecting two hundred
+    /// files kept only the last screenful. Rows that have left stay selected;
+    /// rows still on screen are re-tested as before, so dragging back up still
+    /// takes them off.
+    /// </summary>
+    private readonly List<object> _bandTaken = [];
+
     private Point _dragOrigin;
     private PaneViewModel? _dragSource;
     private bool _dragging;
@@ -1695,9 +1722,17 @@ public partial class MainWindow : Window
 
         var here = e.GetPosition(BandLayer);
 
+        // **The origin travels with the content.** It was fixed in window
+        // coordinates, so once the list auto-scrolled the rectangle stopped
+        // covering what the drag had crossed — the band could never select more
+        // than one screenful. Subtracting how far the view has moved since the
+        // press puts the anchor back over the row it started on.
+        var scrolled = Scroller(list) is { } view ? view.Offset - _bandScrollAt : default;
+        var anchor = new Point(_bandOrigin.X - scrolled.X, _bandOrigin.Y - scrolled.Y);
+
         var rect = new Rect(
-            Math.Min(_bandOrigin.X, here.X), Math.Min(_bandOrigin.Y, here.Y),
-            Math.Abs(here.X - _bandOrigin.X), Math.Abs(here.Y - _bandOrigin.Y));
+            Math.Min(anchor.X, here.X), Math.Min(anchor.Y, here.Y),
+            Math.Abs(here.X - anchor.X), Math.Abs(here.Y - anchor.Y));
 
         // The same six-pixel threshold the file drag uses. Below it this is a
         // click that happened to wobble, and rewriting the selection would make
@@ -1734,9 +1769,17 @@ public partial class MainWindow : Window
 
         var wanted = new List<object>(_bandKept ?? []);
 
+        // **What the band already took, and can no longer see.** A row outside
+        // the viewport has no container, so it cannot be re-tested — and
+        // rebuilding from what is visible therefore dropped it. Sweeping two
+        // hundred files kept only the last screenful.
+        var realized = new List<object>();
+
         foreach (var container in Rows(list))
         {
             if (container.DataContext is not { } item) continue;
+
+            realized.Add(item);
 
             // TranslatePoint rather than a stored offset: rows move as the list
             // scrolls, and a cached position would select the wrong ones the
@@ -1747,6 +1790,18 @@ public partial class MainWindow : Window
 
             if (bounds.Intersects(rect) && !wanted.Contains(item)) wanted.Add(item);
         }
+
+        // Off-screen rows the band has already claimed stay claimed. On-screen
+        // ones were just re-tested, so dragging back up still takes them off.
+        foreach (var taken in _bandTaken)
+            if (!realized.Contains(taken) && !wanted.Contains(taken))
+                wanted.Add(taken);
+
+        _bandTaken.Clear();
+
+        foreach (var item in wanted)
+            if (_bandKept is null || !_bandKept.Contains(item))
+                _bandTaken.Add(item);
 
         // Diffed rather than cleared and refilled. Every change to this
         // collection refreshes the details panel and the status line, and a
@@ -1999,6 +2054,12 @@ public partial class MainWindow : Window
 
         _bandList = null;
         _bandKept = null;
+
+        // Released here as well as armed on the press: the list it names may be
+        // torn down before the next band starts, and holding rows from a
+        // listing that has gone would keep them alive for nothing.
+        _bandTaken.Clear();
+
         SelectionBand.IsVisible = false;
     }
 
