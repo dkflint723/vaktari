@@ -3040,7 +3040,19 @@ public sealed partial class PaneViewModel : ObservableObject, IDisposable
 
         RefreshConfusable();
 
+        // **Typing in the filter box deselected everything.** ReplaceAll raises
+        // a Reset, and the list empties its selection on one — exactly as it
+        // does for a sort, which has always put it back afterwards. This
+        // rebuild never did, so narrowing to the three files you had already
+        // picked and then acting on them, which is most of what the box is for,
+        // silently acted on nothing. Rows the filter now hides drop out of the
+        // selection because Reselect only re-adds what the listing holds, and
+        // that is the right answer: you cannot act on what you cannot see.
+        var keep = SelectedPaths();
+
         Entries.ReplaceAll(sorted);
+
+        Reselect(keep);
 
         // Only when filtering. The plain count lives in Summary, and setting
         // both made the status bar print "36 items   36 items".
@@ -3089,6 +3101,36 @@ public sealed partial class PaneViewModel : ObservableObject, IDisposable
         path = VirtualPaths.IsVirtual(path)
             ? path
             : Vaktari.Core.FileSystem.PathRules.Normalise(path);
+
+        // **Nothing captured the selection before the rows were thrown away.**
+        // A few lines down this clears _all and resets Entries, and the list
+        // empties its own selection the moment that Reset arrives — so by the
+        // time the finished listing reached ResortInPlace, whose Reselect is
+        // what keeps a selection across a sort, there was nothing left to read.
+        // F5 lost your place in a long folder, and so did every refresh a
+        // rename, a paste, a delete or an undo fires afterwards.
+        //
+        // Taken here rather than lower down for two reasons: the old rows are
+        // still standing, and ApplyFolderView has not yet run — it can change
+        // View, and SelectedEntries answers whichever layout is current, so a
+        // capture after it would read the wrong collection.
+        //
+        // Only when staying put. Somewhere else has no rows in common, and two
+        // listings DO carry paths from elsewhere: the bin's rows hold the path
+        // a file used to occupy, and a search result holds one from anywhere on
+        // the machine — so a path carried into either of those would match and
+        // light up a row nobody picked.
+        //
+        // Undo and redo reach this from a pool thread (they await the refresh
+        // with ConfigureAwait(false)), so this read is off the UI thread there.
+        // It only reads, and the clear a few lines down has always run in the
+        // same place, so it is no worse than what shipped before.
+        List<string> carry = PathRules.Same(CurrentPath, path) ? SelectedPaths() : [];
+
+        // Whatever an operation has asked for by name joins them: the row it
+        // means does not exist yet, and the one it replaces is already stale.
+        carry.AddRange(_selectAfterLoad);
+        _selectAfterLoad = [];
 
         // Cancelling the previous navigation is what stops a dead network path
         // from wedging the pane. It is not an optimisation.
@@ -3217,6 +3259,13 @@ public sealed partial class PaneViewModel : ObservableObject, IDisposable
                 if (generation != _generation) return;
 
                 if (FilterText.Length > 0) ApplyFilter(); else ResortInPlace();
+
+                // After the sort, not before it: Reselect walks Entries, and
+                // the rows it walks have to be the ones that will still be
+                // there. Both branches above rebuild the collection, and both
+                // restore only what they were holding when they started —
+                // which, on a reload, is nothing.
+                Reselect(carry);
 
                 // Nothing to watch: there is no directory behind a recent
                 // listing. Skipped explicitly rather than left to fail inside
@@ -3395,8 +3444,24 @@ public sealed partial class PaneViewModel : ObservableObject, IDisposable
 
     /// <summary>What is selected, by path, so it can survive the rows being
     /// replaced by equal-but-different ones.</summary>
+    /// <summary>
+    /// **A focused row with nothing in the selection counted as nothing.** In a
+    /// real list the two cannot come apart — SelectedItem and SelectedItems sit
+    /// behind one selection model, so the binding that sets SelectedEntry fills
+    /// DetailsSelection with it — but this view model is written to be driven
+    /// without one, and the places that set the focused row on its own
+    /// (RemoveByPath after a delete, a restored session, a test) would hand a
+    /// rebuild nothing to keep. Belt and braces: the collection is still the
+    /// answer whenever it has one.
+    /// </summary>
     private List<string> SelectedPaths()
-        => SelectedEntries.Select(e => e.FullPath).OfType<string>().ToList();
+    {
+        var paths = SelectedEntries.Select(e => e.FullPath).OfType<string>().ToList();
+
+        if (paths.Count == 0 && SelectedEntry?.FullPath is { } focused) paths.Add(focused);
+
+        return paths;
+    }
 
     /// <summary>
     /// Puts the selection back after the rows have been rebuilt.
@@ -3427,6 +3492,37 @@ public sealed partial class PaneViewModel : ObservableObject, IDisposable
         // happened to be rather than from what is selected.
         if (selection.Count > 0) SelectedEntry = selection[0];
     }
+
+    /// <summary>
+    /// Paths for the next load to select, put there by an operation that knows
+    /// what it has just made.
+    ///
+    /// **A rename came back with nothing selected, including the file you had
+    /// renamed.** The refresh that follows one rebuilds the listing from the
+    /// file system, and the path that was selected went with the old name — so
+    /// carrying the selection over, which is all a reload can do on its own,
+    /// restores a row that is not there any more. The new name is known only to
+    /// the rename.
+    ///
+    /// A path rather than a row, because the row does not exist yet: it arrives
+    /// with the listing, out of the provider, carrying a length and a timestamp
+    /// this side has never seen. The same reason Reselect works in paths, and
+    /// the same reason the deletion counterpart _selectAfterRemoval does.
+    /// </summary>
+    private List<string> _selectAfterLoad = [];
+
+    /// <summary>
+    /// Asks the next load to select this path if the listing has it.
+    ///
+    /// Read and cleared by that load whether or not it found anything — a
+    /// request older than that belongs to a listing that has gone.
+    ///
+    /// Public because the caller that knows the new name is the prompt, not
+    /// this file: the rename engine is handed a name and never sees the
+    /// gesture, and only the gesture knows whether the keyboard is staying on
+    /// the file or moving to the next one.
+    /// </summary>
+    public void SelectAfterLoad(string path) => _selectAfterLoad.Add(path);
 
     /// <summary>
     /// Recomputes which rows cannot be told apart by eye.

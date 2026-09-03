@@ -27,11 +27,23 @@ public sealed class RenameStepTests : OwnedViewModels
         Dispatcher.UIThread.RunJobs(DispatcherPriority.Background);
     }
 
-    private sealed record Rig(Window Window, ShellViewModel Shell, TextBox Input, string Root)
+    private sealed record Rig(
+        Window Window, ShellViewModel Shell, TextBox Input, string Root, string? Was)
         : IDisposable
     {
         public void Dispose()
         {
+            // **Put the tab back before closing it.** Closing a real window
+            // flushes the session, and the session is the real one — so every
+            // run of this class used to leave its temp folder in the developer's
+            // own back stack, and would have left the application opening on a
+            // folder that no longer exists.
+            if (Was is not null && Shell.ActiveTab is { } tab)
+            {
+                Dispatcher.UIThread.InvokeAsync(() => tab.NavigateAsync(Was));
+                Settle();
+            }
+
             Window.Close();
 
             try { Directory.Delete(Root, recursive: true); }
@@ -60,6 +72,8 @@ public sealed class RenameStepTests : OwnedViewModels
 
         var shell = Assert.IsType<ShellViewModel>(window.DataContext);
 
+        var was = shell.ActiveTab?.CurrentPath;
+
         // Awaited, never blocked on: a headless test runs ON the dispatcher, and
         // the load posts its finishing work back to it — so a GetResult here
         // waits for a callback that cannot run until the wait ends.
@@ -71,7 +85,20 @@ public sealed class RenameStepTests : OwnedViewModels
         Assert.NotNull(input);
         Assert.Equal(3, shell.ActiveTab.Entries.Count);
 
-        return new Rig(window, shell, input!, root);
+        return new Rig(window, shell, input!, root, was);
+    }
+
+    /// <summary>The reload a rename starts is not awaited, so a test has to
+    /// wait the way the window does.</summary>
+    private static async Task Drain()
+    {
+        for (var i = 0; i < 60; i++)
+        {
+            Settle();
+            await Task.Delay(5);
+        }
+
+        Settle();
     }
 
     private static void Rename(Rig rig, FileEntry row, string to)
@@ -199,5 +226,54 @@ public sealed class RenameStepTests : OwnedViewModels
         Assert.NotNull(bar);
         Assert.False(bar!.IsVisible, "the run did not end at the top of the listing");
         Assert.NotEqual("b.txt", rig.Input.Text);
+    }
+
+    /// <summary>
+    /// **The file you had just renamed came back unselected.** The refresh
+    /// rebuilds the listing from the file system and the path that was selected
+    /// went with the old name, so carrying the selection over restores a row
+    /// that is not there any more.
+    /// </summary>
+    [AvaloniaFact]
+    public async Task A_plain_rename_leaves_the_renamed_file_selected()
+    {
+        using var rig = await BuildAsync();
+        var pane = rig.Shell.ActiveTab!;
+
+        pane.SelectedEntry = pane.Entries.Single(e => e.Name == "a.txt");
+        pane.BeginRenameCommand.Execute(null);
+        Settle();
+
+        rig.Input.Text = "one.txt";
+        rig.Input.Focus();
+        rig.Window.KeyPress(Key.Enter, RawInputModifiers.None, PhysicalKey.Enter, null);
+        Settle();
+
+        await Drain();
+
+        Assert.Equal("one.txt", pane.SelectedEntry?.Name);
+        Assert.Equal("one.txt", Assert.Single(pane.Selection).Name);
+    }
+
+    /// <summary>
+    /// **The bar edited one file while the listing highlighted another.** The
+    /// step picks the next row and opens its bar; a request to select the file
+    /// just renamed, registered from inside the rename, lands after that and
+    /// takes the highlight back — so F2, Delete and Copy would all have acted
+    /// on the row nobody was looking at.
+    /// </summary>
+    [AvaloniaFact]
+    public async Task The_bar_and_the_highlight_name_the_same_file()
+    {
+        using var rig = await BuildAsync();
+        var pane = rig.Shell.ActiveTab!;
+
+        Rename(rig, pane.Entries.Single(e => e.Name == "a.txt"), "one.txt");
+
+        await Drain();
+
+        Assert.Equal("b.txt", rig.Input.Text);
+        Assert.Equal("b.txt", pane.SelectedEntry?.Name);
+        Assert.Equal("b.txt", Assert.Single(pane.Selection).Name);
     }
 }

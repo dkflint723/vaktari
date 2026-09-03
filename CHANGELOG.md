@@ -417,6 +417,19 @@ should not be trusted for compatibility yet.
 
 ### Fixed
 
+- **A refresh keeps what you had selected, and lands on the file you just
+  renamed.** F5 in a long folder came back at the top with nothing picked —
+  and so did every refresh the program does for you, after a rename, a paste,
+  a delete or an undo. Sorting had kept the selection since the day it
+  shipped; the reload threw it away because it cleared the rows before
+  anything had read what was on them. Typing in the filter box did the same:
+  narrowing to the three files you had already picked deselected all three.
+  The renamed file is a case of its own — its old path goes with its old
+  name, so there is nothing left to restore — and it now comes back
+  selected. Renaming a run with Tab is the exception, and stays one: there
+  the keyboard belongs on the file whose name you are about to type, not on
+  the one you have just finished.
+
 - **The sidebar can be walked with the keyboard, and stops taking the
   listing's keys.** F6 put the keyboard in the sidebar and left it there: the
   arrow keys did nothing, so the only way on from a place row was to Tab

@@ -4109,6 +4109,27 @@ public partial class MainWindow : Window
 
             ClosePrompt();
 
+            // **The file you had just renamed came back unselected**, in a
+            // folder that had lost the rest of the selection with it. Named
+            // here because this is the only place that knows the name: the
+            // reload builds its rows from the file system and has never heard
+            // of the one that was typed.
+            //
+            // HERE rather than in RenameOrThrowAsync, which is where it looks
+            // like it belongs. A Tab that is stepping through a run renames and
+            // then puts the keyboard on the NEXT row — and a request registered
+            // from inside the rename lands after that, so the bar edited b.txt
+            // while the listing highlighted the file just finished. Registered
+            // from the prompt, the reload settles before the step chooses, and
+            // the step has the last word.
+            //
+            // From the entry's own folder rather than CurrentPath: a search
+            // listing holds rows from all over the machine.
+            if (decision.Verdict == Input.RenameVerdict.Rename
+                && target is not null
+                && PathRules.Parent(entry.FullPath) is { } folder)
+                target.SelectAfterLoad(Path.Combine(folder, decision.Name));
+
             // Kept, so a Tab that is stepping through a run can wait for it
             // and stop when the file system says no. Nothing else reads it.
             _lastRename = decision.Verdict == Input.RenameVerdict.Rename
