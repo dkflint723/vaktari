@@ -13,14 +13,60 @@ should not be trusted for compatibility yet.
 
 ### Added
 
-- **A search shows that it is running, and can be stopped.** Nothing on screen
-  said a search was under way: the status line changes its words only when a
-  batch of results lands, so between batches a walk that was still going looked
-  exactly like one that had finished — and from This PC, where the scope box is
-  forced off and every drive is read, that walk is unbounded. There is a bar
-  while it runs and a *Stop* beside it. Stop keeps the hits it already found,
-  which is the whole difference between it and Escape: Escape clears the query
-  and takes the results and the text that produced them with it.
+- **A copy or move that left something behind can be asked to go again.** The
+  batch never stopped to ask — it carried on past a locked file and named what
+  it could not do — but the only verbs on offer were the two it already had:
+  skip, which is what it did, and cancel, which had been on the bar all along.
+  The missing one is the one that needs you to go and do something first, close
+  the program holding the file, plug the drive back in, and that is exactly the
+  answer no dialog in the middle of five thousand items can take. So the offer
+  is made afterwards, as a *retry 3* button beside the message, and it goes
+  again on those three and nothing else: re-running the successes would ask
+  every conflict they already answered a second time. A retried item lands
+  where this run decided to put it, so an item retried after *Keep both* goes
+  into the folder that was kept separate rather than merging into the one you
+  asked to leave alone. A clean run offers nothing, and so does a cancelled
+  one — someone who pressed cancel is not asking for the work back.
+
+- **On Linux, other applications can ask Vaktari to show a file.** A browser's
+  "Show in folder", a chat client's "Open containing folder", and the same
+  entry in most freedesktop applications go through a standard interface that
+  Vaktari did not implement, so those buttons either did nothing or opened
+  whichever file manager was installed instead. Vaktari now answers, and can be
+  set as the desktop's handler; asked to show a file, it opens the folder with
+  that file selected rather than merely opening the folder.
+
+- **Search results are a listing, not a popup.** They used to be a floating
+  list drawn over the folder they were meant to help you act on, and it was the
+  one collection of files in Vaktari you could do nothing with: no
+  multi-select, no drag, no context menu, no columns, no sorting, and nothing
+  you could reach without a mouse — Enter and Down did nothing at all, so
+  type-then-Enter dead-ended. A search is now somewhere you go. It has a path,
+  which means a tab, a title, Back and Forward, and a place in the session, so
+  it is still there tomorrow. The rows are the pane's own rows, so everything
+  you can do to a file you can do to a result: select five and copy them, drag
+  one out, rename in place, open a second search beside the first in a split.
+
+  Above them is a band saying what was asked and where it looked, with a *This
+  folder only* box that finally does something — it had no control bound to it
+  at all, so searching your whole machine was built, tested by neither
+  platform, and unreachable. Ticking it is a navigation, so Back returns to the
+  wider answer instead of running it again.
+
+  A search that is running says so, with a bar and a *Stop* beside it. Nothing
+  said it before: the status line changes its words only when a batch lands, so
+  between batches a walk still going looked exactly like one that had finished
+  — and from This PC, which reads every drive, that walk is unbounded. Stop
+  keeps what it found, which is the whole difference between it and leaving.
+
+  Typing is separate from searching now. Nothing runs until you press Enter, so
+  there is no pause to type through, and one character is a question like any
+  other — "b" for a folder of build outputs used to be refused with "keep
+  typing…". Ctrl+F over a search opens the field holding the question you are
+  looking at, so refining it means editing rather than retyping. Escape puts
+  the field away and leaves the results standing. Results carry the folder they
+  came from in their own column, the way Recent does, and *Open file location*
+  takes you there.
 
 - **There is somewhere above a drive root, and it lists your drives.** Up was
   disabled at the top of `C:\` by construction, the breadcrumbs stopped at the
@@ -244,6 +290,56 @@ should not be trusted for compatibility yet.
   — which is the reason to open three — gave three identical taskbar buttons.
 
 ### Fixed
+
+- **F2 stops throwing away the name you are typing.** The rename bar is inline
+  and the listing behind it stays live, so pressing F2 again — easy to do while
+  hunting for the right row — discarded what you had typed and re-pointed the
+  bar at whatever was selected now, which is a different file the moment
+  another row has been clicked. Shift+F2 opened the batch-rename dialog on top
+  of the open bar. Both now wait their turn, and neither fires while the
+  keyboard belongs to a text box, so F2 in the address or filter bar no longer
+  renames a row hidden behind it.
+
+- **The back and forward buttons drive the pane you are looking at.** Pressing
+  back while the pointer happened to be over the third tab's label rewound the
+  third tab instead: the listing on screen did not move, nothing said anything,
+  and the only trace was a title quietly changing on a folder that was not
+  open. Every browser drives the page you are looking at, whichever piece of
+  chrome the pointer is over. In a split, pointing at one side still navigates
+  that side. The same fault took the tab strip's *+* button to the wrong half
+  of a split.
+
+- **Switching tabs stops moving the keyboard into the filter box.** Ctrl+Tab
+  back to a tab that had the filter open put the caret in the filter field, so
+  arrow keys, Enter, Delete and type-ahead were all dead in a listing that
+  looked ready for them — with nothing on screen to say the keystrokes were
+  going into a 200-pixel box up in the path bar. The box takes the keyboard
+  when you ask for it and not when it merely reappears.
+
+- **Double-clicking the blank half of the tab strip opens a tab**, as it does
+  in Explorer, Dolphin and every browser. It did nothing here — which is worst
+  exactly when you reach for it, with a dozen tabs open and the *+* scrolled
+  out of sight.
+
+- **A file kept across a move is numbered, not called a copy.** Moving a file
+  into a folder that already had one of that name and choosing *Keep both*
+  produced "report - Copy.txt" — after an operation that copied nothing, in a
+  folder where no report.txt of yours had ever been. Explorer distinguishes the
+  two and so does this: " - Copy" is what duplicating a file in place makes,
+  where the word is true, and a conflict kept apart is "(2)", counting from two
+  because the file already sitting there is the first.
+
+- **The bin's icon says whether it has anything in it**, which is the one
+  question you ask a bin and the one thing it would not answer — it drew the
+  same glyph holding a thousand items as holding none. A symbolic link now
+  carries a small arrow too, so a link to a folder is distinguishable from the
+  folder.
+
+- **The icon-size number matches the icons on screen.** The box quoted 26 next
+  to 18-pixel icons in Details, and quoted 26 in Grid and Compact as well,
+  where the icons are 72 and 36 — a number no layout had drawn in some time. It
+  now reports the active layout's own size, and updates when you switch layouts
+  even if the zoom did not move.
 
 - **"Open in new tab" opens all the folders you chose.** Selecting five folders
   and picking it opened one — the focused one — and said nothing about the
