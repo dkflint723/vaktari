@@ -210,6 +210,19 @@ should not be trusted for compatibility yet.
 
 ### Changed
 
+- **The keyboard sheet answers the question F3 raises.** Explorer opens search
+  on F3; Vaktari splits the window on it, matching Dolphin. Somebody arriving
+  from Explorer presses it, gets a second pane, and opens the sheet to find out
+  what happened — landing on a line that answered only the question they did
+  not ask, with the key they wanted two headings further down and off the
+  bottom of the sheet. That line now says where search is.
+
+- **Ctrl and the number pad's nought reset the zoom**, as Ctrl and the pad's
+  plus and minus already did. Those two worked because Avalonia matches the
+  pad's arithmetic keys against the top row's; nothing does that for the
+  nought, so the one key of the three that somebody with a hand on the pad
+  actually reaches for was the one that did nothing.
+
 - **On Windows, "whatever the desktop is set to" now means it.** That setting
   worked on KDE and quietly meant double-click on Windows however Folder
   Options was configured, on the belief that Explorer's preference was not
