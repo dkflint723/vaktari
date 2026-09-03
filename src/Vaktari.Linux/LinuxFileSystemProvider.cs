@@ -65,16 +65,70 @@ public sealed class LinuxFileSystemProvider : IFileSystemProvider
         await producer.ConfigureAwait(false);
     }
 
+    /// <summary>
+    /// The names a folder asks to have hidden, from its own <c>.hidden</c>
+    /// file.
+    ///
+    /// **A freedesktop convention Vaktari did not read, and both references
+    /// do.** It is how a project marks generated output, and how a
+    /// distribution keeps its own scaffolding out of a home directory, without
+    /// renaming anything — the file cannot be renamed to start with a dot
+    /// because a build tool or a script has to find it under its real name.
+    /// Nautilus and Dolphin both honour it, so a folder tidy in either was a
+    /// mess here.
+    ///
+    /// One stat and at most one small read per LISTING, not per entry — the
+    /// cost the enumeration path is careful about is per-file work, and this is
+    /// not that.
+    ///
+    /// Ordinal, because names on this filesystem are bytes: a .hidden naming
+    /// "Build" does not hide "build".
+    /// </summary>
+    internal static HashSet<string> HiddenNames(string directory)
+    {
+        var listing = new HashSet<string>(StringComparer.Ordinal);
+        var file = Path.Combine(directory, ".hidden");
+
+        try
+        {
+            if (!File.Exists(file)) return listing;
+
+            foreach (var line in File.ReadLines(file))
+            {
+                var name = line.Trim();
+
+                // A name, never a path: the convention names entries in THIS
+                // directory, and honouring a "../x" or "sub/x" would hide a row
+                // in a folder that never asked.
+                if (name.Length == 0 || name.Contains('/')) continue;
+
+                listing.Add(name);
+            }
+        }
+        catch (Exception e) when (e is IOException or UnauthorizedAccessException)
+        {
+            // An unreadable .hidden hides nothing, which is the behaviour this
+            // folder had before the file existed.
+            Vaktari.Core.Quiet.Swallowed("hidden", e);
+        }
+
+        return listing;
+    }
+
     private static FileSystemEnumerable<FileEntry> Enumerate(string path, ListingOptions options)
     {
+        // Read once for the whole listing, and captured — the delegates below
+        // were static, which is why this rule could not be applied at all.
+        var concealed = HiddenNames(path);
+
         return new FileSystemEnumerable<FileEntry>(
             path,
-            static (ref FileSystemEntry entry) => new FileEntry(
+            (ref FileSystemEntry entry) => new FileEntry(
                 Name: entry.FileName.ToString(),
                 FullPath: entry.ToFullPath(),
                 Length: entry.IsDirectory ? 0 : entry.Length,
                 LastWriteTime: entry.LastWriteTimeUtc,
-                Flags: ToFlags(ref entry)),
+                Flags: ToFlags(ref entry, concealed)),
             new System.IO.EnumerationOptions
             {
                 RecurseSubdirectories = false,
@@ -99,19 +153,25 @@ public sealed class LinuxFileSystemProvider : IFileSystemProvider
         {
             ShouldIncludePredicate = options.IncludeHidden
                 ? null
-                : static (ref FileSystemEntry entry) =>
-                    entry.FileName.Length == 0 || entry.FileName[0] != '.',
+                : (ref FileSystemEntry entry) =>
+                    entry.FileName.Length != 0
+                    && entry.FileName[0] != '.'
+                    && !concealed.Contains(entry.FileName.ToString()),
         };
     }
 
-    private static EntryFlags ToFlags(ref FileSystemEntry entry)
+    private static EntryFlags ToFlags(ref FileSystemEntry entry, HashSet<string> concealed)
     {
         var flags = EntryFlags.None;
 
         if (entry.IsDirectory)
             flags |= EntryFlags.Directory;
 
-        if (entry.FileName.Length > 0 && entry.FileName[0] == '.')
+        // **The flag as well as the filter**, or "show hidden files" reveals a
+        // .hidden entry as an ordinary row — undimmed, and indistinguishable
+        // from one the folder never asked to conceal.
+        if ((entry.FileName.Length > 0 && entry.FileName[0] == '.')
+            || concealed.Contains(entry.FileName.ToString()))
             flags |= EntryFlags.Hidden;
 
         if ((entry.Attributes & FileAttributes.ReparsePoint) != 0)
@@ -146,7 +206,15 @@ public sealed class LinuxFileSystemProvider : IFileSystemProvider
 
             var flags = EntryFlags.None;
             if (isDir) flags |= EntryFlags.Directory;
-            if (name.StartsWith('.')) flags |= EntryFlags.Hidden;
+            // The same rule the enumeration applies, for the same reason the
+            // block above gives: a row that arrives through the WATCHER must
+            // carry the flags a row from a listing carries, or FileEntry's
+            // structural equality makes the two unequal and the selection will
+            // not resolve onto it.
+            if (name.StartsWith('.')
+                || (Path.GetDirectoryName(path) is { } parent
+                    && HiddenNames(parent).Contains(name)))
+                flags |= EntryFlags.Hidden;
             if ((attributes & FileAttributes.ReparsePoint) != 0) flags |= EntryFlags.Symlink;
             if ((attributes & FileAttributes.ReadOnly) != 0) flags |= EntryFlags.ReadOnly;
 
