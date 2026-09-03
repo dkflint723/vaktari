@@ -47,6 +47,23 @@ public sealed class WindowsTrashMaintenance : ITrashMaintenance
     /// only record of where the payload belonged while the payload still
     /// existed — recoverable bytes with no memory of their home.
     /// </summary>
+    /// <summary>
+    /// One item, gone for good.
+    ///
+    /// Through the same Read and Purge that emptying uses, so a read-only tree
+    /// is cleared before the delete rather than half-destroyed — the fault
+    /// Purge's own comment describes at length, and one that would arrive here
+    /// too through any second route.
+    ///
+    /// An item that is no longer there is not an error: the bin is shared with
+    /// every other program on the machine, so between the click and the delete
+    /// somebody else may have taken it.
+    /// </summary>
+    public void Delete(string trashName)
+    {
+        if (RecycleBin.Read(trashName) is { } entry) Purge(entry);
+    }
+
     public string Restore(string trashName)
     {
         var entry = RecycleBin.Read(trashName)

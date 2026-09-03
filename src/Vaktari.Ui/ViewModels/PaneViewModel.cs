@@ -700,6 +700,7 @@ public sealed partial class PaneViewModel : ObservableObject, IDisposable
         OnPropertyChanged(nameof(Summary));
         OnPropertyChanged(nameof(HasSelection));
         OnPropertyChanged(nameof(CanActOnSelection));
+        OnPropertyChanged(nameof(CanPurgeFromBin));
         OnPropertyChanged(nameof(CanRenameInBulk));
         OnPropertyChanged(nameof(HasDirectorySelected));
         OnPropertyChanged(nameof(HasAnyDirectorySelected));
@@ -1976,6 +1977,104 @@ public sealed partial class PaneViewModel : ObservableObject, IDisposable
         if (VirtualPaths.IsRecent(CurrentPath)) await RefreshAsync().ConfigureAwait(false);
     }
 
+    /// <summary>Whether there is anything in the bin this can destroy.</summary>
+    public bool CanPurgeFromBin => Trash is not null && IsTrashListing && Selection.Count > 0;
+
+    /// <summary>
+    /// Destroys the selected trashed items, permanently.
+    ///
+    /// **A confirmed yes was refused.** Shift+Delete on a bin row showed the
+    /// permanent-delete prompt, took the answer, and then declined — because
+    /// the only ways out of the bin were Restore and Empty, and a bin row
+    /// carries the path the file USED to occupy, which the file operations
+    /// cannot act on. Asked and answered and nothing happened is worse than
+    /// never offering, and both references delete just the items you picked.
+    /// </summary>
+    [RelayCommand]
+    public async Task PurgeFromTrashAsync()
+    {
+        // Said out loud rather than returned from in silence. Restore gets away
+        // with a quiet return because it is an inert button; this arrives from
+        // a confirmation, and a destructive yes that produces nothing at all is
+        // the very fault being fixed.
+        if (Trash is null)
+        {
+            Status = $"{Core.Naming.TheBin} is not available";
+            return;
+        }
+
+        if (!IsTrashListing) return;
+
+        // **The row that was clicked, not the newest sharing its path.** Two
+        // bin rows can carry the same original path — trash a file, restore it,
+        // trash it again — and Restore resolves that by taking the newest,
+        // because the loser stays put and can be restored next. Here the loser
+        // is gone for good: taking the newest would destroy the item nobody
+        // pointed at and leave the row they did point at on screen, which is
+        // the wrong-thing-destroyed shape the bin's refusals exist to prevent.
+        //
+        // The row already tells them apart. The trash listing passes each
+        // item's deletion time straight into LastWriteTime, so the pair
+        // identifies exactly one item — and N selected rows destroy N items
+        // rather than one.
+        var wanted = Selection
+            .Select(e => (e.FullPath, e.LastWriteTime))
+            .ToHashSet();
+
+        if (wanted.Count == 0) return;
+
+        var chosen = Trash.List()
+            .Where(item => wanted.Contains((item.OriginalPath, item.Deleted)))
+            .ToList();
+
+        var destroyed = 0;
+        var failed = 0;
+
+        foreach (var item in chosen)
+        {
+            try
+            {
+                Trash.Delete(item.TrashName);
+                destroyed++;
+            }
+            catch (Exception ex)
+            {
+                // One failure must not abandon the rest of the selection, the
+                // same rule restoring follows.
+                failed++;
+                Console.Error.WriteLine($"[vaktari] purge failed: {ex.Message}");
+            }
+        }
+
+        var report = (destroyed, failed) switch
+        {
+            (0, 0) => "nothing deleted",
+            (0, _) => $"could not delete {failed:N0} item(s) — see the log",
+            (_, 0) => $"deleted {destroyed:N0} item(s) for good",
+            _ => $"deleted {destroyed:N0} for good, {failed:N0} failed",
+        };
+
+        await RefreshAsync().ConfigureAwait(false);
+        await SayAsync(report).ConfigureAwait(false);
+    }
+
+    /// <summary>
+    /// Says something in the status line, after the reload it followed.
+    ///
+    /// **The report was wiped by the listing it was reporting on.** A bin
+    /// action ends by refreshing, and a load ends by clearing Status — on
+    /// purpose, so the item count does not appear twice in the status bar. Set
+    /// before the refresh, "deleted 3 items for good" lived for as long as the
+    /// reload took and was then blanked, which is the whole "asked, answered,
+    /// nothing happened" fault one layer further in.
+    ///
+    /// On the dispatcher because the refresh was awaited with
+    /// <c>ConfigureAwait(false)</c>: the caller resumes on a pool thread, and
+    /// Status raises PropertyChanged straight into a binding.
+    /// </summary>
+    private Task SayAsync(string message)
+        => Dispatcher.UIThread.InvokeAsync(() => Status = message).GetTask();
+
     /// <summary>
     /// Puts the selected trashed items back.
     ///
@@ -2028,7 +2127,7 @@ public sealed partial class PaneViewModel : ObservableObject, IDisposable
         // could not be put back reported "restored 3", and the row that stayed
         // behind looked like one the user had simply not selected. Console
         // output is not somewhere anybody is going to look.
-        Status = (restored, failed) switch
+        var report = (restored, failed) switch
         {
             (0, 0) => "nothing restored",
             (0, _) => $"could not restore {failed:N0} item(s) — see the log",
@@ -2037,6 +2136,7 @@ public sealed partial class PaneViewModel : ObservableObject, IDisposable
         };
 
         await RefreshAsync().ConfigureAwait(false);
+        await SayAsync(report).ConfigureAwait(false);
     }
 
     /// <summary>
@@ -2048,18 +2148,14 @@ public sealed partial class PaneViewModel : ObservableObject, IDisposable
     {
         if (Trash is null) return;
 
+        string report;
+
         try
         {
             var result = await Trash.EmptyAsync(CancellationToken.None).ConfigureAwait(false);
 
-            // On the UI thread. ConfigureAwait(false) above means this
-            // continuation is on a pool thread, and Status raises
-            // PropertyChanged straight into a binding — every other status
-            // written after an await in this class goes through the dispatcher
-            // for that reason, and this one did not.
-            await Dispatcher.UIThread.InvokeAsync(() =>
-                Status = $"emptied {Core.Naming.BinName} — removed {result.Removed:N0}, "
-                       + $"freed {ByteSize.Format(result.BytesFreed)}");
+            report = $"emptied {Core.Naming.BinName} — removed {result.Removed:N0}, "
+                   + $"freed {ByteSize.Format(result.BytesFreed)}";
         }
         catch (Exception ex)
         {
@@ -2069,8 +2165,7 @@ public sealed partial class PaneViewModel : ObservableObject, IDisposable
             // permission the recycle bin will not give up, left the items in
             // place, the status line blank, and the listing unchanged. Nothing
             // to distinguish that from an empty bin.
-            await Dispatcher.UIThread.InvokeAsync(() =>
-                Status = $"could not empty {Core.Naming.TheBin}: {ex.Message}");
+            report = $"could not empty {Core.Naming.TheBin}: {ex.Message}";
 
             Console.Error.WriteLine($"[vaktari] empty failed: {ex}");
         }
@@ -2078,6 +2173,8 @@ public sealed partial class PaneViewModel : ObservableObject, IDisposable
         // Outside the try: whatever happened, some of it may have gone, and a
         // listing still showing deleted rows is worse than one that is late.
         if (IsTrashListing) await RefreshAsync().ConfigureAwait(false);
+
+        await SayAsync(report).ConfigureAwait(false);
     }
 
     /// <summary>
@@ -2245,6 +2342,7 @@ public sealed partial class PaneViewModel : ObservableObject, IDisposable
         // it before the menu opens, and on a single-click it is all there is.
         OnPropertyChanged(nameof(HasSelection));
         OnPropertyChanged(nameof(CanActOnSelection));
+        OnPropertyChanged(nameof(CanPurgeFromBin));
         OnPropertyChanged(nameof(CanRenameInBulk));
         OnPropertyChanged(nameof(HasDirectorySelected));
         OnPropertyChanged(nameof(HasAnyDirectorySelected));
@@ -2511,6 +2609,8 @@ public sealed partial class PaneViewModel : ObservableObject, IDisposable
             OnPropertyChanged(nameof(ShowOneTerminal));
             OnPropertyChanged(nameof(ShowTerminalChoice));
             OnPropertyChanged(nameof(CanActOnSelection));
+            OnPropertyChanged(nameof(CanPurgeFromBin));
+        OnPropertyChanged(nameof(CanPurgeFromBin));
         OnPropertyChanged(nameof(CanRenameInBulk));
             OnPropertyChanged(nameof(ShowParentPath));
             OnPropertyChanged(nameof(ShowMetadata));

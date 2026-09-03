@@ -76,6 +76,23 @@ public interface ITrashMaintenance
     string Restore(string trashName);
 
     /// <summary>
+    /// Destroys one item, permanently.
+    ///
+    /// **A confirmed yes was refused.** Shift+Delete on a bin row showed the
+    /// permanent-delete prompt, took the answer, and then declined — because
+    /// the only routes out of the bin were Restore and Empty, and a bin row
+    /// carries the path the file USED to occupy, which the file operations
+    /// cannot act on. Both references delete just the items you picked; here
+    /// the choice was one file or all of them.
+    ///
+    /// Keyed by trash name, like <see cref="Restore"/>, because that is what
+    /// identifies an item INSIDE the trash — two items can share an original
+    /// path, and one of them being destroyed must not depend on which the
+    /// caller happened to look up first.
+    /// </summary>
+    void Delete(string trashName);
+
+    /// <summary>
     /// Deletes everything, permanently. Deliberately separate from
     /// <see cref="SweepAsync"/>, which applies a policy and stops at the
     /// allowance — this one has no policy to obey and no stopping condition,

@@ -254,6 +254,25 @@ public sealed class XdgTrashMaintenance : ITrashMaintenance
             root ?? XdgTrash.TrashRoot, "info", item.TrashName + ".trashinfo");
     }
 
+    /// <summary>
+    /// One item, gone for good.
+    ///
+    /// Found by walking the same list Empty walks, so the payload and its
+    /// sidecar are located exactly the way emptying locates them — a second
+    /// route to the same pair of files is a second thing to get wrong about
+    /// which trash on which volume an item is actually in.
+    ///
+    /// An item that is no longer there is not an error: the bin is shared with
+    /// every other program on the machine, so between the click and the delete
+    /// somebody else may have taken it.
+    /// </summary>
+    public void Delete(string trashName)
+    {
+        if (List().FirstOrDefault(i => i.TrashName == trashName) is not { } item) return;
+
+        Remove(new Entry(InfoPathOf(item), item.Payload, item.Deleted.DateTime, item.Size));
+    }
+
     public ValueTask<TrashSweepResult> EmptyAsync(CancellationToken ct)
         => new(Task.Run(() =>
         {

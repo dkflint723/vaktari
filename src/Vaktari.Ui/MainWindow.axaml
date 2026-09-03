@@ -1373,6 +1373,21 @@
                                       Command="{Binding $parent[Window].((vm:ShellViewModel)DataContext).TrashSelectionCommand}"
                                       InputGesture="Delete"
                                       IsVisible="{Binding ActiveTab.CanActOnSelection}"/>
+              <!-- **In the bin there was one way out for one file, and it was
+                   putting it back.** Restore and Empty were the whole menu, so
+                   removing a single item meant emptying the lot — and
+                   Shift+Delete showed the permanent-delete prompt, took the
+                   answer, and then refused. Both references delete just what
+                   you picked.
+
+                   Its own separator, because the rule above it is gated on a
+                   selection OUTSIDE the trash and so is never drawn here: this
+                   row would otherwise butt against whatever precedes it. -->
+              <Separator IsVisible="{Binding ActiveTab.CanPurgeFromBin}"/>
+              <MenuItem Header="Delete permanently"
+                                      Command="{Binding ActiveTab.PurgeFromTrashCommand}"
+                                      InputGesture="Shift+Delete"
+                                      IsVisible="{Binding ActiveTab.CanPurgeFromBin}"/>
               <Separator/>
               <!--
                    One "New" rather than three top-level entries that all create

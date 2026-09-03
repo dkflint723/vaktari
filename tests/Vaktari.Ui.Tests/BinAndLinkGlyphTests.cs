@@ -54,6 +54,8 @@ public sealed class BinAndLinkGlyphTests
             => ValueTask.FromResult(new TrashSweepResult());
 
         public string Restore(string trashName) => trashName;
+
+        public void Delete(string trashName) { }
     }
 
     private static Place BinPlace()

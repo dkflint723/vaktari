@@ -373,6 +373,22 @@ should not be trusted for compatibility yet.
 
 ### Fixed
 
+- **One thing can be deleted out of the bin.** The only ways out of it were
+  *Restore* and emptying the lot, so getting rid of a single item meant
+  destroying everything else in there with it — and Shift+Delete on a bin row
+  made that worse: it asked "delete permanently?", took the yes, and then
+  refused, because a bin row carries the path the file used to occupy and the
+  file operations cannot act on one. Asked, answered, and nothing happened.
+  There is now a *Delete permanently* entry in the bin's own menu, Shift+Delete
+  does the same thing from the keyboard, and both act on the rows you actually
+  picked. A file that was trashed, restored and trashed again leaves two rows
+  with the same original path; the one you selected is the one that goes.
+
+- **The bin says what it did, after it has done it.** Restoring three items,
+  emptying, and now deleting for good all reload the listing when they finish,
+  and a finished listing clears the status line — so the report was wiped by
+  the very reload it was reporting on, and the line was blank a moment later.
+
 - **F2 stops throwing away the name you are typing.** The rename bar is inline
   and the listing behind it stays live, so pressing F2 again — easy to do while
   hunting for the right row — discarded what you had typed and re-pointed the

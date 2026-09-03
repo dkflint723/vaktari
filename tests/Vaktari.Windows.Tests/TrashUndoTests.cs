@@ -55,6 +55,8 @@ public sealed class TrashUndoTests
             return item?.OriginalPath ?? "";
         }
 
+        public void Delete(string trashName) => _items.RemoveAll(i => i.TrashName == trashName);
+
         public ValueTask<TrashSweepResult> SweepAsync(TrashSettings policy, CancellationToken ct)
             => ValueTask.FromResult(TrashSweepResult.Nothing);
 
@@ -84,6 +86,8 @@ public sealed class TrashUndoTests
         }
 
         public string Restore(string trashName) => inner.Restore(trashName);
+
+        public void Delete(string trashName) => inner.Delete(trashName);
 
         public ValueTask<TrashSweepResult> SweepAsync(TrashSettings policy, CancellationToken ct)
             => inner.SweepAsync(policy, ct);
@@ -184,6 +188,8 @@ public sealed class TrashUndoTests
     {
         public IReadOnlyList<TrashedItem> List() => throw new IOException("the bin is unavailable");
         public string Restore(string trashName) => throw new IOException("no");
+
+        public void Delete(string trashName) => throw new IOException("no");
 
         public ValueTask<TrashSweepResult> SweepAsync(TrashSettings policy, CancellationToken ct)
             => ValueTask.FromResult(TrashSweepResult.Nothing);

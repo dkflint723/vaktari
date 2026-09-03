@@ -4054,6 +4054,15 @@ public partial class MainWindow : Window
                 _ = _shell.RenamePlaceAsync(_renamePlace, name);
                 break;
 
+            // **The bin refused what this had just confirmed.** Its rows carry
+            // the path the file used to occupy, which the file operations
+            // cannot act on — so the prompt was shown, answered, and then
+            // declined with "already in the bin". Asked and answered and
+            // nothing happened is worse than never having offered.
+            case PromptMode.ConfirmDelete when target is { IsTrashListing: true }:
+                _ = target.PurgeFromTrashAsync();
+                break;
+
             case PromptMode.ConfirmDelete:
                 target?.DeleteSelectedCommand.Execute(null);
                 break;
@@ -4236,6 +4245,26 @@ public partial class MainWindow : Window
         PromptBar.IsVisible = true;
 
         PromptConfirm.Focus();
+    }
+
+    /// <summary>
+    /// Deleting for good, from wherever it was asked for.
+    ///
+    /// **The bin is where a confirmed yes was refused.** Its rows carry the
+    /// path the file USED to occupy, so they cannot go through the file
+    /// operations at all — the trash's own key is the only safe route.
+    ///
+    /// One helper rather than the same three lines in two places, because the
+    /// setting is a preference about ASKING and must not also decide WHICH
+    /// deletion happens: with the confirmation turned off, the key took the
+    /// branch that refuses in the bin while the menu row purged, and the two
+    /// then meant different things on the same rows.
+    /// </summary>
+    private void PermanentlyDelete(PaneViewModel pane)
+    {
+        if (AppSettings.Current.General.ConfirmPermanentDelete) AskConfirmDelete();
+        else if (pane.IsTrashListing) _ = pane.PurgeFromTrashAsync();
+        else pane.DeleteSelectedCommand.Execute(null);
     }
 
     private void AskConfirmDelete()
@@ -4879,12 +4908,7 @@ public partial class MainWindow : Window
 
             case Key.Delete when e.KeyModifiers.HasFlag(KeyModifiers.Shift):
                 e.Handled = true;
-
-                if (AppSettings.Current.General.ConfirmPermanentDelete)
-                    AskConfirmDelete();
-                else
-                    pane.DeleteSelectedCommand.Execute(null);
-
+                PermanentlyDelete(pane);
                 break;
 
             case Key.Delete:
