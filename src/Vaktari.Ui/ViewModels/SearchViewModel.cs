@@ -76,8 +76,56 @@ public sealed partial class SearchViewModel : ObservableObject
     }
     partial void OnScopeToCurrentFolderChanged(bool value) => Restart();
 
+    /// <summary>
+    /// The folder a scoped search runs in, or null for "everywhere".
+    ///
+    /// **"This folder only" over This PC, the bin or either Recent listing
+    /// searched for a folder called "vaktari:computer".** The box is ticked by
+    /// default and the scope was the pane's raw path, which for a virtual
+    /// listing is an internal scheme rather than a directory.
+    ///
+    /// On Windows the walk pushes it as a root, the directory read throws, the
+    /// per-directory catch swallows it, and the panel reports "no results" — a
+    /// definite negative about the whole machine. On Linux the enumerator
+    /// throws before yielding anything and the panel says the folder is not
+    /// there any more, about a place you are standing in.
+    ///
+    /// Explorer searches every drive from This PC. The honest scope for a
+    /// listing that is not a folder is none.
+    /// </summary>
+    /// <summary>Whether "this folder only" has a folder to mean.</summary>
+    public bool CanScopeToCurrentFolder => !VirtualPaths.IsVirtual(_currentPath());
+
+    /// <summary>
+    /// The scope box's own words. A box still labelled "This folder only" over
+    /// This PC claims a scope the search does not have, so the label carries
+    /// the truth instead of the box quietly being ignored.
+    /// </summary>
+    public string ScopeLabel
+    {
+        get
+        {
+            var path = _currentPath();
+
+            // Only when it IS virtual: Label falls back to "Recent locations"
+            // for anything it does not recognise.
+            return VirtualPaths.IsVirtual(path)
+                ? $"{VirtualPaths.Label(path!)} is not a folder — searching everywhere"
+                : "This folder only";
+        }
+    }
+
+    internal static string? ScopeFor(string? currentPath, bool scopeToCurrentFolder)
+        => scopeToCurrentFolder && !VirtualPaths.IsVirtual(currentPath) ? currentPath : null;
+
     private void Restart()
     {
+        // Both derive from where the pane is, which changes underneath this —
+        // and Restart runs on every keystroke and every toggle, which is
+        // whenever the popup is on screen.
+        OnPropertyChanged(nameof(CanScopeToCurrentFolder));
+        OnPropertyChanged(nameof(ScopeLabel));
+
         _cts?.Cancel();
         _cts?.Dispose();
         _cts = null;
@@ -122,7 +170,7 @@ public sealed partial class SearchViewModel : ObservableObject
         var query = new SearchQuery
         {
             Text = text,
-            ScopePath = ScopeToCurrentFolder ? _currentPath() : null,
+            ScopePath = ScopeFor(_currentPath(), ScopeToCurrentFolder),
             MaxResults = 500,
         };
 

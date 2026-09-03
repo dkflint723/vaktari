@@ -156,4 +156,79 @@ public sealed class OperationBarTests : OwnedViewModels
 
         private sealed class Nothing : IDisposable { public void Dispose() { } }
     }
+
+    // ---- the buttons stay on screen -----------------------------------------
+
+    /// <summary>
+    /// **A long file name pushed pause and cancel off the window.** A
+    /// horizontal StackPanel measures its children against infinite width, and
+    /// the progress line ends in a filename that can be 255 characters in a
+    /// monospace font — so the buttons were laid out past the right edge. They
+    /// are the ONLY route to either command in the whole application: there is
+    /// no key binding and no gesture for pause or cancel. A copy of a
+    /// long-named file was unpausable and uncancellable.
+    /// </summary>
+    [AvaloniaFact]
+    public void The_bar_gives_its_buttons_their_space_before_the_text()
+    {
+        var markup = XDocument.Parse(RepoSource.Ui("MainWindow.axaml"));
+
+        var bar = markup.Descendants(Avalonia + "Border")
+            .Single(b => (string?)b.Attribute("IsVisible") == "{Binding ShowOperationBar}");
+
+        // A horizontal StackPanel is the shape that pushes them off.
+        Assert.Empty(bar.Descendants(Avalonia + "StackPanel"));
+
+        var panel = bar.Elements(Avalonia + "DockPanel").Single();
+
+        foreach (var button in panel.Elements(Avalonia + "Button"))
+            Assert.Equal("Right", (string?)button.Attribute("DockPanel.Dock"));
+    }
+
+    /// <summary>
+    /// The status line is the fill child, so it takes only what is left — and
+    /// it trims rather than wrapping, because wrapping made the bar grow down
+    /// over the listing while still not fitting.
+    /// </summary>
+    [AvaloniaFact]
+    public void The_status_line_takes_what_is_left_and_trims()
+    {
+        var markup = XDocument.Parse(RepoSource.Ui("MainWindow.axaml"));
+
+        var text = markup.Descendants(Avalonia + "TextBlock")
+            .Single(t => (string?)t.Attribute("Text") == "{Binding OperationStatus}");
+
+        // No Dock, so it fills. Anything docked is measured before it.
+        Assert.Null(text.Attribute("DockPanel.Dock"));
+
+        Assert.Equal("CharacterEllipsis", (string?)text.Attribute("TextTrimming"));
+        Assert.Null(text.Attribute("TextWrapping"));
+
+        // And what was trimmed can still be read.
+        Assert.Equal("{Binding OperationStatus}", (string?)text.Attribute("ToolTip.Tip"));
+    }
+
+    /// <summary>
+    /// Declaration order decides which is rightmost, so this reads
+    /// "pause cancel" rather than "cancel pause".
+    /// </summary>
+    [AvaloniaFact]
+    public void Pause_sits_to_the_left_of_cancel()
+    {
+        var markup = XDocument.Parse(RepoSource.Ui("MainWindow.axaml"));
+
+        var bar = markup.Descendants(Avalonia + "Border")
+            .Single(b => (string?)b.Attribute("IsVisible") == "{Binding ShowOperationBar}");
+
+        var commands = bar.Descendants(Avalonia + "Button")
+            .Select(b => (string?)b.Attribute("Command"))
+            .OfType<string>()
+            .ToList();
+
+        Assert.Equal(
+            ["{Binding DismissOperationStatusCommand}",
+             "{Binding CancelOperationCommand}",
+             "{Binding PauseOperationCommand}"],
+            commands);
+    }
 }

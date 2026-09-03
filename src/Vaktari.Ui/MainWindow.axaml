@@ -918,8 +918,13 @@
                            both platforms already implement the unscoped case —
                            so searching the whole machine was built, tested by
                            neither, and unreachable. -->
+                      <!-- The label carries the truth. Over This PC or the bin
+                           there is no folder to scope to, and a box that still
+                           says "This folder only" while being ignored claims a
+                           scope the search does not have. -->
                       <CheckBox DockPanel.Dock="Top" Margin="12,0,12,4"
-                                Content="This folder only"
+                                Content="{Binding $parent[Window].((vm:ShellViewModel)DataContext).Sidebar.Search.ScopeLabel}"
+                                IsEnabled="{Binding $parent[Window].((vm:ShellViewModel)DataContext).Sidebar.Search.CanScopeToCurrentFolder}"
                                 FontSize="{DynamicResource FontSizeTiny}"
                                 IsChecked="{Binding $parent[Window].((vm:ShellViewModel)DataContext).Sidebar.Search.ScopeToCurrentFolder}"/>
                       <TextBlock DockPanel.Dock="Top"
@@ -2522,26 +2527,45 @@
          there is nothing to pause once it has finished. -->
     <Border DockPanel.Dock="Bottom" Padding="8,5" Background="{DynamicResource AppBackground}"
             IsVisible="{Binding ShowOperationBar}">
-      <StackPanel Orientation="Horizontal" Spacing="10">
-        <TextBlock Text="{Binding OperationStatus}" FontFamily="monospace"
-                   FontSize="{DynamicResource FontSizeSmall}" VerticalAlignment="Center"
-                   TextWrapping="Wrap"/>
+      <!-- **A long file name pushed pause and cancel off the window.** A
+           horizontal StackPanel measures its children against infinite width,
+           and the progress line ends in a filename that can be 255 characters
+           in a monospace font — so the buttons were laid out past the right
+           edge, and they are the ONLY route to either command in the whole
+           application. A copy of a long-named file became unpausable and
+           uncancellable.
+
+           A DockPanel gives the docked children their size first and the fill
+           child what is left, so the buttons are always reachable and the text
+           ellipsizes instead. Declared right-to-left: a DockPanel hands
+           Right-docked children the rightmost slot in DECLARATION order, so
+           this reads "pause cancel" on screen. Dismiss never coexists with the
+           other two, and a collapsed child takes no space. -->
+      <DockPanel LastChildFill="True">
+        <Button DockPanel.Dock="Right" Content="dismiss" Margin="6,0,0,0"
+                FontSize="{DynamicResource FontSizeSmall}" Padding="8,2"
+                IsVisible="{Binding OperationFinished}"
+                Command="{Binding DismissOperationStatusCommand}"/>
+        <Button DockPanel.Dock="Right" Content="cancel" Margin="6,0,0,0"
+                FontSize="{DynamicResource FontSizeSmall}" Padding="8,2"
+                IsVisible="{Binding ActiveOperation, Converter={x:Static ObjectConverters.IsNotNull}}"
+                Command="{Binding CancelOperationCommand}"/>
         <!-- Pause was implemented in full and unreachable: the handle has a
              real gate and both engines wait on it between items and inside the
              byte loop, so stopping a large copy mid-flight has always worked
              and nothing could ask for it. -->
-        <Button Content="{Binding PauseLabel}" FontSize="{DynamicResource FontSizeSmall}" Padding="8,2"
+        <Button DockPanel.Dock="Right" Content="{Binding PauseLabel}" Margin="6,0,0,0"
+                FontSize="{DynamicResource FontSizeSmall}" Padding="8,2"
                 IsVisible="{Binding ActiveOperation, Converter={x:Static ObjectConverters.IsNotNull}}"
                 Command="{Binding PauseOperationCommand}"/>
-        <Button Content="cancel" FontSize="{DynamicResource FontSizeSmall}" Padding="8,2"
-                IsVisible="{Binding ActiveOperation, Converter={x:Static ObjectConverters.IsNotNull}}"
-                Command="{Binding CancelOperationCommand}"/>
-        <!-- The bar now outlives the operation, so the message needs a way to
-             go away that is not "wait for the next copy". -->
-        <Button Content="dismiss" FontSize="{DynamicResource FontSizeSmall}" Padding="8,2"
-                IsVisible="{Binding OperationFinished}"
-                Command="{Binding DismissOperationStatusCommand}"/>
-      </StackPanel>
+        <!-- Last, so it is the fill child and takes only what is left. Trimmed
+             rather than wrapped: wrapping made the bar grow downwards over the
+             listing while still not fitting. -->
+        <TextBlock Text="{Binding OperationStatus}" FontFamily="monospace"
+                   FontSize="{DynamicResource FontSizeSmall}" VerticalAlignment="Center"
+                   TextTrimming="CharacterEllipsis"
+                   ToolTip.Tip="{Binding OperationStatus}" ToolTip.ShowDelay="1200"/>
+      </DockPanel>
     </Border>
 
     <!-- Inline bar rather than a modal dialog: when you are about to destroy
