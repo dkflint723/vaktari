@@ -1856,6 +1856,81 @@ public sealed partial class ShellViewModel : ObservableObject, IDisposable
         ActiveGroup.AddTab(path);
     }
 
+    /// <summary>
+    /// Shows each item where it lives, with it highlighted — what another
+    /// application means by "open containing folder".
+    ///
+    /// **Not OpenInNewTab, and the difference is the point of the feature.**
+    /// That opens the folder and selects nothing, which in a Downloads folder of
+    /// four hundred files does not answer "which one did I just save".
+    ///
+    /// **Grouped by folder rather than one tab per item.** "Show these four
+    /// downloads" is one place with four things lit, not four tabs on the same
+    /// folder — and OpenInNewTab's own duplicate-tab rule says the same about
+    /// opening a folder twice.
+    /// </summary>
+    public async Task ShowAsync(IReadOnlyList<string> paths)
+    {
+        var comparer = StringComparer.FromComparison(Core.FileSystem.PathRules.Comparison);
+        var groups = new Dictionary<string, List<string>>(comparer);
+
+        // Insertion order kept separately: a Dictionary has none, and the first
+        // folder named should be the one left in front.
+        var order = new List<string>();
+
+        foreach (var path in paths)
+        {
+            // **The PARENT, and this one line is the whole of ShowItems.** An
+            // item another application asks us to show is selected where it
+            // lives; navigating INTO it is what the search reveal does, and
+            // doing that here puts you inside the very folder you were being
+            // shown.
+            var folder = Core.FileSystem.PathRules.Parent(path);
+
+            // A filesystem root has no parent to be shown in. Nothing sensible
+            // to do — opening the root itself would answer a question that was
+            // not asked, and that question is ShowFolders.
+            if (string.IsNullOrEmpty(folder)) continue;
+
+            var key = Core.FileSystem.PathRules.Normalise(folder);
+
+            if (!groups.TryGetValue(key, out var items))
+            {
+                groups[key] = items = [];
+                order.Add(key);
+            }
+
+            items.Add(path);
+        }
+
+        PaneViewModel? first = null;
+
+        foreach (var folder in order)
+        {
+            // PathRules.Same rather than an ordinal compare, for the reason
+            // OpenInNewTab gives just above: a trailing separator or a
+            // difference of case is the same folder and a different string.
+            var pane = ActiveGroup.Tabs.FirstOrDefault(
+                           t => Core.FileSystem.PathRules.Same(t.CurrentPath, folder))
+                       ?? ActiveGroup.AddTab(folder, like: ActiveTab);
+
+            first ??= pane;
+
+            // AddTab has already started a navigation to this same folder, and
+            // ShowAsync starts another. That is deliberate rather than
+            // overlooked: the load cancels whatever is in flight before it
+            // begins — its comment says that is not an optimisation — so the
+            // second either finds the first finished and short-circuits, or
+            // supersedes it.
+            await pane.ShowAsync(folder, groups[folder]).ConfigureAwait(true);
+        }
+
+        // **Once, after the loop, and from the FIRST folder.** Setting it
+        // inside the loop leaves the last one in front, which is the opposite
+        // of what the order list above exists to preserve.
+        if (first is not null) ActiveGroup.ActiveTab = first;
+    }
+
     [RelayCommand]
     private void CloseTab(PaneViewModel? pane)
     {

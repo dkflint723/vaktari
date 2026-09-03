@@ -101,6 +101,7 @@ public partial class MainWindow : Window
     private ITrashMaintenance? _trashMaintenance;
     private DispatcherTimer? _trashTimer;
     private readonly IDefaultFileManager? _defaultFileManager;
+    private readonly IFileManagerService? _fileManager;
     private readonly IPropertiesProvider _properties;
     private readonly IThemeProvider? _theme;
     private readonly IAccessEditor? _accessEditor;
@@ -460,6 +461,27 @@ public partial class MainWindow : Window
         // which as a default file manager is the whole job.
         if (Program.Instance is { } instance)
             instance.PathsReceived += (_, paths) => OpenPaths(paths, activate: true);
+
+        // The same request as a handed-over launch, arriving by the other route
+        // the desktop has for it — and the one a browser's "show in folder"
+        // actually uses, because a launch cannot express "and select this file".
+        //
+        // **Only the instance that owns the single-instance lock answers.** A
+        // window opened by an instance that LOST the lock is a temporary second
+        // copy, and a second copy claiming a desktop-wide role would take "show
+        // in folder" with it and hold it for as long as it lived.
+        if (Program.Instance is not null && platform.FileManagerService is { } fileManager)
+        {
+            _fileManager = fileManager;
+
+            // Posted, not called: this is raised from the bus's own read loop,
+            // which reads no further messages until the handler returns, and
+            // everything it leads to opens tabs and touches the window.
+            fileManager.Requested += (_, request) =>
+                Dispatcher.UIThread.Post(() => OnShowRequested(request));
+
+            Dispatcher.UIThread.Post(() => AnnounceFileManagerService(fileManager));
+        }
 
         if (Program.StartupPaths.Length > 0)
             Dispatcher.UIThread.Post(() => OpenPaths(Program.StartupPaths, activate: false));
@@ -903,7 +925,7 @@ public partial class MainWindow : Window
     private void ShowSettings()
     {
         var model = new SettingsViewModel(
-            AppSettings.Current, _defaultFileManager, _platform.FileIcons);
+            AppSettings.Current, _defaultFileManager, _platform.FileIcons, _fileManager);
 
         // The pane already holds the detected list, ordered and cached, so the
         // dialog borrows it rather than probing the disk again as it opens.
@@ -3213,6 +3235,83 @@ public partial class MainWindow : Window
     private static string? LocalPath(string raw) => FileUri.ToLocalPath(raw);
 
     /// <summary>
+    /// Says which of the four things happened, on the same terminal as the
+    /// running-from line. **A file manager that silently does not answer looks
+    /// exactly like one that answered and did nothing**, and that is the whole
+    /// failure being fixed here — so not answering has to say so.
+    ///
+    /// async void with a catch, like the other started-and-not-awaited handlers
+    /// here: a discard would take the exception with the task.
+    /// </summary>
+    private static async void AnnounceFileManagerService(IFileManagerService service)
+    {
+        try
+        {
+            var state = await service.ReconcileAsync().ConfigureAwait(true);
+
+            Console.Error.WriteLine(
+                $"[vaktari] FileManager1: {FileManagerServiceStates.Describe(state)}");
+        }
+        catch (Exception ex)
+        {
+            Console.Error.WriteLine($"[vaktari] FileManager1: {ex.Message}");
+        }
+    }
+
+    /// <summary>
+    /// The three verbs, each routed to something the window already does. There
+    /// is no new behaviour here at all — the value of this feature is that these
+    /// three now have a name on the bus that other applications already call.
+    ///
+    /// **Items goes to ShowAsync and not OpenPaths**, which is the entire
+    /// difference: OpenPaths opens the folder and selects nothing, and in a
+    /// Downloads folder of four hundred files that does not answer "which one
+    /// did I just save".
+    /// </summary>
+    private async void OnShowRequested(ShowRequest request)
+    {
+        try
+        {
+            switch (request.Kind)
+            {
+                case ShowKind.Items:
+                    await _shell.ShowAsync(request.Paths).ConfigureAwait(true);
+                    break;
+
+                case ShowKind.Folders:
+                    // Raises the window itself, so it returns rather than
+                    // falling through to a second Raise.
+                    OpenPaths(request.Paths, activate: true);
+                    return;
+
+                case ShowKind.ItemProperties:
+                    // Already refuses a path that has gone and says so in the
+                    // status line, rather than filling a sheet with zeroes.
+                    ShowPropertiesFor(request.Paths);
+                    break;
+            }
+
+            Raise();
+        }
+        catch (Exception ex)
+        {
+            Console.Error.WriteLine($"[vaktari] FileManager1 request failed: {ex.Message}");
+        }
+    }
+
+    /// <summary>
+    /// Brings the window forward. Split out of OpenPaths so the bus's three
+    /// verbs raise it the same way a handed-over launch does — somebody asked to
+    /// SEE something, and loading it behind whatever they were doing is not that.
+    /// </summary>
+    private void Raise()
+    {
+        if (WindowState == WindowState.Minimized) WindowState = WindowState.Normal;
+
+        Activate();
+    }
+
+    /// <summary>
     /// Opens folders in tabs. Files resolve to the folder holding them, because
     /// "open containing folder" is the request the desktop actually sends.
     /// </summary>
@@ -3239,11 +3338,9 @@ public partial class MainWindow : Window
 
         if (!activate) return;
 
-        // Raise the existing window: the user asked to see a folder, and
-        // silently loading it behind whatever they were doing is not that.
-        if (WindowState == WindowState.Minimized) WindowState = WindowState.Normal;
-
-        Activate();
+        // The user asked to see a folder, and silently loading it behind
+        // whatever they were doing is not that.
+        Raise();
     }
 
     private async void OnClosing(object? sender, WindowClosingEventArgs e)

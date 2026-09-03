@@ -1468,30 +1468,86 @@ public sealed partial class PaneViewModel : ObservableObject, IDisposable
     /// asked for — landing on a folder that provably cannot contain the result
     /// is the worse surprise.
     /// </summary>
-    public async Task RevealAsync(FileEntry entry)
-    {
-        var folder = entry.IsDirectory
-            ? entry.FullPath
-            : Path.GetDirectoryName(entry.FullPath);
+    public Task RevealAsync(FileEntry entry)
+        => LandOnAsync(
+            // A folder search result is a place you want to BE, so it is entered.
+            entry.IsDirectory ? entry.FullPath : Path.GetDirectoryName(entry.FullPath),
+            [entry.FullPath],
+            NeedsHiddenShown(entry, ShowHidden));
 
+    /// <summary>
+    /// Shows items where they live — including a FOLDER, which is selected in
+    /// its parent rather than entered.
+    ///
+    /// **That one difference from <see cref="RevealAsync"/> is the whole reason
+    /// this exists.** A search result you click is somewhere you want to go. An
+    /// item another application asks the file manager to SHOW is something you
+    /// want to look at, and entering it puts you inside the very folder you were
+    /// being shown, with the folder itself off screen.
+    ///
+    /// **A list rather than a loop over one path**: every reveal navigates, so
+    /// two files in one folder would load that folder twice, and the second
+    /// selection would clear the first — "show these four downloads" would land
+    /// with only the fourth lit.
+    /// </summary>
+    public async Task ShowAsync(string folder, IReadOnlyList<string> paths)
+    {
+        if (paths.Count == 0) return;
+
+        var unhide = false;
+
+        foreach (var path in paths)
+        {
+            // The platform's own answer, so the hidden rule is the platform's
+            // rather than this file guessing at leading dots — the system flag
+            // counts too, and only the provider knows. Null when the item has
+            // already gone; LandOnAsync then says so.
+            if (await _fs.GetEntryAsync(path, CancellationToken.None).ConfigureAwait(true)
+                is { } entry && NeedsHiddenShown(entry, ShowHidden))
+            {
+                unhide = true;
+                break;
+            }
+        }
+
+        await LandOnAsync(folder, paths, unhide).ConfigureAwait(true);
+    }
+
+    /// <summary>
+    /// The half both reveals share: go there, then light the rows up.
+    ///
+    /// Shared rather than copied because the two hard-won parts are in here.
+    /// Hidden files are turned on BEFORE the navigation, so the listing is built
+    /// once already holding the rows instead of being rebuilt underneath the
+    /// selection. And the rows selected are the ones the LISTING holds, not the
+    /// ones the caller passed: FileEntry is a record struct with structural
+    /// equality over all five members and the listings bind SelectedItem by
+    /// equality, so a row that differs in size, timestamp or a single flag
+    /// selects nothing at all.
+    /// </summary>
+    private async Task LandOnAsync(string? folder, IReadOnlyList<string> targets, bool unhide)
+    {
         if (string.IsNullOrEmpty(folder)) return;
 
-        // Before the listing is built, so it is built once and already holds
-        // the row rather than being rebuilt underneath the selection.
-        if (NeedsHiddenShown(entry, ShowHidden)) ShowHidden = true;
+        if (unhide) ShowHidden = true;
 
         await NavigateAsync(folder).ConfigureAwait(true);
 
-        // The row the LISTING has, not the one search handed over.
-        if (RowFor(entry.FullPath) is { } row)
+        var found = new List<string>();
+
+        foreach (var target in targets)
+            if (RowFor(target) is { FullPath: { } real }) found.Add(real);
+
+        if (found.Count == 0)
         {
-            SelectedEntry = row;
-            Reselect([row.FullPath!]);
+            Status = targets.Count == 1
+                ? $"{PathRules.LeafName(targets[0])} is no longer there"
+                : "those items are no longer there";
+
+            return;
         }
-        else
-        {
-            Status = $"{PathRules.LeafName(entry.FullPath)} is no longer there";
-        }
+
+        Reselect(found);
     }
 
     public async Task NavigateAsync(string path)

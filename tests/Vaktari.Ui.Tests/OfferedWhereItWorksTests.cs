@@ -95,7 +95,10 @@ public sealed class OfferedWhereItWorksTests
     [Fact]
     public void The_settings_window_is_handed_the_platform_s_own_provider()
         => Assert.Contains(
-            "AppSettings.Current, _defaultFileManager, _platform.FileIcons)",
+            // The provider itself, not the whole argument list: pinning the
+            // list makes this fail every time a fourth thing is handed over,
+            // which says nothing about whether the icons still are.
+            "_platform.FileIcons",
             RepoSource.Body(
                 RepoSource.Ui("MainWindow.axaml.cs"), "private void ShowSettings()"));
 

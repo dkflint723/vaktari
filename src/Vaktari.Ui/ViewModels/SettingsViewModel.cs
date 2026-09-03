@@ -44,15 +44,18 @@ public sealed partial class SettingsViewModel : ObservableObject
 
     private readonly Core.IDefaultFileManager? _defaults;
     private readonly Core.FileSystem.IFileIconProvider? _desktopIcons;
+    private readonly Core.IFileManagerService? _fileManager;
 
     public SettingsViewModel(
         SettingsState current,
         Core.IDefaultFileManager? defaults = null,
-        Core.FileSystem.IFileIconProvider? desktopIcons = null)
+        Core.FileSystem.IFileIconProvider? desktopIcons = null,
+        Core.IFileManagerService? fileManager = null)
     {
         _original = current;
         _defaults = defaults;
         _desktopIcons = desktopIcons;
+        _fileManager = fileManager;
         _isDefaultFileManager = defaults?.IsDefault() ?? false;
 
         var startup = current.Startup;
@@ -741,7 +744,7 @@ public sealed partial class SettingsViewModel : ObservableObject
     /// dialog's usual contract and break it, so this is a button.
     /// </summary>
     [RelayCommand]
-    private void MakeDefault()
+    private async Task MakeDefault()
     {
         if (_defaults is null) return;
 
@@ -749,10 +752,12 @@ public sealed partial class SettingsViewModel : ObservableObject
 
         DefaultStatus = result.Message;
         IsDefaultFileManager = _defaults.IsDefault();
+
+        await ReconcileServiceAsync().ConfigureAwait(true);
     }
 
     [RelayCommand]
-    private void RestoreDefault()
+    private async Task RestoreDefault()
     {
         if (_defaults is null) return;
 
@@ -760,6 +765,33 @@ public sealed partial class SettingsViewModel : ObservableObject
 
         DefaultStatus = result.Message;
         IsDefaultFileManager = _defaults.IsDefault();
+
+        await ReconcileServiceAsync().ConfigureAwait(true);
+    }
+
+    /// <summary>
+    /// **Now, not on the next launch.** Becoming the desktop's file manager
+    /// also means answering "show this file in its folder", and a bus name can
+    /// only be claimed by a process that is running. Without this the button did
+    /// half its job and said nothing about the other half — and the user's next
+    /// act, quite reasonably, is to go and try it.
+    ///
+    /// The two commands above return Task and keep their names without an Async
+    /// suffix, matching FetchIconTheme in this same file: that is what makes the
+    /// generator emit MakeDefaultCommand, which is the name the markup binds. A
+    /// rename to MakeDefaultAsync binds to nothing and the button silently stops
+    /// working.
+    /// </summary>
+    private async Task ReconcileServiceAsync()
+    {
+        if (_fileManager is null) return;
+
+        var state = await _fileManager.ReconcileAsync().ConfigureAwait(true);
+
+        if (Core.FileManagerServiceStates.Describe(state) is { Length: > 0 } sentence)
+            DefaultStatus = DefaultStatus.Length > 0
+                ? DefaultStatus + " " + sentence
+                : sentence;
     }
 
     /// <summary>
