@@ -224,29 +224,140 @@ public static class DesktopEntries
         return options;
     }
 
-    private static IEnumerable<string> DefaultsFor(string mime)
+    /// <summary>
+    /// Every mimeapps.list the spec says to consult, in its precedence order.
+    ///
+    /// **Two of the six kinds were read and the rest were not.** The
+    /// desktop-specific files are where Plasma and GNOME put the choices their
+    /// own settings pages write, and the ones under the system data directories
+    /// are where a distribution puts its defaults — so "Open with" disagreed
+    /// with the desktop's own answer on a machine configured through either.
+    ///
+    /// $XDG_CURRENT_DESKTOP may name several desktops, colon separated, most
+    /// specific first; each gets its own file ahead of the plain one.
+    /// </summary>
+    internal static IEnumerable<string> MimeAppsLists()
     {
         var home = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
-        var configHome = Environment.GetEnvironmentVariable("XDG_CONFIG_HOME");
-        if (string.IsNullOrWhiteSpace(configHome))
-            configHome = Path.Combine(home, ".config");
 
-        foreach (var listPath in new[]
-        {
-            Path.Combine(configHome, "mimeapps.list"),
-            Path.Combine(home, ".local", "share", "applications", "mimeapps.list"),
-        })
-        {
-            if (!File.Exists(listPath)) continue;
+        var configHome = Env("XDG_CONFIG_HOME") ?? Path.Combine(home, ".config");
+        var dataHome = Env("XDG_DATA_HOME") ?? Path.Combine(home, ".local", "share");
 
-            foreach (var line in File.ReadLines(listPath))
+        var desktops = (Env("XDG_CURRENT_DESKTOP") ?? "")
+            .Split(':', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+            .Select(d => d.ToLowerInvariant())
+            .ToList();
+
+        IEnumerable<string> In(string directory)
+        {
+            foreach (var desktop in desktops)
+                yield return Path.Combine(directory, $"{desktop}-mimeapps.list");
+
+            yield return Path.Combine(directory, "mimeapps.list");
+        }
+
+        foreach (var path in In(configHome)) yield return path;
+
+        foreach (var dir in (Env("XDG_CONFIG_DIRS") ?? "/etc/xdg")
+                     .Split(':', StringSplitOptions.RemoveEmptyEntries))
+            foreach (var path in In(dir)) yield return path;
+
+        foreach (var path in In(Path.Combine(dataHome, "applications"))) yield return path;
+
+        foreach (var dir in (Env("XDG_DATA_DIRS") ?? "/usr/local/share:/usr/share")
+                     .Split(':', StringSplitOptions.RemoveEmptyEntries))
+            foreach (var path in In(Path.Combine(dir, "applications"))) yield return path;
+    }
+
+    private static string? Env(string name)
+        => Environment.GetEnvironmentVariable(name) is { Length: > 0 } value
+           && !string.IsNullOrWhiteSpace(value)
+            ? value
+            : null;
+
+    /// <summary>
+    /// What a mimeapps.list says about one type: the applications it prefers,
+    /// in order, and the ones it has taken away.
+    ///
+    /// **The group was not read at all** — any line beginning with the type was
+    /// taken as a default, wherever it appeared. So an application listed under
+    /// [Removed Associations], which is the file's way of saying "never this
+    /// one for this type", was read as the FIRST choice for it. Un-choosing an
+    /// application in the desktop's settings made it the default here.
+    /// </summary>
+    internal static (List<string> Preferred, List<string> Removed) ReadMimeApps(
+        string path, string mime)
+    {
+        var preferred = new List<string>();
+        var removed = new List<string>();
+
+        try
+        {
+            if (!File.Exists(path)) return (preferred, removed);
+
+            List<string>? into = null;
+
+            foreach (var raw in File.ReadLines(path))
             {
-                if (!line.StartsWith(mime + "=", StringComparison.Ordinal)) continue;
+                var line = raw.Trim();
 
-                foreach (var id in line[(mime.Length + 1)..]
-                             .Split(';', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
-                    yield return id;
+                if (line.StartsWith('['))
+                {
+                    // Added and Default both name applications this file wants
+                    // offered; only the group heading tells them apart, and for
+                    // an "open with" list the distinction does not change what
+                    // is shown.
+                    into = line switch
+                    {
+                        "[Default Applications]" or "[Added Associations]" => preferred,
+                        "[Removed Associations]" => removed,
+                        _ => null,
+                    };
+
+                    continue;
+                }
+
+                if (into is null || !line.StartsWith(mime + "=", StringComparison.Ordinal)) continue;
+
+                into.AddRange(line[(mime.Length + 1)..]
+                    .Split(';', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries));
             }
+        }
+        catch (Exception e) when (e is IOException or UnauthorizedAccessException)
+        {
+            Vaktari.Core.Quiet.Swallowed("mimeapps", e);
+        }
+
+        return (preferred, removed);
+    }
+
+    private static IEnumerable<string> DefaultsFor(string mime)
+        => Resolve(MimeAppsLists().Select(path => ReadMimeApps(path, mime)));
+
+    /// <summary>
+    /// Folds the files' answers into one list, nearest first.
+    ///
+    /// **A removal in a nearer file beats a preference in a further one.** That
+    /// is the whole point of [Removed Associations]: the distribution offers
+    /// something and the person says no. Removals are gathered AS the walk
+    /// goes, so a file only ever overrides the ones after it — a removal
+    /// written by a system file cannot veto a choice the person made above it,
+    /// which is the same rule read the other way round and the one that would
+    /// be silently wrong if the sets were gathered up front.
+    /// </summary>
+    internal static IEnumerable<string> Resolve(
+        IEnumerable<(List<string> Preferred, List<string> Removed)> files)
+    {
+        var seen = new HashSet<string>(StringComparer.Ordinal);
+        var removed = new HashSet<string>(StringComparer.Ordinal);
+
+        foreach (var (preferred, taken) in files)
+        {
+            foreach (var id in preferred)
+                if (!removed.Contains(id) && seen.Add(id))
+                    yield return id;
+
+            foreach (var id in taken) removed.Add(id);
         }
     }
 
