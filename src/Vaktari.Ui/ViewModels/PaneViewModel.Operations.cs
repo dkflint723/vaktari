@@ -485,14 +485,31 @@ public sealed partial class PaneViewModel
     /// rename in the listing is fire-and-forget and needs the status line.
     /// </summary>
     public async Task RenameAsync(FileEntry entry, string newName)
+        => await TryRenameAsync(entry, newName).ConfigureAwait(false);
+
+    /// <summary>
+    /// Renames, and says whether it worked.
+    ///
+    /// **The failure was only ever a sentence in the status bar.** That is the
+    /// right place for it when a person is watching, and useless to a CALLER —
+    /// and renaming a run of files with Tab has a caller that must not step on
+    /// past a name the file system refused. The commonest refusal of all, a
+    /// name already taken, is not one the local check can see: it answers the
+    /// SHAPE of a name and never asks the disk.
+    ///
+    /// The status line is still written, because the person is still watching.
+    /// </summary>
+    public async Task<bool> TryRenameAsync(FileEntry entry, string newName)
     {
         try
         {
             await RenameOrThrowAsync(entry, newName).ConfigureAwait(false);
+            return true;
         }
         catch (Exception ex)
         {
             await Dispatcher.UIThread.InvokeAsync(() => Status = Failures.Describe(ex));
+            return false;
         }
     }
 

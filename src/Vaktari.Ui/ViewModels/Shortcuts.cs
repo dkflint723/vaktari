@@ -106,6 +106,12 @@ public static class Shortcuts
             new("Ctrl+Y", "Redo"),
             new("Ctrl+Shift+Z", "Redo"),
             new("F2", "Rename"),
+            // In the rename bar. Renaming a run of files cost three keystrokes
+            // each — Enter, arrow, F2 — and the arrow was the worst of them: a
+            // rename can re-sort the folder, so the row under the one just
+            // finished is not the file that was under it a moment ago.
+            new("Tab", "Keep the name and rename the next file"),
+            new("Shift+Tab", "The one before"),
             new("Shift+F2", "Rename in bulk"),
             new("Delete", "Move to the bin"),
             new("Shift+Delete", "Delete for good"),

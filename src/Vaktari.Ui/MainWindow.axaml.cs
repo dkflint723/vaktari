@@ -3920,6 +3920,10 @@ public partial class MainWindow : Window
         or PromptMode.ConfirmEmptyTrash;
     private FileEntry _renameTarget;
 
+    /// <summary>The rename the last confirm started, or null. Read only by
+    /// <see cref="StepRenameAsync"/>, which must not step past a failure.</summary>
+    private Task<bool>? _lastRename;
+
     /// <summary>The pinned row being renamed, for the same reason
     /// _renameTarget exists: the prompt bar is one bar for every prompt.</summary>
     private PlaceItemViewModel? _renamePlace;
@@ -4021,8 +4025,11 @@ public partial class MainWindow : Window
 
             ClosePrompt();
 
-            if (decision.Verdict == Input.RenameVerdict.Rename)
-                _ = target?.RenameAsync(entry, decision.Name);
+            // Kept, so a Tab that is stepping through a run can wait for it
+            // and stop when the file system says no. Nothing else reads it.
+            _lastRename = decision.Verdict == Input.RenameVerdict.Rename
+                ? target?.TryRenameAsync(entry, decision.Name)
+                : Task.FromResult(true);
 
             return;
         }
@@ -4317,7 +4324,62 @@ public partial class MainWindow : Window
                 e.Handled = true;
                 ClosePrompt();
                 break;
+
+            // **Renaming a run cost three keystrokes each — Enter, arrow, F2.**
+            // Explorer answers Tab, which is how anybody who has tidied a
+            // folder of photographs does it, and the arrow was the worst of the
+            // three: a rename can re-sort the folder, so the row under the one
+            // just finished is not the file that was under it a moment ago.
+            // Two labels rather than one and a ternary, for two reasons. The
+            // shortcuts sheet's cross-check reads case labels and their when
+            // clauses, so this is what makes both gestures findable there. And
+            // it leaves every other modifier alone: Ctrl+Tab means "next tab"
+            // whether or not a name is being typed, and folding it into "not
+            // Shift, so forward" would quietly take that away.
+            case Key.Tab when e.KeyModifiers == KeyModifiers.None:
+                e.Handled = true;
+                _ = StepRenameAsync(1);
+                break;
+
+            case Key.Tab when e.KeyModifiers == KeyModifiers.Shift:
+                e.Handled = true;
+                _ = StepRenameAsync(-1);
+                break;
         }
+    }
+
+    /// <summary>
+    /// Commits the name being typed and opens the next row's.
+    /// </summary>
+    private async Task StepRenameAsync(int step)
+    {
+        if (_shell?.ActiveTab is not { } pane) return;
+
+        // **The neighbour is chosen BEFORE the rename lands.** Renaming
+        // re-lists the folder and can re-sort it, so asked afterwards "the next
+        // one" means whichever file has closed the gap behind the row just
+        // finished — which is not the row anybody was looking at.
+        var next = Input.RenameRun.Next(pane.Entries, _renameTarget.FullPath, step);
+
+        ConfirmPrompt();
+
+        // Still open means the name was refused before it ever left this
+        // window — a colon, a reserved name, nothing but spaces. The bar keeps
+        // the text and says why, and stepping on would throw both away.
+        if (_prompt is not PromptMode.None) return;
+
+        if (next is not { } row) return;
+
+        // **And the local check is only half of "did that rename happen".**
+        // It answers the SHAPE of a name and never asks the disk, so the
+        // commonest refusal in a run — the name is already taken — is not among
+        // the ones caught above. It arrives on a continuation, into a status
+        // line the next step's refresh would clear. Stepping past one is how a
+        // run skips a file in silence.
+        if (_lastRename is { } pending && !await pending) return;
+
+        pane.SelectedEntry = row;
+        OnRenameRequested(this, row);
     }
 
     // ---- input ---------------------------------------------------------

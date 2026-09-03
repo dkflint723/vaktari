@@ -210,6 +210,15 @@ should not be trusted for compatibility yet.
 
 ### Changed
 
+- **Tab keeps the name and renames the next file.** Renaming a run of them cost
+  three keystrokes each — Enter, arrow, F2 — and the arrow was the worst of the
+  three: a rename can re-sort the folder, so the row under the one just
+  finished is not the file that was under it a moment ago. Tab now commits and
+  opens the next row's name, Shift+Tab the one before, and the run stops at
+  either end of the listing rather than wrapping round to a name you have just
+  settled. A name the disk refuses — one that is already taken, most often —
+  stops the run where it stands instead of skipping that file in silence.
+
 - **F6 moves the keyboard between the listing, the address bar and the
   sidebar**, the way Explorer cycles its regions. It used to put the keyboard
   in the listing and nothing else, so pressed from the listing — where it had
