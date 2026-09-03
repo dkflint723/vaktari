@@ -301,7 +301,16 @@ public sealed partial class PropertiesViewModel : ObservableObject
         });
     }
 
-    [RelayCommand]
+    /// <summary>
+    /// **The stop button was disabled while measuring.** This is one command
+    /// that both starts and stops, and an async RelayCommand refuses a second
+    /// execution while the first is running — so CanExecute went false the
+    /// instant the walk began, the button that then reads "stop" greyed out,
+    /// and the cancel branch below could not be reached from the interface at
+    /// all. A measurement of a home directory ran to the end whatever anybody
+    /// pressed.
+    /// </summary>
+    [RelayCommand(AllowConcurrentExecutions = true)]
     private async Task MeasureAsync()
     {
         if (IsMeasuring)
@@ -321,9 +330,33 @@ public sealed partial class PropertiesViewModel : ObservableObject
 
         try
         {
+            // **The loose files were dropped from the total.** A mixed
+            // selection reads "12 MB in 3 file(s), plus 1 folder(s)
+            // unmeasured" until you press measure, and then reported only what
+            // the FOLDER held — a smaller number than the line it replaced,
+            // for an operation whose whole purpose is to make the number
+            // bigger and right.
             long bytes = 0;
             var files = 0;
             var folders = 0;
+
+            foreach (var path in _paths.Where(p => !Directory.Exists(p)))
+            {
+                try
+                {
+                    var info = new FileInfo(path);
+
+                    if (!info.Exists) continue;
+
+                    bytes += info.Length;
+                    files++;
+                }
+                catch (Exception e) when (e is IOException or UnauthorizedAccessException)
+                {
+                    // A file that will not answer is left out of the count, the
+                    // same as an unreadable folder inside the walk.
+                }
+            }
 
             foreach (var path in _paths.Where(Directory.Exists))
             {
