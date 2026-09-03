@@ -53,19 +53,49 @@ public sealed class LinuxPropertiesProvider : IPropertiesProvider, IAccessEditor
         return string.IsNullOrEmpty(mime) ? "File" : SharedMimeInfo.Describe(mime);
     }
 
+    /// <summary>
+    /// The mode the way ls writes it.
+    ///
+    /// **The three special bits appeared nowhere.** ls has shown them in the
+    /// execute column for fifty years — s for setuid or setgid, t for the
+    /// sticky bit — and a permissions row that omits them says a setuid binary
+    /// is an ordinary one.
+    ///
+    /// A CAPITAL where the execute bit beneath is off, which is not decoration:
+    /// "setuid, and executable" and "setuid, and not" are different situations,
+    /// and a lowercase s for both would hide the second — a file that carries
+    /// the bit and cannot use it.
+    ///
+    /// Separated from the file it describes so the rule can be read at every
+    /// combination without one on disk to match, and on a machine that has no
+    /// unix modes at all.
+    /// </summary>
+    internal static string Symbolic(UnixFileMode mode)
+    {
+        static string Triplet(bool r, bool w, bool x, char? special)
+            => $"{(r ? 'r' : '-')}{(w ? 'w' : '-')}"
+               + (special is { } c
+                   ? (x ? char.ToLowerInvariant(c) : char.ToUpperInvariant(c))
+                   : x ? "x" : "-");
+
+        return Triplet(mode.HasFlag(UnixFileMode.UserRead), mode.HasFlag(UnixFileMode.UserWrite),
+                       mode.HasFlag(UnixFileMode.UserExecute),
+                       mode.HasFlag(UnixFileMode.SetUser) ? 's' : null)
+             + Triplet(mode.HasFlag(UnixFileMode.GroupRead), mode.HasFlag(UnixFileMode.GroupWrite),
+                       mode.HasFlag(UnixFileMode.GroupExecute),
+                       mode.HasFlag(UnixFileMode.SetGroup) ? 's' : null)
+             + Triplet(mode.HasFlag(UnixFileMode.OtherRead), mode.HasFlag(UnixFileMode.OtherWrite),
+                       mode.HasFlag(UnixFileMode.OtherExecute),
+                       mode.HasFlag(UnixFileMode.StickyBit) ? 't' : null);
+    }
+
     private static PropertyGroup? BuildPermissions(string path)
     {
         try
         {
             var mode = File.GetUnixFileMode(path);
 
-            static string Triplet(bool r, bool w, bool x)
-                => $"{(r ? 'r' : '-')}{(w ? 'w' : '-')}{(x ? 'x' : '-')}";
-
-            var symbolic =
-                Triplet(mode.HasFlag(UnixFileMode.UserRead), mode.HasFlag(UnixFileMode.UserWrite), mode.HasFlag(UnixFileMode.UserExecute)) +
-                Triplet(mode.HasFlag(UnixFileMode.GroupRead), mode.HasFlag(UnixFileMode.GroupWrite), mode.HasFlag(UnixFileMode.GroupExecute)) +
-                Triplet(mode.HasFlag(UnixFileMode.OtherRead), mode.HasFlag(UnixFileMode.OtherWrite), mode.HasFlag(UnixFileMode.OtherExecute));
+            var symbolic = Symbolic(mode);
 
             var octal =
                 (mode.HasFlag(UnixFileMode.UserRead) ? 400 : 0) +
@@ -204,10 +234,33 @@ public sealed class LinuxPropertiesProvider : IPropertiesProvider, IAccessEditor
         if (mode.HasFlag(UnixFileMode.GroupRead)) directoryMode |= UnixFileMode.GroupExecute;
         if (mode.HasFlag(UnixFileMode.OtherRead)) directoryMode |= UnixFileMode.OtherExecute;
 
+        // **Applying any change cleared the three bits nothing here offers.**
+        // The mode is assembled from the nine toggles alone, so a setuid binary
+        // stopped being one and a shared directory lost its sticky bit — the
+        // one that stops people deleting each other's files in it — because
+        // somebody ticked "group can write". Neither is a change anybody asked
+        // for, and neither says a word when it happens.
+        //
+        // Read per PATH, never once: the parent's special bits are not the
+        // children's, and carrying them down a recursive apply would SET setuid
+        // on every file in a tree, which is worse than clearing it.
+        static UnixFileMode Special(string of)
+        {
+            try
+            {
+                return File.GetUnixFileMode(of)
+                       & (UnixFileMode.SetUser | UnixFileMode.SetGroup | UnixFileMode.StickyBit);
+            }
+            catch (Exception e) when (e is IOException or UnauthorizedAccessException)
+            {
+                return UnixFileMode.None;
+            }
+        }
+
         return await Task.Run(() =>
         {
             var isDirectory = Directory.Exists(path);
-            File.SetUnixFileMode(path, isDirectory ? directoryMode : mode);
+            File.SetUnixFileMode(path, (isDirectory ? directoryMode : mode) | Special(path));
 
             if (!recursive || !isDirectory) return AccessOutcome.Complete;
 
@@ -238,7 +291,9 @@ public sealed class LinuxPropertiesProvider : IPropertiesProvider, IAccessEditor
 
                 try
                 {
-                    File.SetUnixFileMode(child.Path, child.IsDirectory ? directoryMode : mode);
+                    File.SetUnixFileMode(
+                        child.Path,
+                        (child.IsDirectory ? directoryMode : mode) | Special(child.Path));
                 }
                 catch (Exception e) when (e is IOException or UnauthorizedAccessException)
                 {
