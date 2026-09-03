@@ -607,8 +607,12 @@ should not be trusted for compatibility yet.
   folder onto itself and misses the case that actually goes wrong, and one of
   them had no check at all. Every route now refuses by name, including dropping
   a selection onto a folder that is part of that selection, which a six-pixel
-  twitch used to be enough to start. Copying into the parent is untouched, so
-  Duplicate still works.
+  twitch used to be enough to start: the drop is refused whole, where before it
+  quietly moved the rest of the selection inside the folder it had just dropped
+  from the list, with the cursor showing an ordinary move throughout and
+  nothing said afterwards. The cursor now says no before the button comes up.
+  Copying into the parent is untouched, so Duplicate still works, and so is
+  dropping a file back into the folder it already lives in.
 
 - **One file that cannot be copied or deleted no longer ends the batch.**
   Copying twelve files with the third open in another program copied two and

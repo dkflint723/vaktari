@@ -57,6 +57,43 @@ public static class DroppedFileReader
     internal static DroppedFiles Decide(
         IReadOnlyList<string> offered, IReadOnlyList<string> formats, string destination, bool copying)
     {
+        // A folder cannot be put inside itself, nor inside one of its own
+        // subfolders, whichever key is held: the plan is built by walking the
+        // source and the destination is inside what is being walked, so a copy
+        // feeds itself its own output and a move dismantles the tree it is
+        // halfway through reading.
+        //
+        // **The whole drop is refused, rather than the one path that offends.**
+        // This filtered the offender out and let the rest through, which is
+        // invisible with one item selected and destructive with several:
+        // dragging A, B and C onto A dropped A from the list and moved B and C
+        // INTO A, so half a selection was swallowed by the other half. A
+        // six-pixel twitch over a selected folder was enough to start it, and
+        // the cursor showed an ordinary move right up to the release, because
+        // DragOver asks this same question. The engine refuses this case by
+        // name and never saw it, because the source it looks for had already
+        // been removed here.
+        //
+        // **And asked of `offered`, above the already-here filter**, which is
+        // what the MOVE arm needed: that filter strips the destination itself
+        // as a path going nowhere, so a containment check made after it sees
+        // only B and C and finds nothing wrong with either. The copy arm keeps
+        // every path it is given, so there it is the refusing rather than the
+        // ordering that does the work — both halves are needed, for different
+        // arms.
+        //
+        // The same shape as ShellViewModel.TransferToOther, which refuses the
+        // whole transfer rather than the one folder that cannot go.
+        //
+        // **Ctrl+Shift is refused along with them**, and a shortcut to A inside
+        // A would have been harmless. This is told copy-or-move and never that
+        // the intent was "create shortcut here", so telling the two apart is a
+        // change to what the handlers ask rather than to what is decided here.
+        if (offered.Any(p => Core.FileSystem.PathRules.Contains(p, destination)))
+            return new DroppedFiles([], copying
+                ? "a folder cannot be copied into itself"
+                : "a folder cannot be moved into itself");
+
         // **PathRules.Same, not ==.** On Windows these compared case-sensitively,
         // so dropping a file back into the folder it already lives in was only
         // recognised when the destination happened to be spelled exactly the
@@ -72,23 +109,15 @@ public static class DroppedFileReader
                                 Path.GetDirectoryName(p), destination))
                 .ToList();
 
-        // A folder cannot be copied into itself whichever key is held: the
-        // destination would be inside the thing being read.
-        //
-        // **Containment, not equality**, which is what this line tested while
-        // the comment above it said otherwise. Equality catches dropping A onto
-        // A and misses dropping A into A/sub — the case that actually goes
-        // wrong, because the copy then walks into its own output.
-        usable = usable
-            .Where(p => !Core.FileSystem.PathRules.Contains(p, destination))
-            .ToList();
-
         if (usable.Count > 0) return new DroppedFiles(usable, "");
 
-        if (offered.Count > 0)
-            return new DroppedFiles(usable, copying
-                ? "a folder cannot be copied into itself"
-                : "that is already here");
+        // Only a move arrives here empty-handed with paths in the drop:
+        // copying keeps every path it is given, and the one refusal a copy has
+        // is the containment one above. **This branch answered the copy case
+        // too**, with the folder-into-itself wording, and it was the only place
+        // that refusal was ever produced — which is why the containment check
+        // could strip a path and still look like it had refused something.
+        if (offered.Count > 0) return new DroppedFiles(usable, "that is already here");
 
         if (HasVirtualFiles(formats))
             return new DroppedFiles(usable,

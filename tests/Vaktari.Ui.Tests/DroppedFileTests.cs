@@ -82,11 +82,97 @@ public sealed class DroppedFileTests
         Assert.Equal("that is already here", dropped.Refusal);
     }
 
-    /// <summary>The folder itself, dragged onto its own listing.</summary>
+    /// <summary>The folder itself, dropped onto its own listing — or onto its
+    /// own row in a selection of one, which is the same two paths and deserves
+    /// the same answer. **This said "that is already here"**, which is the
+    /// wording for a file that is going nowhere; a folder handed itself as its
+    /// destination is a different refusal and now says which.</summary>
     [Fact]
     public void A_folder_dropped_onto_itself_says_so()
     {
-        Assert.Equal("that is already here", Read([Destination], "File").Refusal);
+        Assert.Equal(
+            "a folder cannot be moved into itself", Read([Destination], "File").Refusal);
+    }
+
+    /// <summary>
+    /// **Half a selection used to be swallowed by the other half.** Dragging A,
+    /// B and C onto A filtered A out of the list — it is the destination — and
+    /// moved B and C inside it, which is not a smaller version of what was
+    /// asked for but a different thing entirely. A six-pixel twitch over a
+    /// selected folder was enough to start it, and the cursor showed an
+    /// ordinary move throughout. The engine refuses this by name and never saw
+    /// it, because the reader had already removed the source it looks for.
+    /// </summary>
+    [Fact]
+    public void A_selection_dropped_onto_one_of_its_own_folders_is_refused()
+    {
+        // Beside the destination, which is where the siblings of a folder you
+        // can drop onto actually are — and is what makes them survive the
+        // already-here filter and reach the paste.
+        var beside = Path.GetDirectoryName(Destination)!;
+
+        var dropped = DroppedFileReader.Decide(
+            [Destination, At(beside, "b.txt"), At(beside, "c.txt")],
+            ["File"], Destination, copying: false);
+
+        Assert.Empty(dropped.Paths);
+        Assert.Equal("a folder cannot be moved into itself", dropped.Refusal);
+    }
+
+    /// <summary>The same drag with Ctrl held, which takes the other branch of
+    /// the copy-or-move rule a line below: a copy of B into A is no more what
+    /// was asked for than a move of it.</summary>
+    [Fact]
+    public void A_selection_copied_onto_one_of_its_own_folders_is_refused()
+    {
+        var beside = Path.GetDirectoryName(Destination)!;
+
+        var dropped = DroppedFileReader.Decide(
+            [Destination, At(beside, "b.txt")], ["File"], Destination, copying: true);
+
+        Assert.Empty(dropped.Paths);
+        Assert.Equal("a folder cannot be copied into itself", dropped.Refusal);
+    }
+
+    /// <summary>
+    /// **A "create shortcut here" drag is refused with the rest.** Ctrl+Shift
+    /// onto a folder in the selection made shortcuts to the others and quietly
+    /// left one out; it now does nothing at all, and says a copy was refused
+    /// when no copy was asked for. Nothing is lost or half-done either way —
+    /// shortcuts only add — so this is written down rather than worked around:
+    /// Decide is handed copy-or-move and is never told the third intent
+    /// exists. Restoring it is a change to what the handlers ask.
+    /// </summary>
+    [Fact]
+    public void A_shortcut_drag_onto_a_selected_folder_is_refused_too()
+    {
+        var beside = Path.GetDirectoryName(Destination)!;
+
+        // What OnDrop asks for a Ctrl+Shift drag: intent Link, so move is
+        // false, so copying is true. MainWindow.axaml.cs, Read(..., !move).
+        var dropped = DroppedFileReader.Decide(
+            [Destination, At(beside, "b.txt")], ["File"], Destination, copying: true);
+
+        Assert.Empty(dropped.Paths);
+    }
+
+    /// <summary>
+    /// **Not a test of this fix — a guard against it rotting.** This passes on
+    /// the broken code too, and says so deliberately: OnDragOver is not being
+    /// changed, and what makes the refusal reach the cursor is that DragOver
+    /// already asks the reader the same question the drop asks. There is no
+    /// seam to see the effect itself from — a DragEventArgs cannot be built
+    /// outside the framework — so the call site is read instead, and the day
+    /// somebody decides the effect from the raw paths again, this says so.
+    /// </summary>
+    [Fact]
+    public void The_cursor_asks_the_reader_what_the_drop_asks()
+    {
+        var body = RepoSource.Body(
+            RepoSource.Ui("MainWindow.axaml.cs"), "private void OnDragOver(");
+
+        Assert.Contains(".Read(e.DataTransfer, destination,", body, StringComparison.Ordinal);
+        Assert.Contains("if (!takeable)", body, StringComparison.Ordinal);
     }
 
     /// <summary>Some of them usable is a drop worth taking, and the ones
