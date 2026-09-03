@@ -132,10 +132,15 @@ public sealed partial class SearchViewModel : ObservableObject
 
         Results.Reset();
 
-        if (Query.Length < 2)
+        // **One character was refused with "keep typing…".** A single letter is
+        // a real query -- "b" for a folder of build outputs, "~" for the editor
+        // backups -- and every other file manager runs it. The debounce below
+        // and the result cap already bound what a broad query costs, so the
+        // length was buying nothing that those two do not.
+        if (Query.Length == 0)
         {
             IsSearching = false;
-            Status = Query.Length == 0 ? "" : "keep typing…";
+            Status = "";
             return;
         }
 

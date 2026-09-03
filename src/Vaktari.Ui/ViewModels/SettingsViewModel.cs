@@ -62,8 +62,8 @@ public sealed partial class SettingsViewModel : ObservableObject
         _showStatusBar = general.ShowStatusBar;
         _showFreeSpace = general.ShowFreeSpace;
         _showPreviews = general.ShowPreviews;
-        _maxLocalPreviewMegabytes = general.MaxLocalPreviewMegabytes.ToString();
-        _maxRemotePreviewMegabytes = general.MaxRemotePreviewMegabytes.ToString();
+        _maxLocalPreviewMegabytes = Limit(general.MaxLocalPreviewMegabytes);
+        _maxRemotePreviewMegabytes = Limit(general.MaxRemotePreviewMegabytes);
         _confirmMoveToTrash = general.ConfirmMoveToTrash;
         _confirmPermanentDelete = general.ConfirmPermanentDelete;
         _confirmClosingMultipleTabs = general.ConfirmClosingMultipleTabs;
@@ -234,6 +234,17 @@ public sealed partial class SettingsViewModel : ObservableObject
     /// <summary>Anything unparseable, negative or blank means no limit.</summary>
     private static int Megabytes(string text)
         => int.TryParse(text, out var value) && value > 0 ? value : 0;
+
+    /// <summary>
+    /// **A box showing "0" beside the words "no limit".** Zero is how no limit
+    /// is stored, and it was written straight into the field -- which is a
+    /// literal zero on screen, reading as "skip files larger than nothing", and
+    /// it also hid the placeholder that says what is actually going on. The
+    /// help text beneath already promises "blank or 0 means no limit"; the box
+    /// now shows the blank half of that.
+    /// </summary>
+    private static string Limit(int megabytes)
+        => megabytes > 0 ? megabytes.ToString() : "";
 
     // ---- Context menu -----------------------------------------------------
     //

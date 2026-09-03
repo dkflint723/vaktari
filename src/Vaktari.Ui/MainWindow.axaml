@@ -1397,7 +1397,7 @@
               <MenuItem Header="Rename in bulk…"
                                       Command="{Binding $parent[Window].((vm:ShellViewModel)DataContext).BatchRenameCommand}"
                                       InputGesture="Shift+F2"
-                                      IsVisible="{Binding ActiveTab.CanActOnSelection}"/>
+                                      IsVisible="{Binding ActiveTab.CanRenameInBulk}"/>
               <MenuItem Header="{Binding $parent[Window].((vm:ShellViewModel)DataContext).BinMoveLabel}"
                                       Command="{Binding $parent[Window].((vm:ShellViewModel)DataContext).TrashSelectionCommand}"
                                       InputGesture="Delete"

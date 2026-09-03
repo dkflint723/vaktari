@@ -690,6 +690,7 @@ public sealed partial class PaneViewModel : ObservableObject, IDisposable
         OnPropertyChanged(nameof(Summary));
         OnPropertyChanged(nameof(HasSelection));
         OnPropertyChanged(nameof(CanActOnSelection));
+        OnPropertyChanged(nameof(CanRenameInBulk));
         OnPropertyChanged(nameof(HasDirectorySelected));
         OnPropertyChanged(nameof(CanRunSelectionAsAdministrator));
         OnPropertyChanged(nameof(CanMountSelection));
@@ -721,6 +722,16 @@ public sealed partial class PaneViewModel : ObservableObject, IDisposable
     /// <summary>Cut, Rename and Move to bin: needs a selection, and the bin
     /// listing is a view rather than a folder.</summary>
     public bool CanActOnSelection => HasSelection && !IsTrashListing;
+
+    /// <summary>
+    /// **"Rename in bulk…" was offered for a single file.** It is the entry
+    /// whose name says how many it is for, sitting directly under plain
+    /// Rename, which is the one that handles that case -- so the menu asked a
+    /// question that has an obvious answer and put the wrong route first for
+    /// anyone who read it as "the thorough one". F2 already sends more than one
+    /// row here on its own.
+    /// </summary>
+    public bool CanRenameInBulk => CanActOnSelection && SelectedEntries.Count > 1;
 
     /// <summary>
     /// Whether a FOLDER is selected, which is the only case where adding "the
@@ -1840,6 +1851,7 @@ public sealed partial class PaneViewModel : ObservableObject, IDisposable
         // it before the menu opens, and on a single-click it is all there is.
         OnPropertyChanged(nameof(HasSelection));
         OnPropertyChanged(nameof(CanActOnSelection));
+        OnPropertyChanged(nameof(CanRenameInBulk));
         OnPropertyChanged(nameof(HasDirectorySelected));
         OnPropertyChanged(nameof(CanRunSelectionAsAdministrator));
         OnPropertyChanged(nameof(CanMountSelection));
@@ -2093,6 +2105,7 @@ public sealed partial class PaneViewModel : ObservableObject, IDisposable
             OnPropertyChanged(nameof(ShowOneTerminal));
             OnPropertyChanged(nameof(ShowTerminalChoice));
             OnPropertyChanged(nameof(CanActOnSelection));
+        OnPropertyChanged(nameof(CanRenameInBulk));
             OnPropertyChanged(nameof(ShowParentPath));
             OnPropertyChanged(nameof(ShowMetadata));
 
