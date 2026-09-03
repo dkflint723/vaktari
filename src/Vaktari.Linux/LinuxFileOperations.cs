@@ -96,6 +96,10 @@ public sealed class LinuxFileOperations : IFileOperations
             {
                 handle.Begin(paths.Count, totalBytes: 0);
 
+                // A delete has no target to carry: the item's own path is where
+                // the retry goes again.
+                var failed = new List<RetryRoot>();
+
                 foreach (var path in paths)
                 {
                     handle.Token.ThrowIfCancellationRequested();
@@ -116,8 +120,14 @@ public sealed class LinuxFileOperations : IFileOperations
                     catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
                     {
                         handle.ItemFailed(path, ex);
+
+                        failed.Add(new RetryRoot(path, path, Directory.Exists(path)));
                     }
                 }
+
+                // Before Complete, so a cancelled run offers nothing.
+                if (RetryRoots.Outermost(failed) is { Count: > 0 } worthRetrying)
+                    handle.Retry = () => Delete([.. worthRetrying.Select(r => r.Source)]);
 
                 handle.Complete();
             }
@@ -181,9 +191,15 @@ public sealed class LinuxFileOperations : IFileOperations
             _redo.Push(redo);
     }
 
+    /// <summary>
+    /// <paramref name="retrying"/> is the second pass: the items a previous run
+    /// could not do, each back to the place THAT run decided to put it. The
+    /// Windows twin carries the same parameter and the same reasoning.
+    /// </summary>
     private IOperationHandle Run(
         IReadOnlyList<string> sources, string destination,
-        Func<FileConflict, ValueTask<ConflictResolution>> onConflict, bool move)
+        Func<FileConflict, ValueTask<ConflictResolution>> onConflict, bool move,
+        IReadOnlyList<RetryRoot>? retrying = null)
     {
         var handle = new OperationHandle();
 
@@ -210,7 +226,9 @@ public sealed class LinuxFileOperations : IFileOperations
                 // covered at once: Ctrl+V, Copy to, Move to and a drop.
                 // Deduplicating into the PARENT is untouched, which is what
                 // makes Duplicate still work.
-                foreach (var source in sources)
+                // Skipped on a retry: the shape of the operation was settled
+                // by the run that failed.
+                foreach (var source in retrying is null ? sources : [])
                 {
                     if (!Directory.Exists(source)) continue;
                     if (!PathRules.Contains(source, destination)) continue;
@@ -226,13 +244,32 @@ public sealed class LinuxFileOperations : IFileOperations
                 }
 
                 var unreadable = new List<(string Path, Exception Error)>();
-                var plan = BuildPlan(sources, destination, handle.Token, unreadable);
+
+                // What a retry would go again on. Fed ONLY by the per-item
+                // catch, deliberately — see the Windows twin: a folder the plan
+                // could not read is recorded before the redirect map exists, so
+                // re-attempting it after a Keep both would merge the subtree
+                // into the folder the user asked to keep separate.
+                var failed = new List<RetryRoot>();
+                // On the first pass a root goes to destination + its own name;
+                // on a retry it goes back to wherever the failed run decided.
+                var roots = retrying is { } again
+                    ? again.Select(r => (r.Source, r.Target)).ToList()
+                    : sources.Select(source =>
+                      {
+                          var full = Path.GetFullPath(source);
+
+                          return (full, Path.Combine(destination, Path.GetFileName(full)));
+                      }).ToList();
+
+                var plan = BuildPlan(roots, handle.Token, unreadable);
 
                 // Asked before a byte moves, the same as the Windows twin: a
                 // copy that fills the disk and then fails leaves a part-written
                 // tree and a machine with nothing left. A move within one
                 // volume is exempt, being a rename.
-                if (!move || !SameVolume(sources, destination))
+                // Asked on a retry too, over the retry's own plan.
+                if (!move || !SameVolume([.. roots.Select(r => r.Item1)], destination))
                 {
                     var needed = plan.Sum(p => p.Length);
 
@@ -399,6 +436,10 @@ public sealed class LinuxFileOperations : IFileOperations
                     catch (Exception ex)
                     {
                         handle.ItemFailed(item.Source, ex);
+
+                        // The post-redirect target, which is the whole reason
+                        // the recipe carries one.
+                        failed.Add(new RetryRoot(item.Source, target, item.IsDirectory));
                     }
 
                     handle.ItemFinished();
@@ -448,6 +489,14 @@ public sealed class LinuxFileOperations : IFileOperations
                     Remember(new UndoCopy(Trash, landings.Select(l => l.Target).ToList()));
                 }
 
+
+                // **Set immediately before Complete**, so a cancelled or failed run
+                // leaves it null. The closure carries the SAME conflict callback, so
+                // an "apply to the rest" already answered is not asked again.
+                if (RetryRoots.Outermost(failed) is { Count: > 0 } worthRetrying)
+                    handle.Retry = () =>
+                        Run(sources, destination, onConflict, move, worthRetrying);
+
                 handle.Complete();
             }
             catch (OperationCanceledException) { handle.Cancelled(); }
@@ -457,17 +506,22 @@ public sealed class LinuxFileOperations : IFileOperations
         return handle;
     }
 
+    /// <summary>
+    /// **Takes each root WITH the place it is going**, rather than a
+    /// destination to derive it from — see the Windows twin. Deriving it here a
+    /// second time is how a retry lands in the folder the user asked to keep
+    /// separate.
+    /// </summary>
     private static List<PlannedItem> BuildPlan(
-        IReadOnlyList<string> sources, string destination, CancellationToken ct,
+        IReadOnlyList<(string Source, string Target)> roots, CancellationToken ct,
         List<(string Path, Exception Error)>? unreadable = null)
     {
         var plan = new List<PlannedItem>();
 
-        foreach (var source in sources)
+        foreach (var (source, target) in roots)
         {
             ct.ThrowIfCancellationRequested();
             var full = Path.GetFullPath(source);
-            var name = Path.GetFileName(full);
 
             // **Before the directory test, because a link to a directory
             // answers to both.** SearchOption.AllDirectories follows symlinks,
@@ -478,23 +532,21 @@ public sealed class LinuxFileOperations : IFileOperations
             if (IsLink(full))
             {
                 plan.Add(new PlannedItem(
-                    full, Path.Combine(destination, name), 0,
-                    IsDirectory: false, IsRoot: true, IsLink: true));
+                    full, target, 0, IsDirectory: false, IsRoot: true, IsLink: true));
             }
             else if (Directory.Exists(full))
             {
-                var root = Path.Combine(destination, name);
-                plan.Add(new PlannedItem(full, root, 0, IsDirectory: true, IsRoot: true));
+                plan.Add(new PlannedItem(full, target, 0, IsDirectory: true, IsRoot: true));
 
                 foreach (var (path, isDirectory, isLink, length) in Descend(full, ct, unreadable))
                     plan.Add(new PlannedItem(
-                        path, Path.Combine(root, Path.GetRelativePath(full, path)),
+                        path, Path.Combine(target, Path.GetRelativePath(full, path)),
                         length, isDirectory, IsRoot: false, IsLink: isLink));
             }
             else if (File.Exists(full))
             {
                 plan.Add(new PlannedItem(
-                    full, Path.Combine(destination, name), new FileInfo(full).Length,
+                    full, target, new FileInfo(full).Length,
                     IsDirectory: false, IsRoot: true));
             }
         }

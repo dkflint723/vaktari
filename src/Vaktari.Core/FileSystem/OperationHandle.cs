@@ -33,6 +33,13 @@ public sealed class OperationHandle : IOperationHandle
     public OperationState State { get; private set; } = OperationState.Queued;
     public Exception? Error { get; private set; }
 
+    /// <summary>
+    /// Set by the engine immediately before Complete, so a cancelled or failed
+    /// run leaves it null: somebody who pressed cancel is not asking to be
+    /// offered the same work back.
+    /// </summary>
+    public Func<IOperationHandle>? Retry { get; set; }
+
     private readonly List<ItemProblem> _problems = [];
 
     /// <summary>

@@ -68,6 +68,24 @@ public interface IOperationHandle
     /// from nothing happening at all.
     /// </summary>
     Exception? Error { get; }
+
+    /// <summary>
+    /// Runs again the items this operation could not do, and nothing else.
+    /// Null when there is nothing worth trying again.
+    ///
+    /// **Deliberately not the conflict prompt's shape.** A clash can be asked
+    /// about before anything happens, so a question in the middle of a copy
+    /// costs only the time taken to answer it. A failure cannot: the whole
+    /// reason "something else has that file open" is worth offering at all is
+    /// that somebody is going to go and CLOSE that program, and a modal that
+    /// stops item three of five thousand while they do it leaves the other four
+    /// thousand nine hundred and ninety-seven undone. Both engines carry long
+    /// comments about having deliberately removed exactly that stop.
+    ///
+    /// So the batch never pauses. It finishes, the bar names what was left
+    /// behind, and this is how the person says "I have closed it now".
+    /// </summary>
+    Func<IOperationHandle>? Retry { get; }
 }
 
 /// <summary>

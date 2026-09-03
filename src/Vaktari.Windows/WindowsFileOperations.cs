@@ -345,6 +345,11 @@ public sealed class WindowsFileOperations : IFileOperations
             {
                 handle.Begin(paths.Count, totalBytes: 0);
 
+                // A delete has no target to carry: the item's own path is where
+                // the retry goes again, and there is no conflict machinery to
+                // land in.
+                var failed = new List<RetryRoot>();
+
                 foreach (var path in paths)
                 {
                     handle.Token.ThrowIfCancellationRequested();
@@ -391,8 +396,14 @@ public sealed class WindowsFileOperations : IFileOperations
                     catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
                     {
                         handle.ItemFailed(path, ex);
+
+                        failed.Add(new RetryRoot(path, path, Directory.Exists(path)));
                     }
                 }
+
+                // Before Complete, so a cancelled run offers nothing.
+                if (RetryRoots.Outermost(failed) is { Count: > 0 } worthRetrying)
+                    handle.Retry = () => Delete([.. worthRetrying.Select(r => r.Source)]);
 
                 handle.Complete();
             }
@@ -570,9 +581,21 @@ public sealed class WindowsFileOperations : IFileOperations
             _redo.Push(redo);
     }
 
+    /// <summary>
+    /// <paramref name="retrying"/> is the second pass: the items a previous run
+    /// could not do, each back to the place THAT run decided to put it.
+    ///
+    /// **The targets are carried rather than recomputed**, because "sources into
+    /// destination" no longer says where anything goes once a Keep both has
+    /// renamed the root or a duplicate in place has given it a " - Copy" name.
+    /// Recomputing would put the retried items into the folder the user asked to
+    /// keep separate — which is the documented fault the redirect map exists to
+    /// prevent, arriving a second time by a different road.
+    /// </summary>
     private IOperationHandle Run(
         IReadOnlyList<string> sources, string destination,
-        Func<FileConflict, ValueTask<ConflictResolution>> onConflict, bool move)
+        Func<FileConflict, ValueTask<ConflictResolution>> onConflict, bool move,
+        IReadOnlyList<RetryRoot>? retrying = null)
     {
         var handle = new OperationHandle();
 
@@ -589,12 +612,16 @@ public sealed class WindowsFileOperations : IFileOperations
                 // a move would then delete a source that was never copied. The
                 // destination counts too — a folder called "work " is a
                 // different folder to Windows than the one on screen.
-                foreach (var path in sources.Append(destination))
-                    if (ReachablePath.Refuse(path) is { } unreachable)
-                    {
-                        handle.Failed(new IOException(unreachable));
-                        return;
-                    }
+                //
+                // Skipped on a retry: these same paths were accepted by the run
+                // that produced the failures, and a retry adds no new ones.
+                if (retrying is null)
+                    foreach (var path in sources.Append(destination))
+                        if (ReachablePath.Refuse(path) is { } unreachable)
+                        {
+                            handle.Failed(new IOException(unreachable));
+                            return;
+                        }
 
 
                 // **A folder cannot be copied or moved into itself.** Neither
@@ -613,7 +640,10 @@ public sealed class WindowsFileOperations : IFileOperations
                 // covered at once: Ctrl+V, Copy to, Move to and a drop.
                 // Deduplicating into the PARENT is untouched, which is what
                 // makes Duplicate still work.
-                foreach (var source in sources)
+                //
+                // Also skipped on a retry, and for the same reason: the shape
+                // of the operation was settled by the run that failed.
+                foreach (var source in retrying is null ? sources : [])
                 {
                     if (!Directory.Exists(source)) continue;
                     if (!PathRules.Contains(source, destination)) continue;
@@ -629,7 +659,29 @@ public sealed class WindowsFileOperations : IFileOperations
                 }
 
                 var unreadable = new List<(string Path, Exception Error)>();
-                var plan = BuildPlan(sources, destination, handle.Token, unreadable);
+
+                // What a retry would go again on. Fed ONLY by the per-item
+                // catch, deliberately: a folder the plan could not read is
+                // recorded before the redirect map exists, so its target is the
+                // pre-conflict guess — and re-attempting it after a Keep both
+                // would merge the subtree into the folder the user asked to
+                // keep separate. That is the fault the redirect map was written
+                // to prevent, and an unreadable folder is the case a retry
+                // least often fixes anyway.
+                var failed = new List<RetryRoot>();
+
+                // On the first pass a root goes to destination + its own name;
+                // on a retry it goes back to wherever the failed run decided.
+                var roots = retrying is { } again
+                    ? again.Select(r => (r.Source, r.Target)).ToList()
+                    : sources.Select(source =>
+                      {
+                          var full = Path.GetFullPath(source);
+
+                          return (full, Path.Combine(destination, PathRules.LeafName(full)));
+                      }).ToList();
+
+                var plan = BuildPlan(roots, handle.Token, unreadable);
 
                 // **Asked before a byte moves.** A fifty-gigabyte copy onto a
                 // drive with room for thirty filled the disk and then failed
@@ -639,7 +691,11 @@ public sealed class WindowsFileOperations : IFileOperations
                 //
                 // A move within one volume is exempt: it is a rename and needs
                 // no space at all.
-                if (!move || !SameVolume(sources, destination))
+                // Asked on a retry too, over the retry's own plan. A retry is
+                // NOT a strict subset of what was measured: nothing under a
+                // folder that could not be read was ever counted, so a second
+                // pass that finally reads it can be arbitrarily large.
+                if (!move || !SameVolume([.. roots.Select(r => r.Item1)], destination))
                 {
                     var needed = plan.Sum(p => p.Length);
 
@@ -841,6 +897,11 @@ public sealed class WindowsFileOperations : IFileOperations
                         // those is reported on its own — noisy, but honest, and
                         // far better than nine files silently not arriving.
                         handle.ItemFailed(item.Source, ex);
+
+                        // The post-redirect target, which is the whole reason
+                        // the recipe carries one.
+                        failed.Add(new RetryRoot(
+                            item.Source, target, item.Kind == ItemKind.Directory));
                     }
 
                     handle.ItemFinished();
@@ -880,6 +941,16 @@ public sealed class WindowsFileOperations : IFileOperations
                     // being a mistake you have to clean up by hand.
                     Remember(new UndoCopy(Trash, landings.Select(l => l.Target).ToList()));
                 }
+
+
+                // **Set immediately before Complete**, so a cancelled or failed run
+                // leaves it null: somebody who pressed cancel is not asking to be
+                // offered the same work back. The closure carries the SAME conflict
+                // callback, so an "apply to the rest" already answered is not asked
+                // again.
+                if (RetryRoots.Outermost(failed) is { Count: > 0 } worthRetrying)
+                    handle.Retry = () =>
+                        Run(sources, destination, onConflict, move, worthRetrying);
 
                 handle.Complete();
             }
@@ -1157,39 +1228,43 @@ public sealed class WindowsFileOperations : IFileOperations
         }
     }
 
+    /// <summary>
+    /// **Takes each root WITH the place it is going**, rather than a
+    /// destination folder to derive it from. On a first pass the caller derives
+    /// that the same way this used to; on a retry it is whatever the run that
+    /// failed had settled on, after Keep both and the redirect map have had
+    /// their say. Deriving it here a second time is how a retry would land in
+    /// the folder the user asked to keep separate.
+    /// </summary>
     private static List<PlannedItem> BuildPlan(
-        IReadOnlyList<string> sources, string destination, CancellationToken ct,
+        IReadOnlyList<(string Source, string Target)> roots, CancellationToken ct,
         List<(string Path, Exception Error)>? unreadable = null)
     {
         var plan = new List<PlannedItem>();
 
-        foreach (var source in sources)
+        foreach (var (source, target) in roots)
         {
             ct.ThrowIfCancellationRequested();
             var full = Path.GetFullPath(source);
-            var name = PathRules.LeafName(full);
 
             // Before the directory test, because a junction answers to both.
             if (IsLink(full))
             {
-                plan.Add(new PlannedItem(
-                    full, Path.Combine(destination, name), 0, ItemKind.Link, IsRoot: true));
+                plan.Add(new PlannedItem(full, target, 0, ItemKind.Link, IsRoot: true));
             }
             else if (Directory.Exists(full))
             {
-                var root = Path.Combine(destination, name);
-                plan.Add(new PlannedItem(full, root, 0, ItemKind.Directory, IsRoot: true));
+                plan.Add(new PlannedItem(full, target, 0, ItemKind.Directory, IsRoot: true));
 
                 foreach (var (path, kind, length) in Descend(full, ct, unreadable))
                     plan.Add(new PlannedItem(
-                        path, Path.Combine(root, Path.GetRelativePath(full, path)),
+                        path, Path.Combine(target, Path.GetRelativePath(full, path)),
                         length, kind, IsRoot: false));
             }
             else if (File.Exists(full))
             {
                 plan.Add(new PlannedItem(
-                    full, Path.Combine(destination, name),
-                    new FileInfo(full).Length, ItemKind.File, IsRoot: true));
+                    full, target, new FileInfo(full).Length, ItemKind.File, IsRoot: true));
             }
         }
 
