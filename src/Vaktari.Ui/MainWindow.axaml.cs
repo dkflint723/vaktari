@@ -1326,6 +1326,11 @@ public partial class MainWindow : Window
             tab.RefreshScripts();
             tab.RefreshTemplates();
 
+            // The Undo row names what it will take back, and the history is
+            // the engine's — shared by every pane — so it is read when the
+            // menu opens rather than tracked here.
+            tab.RefreshUndoState();
+
             // Not awaited: a menu opens now. The Paste row shows what the last
             // answer was and corrects itself a round trip later. Deliberately
             // in THIS block, above the early return further down that has

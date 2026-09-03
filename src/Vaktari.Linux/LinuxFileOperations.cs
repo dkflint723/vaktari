@@ -179,6 +179,10 @@ public sealed class LinuxFileOperations : IFileOperations
 
     public bool CanRedo => !_redo.IsEmpty;
 
+    public string? UndoDescription => _undo.TryPeek(out var next) ? next.Describe : null;
+
+    public string? RedoDescription => _redo.TryPeek(out var next) ? next.Describe : null;
+
     public async ValueTask RedoAsync(CancellationToken ct)
     {
         if (!_redo.TryPop(out var action)) return;
@@ -816,6 +820,10 @@ public sealed class LinuxFileOperations : IFileOperations
     private interface IUndoable
     {
         ValueTask<IUndoable?> UndoAsync(CancellationToken ct);
+
+        /// <summary>What this would take back, for the menu row and the status
+        /// line — see the Windows implementation.</summary>
+        string Describe { get; }
     }
 
 
@@ -841,6 +849,8 @@ public sealed class LinuxFileOperations : IFileOperations
         Func<IReadOnlyList<string>, IOperationHandle> trash,
         IReadOnlyList<string> landed) : IUndoable
     {
+        public string Describe => UndoNames.Of("copy", landed);
+
         public async ValueTask<IUndoable?> UndoAsync(CancellationToken ct)
         {
             var here = landed
@@ -869,6 +879,8 @@ public sealed class LinuxFileOperations : IFileOperations
         Func<IReadOnlyList<string>, IOperationHandle> trash,
         string created) : IUndoable
     {
+        public string Describe => "creating " + PathRules.LeafName(created);
+
         public async ValueTask<IUndoable?> UndoAsync(CancellationToken ct)
         {
             if (!File.Exists(created) && !Directory.Exists(created)) return null;
@@ -881,6 +893,8 @@ public sealed class LinuxFileOperations : IFileOperations
 
     private sealed class UndoRename(string current, string original) : IUndoable
     {
+        public string Describe => UndoNames.Of("rename", [current]);
+
         public ValueTask<IUndoable?> UndoAsync(CancellationToken ct)
         {
             if (Directory.Exists(current)) Directory.Move(current, original);
@@ -898,6 +912,10 @@ public sealed class LinuxFileOperations : IFileOperations
     /// </summary>
     private sealed class UndoTrash(List<(string TrashName, string Original)> items) : IUndoable
     {
+        // This side kept the originals from the start, so nothing has to be
+        // carried in beside the keys the way the Windows one needs.
+        public string Describe => UndoNames.Of("delete", [.. items.Select(i => i.Original)]);
+
         public ValueTask<IUndoable?> UndoAsync(CancellationToken ct)
         {
             foreach (var (trashName, _) in items)
@@ -926,6 +944,8 @@ public sealed class LinuxFileOperations : IFileOperations
     private sealed class UndoMove(
         IReadOnlyList<(string Source, string Target)> landings) : IUndoable
     {
+        public string Describe => UndoNames.Of("move", [.. landings.Select(l => l.Target)]);
+
         public ValueTask<IUndoable?> UndoAsync(CancellationToken ct)
         {
             var undone = new List<(string Source, string Target)>();

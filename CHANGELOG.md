@@ -373,6 +373,15 @@ should not be trusted for compatibility yet.
 
 ### Added
 
+- **Undo and Redo are in the menu, and they say what they will do.** Ctrl+Z
+  was the only route to either, so the whole feature was invisible to anyone
+  who had not read the shortcuts sheet — and pressing it told you nothing
+  about what it was going to take back, so after a copy, a rename and a delete
+  in quick succession the only way to find out which one came back was to
+  press it and look. The rows read *Undo copy of 3 items* and *Redo move of
+  readme.txt*, they are dead when there is nothing to take back rather than
+  disappearing, and afterwards the status line says what happened.
+
 - **A sidebar section can be folded away.** Places, Devices, Shares, Network,
   Remote, Sharing and Recent do not all fit on a laptop screen, so reaching the
   bottom of the list meant scrolling past four headings that were never going to

@@ -1388,6 +1388,31 @@
                                       Command="{Binding ActiveTab.PurgeFromTrashCommand}"
                                       InputGesture="Shift+Delete"
                                       IsVisible="{Binding ActiveTab.CanPurgeFromBin}"/>
+
+              <!-- **Undo was a key and nothing else.** No menu anywhere in the
+                   application offered it, so the whole feature was invisible —
+                   and the key said nothing about what it was going to take
+                   back. The row names it: "Undo copy of 3 items".
+
+                   Immediately above the separator that was already here, and
+                   with none of its own. Every separator in this menu is gated
+                   with the block above it, because Avalonia draws every one it
+                   is given and collapses none of them — an ungated rule here
+                   would be the first item in the menu whenever everything
+                   above it is hidden, which in the bin with nothing selected
+                   is all of it.
+
+                   Always shown, disabled when there is nothing to take back:
+                   a row that disappears is a row nobody learns is there, and
+                   the point of adding it is that people find it. -->
+              <MenuItem Header="{Binding ActiveTab.UndoLabel}"
+                                      Command="{Binding ActiveTab.UndoCommand}"
+                                      IsEnabled="{Binding ActiveTab.CanUndo}"
+                                      InputGesture="Ctrl+Z"/>
+              <MenuItem Header="{Binding ActiveTab.RedoLabel}"
+                                      Command="{Binding ActiveTab.RedoCommand}"
+                                      IsEnabled="{Binding ActiveTab.CanRedo}"
+                                      InputGesture="Ctrl+Y"/>
               <Separator/>
               <!--
                    One "New" rather than three top-level entries that all create

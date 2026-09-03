@@ -513,15 +513,75 @@ public sealed partial class PaneViewModel
         }
     }
 
+    /// <summary>
+    /// Whether there is anything to take back, and what it is.
+    ///
+    /// **There was no Undo row in any menu.** The only route was Ctrl+Z, which
+    /// made the whole feature invisible — and pressing it said nothing about
+    /// what it was going to do, so after a copy, a rename and a delete in quick
+    /// succession the only way to find out which one came back was to press it
+    /// and look.
+    ///
+    /// Held rather than computed because the menu binds to it: the history is
+    /// the engine's, and it changes when work finishes rather than when
+    /// anything on this pane does, so there is nothing here to raise from.
+    /// Refreshed when an operation ends, after an undo, and when the menu opens.
+    /// </summary>
+    [ObservableProperty] private bool _canUndo;
+
+    [ObservableProperty] private bool _canRedo;
+
+    /// <summary>"Undo copy of 3 items", or plain "Undo" with nothing to take
+    /// back — the row is disabled then, and a bare verb is what every other
+    /// application shows in that state.</summary>
+    public string UndoLabel => _undoWhat is { Length: > 0 } what ? $"Undo {what}" : "Undo";
+
+    public string RedoLabel => _redoWhat is { Length: > 0 } what ? $"Redo {what}" : "Redo";
+
+    private string? _undoWhat;
+    private string? _redoWhat;
+
+    /// <summary>
+    /// Re-reads the history from the engine.
+    ///
+    /// Asked of the engine every time rather than tracked: ONE history is
+    /// shared by every pane and every tab, so an undo pressed here takes back
+    /// what another tab did, and a pane keeping its own idea of the top of the
+    /// stack would name the wrong thing.
+    /// </summary>
+    public void RefreshUndoState()
+    {
+        CanUndo = _ops?.CanUndo == true;
+        CanRedo = _ops?.CanRedo == true;
+
+        _undoWhat = _ops?.UndoDescription;
+        _redoWhat = _ops?.RedoDescription;
+
+        OnPropertyChanged(nameof(UndoLabel));
+        OnPropertyChanged(nameof(RedoLabel));
+    }
+
     [RelayCommand]
     public async Task UndoAsync()
     {
         if (_ops is null || !_ops.CanUndo) return;
 
+        // **Read before the work, because the work is what removes it.** The
+        // description is the top of the undo stack, and undoing pops it.
+        var what = _ops.UndoDescription;
+
         try
         {
             await _ops.UndoAsync(CancellationToken.None).ConfigureAwait(false);
-            await Dispatcher.UIThread.InvokeAsync(() => _ = RefreshAsync());
+
+            await Dispatcher.UIThread.InvokeAsync(() => RefreshUndoState());
+
+            // Refreshed first, then said. A finished listing clears the status
+            // line — deliberately, so the item count does not appear twice —
+            // so a message written before the reload lives for as long as the
+            // reload takes and is then blanked.
+            await RefreshAsync().ConfigureAwait(false);
+            await SayAsync($"undid {what}").ConfigureAwait(false);
         }
         catch (Exception ex)
         {
@@ -536,10 +596,16 @@ public sealed partial class PaneViewModel
     {
         if (_ops is null || !_ops.CanRedo) return;
 
+        var what = _ops.RedoDescription;
+
         try
         {
             await _ops.RedoAsync(CancellationToken.None).ConfigureAwait(false);
-            await Dispatcher.UIThread.InvokeAsync(() => _ = RefreshAsync());
+
+            await Dispatcher.UIThread.InvokeAsync(() => RefreshUndoState());
+
+            await RefreshAsync().ConfigureAwait(false);
+            await SayAsync($"redid {what}").ConfigureAwait(false);
         }
         catch (Exception ex)
         {

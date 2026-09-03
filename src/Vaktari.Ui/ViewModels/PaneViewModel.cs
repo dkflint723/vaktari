@@ -2331,8 +2331,16 @@ public sealed partial class PaneViewModel : ObservableObject, IDisposable
 
         // The listing is refreshed once, at the end — refreshing per item would
         // rebuild the view thousands of times during a large copy.
+        //
+        // And the history with it: what finished here is what Ctrl+Z will take
+        // back, so the menu row has to learn its new name at the same moment
+        // the rows appear.
         _ = handle.Completion.ContinueWith(
-            _ => Dispatcher.UIThread.Post(() => _ = RefreshAsync()),
+            _ => Dispatcher.UIThread.Post(() =>
+            {
+                RefreshUndoState();
+                _ = RefreshAsync();
+            }),
             TaskScheduler.Default);
     }
 

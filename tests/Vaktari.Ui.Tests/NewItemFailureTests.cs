@@ -78,6 +78,8 @@ public sealed class NewItemFailureTests : OwnedViewModels
         public bool CanUndo => false;
         public ValueTask UndoAsync(CancellationToken ct) => ValueTask.CompletedTask;
         public bool CanRedo => false;
+        public string? UndoDescription => null;
+        public string? RedoDescription => null;
         public ValueTask RedoAsync(CancellationToken ct) => ValueTask.CompletedTask;
     }
 

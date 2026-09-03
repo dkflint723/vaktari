@@ -68,6 +68,8 @@ public sealed class BinIsNotAFolderTests : OwnedViewModels
 
         public bool CanUndo => false;
         public bool CanRedo => false;
+        public string? UndoDescription => null;
+        public string? RedoDescription => null;
         public ValueTask RedoAsync(CancellationToken ct) => ValueTask.CompletedTask;
         public ValueTask UndoAsync(CancellationToken ct) => ValueTask.CompletedTask;
     }

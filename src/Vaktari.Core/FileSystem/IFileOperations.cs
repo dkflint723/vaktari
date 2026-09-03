@@ -125,6 +125,22 @@ public interface IFileOperations
     ValueTask UndoAsync(CancellationToken ct);
 
     /// <summary>
+    /// What the next undo would take back — "copy of readme.txt", "move of 12
+    /// items" — or null when there is nothing to take back.
+    ///
+    /// **Ctrl+Z said nothing about what it was going to undo**, and there was
+    /// no Undo row in any menu to say it either, so after a copy, a rename and
+    /// a delete in quick succession the only way to find out which one came
+    /// back was to press it and look.
+    ///
+    /// Asked of the engine rather than remembered by a pane: one history is
+    /// shared by every pane and every tab, so an undo pressed in one window
+    /// takes back what another one did, and a pane that kept its own idea of
+    /// the top of the stack would name the wrong thing.
+    /// </summary>
+    string? UndoDescription { get; }
+
+    /// <summary>
     /// Puts back what an undo took away — Ctrl+Y, which every editor and file
     /// manager answers and this one did not.
     ///
@@ -137,4 +153,8 @@ public interface IFileOperations
     bool CanRedo { get; }
 
     ValueTask RedoAsync(CancellationToken ct);
+
+    /// <summary>What the next redo would put back, or null when there is
+    /// nothing to put back.</summary>
+    string? RedoDescription { get; }
 }

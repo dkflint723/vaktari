@@ -130,11 +130,15 @@ public sealed class WindowsFileOperations : IFileOperations
     /// the moment somebody reaches for Ctrl+Z. Wrapped so that no exit from
     /// Trash can skip it by forgetting to repeat two lines.
     /// </summary>
-    private void RememberArrivals(ITrashMaintenance? bin, HashSet<string>? before)
+    private void RememberArrivals(
+        ITrashMaintenance? bin, HashSet<string>? before, IReadOnlyList<string> asked)
     {
         var landed = Arrivals(bin, before);
 
-        if (landed.Count > 0) Remember(new UndoTrash(bin!, landed));
+        // The names the person used, carried alongside the trash keys. A key
+        // here is a $I metadata path, which is not something to put in a menu
+        // row — and the undo has to be described from the outside anyway.
+        if (landed.Count > 0) Remember(new UndoTrash(bin!, landed, asked));
     }
 
     public IOperationHandle Trash(IReadOnlyList<string> paths)
@@ -186,7 +190,7 @@ public sealed class WindowsFileOperations : IFileOperations
                     // already hold everything but the one file the warning was
                     // about, and returning here left all of them with no way
                     // back.
-                    RememberArrivals(bin, before);
+                    RememberArrivals(bin, before, paths);
                     handle.Cancelled();
                     return;
                 }
@@ -231,7 +235,7 @@ public sealed class WindowsFileOperations : IFileOperations
                     }
                 }
 
-                RememberArrivals(bin, before);
+                RememberArrivals(bin, before, paths);
 
                 // Completed with Problems rather than Failed: the ones that went
                 // really did go, and the status line reports what was left
@@ -304,8 +308,13 @@ public sealed class WindowsFileOperations : IFileOperations
     /// nothing came back to remove the claim. So Ctrl+Z after a delete did
     /// nothing on Windows while working on Linux, with no sign of why.
     /// </summary>
-    private sealed class UndoTrash(ITrashMaintenance bin, List<string> trashNames) : IUndoable
+    private sealed class UndoTrash(
+        ITrashMaintenance bin,
+        List<string> trashNames,
+        IReadOnlyList<string> originals) : IUndoable
     {
+        public string Describe => UndoNames.Of("delete", originals);
+
         public ValueTask<IUndoable?> UndoAsync(CancellationToken ct)
         {
             foreach (var name in trashNames)
@@ -561,6 +570,13 @@ public sealed class WindowsFileOperations : IFileOperations
     }
 
     public bool CanRedo => !_redo.IsEmpty;
+
+    // Peeked rather than popped, and read on every ask: the menu row is built
+    // when the menu opens and the status line is written after the work, so
+    // both want the answer as it is now.
+    public string? UndoDescription => _undo.TryPeek(out var next) ? next.Describe : null;
+
+    public string? RedoDescription => _redo.TryPeek(out var next) ? next.Describe : null;
 
     /// <summary>
     /// Puts back what an undo took away.
@@ -1372,6 +1388,12 @@ public sealed class WindowsFileOperations : IFileOperations
     private interface IUndoable
     {
         ValueTask<IUndoable?> UndoAsync(CancellationToken ct);
+
+        /// <summary>What this would take back, for the menu row and the status
+        /// line. Named by the action itself for the same reason its inverse is:
+        /// it is the one place that cannot drift out of agreement with what was
+        /// actually done.</summary>
+        string Describe { get; }
     }
 
 
@@ -1397,6 +1419,8 @@ public sealed class WindowsFileOperations : IFileOperations
         Func<IReadOnlyList<string>, IOperationHandle> trash,
         IReadOnlyList<string> landed) : IUndoable
     {
+        public string Describe => UndoNames.Of("copy", landed);
+
         public async ValueTask<IUndoable?> UndoAsync(CancellationToken ct)
         {
             var here = landed
@@ -1425,6 +1449,10 @@ public sealed class WindowsFileOperations : IFileOperations
         Func<IReadOnlyList<string>, IOperationHandle> trash,
         string created) : IUndoable
     {
+        // "creating" rather than "create of": this one reads as a thing that
+        // happened rather than as a batch, because it always is exactly one.
+        public string Describe => "creating " + PathRules.LeafName(created);
+
         public async ValueTask<IUndoable?> UndoAsync(CancellationToken ct)
         {
             if (!File.Exists(created) && !Directory.Exists(created)) return null;
@@ -1437,6 +1465,10 @@ public sealed class WindowsFileOperations : IFileOperations
 
     private sealed class UndoRename(string current, string original) : IUndoable
     {
+        // Named by where it is NOW, which is the name on screen — the one the
+        // person is looking at when they wonder what Ctrl+Z will do.
+        public string Describe => UndoNames.Of("rename", [current]);
+
         public ValueTask<IUndoable?> UndoAsync(CancellationToken ct)
         {
             if (Directory.Exists(current)) RenameDirectory(current, original);
@@ -1460,6 +1492,8 @@ public sealed class WindowsFileOperations : IFileOperations
     private sealed class UndoMove(
         IReadOnlyList<(string Source, string Target)> moved) : IUndoable
     {
+        public string Describe => UndoNames.Of("move", [.. moved.Select(m => m.Target)]);
+
         public ValueTask<IUndoable?> UndoAsync(CancellationToken ct)
         {
             var undone = new List<(string Source, string Target)>();
