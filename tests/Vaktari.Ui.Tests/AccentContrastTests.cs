@@ -70,6 +70,28 @@ public sealed class AccentContrastTests
         }
     }
 
+    /// <summary>
+    /// Turns on "follow the desktop's colours" for the length of a test.
+    ///
+    /// **Without this the desktop palette below was never applied**, because
+    /// the Mapping loop sits behind that setting and the setting is off by
+    /// default — so the test handed over a pathological accent, measured the
+    /// built-in scheme instead, and passed for the wrong reason.
+    /// </summary>
+    private sealed class FollowingTheDesktop : IDisposable
+    {
+        private readonly Vaktari.Core.Settings.SettingsState _before
+            = Vaktari.Ui.Settings.AppSettings.Current;
+
+        public FollowingTheDesktop()
+            => Vaktari.Ui.Settings.AppSettings.Apply(_before with
+            {
+                Views = _before.Views with { FollowDesktopColours = true },
+            });
+
+        public void Dispose() => Vaktari.Ui.Settings.AppSettings.Apply(_before);
+    }
+
     private static Color Resolved(Window window, string key)
     {
         Assert.True(Avalonia.Application.Current!.Resources.TryGetResource(key, null, out var value),
@@ -113,13 +135,21 @@ public sealed class AccentContrastTests
     [InlineData("#000000")]   // the pathological case
     public void A_desktop_accent_is_made_readable_too(string hex)
     {
+        using var following = new FollowingTheDesktop();
+
         var colours = Under(
             new Vaktari.Core.ThemePalette
             {
                 IsDark = true,
                 Colours = new Dictionary<string, string> { [Vaktari.Core.ThemeRole.Accent] = hex },
             },
-            [.. Grounds, "AccentText"]);
+            [.. Grounds, "AccentText", "AccentColour"]);
+
+        // **That the desktop's value actually landed**, first. Without this the
+        // test cannot tell "made readable" from "never applied": with the
+        // mapping switched off it went on measuring the built-in scheme's own
+        // accent, which was readable all along, and passed.
+        Assert.Equal(Color.Parse(hex), colours["AccentColour"]);
 
         foreach (var key in Grounds)
             Assert.True(Contrast(colours["AccentText"], colours[key]) >= AA,

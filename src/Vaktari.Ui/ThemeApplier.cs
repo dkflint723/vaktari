@@ -215,7 +215,7 @@ public static class ThemeApplier
         // a surprise, not a feature.
         if (!Settings.AppSettings.Current.Views.FollowDesktopColours || palette is null)
         {
-            Finish(target, palette);
+            Finish(target, palette, dark);
             return;
         }
 
@@ -255,28 +255,6 @@ public static class ThemeApplier
             target["DividerColour"] = new SolidColorBrush(
                 Blend(back.Color, fore.Color, dark ? 0.18 : 0.22));
 
-            // The sidebar sits *under* the window chrome rather than beside it,
-            // so it steps away from the light instead of toward it. A 3% blend
-            // toward the text was invisible and left the whole window one sheet.
-            // Breeze Dark's alternate row colour sits a couple of values away
-            // from its view colour, which vanishes on a large monitor. Keep the
-            // desktop's value only when it is far enough to read; otherwise
-            // derive a band we know will show.
-            if (target["ViewBackground"] is ISolidColorBrush view)
-            {
-                var alt = (target["ViewAlternate"] as ISolidColorBrush)?.Color ?? view.Color;
-
-                var distance = Math.Abs(alt.R - view.Color.R)
-                             + Math.Abs(alt.G - view.Color.G)
-                             + Math.Abs(alt.B - view.Color.B);
-
-                if (distance < 12)
-                {
-                    target["ViewAlternate"] = new SolidColorBrush(
-                        dark ? Lighten(view.Color, 0.045) : Darken(view.Color, 0.035));
-                }
-            }
-
             target["PanelBackground"] = new SolidColorBrush(
                 dark ? Darken(back.Color, 0.22) : Darken(back.Color, 0.05));
 
@@ -311,7 +289,7 @@ public static class ThemeApplier
                     chipText.Color.R, chipText.Color.G, chipText.Color.B));
         }
 
-        Finish(target, palette);
+        Finish(target, palette, dark);
     }
 
     /// <summary>
@@ -388,7 +366,7 @@ public static class ThemeApplier
         return (hi + 0.05) / (lo + 0.05);
     }
 
-    private static void Finish(IResourceDictionary target, ThemePalette? palette)
+    private static void Finish(IResourceDictionary target, ThemePalette? palette, bool dark)
     {
         // **The accent does two jobs and only one of them is read.** As a fill
         // — the selected row's edge bar, the settings tab marker — contrast
@@ -415,20 +393,8 @@ public static class ThemeApplier
         // disappear on a light scheme. Fresh files get full text colour,
         // ancient ones fade past the dim colour — a lightness ramp that holds
         // under any scheme, this one or a desktop's.
-        if (target["ViewText"] is ISolidColorBrush text &&
-            target["ViewDimText"] is ISolidColorBrush dim)
-        {
-            var ramp = new IBrush[6];
-            for (var i = 0; i < 6; i++)
-            {
-                // Past the dim colour at the far end, so "ancient" recedes
-                // further than ordinary secondary text.
-                var t = i / 5.0 * 1.25;
-                ramp[i] = new SolidColorBrush(Blend(text.Color, dim.Color, Math.Min(t, 1.0)));
-            }
-
-            ViewModels.AgeConverters.SetRamp(ramp);
-        }
+        ApplyBanding(target, dark);
+        ApplyAgeRamp(target);
 
         // Always set, so the markup can bind unconditionally. A configured font
         // wins over the desktop's, which is the whole point of configuring one;
@@ -541,23 +507,98 @@ public static class ThemeApplier
         target["AppMonoFamily"] =
             new FontFamily("JetBrainsMono NF, JetBrains Mono, Cascadia Mono, Consolas");
 
-        // Re-derived from the new text colours. The ramp above was built from
-        // the desktop's and would otherwise be left pointing at a palette that
-        // is no longer on screen — it goes through AgeConverters rather than the
-        // resource dictionary, so overwriting the brushes does not reach it.
-        if (target["ViewText"] is ISolidColorBrush t && target["ViewDimText"] is ISolidColorBrush d)
-        {
-            var ramp = new IBrush[6];
-            for (var i = 0; i < 6; i++)
-                ramp[i] = new SolidColorBrush(
-                    Blend(t.Color, d.Color, Math.Min(i / 5.0 * 1.25, 1.0)));
-
-            ViewModels.AgeConverters.SetRamp(ramp);
-        }
+        // No ramp here. Finish runs after this on BOTH paths and builds one
+        // from whatever the text colours finally are, so a second copy here
+        // could only ever be overwritten — which is what the two of them were
+        // doing, with the same bug in each.
     }
 
     private static Color Lighten(Color c, double amount) => Blend(c, Colors.White, amount);
     private static Color Darken(Color c, double amount) => Blend(c, Colors.Black, amount);
+
+    /// <summary>
+    /// Keeps the row banding far enough from the listing to be seen.
+    ///
+    /// **This ran only when the desktop was being followed**, which is off by
+    /// default — so the scheme almost everybody sees banded at 1.04:1 and the
+    /// guard written to prevent exactly that never looked at it. It belongs
+    /// here, after both paths have settled, where the value it judges is the
+    /// one that will be on screen.
+    ///
+    /// The desktop's own value is kept whenever it is far enough to read;
+    /// Breeze Dark's sits a couple of values from its view colour, which
+    /// vanishes on a large monitor.
+    /// </summary>
+    private static void ApplyBanding(IResourceDictionary target, bool dark)
+    {
+        if (target["ViewBackground"] is not ISolidColorBrush view) return;
+
+        var alt = (target["ViewAlternate"] as ISolidColorBrush)?.Color ?? view.Color;
+
+        if (Contrast(alt, view.Color) < BandContrast)
+            target["ViewAlternate"] = new SolidColorBrush(BandFor(view.Color, dark));
+    }
+
+    /// <summary>
+    /// How far a banded row has to sit from the one above it. Row banding is a
+    /// reading aid rather than text, so this is well below AA on purpose --
+    /// stripes you notice are worse than no stripes. It only has to be a
+    /// difference the eye can find when it follows a row across a wide window.
+    /// </summary>
+    private const double BandContrast = 1.2;
+
+    /// <summary>
+    /// A band that far from the ground, whatever the ground is. Stepped rather
+    /// than a fixed blend because a fixed one is exactly what failed: 4.5%
+    /// toward white is a visible step from mid-grey and nothing at all from
+    /// near-black.
+    /// </summary>
+    private static Color BandFor(Color view, bool dark)
+    {
+        var band = view;
+
+        for (var amount = 0.02; amount <= 0.30; amount += 0.01)
+        {
+            band = dark ? Lighten(view, amount) : Darken(view, amount);
+
+            if (Contrast(band, view) >= BandContrast) break;
+        }
+
+        return band;
+    }
+
+    /// <summary>
+    /// The six age shades, freshest first.
+    ///
+    /// **The two oldest were the same colour.** Six stops were spread over a
+    /// range of 1.25 and then clamped back to 1.0, so the fifth and the sixth
+    /// both landed exactly on the dim colour -- a year old and a decade old
+    /// drawn identically, and the ramp was really five shades wearing six
+    /// names. The intent behind the 1.25 was that "ancient" should recede
+    /// FURTHER than ordinary secondary text, which is what the last stop now
+    /// does by carrying on toward the background instead of stopping dead at
+    /// dim.
+    ///
+    /// One builder, because there were two of these -- the same arithmetic
+    /// written out twice, in two methods, with the same bug in both.
+    /// </summary>
+    private static void ApplyAgeRamp(IResourceDictionary target)
+    {
+        if (target["ViewText"] is not ISolidColorBrush text
+            || target["ViewDimText"] is not ISolidColorBrush dim
+            || target["ViewBackground"] is not ISolidColorBrush view) return;
+
+        var ramp = new IBrush[6];
+
+        // Five even stops from ordinary text down to the dim colour, which is
+        // what the old arithmetic worked out to for its first five.
+        for (var i = 0; i < 5; i++)
+            ramp[i] = new SolidColorBrush(Blend(text.Color, dim.Color, i / 4.0));
+
+        ramp[5] = new SolidColorBrush(Blend(dim.Color, view.Color, 0.35));
+
+        ViewModels.AgeConverters.SetRamp(ramp);
+    }
 
     private static Color Blend(Color from, Color to, double amount) => Color.FromRgb(
         (byte)(from.R + (to.R - from.R) * amount),

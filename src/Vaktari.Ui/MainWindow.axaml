@@ -907,7 +907,7 @@
                          it, so the field reads as one thing with a note on it
                          rather than two labels competing. -->
                     <TextBlock DockPanel.Dock="Right" Text="ctrl+f" Margin="6,0,8,0"
-                               VerticalAlignment="Center" Opacity="0.7"
+                               VerticalAlignment="Center"
                                FontSize="{DynamicResource FontSizeTiny}"
                                Foreground="{DynamicResource ViewDimText}"
                                IsVisible="{Binding !$parent[Window].((vm:ShellViewModel)DataContext).Sidebar.Search.HasQuery}"/>
@@ -2628,7 +2628,14 @@
                 FontSize="{DynamicResource FontSizeSmall}"/>
         <Button x:Name="PromptCancel" Content="cancel" IsVisible="False" Padding="12,3"
                 FontSize="{DynamicResource FontSizeSmall}"/>
-        <TextBlock x:Name="PromptHint" FontSize="{DynamicResource FontSizeSmall}" Opacity="0.5" VerticalAlignment="Center"/>
+        <!-- **Dimmed with Opacity, which took it under AA.** These are the
+             instructions for the box beside them — "enter to confirm, esc to
+             cancel", and the reason a name was refused — read by whoever is
+             least sure what to do next. ViewDimText is derived to clear 4.5:1
+             against the ground it sits on; multiplying it by an opacity throws
+             that away, so the hint is that colour and nothing further. -->
+        <TextBlock x:Name="PromptHint" FontSize="{DynamicResource FontSizeSmall}"
+                   Foreground="{DynamicResource ViewDimText}" VerticalAlignment="Center"/>
       </StackPanel>
     </Border>
 
