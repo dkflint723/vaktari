@@ -96,13 +96,13 @@ public sealed class LinuxPlacesProvider : IPlacesProvider, IDisposable
     {
         var groups = new List<PlaceGroup>
         {
-            new("places", BuildUserPlaces()),
+            new(PlaceGroups.Places, BuildUserPlaces()),
         };
 
         var (devices, network) = BuildMounts();
 
-        if (devices.Count > 0) groups.Add(new PlaceGroup("devices", devices));
-        if (network.Count > 0) groups.Add(new PlaceGroup("network", network));
+        if (devices.Count > 0) groups.Add(new PlaceGroup(PlaceGroups.Devices, devices));
+        if (network.Count > 0) groups.Add(new PlaceGroup(PlaceGroups.Shares, network));
 
         return ValueTask.FromResult<IReadOnlyList<PlaceGroup>>(groups);
     }

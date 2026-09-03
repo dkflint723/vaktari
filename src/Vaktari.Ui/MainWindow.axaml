@@ -13,7 +13,20 @@
         Background="{DynamicResource AppBackground}"
         Foreground="{DynamicResource ViewText}"
         FontFamily="{DynamicResource AppFontFamily}"
-        Width="1000" Height="680">
+        Width="1000" Height="680"
+        MinWidth="560" MinHeight="380">
+  <!-- **There was no floor at all, and the chrome has fixed-width parts.** The
+       sidebar is 210 by default and the path bar's right-hand cluster is a
+       230px search field beside a 200px filter, so a window dragged narrow ran
+       them into the breadcrumbs and then into each other — and nothing stopped
+       the drag before the window held nothing usable at all.
+
+       560 leaves a 350px listing beside the sidebar, or the whole 560 with it
+       hidden; 380 leaves room for the toolbar, the tabs, the path bar, the
+       column header and the status bar with rows still under them. A session
+       that saved something smaller is clamped up to these on restore, which is
+       the right way round: the size is unusable whether it was chosen this
+       session or last. -->
 
   <Window.Styles>
 
