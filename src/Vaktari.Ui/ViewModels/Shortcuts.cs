@@ -51,6 +51,7 @@ public static class Shortcuts
             new("Ctrl+Tab", "Next tab"),
             new("Ctrl+Shift+Tab", "Previous tab"),
             new("Middle click a tab", "Close it"),
+            new("Double-click the tab strip", "New tab"),
             new("Middle click a folder", "Open it in a new tab"),
             // The sheet promised the middle button on folders and the sidebar's
             // own menu offered "Open in new tab" on every place — while the

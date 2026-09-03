@@ -1508,6 +1508,43 @@ public partial class MainWindow : Window
         return null;
     }
 
+    /// <summary>
+    /// The group whose tab strip a gesture landed on, and only where the strip
+    /// is BLANK — not on a tab, the "+", a chevron or the scrollbar.
+    ///
+    /// **The empty half of the strip answered nothing.** Explorer, Dolphin and
+    /// every browser open a tab when it is double-clicked, and here the gesture
+    /// fell through to the row walk, found no file and stopped — with the "+"
+    /// itself scrolled out of reach behind a dozen tabs, which is exactly when
+    /// the blank space is aimed at.
+    ///
+    /// Keyed on the strip's own ScrollViewer rather than the tab bar behind it,
+    /// so the layout buttons docked to its right — and the gaps between them —
+    /// keep meaning nothing. Button covers the "+", a tab's ✕ and both overflow
+    /// chevrons in one test, because RepeatButton and ToggleButton both derive
+    /// from it; the scrollbar and its thumb are refused for the reason
+    /// <see cref="ListForEmptySpace"/> refuses them, which is that scrolling is
+    /// not an opening gesture.
+    /// </summary>
+    private static PaneGroupViewModel? TabStripEmptySpaceAt(object? source)
+    {
+        for (var visual = source as Visual; visual is not null;
+             visual = visual.GetVisualParent())
+        {
+            if (visual is Avalonia.Controls.Primitives.TabStripItem
+                       or Button
+                       or Avalonia.Controls.Primitives.ScrollBar
+                       or Avalonia.Controls.Primitives.Thumb)
+                return null;
+
+            if (visual is ScrollViewer { DataContext: PaneGroupViewModel group } strip
+                && strip.Classes.Contains("tab-space"))
+                return group;
+        }
+
+        return null;
+    }
+
     /// <summary>Walks up from whatever was hit to the group that owns it.</summary>
     private static PaneGroupViewModel? GroupAt(object? source)
     {
@@ -4091,6 +4128,23 @@ public partial class MainWindow : Window
 
     private void OnDoubleTapped(object? sender, TappedEventArgs e)
     {
+        // **Nothing happened on the blank half of the tab strip.** Both
+        // references and every browser open a tab there.
+        //
+        // BEFORE the single-click branch below, deliberately: that preference
+        // governs how a FILE is opened, and reading it first would have taken
+        // this gesture away from everyone who opens files with one click — the
+        // "+" beside the strip does not change meaning with that setting
+        // either. Through the group rather than the shell, so in a split the
+        // tab opens on the side that was double-clicked and not on the side
+        // that happens to have focus.
+        if (TabStripEmptySpaceAt(e.Source) is { } group)
+        {
+            group.NewTabHereCommand.Execute(null);
+            e.Handled = true;
+            return;
+        }
+
         // The normal path, restored. TryOpen drops a duplicate if the fallback
         // in OnTapped has already acted on this same row.
         if (OpensOnSingleClick) return;

@@ -586,9 +586,22 @@
                The separator and + travel INSIDE it, so they stay adjacent to the
                last tab rather than jumping to the far edge when few tabs are
                open. Ctrl+T reaches the same command when they scroll out. -->
+          <!-- **The blank half of the strip could not be clicked at all.** A
+               ScrollViewer with no Background is invisible to the pointer — the
+               same rule the row templates are held to — so a press in the gap
+               beside the tabs fell through to the chrome Border behind it and
+               the strip never saw it. Transparent paints exactly what that
+               chrome painted and makes the gap a target, which is what the
+               double-click that opens a tab needs.
+
+               The class is how the window tells THIS scroller from every other
+               one, the way the overflow chevrons are already found: the strip is
+               stamped once per pane, so a name would find one of two. -->
           <ScrollViewer HorizontalScrollBarVisibility="Auto"
                         VerticalScrollBarVisibility="Disabled"
                         ClipToBounds="True"
+                        Classes="tab-space"
+                        Background="Transparent"
                         ScrollChanged="OnTabStripScrollChanged">
             <!-- The theme's own scrollbar is built for a document, and over a
                  row of tabs it reads as machinery: a bright thumb the height of
