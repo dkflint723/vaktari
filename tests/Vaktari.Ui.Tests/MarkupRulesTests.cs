@@ -281,7 +281,7 @@ public class MarkupRulesTests
 
         Assert.Equal("Window", doc.Root?.Name.LocalName);
         Assert.True(doc.Descendants(Avalonia + "DataTemplate")
-            .Count(t => (string?)t.Attribute(X + "DataType") == "fs:FileEntry") >= 4,
-            "expected the four FileEntry row templates — details, compact, grid and the simple list");
+            .Count(t => (string?)t.Attribute(X + "DataType") == "fs:FileEntry") == 3,
+            "expected the three FileEntry row templates — details, compact and grid");
     }
 }

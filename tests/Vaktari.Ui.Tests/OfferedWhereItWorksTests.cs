@@ -1,5 +1,6 @@
 using System.Xml.Linq;
 using Avalonia.Headless.XUnit;
+using Vaktari.Core.FileSystem;
 using Vaktari.Ui.ViewModels;
 using Xunit;
 
@@ -14,7 +15,8 @@ namespace Vaktari.Ui.Tests;
 /// hid was back again on the next launch. The line was kept on the grounds that
 /// a result's place context is read off the rail; that stopped being true when
 /// the results moved into a popup under the path bar, where every row carries
-/// its own full path.
+/// its own full path — and then into the listing itself, where the sidebar is
+/// beside the results rather than replaced by them.
 ///
 /// **And "Use my desktop's icons" was on screen on Linux, where nothing could
 /// act on it.** The setting is honoured through IPlatform.FileIcons alone —
@@ -22,7 +24,7 @@ namespace Vaktari.Ui.Tests;
 /// answers by icon name and has none — so the box could be ticked, saved, and
 /// found still ticked, while every row drew exactly what it drew before.
 /// </summary>
-public sealed class OfferedWhereItWorksTests
+public sealed class OfferedWhereItWorksTests : OwnedViewModels
 {
     private static readonly XNamespace Avalonia = "https://github.com/avaloniaui";
     private static readonly XNamespace X = "http://schemas.microsoft.com/winfx/2006/xaml";
@@ -33,6 +35,10 @@ public sealed class OfferedWhereItWorksTests
     /// The whole finding: a rail deliberately hidden stays hidden. Checked at
     /// each of the three states, because the old line set Full unconditionally
     /// and would pass a test that only tried one.
+    ///
+    /// Asked through the shell rather than of the pane, because the pane is
+    /// where the command lives now and the sidebar is what must not move — a
+    /// test of the pane alone could not tell the two apart.
     /// </summary>
     [AvaloniaTheory]
     [InlineData(Vaktari.Core.Session.RailState.Hidden)]
@@ -41,26 +47,29 @@ public sealed class OfferedWhereItWorksTests
     public void Searching_leaves_the_sidebar_however_you_left_it(
         Vaktari.Core.Session.RailState rail)
     {
-        var sidebar = new SidebarViewModel(places: null, search: null) { Rail = rail };
+        var shell = Own(new ShellViewModel(new Empty()));
 
-        sidebar.FocusSearchCommand.Execute(null);
+        shell.Start(null, Path.GetTempPath());
+        shell.Sidebar.Rail = rail;
 
-        Assert.Equal(rail, sidebar.Rail);
+        shell.ActiveTab!.BeginSearchCommand.Execute(null);
+
+        Assert.Equal(rail, shell.Sidebar.Rail);
     }
 
     /// <summary>And still does what it is for.</summary>
     [AvaloniaFact]
     public void But_still_puts_the_caret_in_the_box()
     {
-        var sidebar = new SidebarViewModel(places: null, search: null)
-        {
-            Rail = Vaktari.Core.Session.RailState.Hidden,
-        };
+        var shell = Own(new ShellViewModel(new Empty()));
 
-        sidebar.FocusSearchCommand.Execute(null);
+        shell.Start(null, Path.GetTempPath());
+        shell.Sidebar.Rail = Vaktari.Core.Session.RailState.Hidden;
 
-        Assert.True(sidebar.IsSearchOpen);
-        Assert.True(sidebar.IsSearching);
+        shell.ActiveTab!.BeginSearchCommand.Execute(null);
+
+        Assert.True(shell.ActiveTab.IsSearchOpen);
+        Assert.True(shell.ActiveTab.IsSearchFocused);
     }
 
     // ---- the icons choice is offered only where it works -------------------
@@ -153,5 +162,30 @@ public sealed class OfferedWhereItWorksTests
 
         Assert.DoesNotContain("Windows", text);
         Assert.Contains("your desktop", text);
+    }
+
+    private sealed class Empty : IFileSystemProvider
+    {
+        public async IAsyncEnumerable<IReadOnlyList<FileEntry>> EnumerateAsync(
+            string path, ListingOptions options,
+            [System.Runtime.CompilerServices.EnumeratorCancellation] CancellationToken ct)
+        {
+            await Task.CompletedTask;
+            yield break;
+        }
+
+        public ValueTask<FileEntry?> GetEntryAsync(string path, CancellationToken ct)
+            => ValueTask.FromResult<FileEntry?>(null);
+
+        public IDisposable Watch(string path, Action<FileSystemChange> onChange) => new Idle();
+
+        public ValueTask<bool> IsReachableAsync(string path, TimeSpan timeout, CancellationToken ct)
+            => ValueTask.FromResult(true);
+
+        public string Combine(string basePath, string name) => Path.Combine(basePath, name);
+        public string? GetParent(string path) => Path.GetDirectoryName(path);
+        public bool IsCaseSensitive => false;
+
+        private sealed class Idle : IDisposable { public void Dispose() { } }
     }
 }

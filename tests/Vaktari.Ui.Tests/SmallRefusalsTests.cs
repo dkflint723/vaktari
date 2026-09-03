@@ -51,57 +51,11 @@ public sealed class SmallRefusalsTests : OwnedViewModels
     }
 
     // ---- a single letter is a search ---------------------------------------
-
-    /// <summary>
-    /// Counts what it was asked to walk, so the test can tell "ran the search"
-    /// from "declined to".
-    /// </summary>
-    private sealed class CountingSearch : Vaktari.Core.Search.ISearchProvider
-    {
-        public List<string> Asked { get; } = [];
-
-        public bool IsAvailable => true;
-        public string BackendName => "counting";
-        public bool SupportsContentSearch => false;
-
-        public async IAsyncEnumerable<FileEntry> SearchAsync(
-            Vaktari.Core.Search.SearchQuery query,
-            [System.Runtime.CompilerServices.EnumeratorCancellation] CancellationToken ct)
-        {
-            Asked.Add(query.Text);
-
-            await Task.CompletedTask;
-            yield break;
-        }
-    }
-
-    [AvaloniaFact]
-    public async Task One_character_is_a_query_rather_than_a_scolding()
-    {
-        var search = new CountingSearch();
-        var model = new SearchViewModel(search, () => null);
-
-        model.Query = "b";
-
-        // Past the debounce, which is the only thing that should hold a short
-        // query up.
-        await Task.Delay(500);
-        global::Avalonia.Threading.Dispatcher.UIThread.RunJobs();
-
-        Assert.DoesNotContain("keep typing", model.Status);
-        Assert.Contains("b", search.Asked);
-    }
-
-    [AvaloniaFact]
-    public void And_an_empty_box_still_says_nothing_at_all()
-    {
-        var model = new SearchViewModel(new CountingSearch(), () => null);
-
-        model.Query = "b";
-        model.Query = "";
-
-        Assert.Equal("", model.Status);
-    }
+    //
+    // Moved to SearchKeyboardTests, with the rest of what typing into the
+    // search field does. There is no length rule left to test in isolation: a
+    // draft costs nothing until Enter, so a one-character question takes
+    // exactly the road a long one does.
 
     // ---- no limit looks like no limit --------------------------------------
 

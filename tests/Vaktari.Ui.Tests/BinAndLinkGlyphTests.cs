@@ -150,7 +150,7 @@ public sealed class BinAndLinkGlyphTests
     // ---- and the sidebar asks, cheaply ------------------------------------
 
     private static SidebarViewModel Sidebar(Bin bin)
-        => new(places: null, search: null, currentPath: null, trash: () => bin);
+        => new(places: null, trash: () => bin);
 
     [AvaloniaFact]
     public void The_sidebar_asks_the_bin_what_it_holds()
@@ -226,7 +226,7 @@ public sealed class BinAndLinkGlyphTests
     {
         ITrashMaintenance? installed = null;
         var sidebar = new SidebarViewModel(
-            places: null, search: null, currentPath: null, trash: () => installed);
+            places: null, trash: () => installed);
 
         var row = BinRowIn(sidebar);
 

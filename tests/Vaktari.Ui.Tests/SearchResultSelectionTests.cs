@@ -1,5 +1,7 @@
+using System.Xml.Linq;
 using Avalonia.Headless.XUnit;
 using Vaktari.Core.FileSystem;
+using Vaktari.Ui;
 using Vaktari.Ui.ViewModels;
 using Xunit;
 
@@ -166,25 +168,85 @@ public sealed class SearchResultSelectionTests : OwnedViewModels
     }
 
     /// <summary>
-    /// The half no view-model test can see: the shell has to ASK. It used to
-    /// assemble the whole behaviour in its own event lambda, which is how it
-    /// came to select something the listing had never heard of — and every test
-    /// above would pass with that lambda back in place.
+    /// The half no view-model test can see: something has to ASK.
+    ///
+    /// The shell used to, off the popup's ResultChosen event, and it assembled
+    /// the whole behaviour in its own lambda — which is how it came to select
+    /// something the listing had never heard of, and every test above would
+    /// pass with that lambda back in place. The results are a listing now, so
+    /// the asking is a menu entry on the search listing itself.
+    /// </summary>
+    [Fact]
+    public void The_menu_offers_it_on_a_search_and_nowhere_else()
+    {
+        var item = XDocument.Parse(RepoSource.Ui("MainWindow.axaml"))
+            .Descendants(XNamespace.Get("https://github.com/avaloniaui") + "MenuItem")
+            .Single(m => (string?)m.Attribute("Header") == "Open file location");
+
+        Assert.Equal("{Binding ActiveTab.GoToLocationCommand}", (string?)item.Attribute("Command"));
+        Assert.Equal("{Binding ActiveTab.IsSearchListing}", (string?)item.Attribute("IsVisible"));
+    }
+
+    /// <summary>
+    /// And it reveals the SELECTED row, rather than assembling a landing of its
+    /// own — the mistake the shell's lambda made.
     /// </summary>
     [AvaloniaFact]
-    public void The_shell_asks_the_pane_to_reveal_it()
+    public async Task Going_to_the_location_reveals_the_row_that_is_picked()
     {
-        var shell = RepoSource.Ui("ViewModels", "ShellViewModel.cs").Split('\n');
+        var row = new FileEntry("report.txt", In("report.txt"), 12, When, EntryFlags.ReadOnly);
 
-        var handler = shell.FirstOrDefault(
-            l => l.Contains("Sidebar.Search.ResultChosen", StringComparison.Ordinal));
+        var pane = Own(new PaneViewModel(new Listing(Path.GetTempPath(), row))
+        {
+            ViewportWidth = 1400,
+        });
 
-        Assert.NotNull(handler);
-        Assert.Contains("RevealAsync", handler);
+        await pane.NavigateAsync(Path.GetTempPath());
 
-        // Not assembling the behaviour itself, which is how it came to select
-        // something the listing had never heard of.
-        Assert.DoesNotContain("SelectedEntry", handler);
+        pane.SelectedEntry = AsSearchSawIt(row);
+
+        await pane.GoToLocationCommand.ExecuteAsync(null);
+
+        Assert.True(PathRules.Same(Path.GetTempPath(), pane.CurrentPath));
+        Assert.Contains(pane.SelectedEntry!.Value, (IEnumerable<FileEntry>)pane.Entries);
+    }
+
+    /// <summary>With nothing picked it does nothing, rather than throwing.</summary>
+    [AvaloniaFact]
+    public async Task With_nothing_picked_it_goes_nowhere()
+    {
+        var pane = Own(new PaneViewModel(new Listing(Path.GetTempPath()))
+        {
+            ViewportWidth = 1400,
+        });
+
+        await pane.GoToLocationCommand.ExecuteAsync(null);
+
+        Assert.Null(pane.SelectedEntry);
+    }
+
+    /// <summary>
+    /// **A search row is a filename from anywhere on the machine**, so the
+    /// parent path is not decoration: it is the difference between four
+    /// identical rows and four different files. The recent listings carry the
+    /// column for exactly this reason.
+    /// </summary>
+    [AvaloniaFact]
+    public async Task A_search_listing_shows_where_each_row_came_from()
+    {
+        UseSearch(null);
+
+        var pane = Own(new PaneViewModel(new Listing(Path.GetTempPath()))
+        {
+            ViewportWidth = 1400,
+        });
+
+        await pane.NavigateAsync(Path.GetTempPath());
+        Assert.False(pane.ShowParentPath);
+
+        await pane.NavigateAsync(VirtualPaths.Search("report", null, false));
+
+        Assert.True(pane.ShowParentPath);
     }
 
     [Theory]

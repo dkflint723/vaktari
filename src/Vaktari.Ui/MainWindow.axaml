@@ -894,8 +894,8 @@
 
                      Same magnifier as the field's own, so opening it reads as
                      the icon growing rather than one control replacing another. -->
-                <Button IsVisible="{Binding !$parent[Window].((vm:ShellViewModel)DataContext).Sidebar.IsSearchOpen}"
-                        Command="{Binding $parent[Window].((vm:ShellViewModel)DataContext).Sidebar.FocusSearchCommand}"
+                <Button IsVisible="{Binding !ActiveTab.IsSearchOpen}"
+                        Command="{Binding ActiveTab.BeginSearchCommand}"
                         Width="30" Height="26" Padding="0"
                         Background="Transparent" BorderThickness="0"
                         AutomationProperties.Name="search files  (ctrl+f)"
@@ -907,7 +907,7 @@
                 </Button>
 
                 <Border x:Name="SearchBox" Width="230" Height="26" CornerRadius="4"
-                        IsVisible="{Binding $parent[Window].((vm:ShellViewModel)DataContext).Sidebar.IsSearchOpen}"
+                        IsVisible="{Binding ActiveTab.IsSearchOpen}"
                         Background="{DynamicResource ViewBackground}"
                         BorderThickness="1" BorderBrush="{DynamicResource SeparatorColour}">
                   <DockPanel>
@@ -923,10 +923,10 @@
                                VerticalAlignment="Center"
                                FontSize="{DynamicResource FontSizeTiny}"
                                Foreground="{DynamicResource ViewDimText}"
-                               IsVisible="{Binding !$parent[Window].((vm:ShellViewModel)DataContext).Sidebar.Search.HasQuery}"/>
-                    <TextBox Text="{Binding $parent[Window].((vm:ShellViewModel)DataContext).Sidebar.Search.Query}"
-                             local:FocusBehavior.FocusWhen="{Binding $parent[Window].((vm:ShellViewModel)DataContext).Sidebar.IsSearching}"
-                             local:FocusBehavior.LostFocusCommand="{Binding $parent[Window].((vm:ShellViewModel)DataContext).Sidebar.CloseSearchIfEmptyCommand}"
+                               IsVisible="{Binding !ActiveTab.HasSearchDraft}"/>
+                    <TextBox Text="{Binding ActiveTab.SearchDraft}"
+                             local:FocusBehavior.FocusWhen="{Binding ActiveTab.IsSearchFocused}"
+                             local:FocusBehavior.LostFocusCommand="{Binding ActiveTab.CloseSearchIfEmptyCommand}"
                              PlaceholderText="search files"
                              Classes="flat"
                              Background="Transparent" BorderThickness="0"
@@ -934,7 +934,7 @@
                              FontSize="{DynamicResource FontSizeSmall}">
                       <TextBox.KeyBindings>
                         <KeyBinding Gesture="Escape"
-                                    Command="{Binding $parent[Window].((vm:ShellViewModel)DataContext).Sidebar.DismissSearchCommand}"/>
+                                    Command="{Binding ActiveTab.DismissSearchCommand}"/>
                         <!-- **Enter did nothing here**, so type-then-Enter —
                              the reflex in both Explorer and Dolphin — dead-ended
                              and a result could only be reached with the mouse.
@@ -942,9 +942,7 @@
                              results, which are a real list now rather than a
                              column of buttons. -->
                         <KeyBinding Gesture="Enter"
-                                    Command="{Binding $parent[Window].((vm:ShellViewModel)DataContext).Sidebar.Search.OpenFirstCommand}"/>
-                        <KeyBinding Gesture="Down"
-                                    Command="{Binding $parent[Window].((vm:ShellViewModel)DataContext).Sidebar.FocusResultsListCommand}"/>
+                                    Command="{Binding ActiveTab.RunSearchCommand}"/>
                       </TextBox.KeyBindings>
                     </TextBox>
                     <!-- Padding="0" collapsed the text presenter to the font's
@@ -958,105 +956,6 @@
                   </DockPanel>
                 </Border>
 
-                <!-- Results in a popup under the field, not in the sidebar. They
-                     used to replace the places list, so searching took away the
-                     thing you navigate with. -->
-                <Popup PlacementTarget="{Binding #SearchBox}"
-                       Placement="BottomEdgeAlignedRight" VerticalOffset="6"
-                       IsLightDismissEnabled="True"
-                       IsOpen="{Binding $parent[Window].((vm:ShellViewModel)DataContext).Sidebar.Search.HasQuery, Mode=OneWay}">
-                  <Border Width="520" MaxHeight="420" CornerRadius="4" Padding="0,6"
-                          Background="{DynamicResource PanelBackground}"
-                          BorderThickness="1" BorderBrush="{DynamicResource SeparatorColour}">
-                    <DockPanel>
-                      <!-- **The scope toggle existed and no control could set
-                           it.** ScopeToCurrentFolder is an observable property
-                           with a live handler that restarts the search, and
-                           both platforms already implement the unscoped case —
-                           so searching the whole machine was built, tested by
-                           neither, and unreachable. -->
-                      <!-- The label carries the truth. Over This PC or the bin
-                           there is no folder to scope to, and a box that still
-                           says "This folder only" while being ignored claims a
-                           scope the search does not have. -->
-                      <CheckBox DockPanel.Dock="Top" Margin="12,0,12,4"
-                                Content="{Binding $parent[Window].((vm:ShellViewModel)DataContext).Sidebar.Search.ScopeLabel}"
-                                IsEnabled="{Binding $parent[Window].((vm:ShellViewModel)DataContext).Sidebar.Search.CanScopeToCurrentFolder}"
-                                FontSize="{DynamicResource FontSizeTiny}"
-                                IsChecked="{Binding $parent[Window].((vm:ShellViewModel)DataContext).Sidebar.Search.ScopeToCurrentFolder}"/>
-                      <!-- **A running search neither showed that it was running
-                           nor could be stopped.** IsSearching was set at both
-                           ends of every query and read by nothing at all, and
-                           the only way out was Escape — which clears the query
-                           and takes the hits with it. Stop keeps them, which is
-                           the whole difference between the two.
-
-                           The bar is the other half: the line below changes its
-                           words only when a batch lands, so between batches a
-                           walk that was still going looked exactly like one
-                           that had finished. Indeterminate because the honest
-                           answer to "how far through" is that nothing knows. -->
-                      <ProgressBar x:Name="SearchProgress" DockPanel.Dock="Top"
-                                   IsVisible="{Binding $parent[Window].((vm:ShellViewModel)DataContext).Sidebar.Search.IsSearching}"
-                                   IsIndeterminate="True" Height="3" Margin="12,0,12,6"/>
-                      <DockPanel DockPanel.Dock="Top" Margin="12,2,12,6">
-                        <Button x:Name="StopSearch" DockPanel.Dock="Right"
-                                IsVisible="{Binding $parent[Window].((vm:ShellViewModel)DataContext).Sidebar.Search.IsSearching}"
-                                Command="{Binding $parent[Window].((vm:ShellViewModel)DataContext).Sidebar.Search.StopCommand}"
-                                Content="Stop" Padding="8,1" MinWidth="0" Margin="8,0,0,0"
-                                CornerRadius="4" Background="Transparent" BorderThickness="0"
-                                FontSize="{DynamicResource FontSizeTiny}"
-                                AutomationProperties.Name="stop searching"
-                                ToolTip.Tip="stop searching and keep what was found"/>
-                        <!-- Last child, so it takes the rest of the row: a long
-                             backend name must not push the button off the edge. -->
-                        <TextBlock Text="{Binding $parent[Window].((vm:ShellViewModel)DataContext).Sidebar.Search.Status}"
-                                   VerticalAlignment="Center" TextWrapping="Wrap"
-                                   FontSize="{DynamicResource FontSizeTiny}"
-                                   Foreground="{DynamicResource ViewDimText}"/>
-                      </DockPanel>
-                      <ScrollViewer>
-                        <!-- **A ListBox, not a column of Buttons.** Buttons
-                             carry no selection, so there was nothing for an
-                             arrow key to move and nothing for Enter to open —
-                             the results were mouse-only. A real list brings
-                             arrow navigation, a visible focus and Enter for
-                             free; opening on selection is what the popup does
-                             anyway, since choosing a result is the only thing
-                             you can do with one. -->
-                        <ListBox x:Name="SearchResults"
-                                 local:FocusBehavior.FocusWhen="{Binding $parent[Window].((vm:ShellViewModel)DataContext).Sidebar.FocusResults}"
-                                 ItemsSource="{Binding $parent[Window].((vm:ShellViewModel)DataContext).Sidebar.Search.Results}"
-                                 SelectionMode="Single" Background="Transparent" Padding="0"
-                                 BorderThickness="0">
-                          <ListBox.KeyBindings>
-                            <KeyBinding Gesture="Enter"
-                                        Command="{Binding $parent[Window].((vm:ShellViewModel)DataContext).Sidebar.Search.OpenCommand}"
-                                        CommandParameter="{Binding #SearchResults.SelectedItem}"/>
-                            <KeyBinding Gesture="Escape"
-                                        Command="{Binding $parent[Window].((vm:ShellViewModel)DataContext).Sidebar.DismissSearchCommand}"/>
-                          </ListBox.KeyBindings>
-                          <ListBox.ItemTemplate>
-                            <DataTemplate x:DataType="fs:FileEntry">
-                              <StackPanel Margin="12,7">
-                                <TextBlock Text="{Binding Converter={x:Static vm:FileConverters.DisplayName}}" FontSize="{DynamicResource FontSizeBase}"
-                                           TextTrimming="CharacterEllipsis"/>
-                                <TextBlock Text="{Binding FullPath}" FontSize="{DynamicResource FontSizeTiny}"
-                                           Foreground="{DynamicResource ViewDimText}"
-                                           TextTrimming="CharacterEllipsis"/>
-                              </StackPanel>
-                            </DataTemplate>
-                          </ListBox.ItemTemplate>
-                          <ListBox.Styles>
-                            <Style Selector="ListBoxItem">
-                              <Setter Property="Padding" Value="0"/>
-                            </Style>
-                          </ListBox.Styles>
-                        </ListBox>
-                      </ScrollViewer>
-                    </DockPanel>
-                  </Border>
-                </Popup>
               </Panel>
 
               <!-- Filter, inline. It used to be a band of its own that appeared
@@ -1694,6 +1593,15 @@
                                 </Style>
                               </MenuItem.Styles>
                             </MenuItem>
+              <!-- **The one thing the popup could do that the listing must
+                   not lose.** Choosing a result WAS this: you were taken to
+                   its folder with the row lit. Acting on results in place is
+                   the better default, but a search is drawn from everywhere at
+                   once and "where is this actually" still needs an answer. -->
+              <Separator IsVisible="{Binding ActiveTab.IsSearchListing}"/>
+              <MenuItem Header="Open file location"
+                                      IsVisible="{Binding ActiveTab.IsSearchListing}"
+                                      Command="{Binding ActiveTab.GoToLocationCommand}"/>
               <Separator IsVisible="{Binding ActiveTab.IsRecentListing}"/>
               <MenuItem Header="Forget (keeps the file)"
                                       IsVisible="{Binding ActiveTab.IsRecentListing}"
@@ -2694,10 +2602,10 @@
     <KeyBinding Gesture="Ctrl+Shift+C"   Command="{Binding CopyLocationCommand}"/>
     <!-- Alt rather than Ctrl for panels: Ctrl+1..9 already switches tabs,
          browser-style, and that convention is the stronger one. -->
-    <KeyBinding Gesture="Ctrl+F"         Command="{Binding Sidebar.FocusSearchCommand}"/>
+    <KeyBinding Gesture="Ctrl+F"         Command="{Binding ActiveTab.BeginSearchCommand}"/>
     <!-- Ctrl+E is what Explorer binds search to; Ctrl+F is what
          everything else does. Both, for the same reason as Alt+D. -->
-    <KeyBinding Gesture="Ctrl+E"         Command="{Binding Sidebar.FocusSearchCommand}"/>
+    <KeyBinding Gesture="Ctrl+E"         Command="{Binding ActiveTab.BeginSearchCommand}"/>
     <KeyBinding Gesture="Ctrl+L"         Command="{Binding ActiveTab.BeginEditPathCommand}"/>
     <!-- Alt+D is the other half of the same habit: Explorer and every
          browser answer both, and which one somebody reaches for is a

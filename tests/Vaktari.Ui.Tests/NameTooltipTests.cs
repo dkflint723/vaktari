@@ -85,8 +85,11 @@ public sealed class NameTooltipTests
 
     /// <summary>
     /// And every listing shows the display name, so a Windows shortcut loses
-    /// its extension in all four places rows are drawn rather than in the one
+    /// its extension in all three places rows are drawn rather than in the one
     /// that was easiest to reach.
+    ///
+    /// Three, not four: the fourth was the search popup's own row template, and
+    /// search results are drawn by these three now like anything else.
     /// </summary>
     [AvaloniaFact]
     public void Every_row_template_shows_the_display_name()
@@ -95,7 +98,7 @@ public sealed class NameTooltipTests
             .Count(t => ((string?)t.Attribute("Text"))
                         ?.Contains("FileConverters.DisplayName", StringComparison.Ordinal) == true);
 
-        Assert.Equal(4, shown);
+        Assert.Equal(3, shown);
     }
 
     [AvaloniaFact]

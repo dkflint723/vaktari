@@ -99,7 +99,17 @@ public static class VirtualPaths
     public static string? OriginOf(string path)
         => Part(path, 1) is { Length: > 0 } origin ? origin : null;
 
-    public static bool IsScoped(string path) => Part(path, 2) == Here;
+    /// <summary>
+    /// Whether the search is narrowed to the folder it started from.
+    ///
+    /// **A place that is not a folder cannot be one**, however the path came to
+    /// say otherwise — the box that writes these is one route, and a session
+    /// file edited by hand is the other. Answered here rather than at each
+    /// reader, so the tick box, the label and the query the backend is handed
+    /// cannot disagree about it.
+    /// </summary>
+    public static bool IsScoped(string path)
+        => Part(path, 2) == Here && OriginOf(path) is { } origin && !IsVirtual(origin);
 
     /// <summary>
     /// What the backend is actually asked to search; null is "everywhere",

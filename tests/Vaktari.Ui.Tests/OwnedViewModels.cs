@@ -38,5 +38,35 @@ public abstract class OwnedViewModels : IDisposable
         }
 
         _owned.Clear();
+
+        if (_searchBorrowed) Vaktari.Ui.ViewModels.PaneViewModel.Search = _searchBefore;
+    }
+
+    private Vaktari.Core.Search.ISearchProvider? _searchBefore;
+    private bool _searchBorrowed;
+
+    /// <summary>
+    /// Lends this test the pane's search backend, and gives it back afterwards.
+    ///
+    /// **A test that navigates to a search path and does NOT set this runs a
+    /// real one.** The backend is a static, the way every provider the pane
+    /// reaches is, and one test class in this assembly builds a real MainWindow
+    /// — which assigns the platform's own search provider to it. Any later
+    /// class that then loads a search listing performs a genuine recursive walk
+    /// of the machine: slow, and answering with whatever files happen to be
+    /// there.
+    ///
+    /// Null is the honest default for a test that only cares about the shape of
+    /// a search listing rather than its contents.
+    /// </summary>
+    protected void UseSearch(Vaktari.Core.Search.ISearchProvider? backend)
+    {
+        if (!_searchBorrowed)
+        {
+            _searchBefore = Vaktari.Ui.ViewModels.PaneViewModel.Search;
+            _searchBorrowed = true;
+        }
+
+        Vaktari.Ui.ViewModels.PaneViewModel.Search = backend;
     }
 }

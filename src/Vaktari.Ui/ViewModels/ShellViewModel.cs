@@ -44,7 +44,6 @@ public sealed partial class ShellViewModel : ObservableObject, IDisposable
         IPlacesProvider? places = null,
         IApplicationLauncher? launcher = null,
         IClipboardService? clipboard = null,
-        ISearchProvider? search = null,
         IScriptRunner? scripts = null,
         ITemplateProvider? templates = null,
         IFileSharing? sharing = null)
@@ -77,20 +76,13 @@ public sealed partial class ShellViewModel : ObservableObject, IDisposable
         _launcher = launcher;
         _clipboard = clipboard;
 
-        Sidebar = new SidebarViewModel(
-            places, search, () => ActiveTab?.CurrentPath, () => PaneViewModel.Trash);
+        Sidebar = new SidebarViewModel(places, () => PaneViewModel.Trash);
 
         // A chosen result navigates the active tab to its folder and selects it,
         // rather than opening the file — search is for finding, not launching.
         // Attached here rather than in MainWindow, because this is the only
         // place that knows which pane is active.
         Sidebar.AttachNavigation(path => _ = ActiveTab?.NavigateAsync(path));
-
-        // The whole of "go there and light it up" belongs to the pane, which is
-        // the only thing that knows what rows it actually has. Assembling it
-        // here meant selecting the search backend's own entry, which is equal
-        // to the listing's row only by luck.
-        Sidebar.Search.ResultChosen += (_, entry) => _ = ActiveTab?.RevealAsync(entry);
 
         Left = CreateGroup();
         ActiveGroup = Left;

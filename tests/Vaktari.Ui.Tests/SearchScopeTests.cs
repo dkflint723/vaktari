@@ -1,4 +1,5 @@
 using Avalonia.Headless.XUnit;
+using Vaktari.Ui;
 using Vaktari.Ui.ViewModels;
 using Xunit;
 
@@ -8,7 +9,7 @@ namespace Vaktari.Ui.Tests;
 /// Searching from a listing that is not a folder.
 ///
 /// **"This folder only" over This PC searched for a folder called
-/// "vaktari:computer".** The box is ticked by default and the scope was the
+/// "vaktari:computer".** The box was ticked by default and the scope was the
 /// pane's raw path, which for a virtual listing is an internal scheme rather
 /// than a directory.
 ///
@@ -17,78 +18,115 @@ namespace Vaktari.Ui.Tests;
 /// about the whole machine. On Linux the enumerator throws before yielding
 /// anything and the panel says the folder is not there any more, about a place
 /// you are standing in. Explorer searches every drive from This PC.
+///
+/// The rule now lives on the PATH rather than on a tick box, so the box, the
+/// label and the query handed to the backend cannot disagree about it — and a
+/// session file edited by hand is answered by the same clause.
 /// </summary>
-public sealed class SearchScopeTests
+public sealed class SearchScopeTests : OwnedViewModels
 {
     private static readonly string Folder = Path.GetTempPath();
 
-    [AvaloniaTheory]
+    [Theory]
     [InlineData("vaktari:computer")]
     [InlineData("vaktari:trash")]
     [InlineData("vaktari:recent-files")]
     [InlineData("vaktari:recent-locations")]
-    public void A_listing_that_is_not_a_folder_scopes_to_nothing(string path)
-        => Assert.Null(SearchViewModel.ScopeFor(path, scopeToCurrentFolder: true));
+    public void A_listing_that_is_not_a_folder_scopes_to_nothing(string origin)
+    {
+        // Built as though the box HAD been ticked, which is what a hand-edited
+        // session file can also say.
+        var path = VirtualPaths.Search("report", origin, scoped: true);
+
+        Assert.False(VirtualPaths.IsScoped(path));
+        Assert.Null(VirtualPaths.ScopeOf(path));
+    }
 
     /// <summary>Not a blanket ignore: a real folder still scopes, which is what
     /// the box is for.</summary>
-    [AvaloniaFact]
+    [Fact]
     public void A_real_folder_still_scopes_to_itself()
-        => Assert.Equal(Folder, SearchViewModel.ScopeFor(Folder, scopeToCurrentFolder: true));
+        => Assert.Equal(Folder, VirtualPaths.ScopeOf(
+            VirtualPaths.Search("report", Folder, scoped: true)));
 
-    [AvaloniaFact]
+    [Fact]
     public void Unticked_still_means_everywhere()
-        => Assert.Null(SearchViewModel.ScopeFor(Folder, scopeToCurrentFolder: false));
+        => Assert.Null(VirtualPaths.ScopeOf(
+            VirtualPaths.Search("report", Folder, scoped: false)));
 
     // ---- and the box says what it is doing ----------------------------------
 
-    private static SearchViewModel Searching(string path)
-        => new(null, () => path);
+    /// <summary>
+    /// Awaited, never blocked on. A headless test runs ON the dispatcher, and
+    /// the load posts its finishing work back to it — so a GetResult here waits
+    /// for a callback that cannot run until the wait ends.
+    /// </summary>
+    private async Task<PaneViewModel> Searching(string origin)
+    {
+        UseSearch(null);
+
+        var pane = Own(new PaneViewModel(new Silent()));
+
+        await pane.NavigateAsync(VirtualPaths.Search("report", origin, scoped: true));
+
+        return pane;
+    }
 
     /// <summary>
     /// A box that still reads "This folder only" while being ignored claims a
     /// scope the search does not have. The label carries the truth instead.
     /// </summary>
     [AvaloniaFact]
-    public void Over_this_pc_the_box_says_it_is_searching_everywhere()
+    public async Task Over_this_pc_the_box_says_it_is_searching_everywhere()
     {
-        var search = Searching("vaktari:computer");
+        var pane = await Searching(VirtualPaths.Computer);
 
-        Assert.False(search.CanScopeToCurrentFolder);
-        Assert.Contains("everywhere", search.ScopeLabel);
-        Assert.DoesNotContain("This folder only", search.ScopeLabel);
+        Assert.False(pane.CanScopeSearch);
+        Assert.False(pane.SearchScopedHere);
+        Assert.Contains("everywhere", pane.SearchScopeLabel);
+        Assert.DoesNotContain("Only in", pane.SearchScopeLabel);
     }
 
     /// <summary>And it names the listing, rather than printing the internal
     /// scheme at somebody.</summary>
     [AvaloniaFact]
-    public void The_label_names_the_listing_rather_than_its_scheme()
-        => Assert.DoesNotContain("vaktari:", Searching("vaktari:trash").ScopeLabel);
+    public async Task The_label_names_the_listing_rather_than_its_scheme()
+        => Assert.DoesNotContain(
+            "vaktari:", (await Searching(VirtualPaths.Trash)).SearchScopeLabel);
 
     [AvaloniaFact]
-    public void In_a_real_folder_the_box_is_its_ordinary_self()
+    public async Task In_a_real_folder_the_box_is_its_ordinary_self()
     {
-        var search = Searching(Folder);
+        var pane = await Searching(Folder);
 
-        Assert.True(search.CanScopeToCurrentFolder);
-        Assert.Equal("This folder only", search.ScopeLabel);
+        Assert.True(pane.CanScopeSearch);
+        Assert.True(pane.SearchScopedHere);
     }
 
-    /// <summary>
-    /// The markup reads both, or the rule is right and the box goes on lying.
-    /// </summary>
-    [AvaloniaFact]
-    public void The_box_is_bound_to_the_label_and_the_gate()
+    private sealed class Silent : Vaktari.Core.FileSystem.IFileSystemProvider
     {
-        var markup = RepoSource.Ui("MainWindow.axaml");
+        public async IAsyncEnumerable<IReadOnlyList<Vaktari.Core.FileSystem.FileEntry>> EnumerateAsync(
+            string path, Vaktari.Core.FileSystem.ListingOptions options,
+            [System.Runtime.CompilerServices.EnumeratorCancellation] CancellationToken ct)
+        {
+            await Task.CompletedTask;
+            yield return [];
+        }
 
-        var at = markup.IndexOf("Search.ScopeToCurrentFolder", StringComparison.Ordinal);
-        Assert.True(at > 0, "the scope box is not bound where this test looks for it");
+        public ValueTask<Vaktari.Core.FileSystem.FileEntry?> GetEntryAsync(
+            string path, CancellationToken ct)
+            => ValueTask.FromResult<Vaktari.Core.FileSystem.FileEntry?>(null);
 
-        var element = markup[markup.LastIndexOf("<CheckBox", at, StringComparison.Ordinal)..at];
+        public IDisposable Watch(
+            string path, Action<Vaktari.Core.FileSystem.FileSystemChange> onChange) => new Idle();
 
-        Assert.Contains("Search.ScopeLabel", element);
-        Assert.Contains("Search.CanScopeToCurrentFolder", element);
-        Assert.DoesNotContain("Content=\"This folder only\"", element);
+        public ValueTask<bool> IsReachableAsync(string path, TimeSpan timeout, CancellationToken ct)
+            => ValueTask.FromResult(true);
+
+        public string Combine(string basePath, string name) => Path.Combine(basePath, name);
+        public string? GetParent(string path) => Path.GetDirectoryName(path);
+        public bool IsCaseSensitive => false;
+
+        private sealed class Idle : IDisposable { public void Dispose() { } }
     }
 }

@@ -255,23 +255,15 @@ public sealed class SearchListingTests : OwnedViewModels
     public async Task Navigating_to_a_search_shows_what_the_backend_found()
     {
         var backend = new Fake(Entry("report.docx"));
-        var previous = PaneViewModel.Search;
 
-        try
-        {
-            PaneViewModel.Search = backend;
+        UseSearch(backend);
 
-            var pane = Own(new PaneViewModel(new NoDisk()));
+        var pane = Own(new PaneViewModel(new NoDisk()));
 
-            await pane.NavigateAsync(VirtualPaths.Search("report", null, false));
+        await pane.NavigateAsync(VirtualPaths.Search("report", null, false));
 
-            Assert.Equal(["report.docx"], pane.Entries.Select(e => e.Name));
-            Assert.Equal("report", backend.Asked!.Text);
-        }
-        finally
-        {
-            PaneViewModel.Search = previous;
-        }
+        Assert.Equal(["report.docx"], pane.Entries.Select(e => e.Name));
+        Assert.Equal("report", backend.Asked!.Text);
     }
 
     /// <summary>A disk that would fail the assertion above if it were consulted.</summary>

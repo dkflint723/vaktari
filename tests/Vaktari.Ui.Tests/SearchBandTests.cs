@@ -25,28 +25,12 @@ public sealed class SearchBandTests : OwnedViewModels
     private static readonly XNamespace Avalonia = "https://github.com/avaloniaui";
     private static readonly XNamespace X = "http://schemas.microsoft.com/winfx/2006/xaml";
 
-    private readonly ISearchProvider? _backendBefore = PaneViewModel.Search;
-
-    /// <summary>
-    /// The backend is a static on the pane, like every other provider it
-    /// reaches, so a fake left standing here is a fake every later test in the
-    /// assembly gets. The suite runs serially, which makes that a leak rather
-    /// than a race — and a leak is quite enough.
-    /// </summary>
-    public override void Dispose()
-    {
-        PaneViewModel.Search = _backendBefore;
-
-        base.Dispose();
-        GC.SuppressFinalize(this);
-    }
-
     private async Task<PaneViewModel> Searching(
         string query, string? origin, bool scoped, params FileEntry[] found)
     {
         var pane = Own(new PaneViewModel(new NoDisk()));
 
-        PaneViewModel.Search = new Fake(found);
+        UseSearch(new Fake(found));
 
         await pane.NavigateAsync(VirtualPaths.Search(query, origin, scoped));
 
@@ -111,7 +95,7 @@ public sealed class SearchBandTests : OwnedViewModels
         var pane = Own(new PaneViewModel(new NoDisk()));
         var backend = new Fake([Entry("one.txt"), Entry("two.txt")]) { PauseMs = 200 };
 
-        PaneViewModel.Search = backend;
+        UseSearch(backend);
 
         var going = pane.NavigateAsync(VirtualPaths.Search("t", null, scoped: false));
 
@@ -178,7 +162,7 @@ public sealed class SearchBandTests : OwnedViewModels
         var pane = Own(new PaneViewModel(new NoDisk()));
         var slow = new Fake([Entry("one.txt"), Entry("two.txt")]) { PauseMs = 400 };
 
-        PaneViewModel.Search = slow;
+        UseSearch(slow);
 
         var going = pane.NavigateAsync(VirtualPaths.Search("t", null, false));
 
@@ -215,7 +199,7 @@ public sealed class SearchBandTests : OwnedViewModels
     {
         var pane = Own(new PaneViewModel(new NoDisk()));
 
-        PaneViewModel.Search = new Fake([Entry("one.txt")]) { PauseMs = 400 };
+        UseSearch(new Fake([Entry("one.txt")]) { PauseMs = 400 });
 
         var going = pane.NavigateAsync(VirtualPaths.Search("nothing", null, false));
 
@@ -228,6 +212,33 @@ public sealed class SearchBandTests : OwnedViewModels
         await going;
 
         Assert.False(pane.IsLoading);
+    }
+
+    /// <summary>
+    /// And on a walk that never ends by itself, which is the shape of the case
+    /// Stop exists for: an unindexed search from This PC reads every fixed
+    /// drive, and "e" matches most of it. The finite fake above would finish on
+    /// its own eventually; this one only stops because it was stopped.
+    /// </summary>
+    [AvaloniaFact]
+    public async Task Stopping_ends_a_walk_that_would_never_end_on_its_own()
+    {
+        var pane = Own(new PaneViewModel(new NoDisk()));
+        var endless = new Endless();
+
+        UseSearch(endless);
+
+        var going = pane.NavigateAsync(VirtualPaths.Search("hit", null, false));
+
+        await WaitUntil(() => pane.Entries.Count > 0);
+
+        pane.StopSearchCommand.Execute(null);
+
+        await going;
+        await WaitUntil(() => endless.Ended);
+
+        Assert.False(pane.IsLoading);
+        Assert.NotEmpty(pane.Entries);
     }
 
     /// <summary>
@@ -391,6 +402,40 @@ public sealed class SearchBandTests : OwnedViewModels
             finally
             {
                 Disposed = true;
+            }
+        }
+    }
+
+    /// <summary>
+    /// Yields hits and then goes on for ever, which is what a walk of a large
+    /// tree looks like from here. Records that it was really ended rather than
+    /// merely abandoned.
+    /// </summary>
+    private sealed class Endless : ISearchProvider
+    {
+        public bool Ended { get; private set; }
+
+        public bool IsAvailable => true;
+        public string BackendName => "endless";
+        public bool SupportsContentSearch => false;
+
+        public async IAsyncEnumerable<FileEntry> SearchAsync(
+            SearchQuery query, [EnumeratorCancellation] CancellationToken ct)
+        {
+            try
+            {
+                for (var i = 0; ; i++)
+                {
+                    ct.ThrowIfCancellationRequested();
+
+                    yield return Entry("hit" + i);
+
+                    await Task.Delay(5, ct).ConfigureAwait(false);
+                }
+            }
+            finally
+            {
+                Ended = true;
             }
         }
     }

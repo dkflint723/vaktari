@@ -289,7 +289,7 @@ public partial class MainWindow : Window
 
         _shell = new ShellViewModel(
             platform.FileSystem, platform.Operations, _store,
-            platform.Places, platform.Launcher, clipboard, platform.Search,
+            platform.Places, platform.Launcher, clipboard,
             platform.Scripts, platform.Templates, platform.Sharing)
         {
             GeometryProvider = CaptureGeometry,

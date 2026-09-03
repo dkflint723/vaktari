@@ -1155,7 +1155,8 @@ public sealed partial class PaneViewModel : ObservableObject, IDisposable
     /// has no origin to scope to, so the box is disabled rather than ticked and
     /// quietly ignored.
     /// </summary>
-    public bool CanScopeSearch => VirtualPaths.OriginOf(CurrentPath) is not null;
+    public bool CanScopeSearch =>
+        VirtualPaths.OriginOf(CurrentPath) is { } origin && !VirtualPaths.IsVirtual(origin);
 
     /// <summary>
     /// The scope, as a place rather than a flag.
@@ -1198,6 +1199,136 @@ public sealed partial class PaneViewModel : ObservableObject, IDisposable
                     System.IO.Path.DirectorySeparatorChar,
                     System.IO.Path.AltDirectorySeparatorChar))}";
         }
+    }
+
+    /// <summary>
+    /// What is being typed into the search field, which is NOT what is being
+    /// searched for.
+    ///
+    /// **The two used to be one string**, so every keystroke was a query: typing
+    /// "claude" launched six walks, each cancelled by the next but only after it
+    /// had begun reading directories. A draft that becomes a search on Enter
+    /// needs no debounce, no minimum length and no cancellation — the three
+    /// things the live version spent its complexity on.
+    /// </summary>
+    [ObservableProperty] private string _searchDraft = "";
+
+    /// <summary>Whether the field has anything in it, which is what hides the
+    /// "ctrl+f" hint sitting at its right-hand end.</summary>
+    public bool HasSearchDraft => SearchDraft.Length > 0;
+
+    partial void OnSearchDraftChanged(string value) => OnPropertyChanged(nameof(HasSearchDraft));
+
+    /// <summary>
+    /// Whether the path bar shows the search FIELD or just its icon. The field
+    /// is 230px that never yielded, and on the active side of a split it plus
+    /// the filter button took the whole bar — leaving the crumbs reading "C:".
+    /// </summary>
+    [ObservableProperty] private bool _isSearchOpen;
+
+    /// <summary>
+    /// A one-shot trigger for the focus behaviour, not a state: set false then
+    /// true to re-fire it, because after the first Ctrl+F it is true for ever
+    /// and a second one would otherwise leave the caret where it was.
+    /// </summary>
+    [ObservableProperty] private bool _isSearchFocused;
+
+    /// <summary>
+    /// Ctrl+F: open the field and put the caret in it.
+    ///
+    /// Seeded from the search you are already looking at, so refining a
+    /// question means editing it rather than retyping it — and abandoning the
+    /// edit leaves the results you had, because they are a listing rather than
+    /// a popup keyed on the box's contents.
+    /// </summary>
+    [RelayCommand]
+    private void BeginSearch()
+    {
+        SearchDraft = IsSearchListing ? SearchQueryText : "";
+
+        IsSearchOpen = true;
+
+        IsSearchFocused = false;
+        IsSearchFocused = true;
+    }
+
+    /// <summary>
+    /// Enter: go to the results.
+    ///
+    /// **Enter used to do nothing at all**, so type-then-Enter — the reflex in
+    /// both Explorer and Dolphin — dead-ended, and a result could only be
+    /// reached with the mouse.
+    ///
+    /// The scope carries: retyping over a search you have already narrowed
+    /// keeps it narrowed, and the origin stays the folder it started from
+    /// rather than becoming the search path itself.
+    /// </summary>
+    [RelayCommand]
+    private void RunSearch()
+    {
+        var text = SearchDraft.Trim();
+
+        // Nothing typed is not a question. Whitespace is the same nothing: a
+        // path built from it looks like a real search and asks the index to
+        // match every file on the machine.
+        if (text.Length == 0) return;
+
+        var origin = IsSearchListing ? VirtualPaths.OriginOf(CurrentPath) : CurrentPath;
+
+        // A fresh search means the folder you are standing in, the way
+        // Explorer's box does. Asking for it from This PC is not refused here:
+        // "a place that is not a folder cannot be the scope" is a fact about
+        // the path, answered once by VirtualPaths.IsScoped so that this road
+        // and a hand-edited session file get the same answer.
+        var scoped = !IsSearchListing || SearchScopedHere;
+
+        // The band above the results says what was asked, so the field has
+        // nothing left to show and the crumbs can have their width back.
+        IsSearchOpen = false;
+
+        _ = NavigateAsync(VirtualPaths.Search(text, origin, scoped));
+    }
+
+    /// <summary>
+    /// Escape: put the field away.
+    ///
+    /// **It no longer takes the results with it**, which is the change that
+    /// makes this safe. The popup was keyed on the box's contents, so clearing
+    /// the box was the only way to close it and the only way out of a running
+    /// walk — one gesture for three different intentions.
+    /// </summary>
+    [RelayCommand]
+    private void DismissSearch()
+    {
+        SearchDraft = "";
+        IsSearchFocused = false;
+        IsSearchOpen = false;
+    }
+
+    /// <summary>
+    /// Collapses the field back to its icon when you click away from it, but
+    /// only when nothing is half-typed in it.
+    /// </summary>
+    [RelayCommand]
+    private void CloseSearchIfEmpty()
+    {
+        if (SearchDraft.Length == 0) IsSearchOpen = false;
+    }
+
+    /// <summary>
+    /// Go to where a result actually lives.
+    ///
+    /// **A search spans the whole filesystem, and a row is a filename.** The
+    /// parent-path column answers "which of four config.toml is this"; this
+    /// answers "take me there", which is the other half and the one Explorer
+    /// calls Open file location. It is also all the popup could do with a
+    /// result — choosing one WAS this — so a listing without it would have
+    /// taken something away while adding everything else.
+    /// </summary>
+    [RelayCommand]
+    private async Task GoToLocation()
+    {
+        if (SelectedEntry is { } entry) await RevealAsync(entry);
     }
 
     /// <summary>Which index answered, so slow results are explained.</summary>
@@ -1258,7 +1389,8 @@ public sealed partial class PaneViewModel : ObservableObject, IDisposable
     /// two separate grids — the kind of edit that goes wrong quietly.
     /// </summary>
     public bool ShowParentPath =>
-        (IsRecentListing || IsTrashListing) && ViewportWidth >= 420 * TextScale;
+        (IsRecentListing || IsTrashListing || IsSearchListing)
+        && ViewportWidth >= 420 * TextScale;
 
     partial void OnTextScaleChanged(double value) => NotifyColumns();
 
