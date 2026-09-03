@@ -2498,6 +2498,94 @@ public partial class MainWindow : Window
     private void OnInvertSelectionClicked(object? sender, RoutedEventArgs e)
         => InvertSelection();
 
+    private bool SidebarShowing => _shell?.Sidebar.IsPanelVisible == true;
+
+    /// <summary>
+    /// Which region the keyboard is in.
+    ///
+    /// The sidebar is asked FIRST and the listing last, because the sidebar
+    /// contains a list of its own — testing for a ListBox before ruling the
+    /// sidebar out would call a place row part of the listing.
+    ///
+    /// **Anything else is Elsewhere, not the listing.** A toolbar button, the
+    /// tab strip, a crumb, or nothing at all at startup are all real states,
+    /// and calling them the listing would make F6 move ON from them — which is
+    /// exactly the rescue the old handler existed to provide.
+    /// </summary>
+    private Input.KeyboardRegion CurrentRegion()
+    {
+        if (FocusManager?.GetFocusedElement() is not Visual focused)
+            return Input.KeyboardRegion.Elsewhere;
+
+        if (this.FindControl<Border>("SidebarPanel") is { } sidebar
+            && IsInside(focused, sidebar))
+            return Input.KeyboardRegion.Sidebar;
+
+        // **Asked of the pane, not found by name.** The address bar lives inside
+        // a per-pane template and has no generated field, so FindControl on the
+        // window does not reach it — and a region test that silently answers
+        // "somewhere else" would make the sidebar unreachable by keyboard while
+        // every other step still worked.
+        //
+        // A focused text box while the bar is open IS that bar: it closes the
+        // moment the keyboard leaves it, so no other box can hold focus at the
+        // same time.
+        if (focused is TextBox && _shell?.ActiveTab?.IsPathEditing == true)
+            return Input.KeyboardRegion.Location;
+
+        return focused.FindAncestorOfType<ListBox>(includeSelf: true) is not null
+            ? Input.KeyboardRegion.Listing
+            : Input.KeyboardRegion.Elsewhere;
+    }
+
+    private static bool IsInside(Visual child, Visual parent)
+    {
+        for (var visual = child; visual is not null; visual = visual.GetVisualParent())
+            if (ReferenceEquals(visual, parent)) return true;
+
+        return false;
+    }
+
+    private void GoToRegion(Input.KeyboardRegion region)
+    {
+        switch (region)
+        {
+            case Input.KeyboardRegion.Location:
+                _shell?.ActiveTab?.BeginEditPath();
+                break;
+
+            case Input.KeyboardRegion.Sidebar:
+                // **Closed first, then queued BEHIND what closing sets off.**
+                // The address bar's own lost-focus rule shuts it the moment
+                // the sidebar takes the keyboard, and shutting it posts "put
+                // the keyboard back in the listing" — a deliberate behaviour
+                // for every other way the bar closes, and one that would land
+                // after this and undo it. Same priority, posted second, so it
+                // runs second: the listing is focused and then the sidebar row
+                // takes it, which is the order asked for.
+                _shell?.ActiveTab?.RevertPathText();
+
+                Dispatcher.UIThread.Post(
+                    () => FirstSidebarRow()?.Focus(), DispatcherPriority.Background);
+                break;
+
+            default:
+                // Closed first, or the box's own lost-focus command fires as
+                // the listing takes the keyboard and lands on whatever is
+                // active by then.
+                if (_shell?.ActiveTab is { IsPathEditing: true } editing)
+                    editing.RevertPathText();
+
+                ActiveListing()?.Focus();
+                break;
+        }
+    }
+
+    private Control? FirstSidebarRow()
+        => this.FindControl<Border>("SidebarPanel") is { } sidebar
+            ? sidebar.GetVisualDescendants().OfType<Button>().FirstOrDefault(b => b.IsVisible)
+            : null;
+
     private ListBox? ActiveListing()
     {
         foreach (var list in Lists(this))
@@ -4492,6 +4580,36 @@ public partial class MainWindow : Window
 
         if (_prompt is PromptMode.Rename) return;
 
+        // F6 moves the keyboard between the listing, the address bar and the
+        // sidebar.
+        //
+        // **It only ever went one place.** Explorer cycles three regions and
+        // Dolphin's F6 is Replace Location; here it put the keyboard in the
+        // listing and did nothing else — so pressed from the listing, which is
+        // where it had just put you, it did nothing at all.
+        //
+        // **Above the text-box guard, deliberately.** Leaving a text box is
+        // most of what this key is FOR: behind that guard the second step of
+        // the cycle could never be taken, because the address bar is a text box
+        // and F6 pressed in it would be swallowed. Three consequences follow,
+        // each an accepted cost rather than an oversight — F6 from the path bar
+        // discards a half-typed path, which is what clicking away already does;
+        // F6 from the search field closes it when the draft is empty, which is
+        // that field's own lost-focus rule; and F6 from the filter opens the
+        // path bar with the filter text intact.
+        //
+        // The rename bar is a text box too, and F6 must not pull the keyboard
+        // out from under a name being typed — but that is already answered by
+        // the rename guard higher up, which returns before this is reached. No
+        // clause of its own here, because one that cannot fail is one the next
+        // reader has to work out is decorative.
+        if (e.Key == Key.F6 && e.KeyModifiers == KeyModifiers.None)
+        {
+            e.Handled = true;
+            GoToRegion(Input.FocusCycle.Next(CurrentRegion(), SidebarShowing));
+            return;
+        }
+
         // Any focused text box owns the keyboard. Checking the type rather
         // than named controls, because the path and filter boxes now live
         // inside a per-pane template and have no generated fields — and it
@@ -4533,18 +4651,6 @@ public partial class MainWindow : Window
         {
             e.Handled = true;
             OpenListingMenu();
-            return;
-        }
-
-        // F6 puts the keyboard in the listing.
-        //
-        // **There was no keyboard route into it at all** — no F6, no focus at
-        // startup, and after Ctrl+L then Escape the focus was left nowhere, so
-        // the arrow keys were simply dead until the mouse was used.
-        if (e.Key == Key.F6)
-        {
-            e.Handled = true;
-            ActiveListing()?.Focus();
             return;
         }
 

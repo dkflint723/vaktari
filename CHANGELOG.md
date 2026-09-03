@@ -210,6 +210,13 @@ should not be trusted for compatibility yet.
 
 ### Changed
 
+- **F6 moves the keyboard between the listing, the address bar and the
+  sidebar**, the way Explorer cycles its regions. It used to put the keyboard
+  in the listing and nothing else, so pressed from the listing — where it had
+  just put you — it did nothing. Its original job survives: pressed when the
+  keyboard is on a toolbar button, or nowhere at all, one press still puts you
+  on the rows. With the sidebar hidden the cycle is two places, not three.
+
 - **Ctrl+L pressed again re-selects the path** instead of doing nothing. The
   first press opens the address bar and selects what is in it; the second used
   to reach nothing at all, because only the box appearing put the caret there

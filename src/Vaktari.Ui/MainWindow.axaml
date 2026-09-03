@@ -1094,7 +1094,8 @@
                 <Panel IsHitTestVisible="False"/>
               </DockPanel>
 
-              <TextBox Text="{Binding ActiveTab.PathText}"
+              <TextBox x:Name="PathBox"
+                       Text="{Binding ActiveTab.PathText}"
                        IsVisible="{Binding ActiveTab.IsPathEditing}"
                        ToolTip.Tip="tab completes · enter goes · esc or click away cancels&#10;%ProgramFiles%, %SystemDrive% and ~ are understood"
                        local:FocusBehavior.LostFocusCommand="{Binding ActiveTab.RevertPathTextCommand}"
@@ -2804,7 +2805,10 @@
     <!-- One wide sidebar with every section present at once. The point of the
          workspace layout is that the things you organise by — places,
          devices — are never behind a panel toggle. -->
-    <Border DockPanel.Dock="Left" Background="{DynamicResource PanelBackground}"
+    <!-- Named so F6 can tell whether the keyboard is already inside it, and
+         so the first place row can be found to put the keyboard on. -->
+    <Border x:Name="SidebarPanel"
+            DockPanel.Dock="Left" Background="{DynamicResource PanelBackground}"
             BorderThickness="0,0,1,0" BorderBrush="{DynamicResource SeparatorColour}"
             Width="{Binding Sidebar.Width}"
             IsVisible="{Binding Sidebar.IsPanelVisible}">

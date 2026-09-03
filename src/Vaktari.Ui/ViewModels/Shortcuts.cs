@@ -48,6 +48,10 @@ public static class Shortcuts
             new("Ctrl+Q", "Close the window"),
             new("Ctrl+1…9", "Jump to a tab"),
             new("Tab", "Move to the other pane, when split"),
+            // Listed at last. It has been bound since there was any keyboard
+            // route into the listing at all, and appeared nowhere — a key
+            // nobody can find is a key nobody uses.
+            new("F6", "Listing, address bar, sidebar — in turn"),
             new("Ctrl+Tab", "Next tab"),
             new("Ctrl+Page Down", "Next tab"),
             new("Ctrl+Page Up", "Previous tab"),
