@@ -204,6 +204,50 @@ public sealed partial class SidebarViewModel : ObservableObject
     [RelayCommand]
     public void CycleRail() => Rail = Rail == RailState.Hidden ? RailState.Full : RailState.Hidden;
 
+    /// <summary>
+    /// Writes the pinned order the rows are currently in back to the provider.
+    ///
+    /// **Both providers have implemented this since they were written and
+    /// nothing ever called it.** The pins were persisted in the order they were
+    /// added and could be reordered only by editing places.json by hand — so a
+    /// sidebar that had grown past a handful of pins could never be tidied,
+    /// which is the point at which tidying starts to matter. Explorer and
+    /// Dolphin both reorder by dragging.
+    ///
+    /// Every group's pins in one list, because the provider is asked about all
+    /// of them at once and a group left out of the list would be sorted to the
+    /// end. In practice there is one group with pins in it; the loop does not
+    /// need to know that.
+    ///
+    /// No reload afterwards. The rows are already in the order being saved —
+    /// the drag put them there — and rebuilding would flash the whole sidebar
+    /// to land on what is already on screen. A later reload for its own reasons
+    /// reads the saved order and agrees.
+    /// </summary>
+    public async Task SavePinOrderAsync()
+    {
+        if (_places is not { } places) return;
+
+        var order = Groups
+            .SelectMany(g => g.Places)
+            .Where(p => p.IsUserPinned)
+            .Select(p => p.Id)
+            .ToList();
+
+        if (order.Count == 0) return;
+
+        try
+        {
+            await places.ReorderAsync(order, CancellationToken.None).ConfigureAwait(false);
+        }
+        catch (Exception ex)
+        {
+            // The rows are already where they were dragged; a failure to write
+            // the order down is a thing to note rather than to undo on screen.
+            Quiet.Swallowed("places-reorder", ex);
+        }
+    }
+
     public async Task InitializeAsync()
     {
         if (_places is not { } places) return;
@@ -464,8 +508,52 @@ public sealed partial class SidebarViewModel : ObservableObject
 public sealed class PlaceGroupViewModel(PlaceGroup group)
 {
     public string Label { get; } = group.Label;
-    public IReadOnlyList<PlaceItemViewModel> Places { get; } =
-        group.Places.Select(p => new PlaceItemViewModel(p)).ToList();
+
+    /// <summary>
+    /// Observable so a reorder can move a row under the pointer. A rebuilt list
+    /// would work for the commit and not for the drag: the row has to travel
+    /// with the finger, not appear somewhere else once it is let go.
+    /// </summary>
+    public ObservableCollection<PlaceItemViewModel> Places { get; } =
+        new(group.Places.Select(p => new PlaceItemViewModel(p)));
+
+    /// <summary>
+    /// The rows that may be dragged, by their position in this group.
+    ///
+    /// **Only the ones the person pinned.** Home, Documents, the drives, the
+    /// shares and the bin are the desktop's, assembled fresh from it on every
+    /// rebuild — an order imposed on them would not survive one, and the
+    /// provider's reorder reads none of them. The pins are a contiguous run in
+    /// both providers, so moving one onto another's row cannot displace
+    /// anything that is not a pin.
+    /// </summary>
+    public List<int> PinnedRows()
+    {
+        var rows = new List<int>();
+
+        for (var i = 0; i < Places.Count; i++)
+            if (Places[i].IsUserPinned) rows.Add(i);
+
+        return rows;
+    }
+
+    /// <summary>
+    /// Puts <paramref name="pin"/> in the given SLOT of the pinned run — not at
+    /// a position in the group, which would let it land on Home.
+    /// </summary>
+    public void MovePin(PlaceItemViewModel pin, int slot)
+    {
+        var rows = PinnedRows();
+        var at = Places.IndexOf(pin);
+
+        var from = rows.IndexOf(at);
+        if (from < 0) return;
+
+        slot = Math.Clamp(slot, 0, rows.Count - 1);
+        if (slot == from) return;
+
+        Places.Move(at, rows[slot]);
+    }
 }
 
 public sealed partial class PlaceItemViewModel(Place place) : ObservableObject

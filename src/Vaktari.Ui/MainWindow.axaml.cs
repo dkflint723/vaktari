@@ -427,7 +427,20 @@ public partial class MainWindow : Window
         AddHandler(PointerMovedEvent, OnPointerMovedAnywhere, RoutingStrategies.Tunnel);
         AddHandler(
             PointerReleasedEvent,
-            (_, _) => { EndBand(); EndTabDrag(); },
+            (_, e) =>
+            {
+                EndBand();
+                EndTabDrag();
+
+                // **A place row is a Button, and a Button clicks on release.**
+                // Without this the drop navigates: you drag a pin into its new
+                // position, let go, and the sidebar takes you to whatever row
+                // the pointer ended over. Claimed on the tunnel, which runs
+                // before the button sees the release. Only after a reorder that
+                // really moved — an ordinary click on a pinned place arms the
+                // drag too, and must still open it.
+                if (EndPlaceDrag(save: true)) e.Handled = true;
+            },
             RoutingStrategies.Tunnel);
 
         // Tunnel, so the gesture is claimed before the listing's ScrollViewer
@@ -781,6 +794,7 @@ public partial class MainWindow : Window
         _dragOrigin = e.GetPosition(this);
 
         ArmTabDrag(e, properties);
+        ArmPlaceDrag(e, properties);
 
         // **A drag from empty space is a SELECTION, not a file drag.** Both
         // begin with a left press inside a pane, so the only thing separating
@@ -1466,6 +1480,11 @@ public partial class MainWindow : Window
     private double _tabGrab;
     private bool _tabDragging;
 
+    private ViewModels.PlaceItemViewModel? _placeDrag;
+    private ItemsControl? _placeList;
+    private double _placeGrab;
+    private bool _placeDragging;
+
     private PaneViewModel? _dragSource;
     private bool _dragging;
 
@@ -1709,7 +1728,7 @@ public partial class MainWindow : Window
             if (i == from) width = box.Bounds.Width;
         }
 
-        group.MoveTab(tab, TabReorder.SlotFor(here.X - _tabGrab + width / 2, middles, from));
+        group.MoveTab(tab, DragReorder.SlotFor(here.X - _tabGrab + width / 2, middles, from));
     }
 
     private void EndTabDrag()
@@ -1717,6 +1736,120 @@ public partial class MainWindow : Window
         _tabDrag = null;
         _tabStrip = null;
         _tabDragging = false;
+    }
+
+    /// <summary>
+    /// Arms a reorder of the sidebar's pinned places.
+    ///
+    /// **Both providers have implemented ReorderAsync since they were written
+    /// and nothing ever called it.** Pins stayed in the order they were added,
+    /// and the only way to change that was to edit places.json by hand — which
+    /// starts to matter at exactly the point a sidebar has enough pins to be
+    /// worth tidying. Explorer and Dolphin both reorder by dragging.
+    ///
+    /// Unlike the tab strip's version this does NOT stop at a Button, because
+    /// the place row IS one. The pinned test is what keeps the gesture off the
+    /// rows it must not move.
+    /// </summary>
+    private void ArmPlaceDrag(PointerPressedEventArgs e, PointerPointProperties properties)
+    {
+        EndPlaceDrag(save: false);
+
+        if (!properties.IsLeftButtonPressed) return;
+
+        if (e.Source is not Visual source) return;
+        if (PlaceDrag.ArmedBy(source) is not { } place) return;
+        if (PlaceDrag.ListFor(source) is not { } list) return;
+
+        _placeDrag = place;
+        _placeList = list;
+
+        // Where inside the row it was grabbed, so the row keeps its grip on the
+        // pointer whatever the list does underneath.
+        _placeGrab = e.GetPosition(list.ContainerFromItem(place) as Visual ?? source).Y;
+    }
+
+    /// <summary>
+    /// Moves the pressed place under the pointer.
+    ///
+    /// The Y twin of <see cref="DragTab"/>, over the same arithmetic and for
+    /// the same reason — a neighbour's MIDDLE rather than its near edge, which
+    /// is what stops a tall row dragged past a short one from oscillating every
+    /// frame.
+    ///
+    /// Only the pinned rows are candidates, so their centres are what the
+    /// pointer is compared against: a pin dragged to the top of the list lands
+    /// at the top of the PINS rather than above Home.
+    /// </summary>
+    private void DragPlace(PointerEventArgs e)
+    {
+        if (_placeDrag is not { } place
+            || _placeList is not { DataContext: ViewModels.PlaceGroupViewModel group })
+        {
+            EndPlaceDrag(save: false);
+            return;
+        }
+
+        // The button can be released outside the window, where no release
+        // arrives — the live state ends the drag, not just the event that ought
+        // to have come.
+        if (!e.GetCurrentPoint(this).Properties.IsLeftButtonPressed)
+        {
+            EndPlaceDrag(save: true);
+            return;
+        }
+
+        var here = e.GetPosition(this);
+
+        // Y only: the sidebar is one vertical column, and a horizontal wobble
+        // while pressing a place is not a reorder.
+        if (!_placeDragging && Math.Abs(here.Y - _dragOrigin.Y) < 6) return;
+
+        _placeDragging = true;
+
+        var rows = group.PinnedRows();
+        var from = rows.IndexOf(group.Places.IndexOf(place));
+
+        if (from < 0)
+        {
+            EndPlaceDrag(save: false);
+            return;
+        }
+
+        var middles = new List<double>(rows.Count);
+        double height = 0;
+
+        for (var i = 0; i < rows.Count; i++)
+        {
+            if (_placeList.ContainerFromIndex(rows[i]) is not Control box
+                || box.TranslatePoint(default, this) is not { } at) return;
+
+            middles.Add(at.Y + box.Bounds.Height / 2);
+
+            if (i == from) height = box.Bounds.Height;
+        }
+
+        group.MovePin(place, DragReorder.SlotFor(here.Y - _placeGrab + height / 2, middles, from));
+    }
+
+    /// <summary>
+    /// Ends the reorder, writing the new order down only if one really
+    /// happened — a plain click on a pinned place arms this and moves nothing,
+    /// and must not send the provider a write on every click.
+    /// </summary>
+    /// <returns>Whether a reorder really happened, which the release handler
+    /// uses to keep the drop from also being a click.</returns>
+    private bool EndPlaceDrag(bool save)
+    {
+        var moved = save && _placeDragging;
+
+        _placeDrag = null;
+        _placeList = null;
+        _placeDragging = false;
+
+        if (moved) _ = _shell.Sidebar.SavePinOrderAsync();
+
+        return moved;
     }
 
     /// <summary>
@@ -2110,6 +2243,12 @@ public partial class MainWindow : Window
         if (_tabDrag is not null)
         {
             DragTab(e);
+            return;
+        }
+
+        if (_placeDrag is not null)
+        {
+            DragPlace(e);
             return;
         }
 

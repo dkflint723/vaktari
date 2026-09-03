@@ -73,23 +73,23 @@ public sealed class TabReorderTests : OwnedViewModels
     [Fact]
     public void A_tab_does_not_move_until_it_passes_the_next_ones_middle()
     {
-        Assert.Equal(0, TabReorder.SlotFor(149, Even, 0));
-        Assert.Equal(1, TabReorder.SlotFor(151, Even, 0));
+        Assert.Equal(0, DragReorder.SlotFor(149, Even, 0));
+        Assert.Equal(1, DragReorder.SlotFor(151, Even, 0));
     }
 
     [Fact]
     public void Dragging_left_is_the_same_rule_backwards()
     {
-        Assert.Equal(2, TabReorder.SlotFor(151, Even, 2));
-        Assert.Equal(1, TabReorder.SlotFor(149, Even, 2));
-        Assert.Equal(0, TabReorder.SlotFor(49, Even, 2));
+        Assert.Equal(2, DragReorder.SlotFor(151, Even, 2));
+        Assert.Equal(1, DragReorder.SlotFor(149, Even, 2));
+        Assert.Equal(0, DragReorder.SlotFor(49, Even, 2));
     }
 
     [Fact]
     public void A_tab_cannot_be_dragged_off_either_end()
     {
-        Assert.Equal(0, TabReorder.SlotFor(-5000, Even, 1));
-        Assert.Equal(2, TabReorder.SlotFor(5000, Even, 1));
+        Assert.Equal(0, DragReorder.SlotFor(-5000, Even, 1));
+        Assert.Equal(2, DragReorder.SlotFor(5000, Even, 1));
     }
 
     /// <summary>
@@ -102,10 +102,10 @@ public sealed class TabReorderTests : OwnedViewModels
     [Fact]
     public void Dragging_past_a_narrow_tab_does_not_come_straight_back()
     {
-        Assert.Equal(0, TabReorder.SlotFor(99, [100, 230], 1));
+        Assert.Equal(0, DragReorder.SlotFor(99, [100, 230], 1));
 
         // The layout that move produces, fed back in.
-        Assert.Equal(0, TabReorder.SlotFor(99, [30, 160], 0));
+        Assert.Equal(0, DragReorder.SlotFor(99, [30, 160], 0));
     }
 
     // ---- the move ----------------------------------------------------------
@@ -202,7 +202,7 @@ public sealed class TabReorderTests : OwnedViewModels
             middles.Add(at.Value.X + box.Bounds.Width / 2);
         }
 
-        group.MoveTab(grabbed, TabReorder.SlotFor(middles[2] + 1, middles, 0));
+        group.MoveTab(grabbed, DragReorder.SlotFor(middles[2] + 1, middles, 0));
 
         global::Avalonia.Threading.Dispatcher.UIThread.RunJobs();
 

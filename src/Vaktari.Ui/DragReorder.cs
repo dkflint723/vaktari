@@ -4,7 +4,7 @@ using System.Collections.Generic;
 namespace Vaktari.Ui;
 
 /// <summary>
-/// Where a dragged tab belongs.
+/// Where a dragged thing belongs, along one axis.
 ///
 /// **Tabs stayed in the order they were opened in, and there was no way to
 /// change it.** Pressing a tab and dragging did nothing at all — no move, no
@@ -22,18 +22,22 @@ namespace Vaktari.Ui;
 /// Pure arithmetic, split from the window the way <see cref="TabStripScroll"/>
 /// is, because the failure a reorder invites — the flip-flop above — takes two
 /// calls to show and is not reachable from a headless test any other way.
+///
+/// One axis, so it serves the tab strip on X and the sidebar's pinned places on
+/// Y. Nothing here knows which: a centre and a list of centres is the whole
+/// input, and the oscillation it exists to prevent is the same one either way.
 /// </summary>
-internal static class TabReorder
+internal static class DragReorder
 {
     /// <summary>
-    /// The slot a tab dragged to <paramref name="centre"/> should occupy.
+    /// The slot a thing dragged to <paramref name="centre"/> should occupy.
     ///
-    /// <paramref name="middles"/> holds the horizontal centre of each tab in the
-    /// strip's frame; <paramref name="centre"/> is where the dragged tab's own
-    /// centre sits, glued to the pointer.
+    /// <paramref name="middles"/> holds the centre of each candidate along the
+    /// axis being dragged; <paramref name="centre"/> is where the dragged
+    /// item's own centre sits, glued to the pointer.
     ///
-    /// Only one of the two loops can run: a centre past the tab on one side is
-    /// not also short of the tab on the other. On a fast drag that jumps several
+    /// Only one of the two loops can run: a centre past the neighbour on one
+    /// side is not also short of the neighbour on the other. On a fast drag that jumps several
     /// slots at once they compare against the layout as it was before the move,
     /// which makes the answer slightly conservative — a lag of a frame, never an
     /// oscillation.
