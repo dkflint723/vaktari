@@ -1070,7 +1070,7 @@
                        VerticalContentAlignment="Center"
                        IsVisible="{Binding ActiveTab.IsFilterVisible}"
                        Text="{Binding ActiveTab.FilterText}"
-                       local:FocusBehavior.FocusOnVisible="True"
+                       local:FocusBehavior.FocusWhen="{Binding ActiveTab.FocusFilter}"
                        PlaceholderText="filter — esc to clear"
                        FontFamily="{DynamicResource AppMonoFamily}" FontSize="{DynamicResource FontSizeSmall}">
                 <TextBox.KeyBindings>

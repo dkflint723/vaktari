@@ -2404,7 +2404,39 @@ public sealed partial class PaneViewModel : ObservableObject, IDisposable
     {
         IsFilterVisible = !IsFilterVisible;
         if (!IsFilterVisible && FilterText.Length > 0) FilterText = "";
+
+        // Asking for the box is the only thing that moves the keyboard into it.
+        if (!IsFilterVisible) return;
+
+        FocusFilter = true;
+        FocusFilter = false;
     }
+
+    /// <summary>
+    /// Pulses true to put the caret in the filter box.
+    ///
+    /// **The box took the keyboard every time it APPEARED, and a tab switch is
+    /// an appearance.** One field lives in the pane group's chrome with its
+    /// visibility bound to ActiveTab.IsFilterVisible, so coming back to a tab
+    /// that had the filter open flipped it from hidden to shown — and the
+    /// behaviour that focuses on that edge answered it exactly as it answered
+    /// Ctrl+I. An ordinary Ctrl+Tab left the arrow keys, Enter, Delete and
+    /// type-ahead dead in a listing that looked ready for all four, with
+    /// nothing on screen to say the keystrokes were going into a 200-pixel box
+    /// up in the path bar.
+    ///
+    /// Focus belongs to the GESTURE, not to the appearance — the same rule the
+    /// listing already follows when an editor closes.
+    ///
+    /// **True then false, which is the opposite order to the two pulses this
+    /// otherwise copies.** Those end latched true, and they can: they bind
+    /// straight off the sidebar, which does not re-point. This one binds
+    /// through ActiveTab, so a value left true is pushed onto the control as a
+    /// fresh false-to-true edge every time the active tab changes — which is
+    /// this bug wearing a different hat. Reset in the same breath, and there is
+    /// a test that counts the edges.
+    /// </summary>
+    [ObservableProperty] private bool _focusFilter;
 
     /// <summary>
     /// Rows whose names cannot be told apart by eye. Bound by every listing, so
