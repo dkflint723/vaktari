@@ -34,9 +34,104 @@ public static class VirtualPaths
     /// </summary>
     public const string Computer = "vaktari:computer";
 
+    /// <summary>
+    /// A search, as somewhere you can be.
+    ///
+    /// **Results were a popup and nothing else could be done with them.** You
+    /// could arrow through the list and press Enter; there was no
+    /// multi-select, no drag, no context menu, no columns and no sorting, and
+    /// the panel was drawn OVER the listing it was meant to help you act on.
+    /// Everything else in this application acts on a pane's entries, so the
+    /// results were the one collection of files it could not do anything to.
+    ///
+    /// Giving a search a path is the same move Recent and This PC already
+    /// made, for the same payoff: the rows are FileEntry in Entries, so
+    /// grouping, filtering, the three layouts, sorting, the details panel and
+    /// the whole selection machinery need to know nothing about where they
+    /// came from.
+    ///
+    /// **Shape: prefix, query, origin, scope — three fields, two colons.**
+    ///
+    ///   vaktari:search:report:C%3A%5CUsers%5Cme:here
+    ///   vaktari:search:%2A.cs::everywhere
+    ///
+    /// The ORIGIN is carried even when the search is unscoped, and that is the
+    /// whole reason there is a separate flag rather than just an empty scope:
+    /// without it, ticking "everywhere" would throw away the folder you started
+    /// from and the box could never be unticked back to it. A one-way door.
+    ///
+    /// **Both variable fields are percent-escaped, which is not decoration.**
+    /// PathRules.Normalise runs over every path this pane compares — it swaps
+    /// '/' for '' on Windows and trims a trailing separator — and it sits on
+    /// both sides of every PathRules.Same. A query is arbitrary text: it can
+    /// hold a colon, which would break the split, a backslash, or a trailing
+    /// slash. Uri.EscapeDataString leaves only RFC 3986 unreserved characters,
+    /// which contain none of ':', '/', '' or '%', so Normalise has nothing to
+    /// rewrite and no separator is found to call a parent.
+    /// </summary>
+    public const string SearchPrefix = "vaktari:search:";
+
+    private const string Here = "here";
+    private const string Everywhere = "everywhere";
+
+    /// <summary>
+    /// One key for every search, so a view is remembered as "how I like
+    /// searches to look" rather than once per query ever typed — which would
+    /// grow the per-folder view store by one record for every search anybody
+    /// ever ran, on an unbounded key.
+    /// </summary>
+    public const string SearchViewKey = SearchPrefix + "*";
+
+    public static string Search(string query, string? origin, bool scoped)
+        => SearchPrefix
+           + Uri.EscapeDataString(query) + ":"
+           + Uri.EscapeDataString(origin ?? "") + ":"
+           + (scoped && !string.IsNullOrEmpty(origin) ? Here : Everywhere);
+
+    public static bool IsSearch(string? path)
+        => path is not null && path.StartsWith(SearchPrefix, StringComparison.Ordinal);
+
+    public static string QueryOf(string path) => Part(path, 0);
+
+    /// <summary>The folder the search was started from, whether or not it is
+    /// currently the scope. Null when it was started somewhere that is not a
+    /// folder — This PC, the bin, either Recent listing.</summary>
+    public static string? OriginOf(string path)
+        => Part(path, 1) is { Length: > 0 } origin ? origin : null;
+
+    public static bool IsScoped(string path) => Part(path, 2) == Here;
+
+    /// <summary>
+    /// What the backend is actually asked to search; null is "everywhere",
+    /// which is what ISearchProvider already documents.
+    ///
+    /// **"This folder only" over This PC searched for a folder called
+    /// "vaktari:computer".** That rule is a fact about what a search path can
+    /// mean, so it lives with the path rather than with the tick box.
+    /// </summary>
+    public static string? ScopeOf(string path) => IsScoped(path) ? OriginOf(path) : null;
+
+    /// <summary>
+    /// One field of a search path.
+    ///
+    /// **Malformed returns empty rather than throwing.** These strings go into
+    /// the session file and come back at startup; a hand-edited or truncated
+    /// one must give an empty search, not stop the window opening.
+    /// </summary>
+    private static string Part(string path, int index)
+    {
+        if (!IsSearch(path)) return "";
+
+        var parts = path[SearchPrefix.Length..].Split(':');
+
+        if (parts.Length != 3) return "";
+
+        return index == 2 ? parts[2] : Uri.UnescapeDataString(parts[index]);
+    }
+
     /// <summary>Any listing that is not a directory.</summary>
     public static bool IsVirtual(string? path)
-        => IsRecent(path) || path == Trash || path == Computer;
+        => IsRecent(path) || path == Trash || path == Computer || IsSearch(path);
 
     /// <summary>
     /// True for a virtual listing. Callers that must check this:
@@ -57,6 +152,13 @@ public static class VirtualPaths
         Files => "Recent files",
         Trash => Core.Naming.BinTitle,
         Computer => Core.Naming.ComputerTitle,
+
+        // **Above the fallback, and computed rather than constant.** A search
+        // path carries its own query, so this is the one label that is not a
+        // fixed string — and the final arm is a catch-all, so it would
+        // otherwise swallow every search and title the tab "Recent locations".
+        _ when IsSearch(path) => $"Search: {QueryOf(path)}",
+
         _ => "Recent locations",
     };
 }
