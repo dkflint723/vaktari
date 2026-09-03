@@ -210,6 +210,11 @@ should not be trusted for compatibility yet.
 
 ### Changed
 
+- **The status bar says how many folders and how many files**, rather than a
+  single count of "items" — a folder of 200 is a different place depending on
+  whether it holds two subfolders or two hundred. A selection that holds both
+  kinds says how many of each; one that holds only files does not repeat itself.
+
 - **A folder's size is counted when you open its properties**, not when you ask
   for it — the one figure people open that window for was the one thing not on
   the page. Folders on network shares still wait to be asked: measuring walks

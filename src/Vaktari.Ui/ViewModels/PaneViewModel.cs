@@ -1510,15 +1510,70 @@ public sealed partial class PaneViewModel : ObservableObject, IDisposable
             files++;
         }
 
-        return files == 0 ? "" : $" ({ByteSize.Format(total)})";
+        return files == 0 ? "" : ByteSize.Format(total);
     }
 
-    public string Summary => Selection.Count switch
+    /// <summary>
+    /// What is here, and what is picked.
+    ///
+    /// **It said "items" and nothing else.** Both references split folders from
+    /// files, and the split is the more useful half of the count: a folder of
+    /// 200 items is a different place depending on whether it holds two
+    /// subfolders or two hundred, and "items" cannot tell you which.
+    ///
+    /// The selection says how many of each too, but ONLY when both kinds are in
+    /// it. "3 selected (3 files)" restates the number it just gave, and a
+    /// status bar that repeats itself teaches people to stop reading it.
+    /// </summary>
+    public string Summary
     {
-        0 => $"{Entries.Count:N0} items",
-        1 => $"{Entries.Count:N0} items · 1 selected{SelectionSize()}",
-        var n => $"{Entries.Count:N0} items · {n:N0} selected{SelectionSize()}",
-    };
+        get
+        {
+            var here = Count(Entries);
+
+            if (Selection.Count == 0) return here;
+
+            // One bracket for everything about the selection, not two in a
+            // row: "2 selected (1 folder, 1 file) (10 B)" is the same facts
+            // read twice as slowly.
+            var about = new List<string>(2);
+
+            if (Selection.Any(e => e.IsDirectory) && Selection.Any(e => !e.IsDirectory))
+                about.Add(Count(Selection));
+
+            if (SelectionSize() is { Length: > 0 } size) about.Add(size);
+
+            var picked = about.Count > 0
+                ? $"{Selection.Count:N0} selected ({string.Join(", ", about)})"
+                : $"{Selection.Count:N0} selected";
+
+            return $"{here} · {picked}";
+        }
+    }
+
+    /// <summary>
+    /// "5 folders, 12 files", leaving out whichever is none.
+    ///
+    /// A part that reads "0 folders" is noise in the one place on screen with
+    /// no room for any — and the singular matters for the same reason the bin's
+    /// own line does: "1 files" is the sort of thing that makes a person trust
+    /// the rest of the number less.
+    /// </summary>
+    private static string Count(IEnumerable<FileEntry> entries)
+    {
+        var folders = 0;
+        var files = 0;
+
+        foreach (var entry in entries)
+            if (entry.IsDirectory) folders++; else files++;
+
+        var parts = new List<string>(2);
+
+        if (folders > 0) parts.Add($"{folders:N0} folder{(folders == 1 ? "" : "s")}");
+        if (files > 0) parts.Add($"{files:N0} file{(files == 1 ? "" : "s")}");
+
+        return parts.Count > 0 ? string.Join(", ", parts) : "0 items";
+    }
 
     private void NotifyListingState()
     {
