@@ -210,6 +210,14 @@ should not be trusted for compatibility yet.
 
 ### Changed
 
+- **Ctrl+Page Up and Ctrl+Page Down move through tabs**, the other way every
+  browser does it. Ctrl+Tab has always worked; this pair simply was not bound.
+
+- **Ctrl+Shift+1, 2 and 3 go straight to a layout.** F8 cycles the three in
+  order, so reaching the one you want cost up to two presses through a layout
+  you did not ask for — and otherwise they were reachable only by the toolbar
+  chip, with the mouse. The numbers follow that chip from left to right.
+
 - **Enter or ↓ in the filter box hands the keyboard to the rows.** Both keys
   somebody presses to leave that box did nothing, so the way out was Tab, F6 or
   the mouse — the filter sat holding the keyboard over a listing it had just

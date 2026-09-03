@@ -2563,6 +2563,24 @@
     <KeyBinding Gesture="Ctrl+Q"         Command="{Binding QuitCommand}"/>
     <KeyBinding Gesture="Ctrl+Tab"       Command="{Binding NextTabCommand}"/>
     <KeyBinding Gesture="Ctrl+Shift+Tab" Command="{Binding PreviousTabCommand}"/>
+    <!-- **The other way every browser moves through tabs, and it did nothing.**
+         Ctrl+Tab has always worked; Ctrl+Page was simply missing, and it is the
+         pair somebody who lives in a browser reaches for. Measured against a
+         listing long enough to scroll: the ScrollViewer claims plain Page but
+         not a modified one, so these two do not fight the listing's own paging.
+         -->
+    <KeyBinding Gesture="Ctrl+PageDown"  Command="{Binding NextTabCommand}"/>
+    <KeyBinding Gesture="Ctrl+PageUp"    Command="{Binding PreviousTabCommand}"/>
+
+    <!-- **No key went straight to a layout.** F8 cycles the three in order, so
+         reaching the one you want from the one you are in costs up to two
+         presses through a layout you did not ask for — and the three are
+         otherwise reachable only by the toolbar chip, with the mouse. Explorer
+         numbers its views on Ctrl+Shift; the numbers here follow the chip on
+         screen, left to right, because that is the order the person can see. -->
+    <KeyBinding Gesture="Ctrl+Shift+D1"  Command="{Binding ActiveTab.ShowAsDetailsCommand}"/>
+    <KeyBinding Gesture="Ctrl+Shift+D2"  Command="{Binding ActiveTab.ShowAsCompactCommand}"/>
+    <KeyBinding Gesture="Ctrl+Shift+D3"  Command="{Binding ActiveTab.ShowAsGridCommand}"/>
     <KeyBinding Gesture="Alt+Home"       Command="{Binding ActiveTab.GoHomeCommand}"/>
     <KeyBinding Gesture="Alt+Left"       Command="{Binding ActiveTab.GoBackCommand}"/>
     <KeyBinding Gesture="Alt+Right"      Command="{Binding ActiveTab.GoForwardCommand}"/>

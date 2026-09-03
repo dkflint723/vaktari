@@ -290,6 +290,18 @@ public sealed class ExplorerConventionTests : OwnedViewModels
     [Theory]
     [InlineData("Ctrl+NumPad0", "ZoomReset")]
     [InlineData("Ctrl+D0", "ZoomReset")]
+
+    // **Pinned here because the F1 cross-check cannot see them.** Its listed
+    // side drops any entry containing a space, and these read "Ctrl+Page Down"
+    // on the sheet — so the round-trip skips them and they would be deletable
+    // with a green suite. The layout keys are here for the other half of the
+    // reason: the round-trip only asks whether a gesture is bound at all, never
+    // which of the three layouts it selects.
+    [InlineData("Ctrl+PageDown", "NextTab")]
+    [InlineData("Ctrl+PageUp", "PreviousTab")]
+    [InlineData("Ctrl+Shift+D1", "ShowAsDetails")]
+    [InlineData("Ctrl+Shift+D2", "ShowAsCompact")]
+    [InlineData("Ctrl+Shift+D3", "ShowAsGrid")]
     [InlineData("Ctrl+L", "BeginEditPath")]
     [InlineData("Alt+D", "BeginEditPath")]
     [InlineData("Ctrl+F", "BeginSearch")]

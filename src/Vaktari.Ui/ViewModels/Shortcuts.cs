@@ -49,6 +49,8 @@ public static class Shortcuts
             new("Ctrl+1…9", "Jump to a tab"),
             new("Tab", "Move to the other pane, when split"),
             new("Ctrl+Tab", "Next tab"),
+            new("Ctrl+Page Down", "Next tab"),
+            new("Ctrl+Page Up", "Previous tab"),
             new("Ctrl+Shift+Tab", "Previous tab"),
             new("Middle click a tab", "Close it"),
             new("Double-click the tab strip", "New tab"),
@@ -122,6 +124,11 @@ public static class Shortcuts
         new("Looking at things",
         [
             new("F8", "Change the view"),
+            // F8 cycles; these go straight to one. The numbers follow the
+            // toolbar chip left to right, which is the order on screen.
+            new("Ctrl+Shift+1", "List"),
+            new("Ctrl+Shift+2", "Small grid"),
+            new("Ctrl+Shift+3", "Large grid"),
             new("Ctrl+H", "Show hidden files"),
             new("Ctrl+D", "Pin this folder to places"),
             new("Ctrl + scroll", "Resize the pane under the pointer"),

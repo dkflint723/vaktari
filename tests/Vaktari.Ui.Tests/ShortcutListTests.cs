@@ -62,22 +62,56 @@ public sealed class ShortcutListTests
     /// keys the way Avalonia parses them; the list spells them the way they are
     /// printed on a keyboard.
     /// </summary>
-    private static string Readable(string gesture) => gesture
-        .Replace("OemPlus", "+", StringComparison.Ordinal)
-        .Replace("OemMinus", "-", StringComparison.Ordinal)
-        .Replace("OemComma", ",", StringComparison.Ordinal)
-        .Replace("D0", "0", StringComparison.Ordinal)
+    private static string Readable(string gesture)
+    {
+        var printed = gesture
+            .Replace("OemPlus", "+", StringComparison.Ordinal)
+            .Replace("OemMinus", "-", StringComparison.Ordinal)
+            .Replace("OemComma", ",", StringComparison.Ordinal)
 
-        // **The pad's zero is a second key wearing the first one's keycap.**
-        // Avalonia calls it NumPad0 and the top row's D0; both are printed 0,
-        // so the sheet keeps one line and this folds the spelling onto it. The
-        // rule above cannot do the job — its "D" is a capital and the pad's
-        // spelling has a lowercase one.
-        .Replace("NumPad0", "0", StringComparison.Ordinal)
-        .Replace("Left", "←", StringComparison.Ordinal)
-        .Replace("Right", "→", StringComparison.Ordinal)
-        .Replace("Up", "↑", StringComparison.Ordinal)
-        .Replace("Down", "↓", StringComparison.Ordinal);
+            // **The pad's zero is a second key wearing the first one's keycap.**
+            // Avalonia calls it NumPad0 and the top row's D0; both are printed
+            // 0, so the sheet keeps one line and this folds the spelling onto
+            // it. The digit rule at the bottom cannot do the job — its "D" is a
+            // capital and the pad's spelling has a lowercase one.
+            .Replace("NumPad0", "0", StringComparison.Ordinal)
+
+            // Before the arrows, and that ordering is load-bearing: these two
+            // end in the arrows' own names, so an unanchored arrow rule turns
+            // "PageDown" into "Page↓". They are safe from the anchored rules
+            // below because what precedes the direction here is a space.
+            .Replace("PageUp", "Page Up", StringComparison.Ordinal)
+            .Replace("PageDown", "Page Down", StringComparison.Ordinal)
+
+            ;
+
+        // **A direction is drawn as an arrow only when it is the whole key.**
+        // These ran as plain substring replacements, which was harmless only
+        // while no key NAME contained a direction — and that stopped being true
+        // the moment Page joined the list, turning "PageDown" into "Page↓".
+        // Taking the last segment asks the right question instead of a question
+        // that happens to have the right answer: modifiers are what the pluses
+        // separate, so whatever follows the final one IS the key.
+        var parts = printed.Split('+');
+
+        parts[^1] = parts[^1] switch
+        {
+            "Left" => "←",
+            "Right" => "→",
+            "Up" => "↑",
+            "Down" => "↓",
+
+            // The top row's digits: Avalonia calls them D0..D9 and a keyboard
+            // is printed with the number alone. Asked of the whole segment, so
+            // it cannot reach the D of a modifier — Alt+D is a key of its own,
+            // and one character long.
+            ['D', var digit] when char.IsAsciiDigit(digit) => digit.ToString(),
+
+            var other => other,
+        };
+
+        return string.Join("+", parts);
+    }
 
     [Theory]
     [MemberData(nameof(Bound))]
