@@ -2341,11 +2341,23 @@
                                never appeared — a long filename in compact view
                                simply ran past the cell and was clipped. -->
                           <!-- Trims, so it tips. See the details row. -->
+                          <!-- **Hidden files were ghosted in the details rows and
+                               nowhere else.** The converter was right and its tests
+                               passed; nothing in this template or the grid's ever
+                               read it, so desktop.ini, thumbs.db and everything else
+                               the filesystem marks hidden came back at full strength
+                               the moment you switched view, and "show hidden files"
+                               was survivable in one layout out of three. Same
+                               converter on the same cell the details row already
+                               fades — the look-alike chip just above went
+                               details-only in exactly this way and was fixed in
+                               exactly this way. -->
                           <TextBlock Text="{Binding Converter={x:Static vm:FileConverters.DisplayName}}" VerticalAlignment="Center"
                                      FontSize="{DynamicResource FontSizeBase}"
                                      TextTrimming="CharacterEllipsis"
                                      ToolTip.Tip="{Binding Converter={x:Static vm:FileConverters.NameTip}}"
-                                     ToolTip.ShowDelay="1200"/>
+                                     ToolTip.ShowDelay="1200"
+                                     Opacity="{Binding Converter={x:Static vm:FileConverters.HiddenFade}}"/>
                         </DockPanel>
                       </Panel>
                       <!-- **Where the drop lands.** The pane took an outline while a drag
@@ -2494,11 +2506,20 @@
                         </Panel>
                         <!-- Two lines and then an ellipsis, so this one hides the
                              most of all. See the details row. -->
+                        <!-- **Hidden files were ghosted in the details rows and
+                             nowhere else**, so a hidden file went from background to
+                             foreground by switching to tiles. Same converter on the
+                             same cell as details and compact: the name, which is the
+                             cell details already fades. The icon and the thumbnail
+                             stay at full strength here exactly as they do in a
+                             details row — fading the whole tile is a design call,
+                             not this fix. -->
                         <TextBlock Text="{Binding Converter={x:Static vm:FileConverters.DisplayName}}" TextAlignment="Center"
                                    FontSize="{DynamicResource FontSizeSmall}"
                                    TextWrapping="Wrap" MaxLines="2" TextTrimming="CharacterEllipsis"
                                    ToolTip.Tip="{Binding Converter={x:Static vm:FileConverters.NameTip}}"
-                                   ToolTip.ShowDelay="1200"/>
+                                   ToolTip.ShowDelay="1200"
+                                   Opacity="{Binding Converter={x:Static vm:FileConverters.HiddenFade}}"/>
                       </StackPanel>
                       <!-- **Where the drop lands.** The pane took an outline while a drag
                            was over it, and which pane the pointer is in was never the

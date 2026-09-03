@@ -176,4 +176,162 @@ public sealed class VirtualListingActionTests : OwnedViewModels
             RepoSource.Body(
                 RepoSource.Ui("ViewModels", "ShellViewModel.cs"),
                 "private void PinCurrent()"));
+
+    /// <summary>
+    /// A shell whose one tab is showing <paramref name="path"/>.
+    ///
+    /// The tab the shell opens for itself is navigated in the background and
+    /// its notifications arrive a dispatcher turn later; they are drained here
+    /// so what the tests below count belongs to the move they made.
+    ///
+    /// (`global::`, because this class already has a private static
+    /// `Avalonia` XNamespace field that shadows the namespace — the same
+    /// reason NavigationHistoryTests writes it that way.)
+    /// </summary>
+    private async Task<ShellViewModel> ShellOn(string path)
+    {
+        // A search path with no backend is an empty listing rather than a real
+        // recursive walk of this machine.
+        UseSearch(null);
+
+        var shell = Own(new ShellViewModel(new Inert()));
+        shell.Start(null, Path.GetTempPath());
+
+        await shell.ActiveTab!.RefreshAsync();
+        global::Avalonia.Threading.Dispatcher.UIThread.RunJobs();
+
+        await shell.ActiveTab.NavigateAsync(path);
+        global::Avalonia.Threading.Dispatcher.UIThread.RunJobs();
+
+        Assert.Equal(path, shell.ActiveTab.CurrentPath);
+
+        return shell;
+    }
+
+    /// <summary>A row of the kind This PC and a search hold: a real path,
+    /// unlike the listing around it.</summary>
+    private static FileEntry Row()
+    {
+        var root = Path.GetPathRoot(Path.GetTempPath())!;
+
+        return new FileEntry(root, root, 0, DateTimeOffset.UnixEpoch, EntryFlags.Directory);
+    }
+
+    /// <summary>
+    /// **Properties stayed on the menu where there was nothing to describe.**
+    /// With no row picked the sheet describes the FOLDER you are looking at,
+    /// and This PC is not one — it was handed "vaktari:computer", found no such
+    /// thing on disk, and printed the internal scheme straight back.
+    /// </summary>
+    [AvaloniaTheory]
+    [InlineData(VirtualPaths.Computer)]
+    [InlineData("vaktari:search:report::everywhere")]
+    public async Task Properties_is_not_offered_where_there_is_no_folder_and_no_row(string path)
+    {
+        var shell = await ShellOn(path);
+
+        // Asserted, not assumed: it is what makes the next line mean anything.
+        Assert.False(shell.ActiveTab!.IsRealFolder);
+        Assert.False(shell.CanShowProperties);
+
+        // A drive, or a result, is a real path — the row belongs there.
+        shell.ActiveTab.SelectedEntry = Row();
+
+        Assert.True(shell.CanShowProperties);
+    }
+
+    /// <summary>And the new clause is not over-broad: an ordinary folder with
+    /// nothing selected has no selection either, and is exactly where the sheet
+    /// describes the folder itself.</summary>
+    [AvaloniaFact]
+    public async Task Properties_is_still_offered_in_an_ordinary_folder()
+    {
+        // A real subdirectory rather than GetTempPath(), whose trailing
+        // separator the pane normalises away.
+        var folder = Directory.CreateTempSubdirectory("vaktari-properties").FullName;
+
+        try
+        {
+            var shell = await ShellOn(folder);
+
+            Assert.False(shell.ActiveTab!.HasSelection);
+            Assert.True(shell.CanShowProperties);
+        }
+        finally
+        {
+            try { Directory.Delete(folder, recursive: true); }
+            catch (Exception) { /* a temp dir is not worth failing over */ }
+        }
+    }
+
+    /// <summary>
+    /// **Alt+Enter got round the row's visibility**, which is exactly how the
+    /// bin and Recent were got round before it. The command is a plain void, so
+    /// the negative is settled the instant Execute returns.
+    /// </summary>
+    [AvaloniaFact]
+    public async Task Alt_enter_on_a_listing_that_is_not_a_folder_asks_for_no_sheet()
+    {
+        var shell = await ShellOn(VirtualPaths.Computer);
+        var asked = 0;
+
+        shell.PropertiesRequested += (_, _) => asked++;
+
+        // The keystroke reaches the command, not the window's own method.
+        shell.ShowPropertiesCommand.Execute(null);
+
+        Assert.Equal(0, asked);
+
+        // Not vacuous: the same command on the same listing asks once there is
+        // a drive to ask about.
+        shell.ActiveTab!.SelectedEntry = Row();
+        shell.ShowPropertiesCommand.Execute(null);
+
+        Assert.Equal(1, asked);
+    }
+
+    /// <summary>
+    /// **The row went on being offered after the tab moved into This PC.**
+    /// These entries are refreshed when the SELECTION changes, and moving away
+    /// from a folder where nothing was picked changes no selection at all.
+    /// </summary>
+    [AvaloniaFact]
+    public async Task The_properties_row_is_re_examined_when_the_tab_navigates()
+    {
+        var folder = Directory.CreateTempSubdirectory("vaktari-properties-nav").FullName;
+
+        try
+        {
+            var shell = await ShellOn(folder);
+            var raised = new List<string?>();
+
+            shell.PropertyChanged += (_, e) => raised.Add(e.PropertyName);
+
+            await shell.ActiveTab!.NavigateAsync(VirtualPaths.Computer);
+            global::Avalonia.Threading.Dispatcher.UIThread.RunJobs();
+
+            Assert.Equal(VirtualPaths.Computer, shell.ActiveTab.CurrentPath);
+            Assert.Contains(nameof(ShellViewModel.CanShowProperties), raised);
+        }
+        finally
+        {
+            try { Directory.Delete(folder, recursive: true); }
+            catch (Exception) { /* a temp dir is not worth failing over */ }
+        }
+    }
+
+    /// <summary>And when a row is focused, which is what a right-click does
+    /// before the menu opens — and which touches no selection collection.</summary>
+    [AvaloniaFact]
+    public async Task The_properties_row_is_re_examined_when_a_row_is_focused()
+    {
+        var shell = await ShellOn(VirtualPaths.Computer);
+        var raised = new List<string?>();
+
+        shell.PropertyChanged += (_, e) => raised.Add(e.PropertyName);
+
+        shell.ActiveTab!.SelectedEntry = Row();
+
+        Assert.Contains(nameof(ShellViewModel.CanShowProperties), raised);
+    }
 }

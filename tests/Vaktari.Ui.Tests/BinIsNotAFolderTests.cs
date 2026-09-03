@@ -101,6 +101,39 @@ public sealed class BinIsNotAFolderTests : OwnedViewModels
         private sealed class Nothing : IDisposable { public void Dispose() { } }
     }
 
+    /// <summary>
+    /// Records what it was asked to launch instead of launching it. Unlike the
+    /// operations fake this does NOT throw: several of these tests want to see
+    /// the launcher used, as the control that proves an empty list means the
+    /// guard fired rather than the fake being inert.
+    /// </summary>
+    private sealed class RecordingLauncher : IApplicationLauncher
+    {
+        public List<string> Opened { get; } = [];
+
+        public void Open(string path) => Opened.Add(path);
+        public void OpenTerminal(string directory) { }
+        public void OpenWith(string path, LaunchOption option) => Opened.Add(path);
+        public IReadOnlyList<LaunchOption> GetOpenWithOptions(string path) => [];
+    }
+
+    /// <summary>A bin pane with a launcher wired in, so "nothing was opened" is
+    /// something this fake could have contradicted.</summary>
+    private (PaneViewModel Pane, RecordingLauncher Launcher) InTheBinWithALauncher()
+    {
+        var launcher = new RecordingLauncher();
+        var pane = Own(new PaneViewModel(new InertFileSystem(), new RecordingOperations(), launcher)
+        {
+            CurrentPath = VirtualPaths.Trash,
+        });
+
+        return (pane, launcher);
+    }
+
+    private static FileEntry Row(string name, bool directory = false)
+        => new(name, Path.Combine(Path.GetTempPath(), name), 0, DateTimeOffset.Now,
+               directory ? EntryFlags.Directory : EntryFlags.None);
+
     private (PaneViewModel Pane, RecordingOperations Ops) InTheBin()
     {
         var ops = new RecordingOperations();
@@ -170,6 +203,117 @@ public sealed class BinIsNotAFolderTests : OwnedViewModels
         // The refusal is the observable part. This pane has no launcher, so
         // "nothing was opened" would hold with or without the guard and would
         // prove nothing; the status line only appears when the guard fires.
+        Assert.Contains(Vaktari.Core.Naming.TheBin, pane.Status);
+    }
+
+    /// <summary>
+    /// **The guard was on OpenSelectedAsync, and the pointer never goes
+    /// through it.** MainWindow's TryOpen — the single place the tap and the
+    /// double-tap both end up — calls OpenAsync on the pane directly, so a
+    /// double-click on a bin row handed the launcher the path the item USED to
+    /// occupy. Whatever had since been written there opened, and nothing said
+    /// anything had happened out of the ordinary.
+    /// </summary>
+    [AvaloniaFact]
+    public async Task Opening_a_bin_row_directly_reaches_no_launcher()
+    {
+        var (pane, launcher) = InTheBinWithALauncher();
+
+        await pane.OpenAsync(Row("notes.txt"));
+
+        Assert.Empty(launcher.Opened);
+        Assert.Contains(Vaktari.Core.Naming.TheBin, pane.Status);
+    }
+
+    /// <summary>
+    /// The worse half, and the reason the refusal sits ABOVE the directory
+    /// branch: a binned FOLDER never reaches the launcher at all, it navigates
+    /// the pane to the path the folder used to occupy. Arriving somewhere that
+    /// looks plausible is harder to notice than a file opening.
+    /// </summary>
+    [AvaloniaFact]
+    public async Task Opening_a_binned_folder_navigates_nowhere()
+    {
+        var (pane, _) = InTheBinWithALauncher();
+
+        await pane.OpenAsync(Row("old-folder", directory: true));
+
+        Assert.Equal(VirtualPaths.Trash, pane.CurrentPath);
+        Assert.False(pane.CanGoBack);
+    }
+
+    /// <summary>
+    /// The control. A refusal that fired everywhere would pass both tests above
+    /// while breaking opening altogether, and this fake records rather than
+    /// throws precisely so that it can say the launcher was reached.
+    /// </summary>
+    [AvaloniaFact]
+    public async Task Opening_a_row_anywhere_else_still_reaches_the_launcher()
+    {
+        var launcher = new RecordingLauncher();
+        var pane = Own(new PaneViewModel(new InertFileSystem(), new RecordingOperations(), launcher)
+        {
+            CurrentPath = Path.GetTempPath(),
+        });
+
+        await pane.OpenAsync(Row("notes.txt"));
+
+        Assert.Equal([Path.Combine(Path.GetTempPath(), "notes.txt")], launcher.Opened);
+    }
+
+    /// <summary>
+    /// The guard in OpenAsync does not reach this. "Open with" is offered in
+    /// the bin — its visibility reads HasOpenWithOptions, which is filled for
+    /// any file selection and never asks about the listing — and it calls the
+    /// launcher itself. Picking an application for a binned row opened whatever
+    /// now occupies the path the item used to have.
+    /// </summary>
+    [AvaloniaFact]
+    public void Open_with_on_a_bin_row_reaches_no_launcher()
+    {
+        var (pane, launcher) = InTheBinWithALauncher();
+        pane.SelectedEntry = Row("notes.txt");
+
+        pane.OpenWithApp(new LaunchOption("Paint", "paint", null));
+
+        Assert.Empty(launcher.Opened);
+        Assert.Contains(Vaktari.Core.Naming.TheBin, pane.Status);
+    }
+
+    /// <summary>
+    /// The pointer's half of the fault, pinned where it actually lives: the
+    /// guard only covers the double-click because TryOpen goes through the
+    /// pane's OpenAsync. A TryOpen rewritten to reach the launcher or the
+    /// navigation itself would be outside every view-model guard again, and no
+    /// view-model test could see it.
+    /// </summary>
+    [AvaloniaFact]
+    public void The_pointer_route_opens_through_the_guarded_method()
+    {
+        var body = RepoSource.Body(RepoSource.Ui("MainWindow.axaml.cs"),
+                                   "private void TryOpen(FileEntry entry)");
+
+        Assert.Contains("OpenAsync(entry)", body, StringComparison.Ordinal);
+    }
+
+    /// <summary>
+    /// The bin refusal outranks the count refusal, which is why the check is
+    /// still at the top of OpenSelectedAsync as well as inside OpenAsync.
+    /// Selecting more than the open limit of bin rows and pressing Enter would
+    /// otherwise be told to select fewer — an answer to a question nobody
+    /// asked, about an action that was never going to happen.
+    /// </summary>
+    [AvaloniaFact]
+    public async Task A_large_bin_selection_is_told_it_is_in_the_bin_not_to_select_fewer()
+    {
+        var (pane, launcher) = InTheBinWithALauncher();
+
+        for (var i = 0; i <= PaneViewModel.OpenLimit; i++)
+            pane.SelectedEntries.Add(Row($"file{i}.txt"));
+
+        await pane.OpenSelectedAsync();
+
+        Assert.Empty(launcher.Opened);
         Assert.Contains(Vaktari.Core.Naming.TheBin, pane.Status);
     }
 

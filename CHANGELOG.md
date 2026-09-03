@@ -417,6 +417,29 @@ should not be trusted for compatibility yet.
 
 ### Fixed
 
+- **Properties is no longer offered where there is nothing to describe.** With
+  no row picked, the sheet describes the folder you are looking at — and This
+  PC and a set of search results are not folders. Choosing it there printed
+  the internal scheme back at you: *vaktari:computer is no longer there*.
+  Alt+Enter got round the menu row the same way the bin and Recent were got
+  round before it. Pick a drive or a result and the sheet works as it always
+  did, and an ordinary folder with nothing selected still describes itself.
+
+- **Hidden files are dimmed in every layout, not just in details.** The
+  dimming had been written and tested and was bound in one of the three row
+  templates, so switching to compact or tiles brought desktop.ini, thumbs.db
+  and everything else the filesystem marks hidden back at full strength beside
+  real content — which is the state *show hidden files* exists to avoid.
+
+- **Double-clicking a row in the bin no longer opens whatever took its
+  place.** A bin row names where a file USED to be, so opening one launched
+  whatever now occupies that path — trash notes.txt, write a new notes.txt,
+  double-click the row, and a different file opens with nothing to say so. The
+  refusal was on the keyboard route only; the pointer went through a different
+  method and walked straight past it, and so did *Open with*. A binned folder
+  was the worse half: it navigated the pane to a path that is gone or belongs
+  to something else now, which is harder to notice than a file opening.
+
 - **A refresh keeps what you had selected, and lands on the file you just
   renamed.** F5 in a long folder came back at the top with nothing picked —
   and so did every refresh the program does for you, after a rename, a paste,

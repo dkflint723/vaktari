@@ -1,3 +1,4 @@
+using System.Xml.Linq;
 using Avalonia.Headless.XUnit;
 using Vaktari.Core.FileSystem;
 using Vaktari.Ui.ViewModels;
@@ -134,6 +135,53 @@ public sealed class GroupingAndGhostingTests : OwnedViewModels
             typeof(double), null, System.Globalization.CultureInfo.InvariantCulture);
 
         Assert.Equal(1.0, Assert.IsType<double>(faded), 3);
+    }
+
+    // ---- and in every layout, not just the default one ----------------------
+
+    private static readonly XNamespace Xaml = "https://github.com/avaloniaui";
+
+    /// <summary>
+    /// **The ghosting was bound in the details rows and nowhere else.** The
+    /// converter was right and its tests passed, while compact and grid drew
+    /// desktop.ini, thumbs.db and everything else the filesystem marks hidden at
+    /// full strength beside real content — so "show hidden files" was survivable
+    /// in the default view and not in the other two, which is the state the
+    /// setting exists to avoid.
+    ///
+    /// The listings are discovered from the markup rather than listed here, so
+    /// a fourth layout added later is held to this without anybody remembering.
+    /// </summary>
+    [AvaloniaFact]
+    public void Every_listing_ghosts_a_hidden_name()
+    {
+        var listings = XDocument.Parse(RepoSource.Ui("MainWindow.axaml"))
+            .Descendants(Xaml + "ListBox")
+            .Where(l => (string?)l.Attribute("ItemsSource")
+                        is "{Binding DetailsEntries}" or "{Binding CompactEntries}"
+                           or "{Binding GridEntries}")
+            .ToList();
+
+        // A guard, not decoration: a renamed listing must fail here rather than
+        // silently drop out of the check below.
+        Assert.Equal(3, listings.Count);
+
+        var full = listings
+            .Select(l => (
+                List: (string)l.Attribute("ItemsSource")!,
+                // The name cell is the one bound through DisplayName — the same
+                // cell the name tooltip hangs on.
+                Name: l.Descendants(Xaml + "TextBlock")
+                       .Single(t => ((string?)t.Attribute("Text"))
+                                    ?.Contains("FileConverters.DisplayName",
+                                               StringComparison.Ordinal) == true)))
+            .Where(x => ((string?)x.Name.Attribute("Opacity"))
+                        ?.Contains("FileConverters.HiddenFade", StringComparison.Ordinal) != true)
+            .Select(x => x.List)
+            .ToList();
+
+        Assert.True(full.Count == 0,
+            "these listings draw a hidden file at full strength: " + string.Join(", ", full));
     }
 
     private sealed class Canned(IReadOnlyList<FileEntry> entries) : IFileSystemProvider

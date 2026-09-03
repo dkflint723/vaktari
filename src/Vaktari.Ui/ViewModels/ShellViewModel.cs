@@ -1066,14 +1066,40 @@ public sealed partial class ShellViewModel : ObservableObject, IDisposable
         // the comment explaining why.
         if (ActiveTab is { IsTrashListing: true } or { IsRecentListing: true }) return;
 
+        // **This PC and a search had nothing to fall back on.** With no row
+        // picked the window describes the FOLDER you are looking at, and
+        // neither of those is one: it was handed "vaktari:computer", or a whole
+        // search path, found no such thing on disk, and printed the internal
+        // scheme straight back at the person — "vaktari:computer is no longer
+        // there". Path.GetFileName leaves the scheme whole, because 'v' is not
+        // a drive letter, so the leak was the entire message. A misleading
+        // refusal, where the honest answer is that there is nothing here to
+        // describe.
+        //
+        // Here as well as on the row's visibility because Alt+Enter reaches
+        // this command directly, which is exactly how the bin and Recent were
+        // got round before.
+        if (ActiveTab is null or { HasSelection: false, IsRealFolder: false }) return;
+
         PropertiesRequested?.Invoke(this, EventArgs.Empty);
     }
 
-    /// <summary>Whether the Properties entry applies here at all.</summary>
+    /// <summary>
+    /// Whether the Properties entry applies here at all.
+    ///
+    /// **It stayed on the menu where there was nothing for it to describe.**
+    /// The bin and Recent were excluded; This PC and a search were not, so
+    /// right-clicking the background of either offered a row that could only
+    /// fail. A picked drive or a picked result is a real path, so the row is
+    /// gated on having something to ask about rather than on which listing
+    /// this is — which also keeps it where it has always been, in an ordinary
+    /// folder with nothing selected, describing the folder itself.
+    /// </summary>
     public bool CanShowProperties
         => ActiveTab is not null
            && !ActiveTab.IsTrashListing
-           && !ActiveTab.IsRecentListing;
+           && !ActiveTab.IsRecentListing
+           && (ActiveTab.HasSelection || ActiveTab.IsRealFolder);
 
     /// <summary>
     /// Emptying the trash goes through the window, not straight to the store,
@@ -2694,6 +2720,23 @@ public sealed partial class ShellViewModel : ObservableObject, IDisposable
                 break;
 
             case nameof(PaneViewModel.Selection):
+
+            // **The Properties row went on being offered after the tab moved
+            // into This PC.** These entries are refreshed when the SELECTION
+            // changes, and moving away from a folder where nothing was picked
+            // changes no selection at all — so the row survived the move and
+            // was still there to be chosen. Taken from IsRealFolder rather
+            // than CurrentPath because CurrentPath is assigned from
+            // LoadListingAsync on a pool thread, while the pane re-raises
+            // IsRealFolder from its own hop to the UI thread, which is the
+            // only place a bound menu row may hear about it.
+            case nameof(PaneViewModel.IsRealFolder):
+
+            // And the focused row on its own. It counts as a selection here,
+            // and it does not go through the Selection collections: setting
+            // SelectedEntry raises HasSelection and nothing else this switch
+            // was listening for.
+            case nameof(PaneViewModel.HasSelection):
                 NotifySelectionMenu();
                 break;
 

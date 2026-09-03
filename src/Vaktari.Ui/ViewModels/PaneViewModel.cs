@@ -1932,6 +1932,28 @@ public sealed partial class PaneViewModel : ObservableObject, IDisposable
     [RelayCommand]
     public Task OpenAsync(FileEntry entry)
     {
+        // **The bin guard was on the keyboard route only, and the pointer
+        // walked straight past it.** Enter and the Open menu row go through
+        // OpenSelectedAsync, which refuses in the bin; a double-click goes
+        // through MainWindow's TryOpen, which calls THIS method directly. So
+        // double-clicking a bin row launched whatever now occupies the path the
+        // item USED to occupy — trash notes.txt, write a new notes.txt,
+        // double-click the row, and a different file opens with nothing to say
+        // so. The same shape as the delete that took the wrong file.
+        //
+        // Above the directory branch, not below it, because a binned FOLDER is
+        // the worse half: it does not reach the launcher at all, it navigates
+        // the pane to a path that is either gone or belongs to something else
+        // now, and arriving somewhere plausible is harder to notice than a file
+        // opening.
+        //
+        // Here rather than in each caller because both routes that open a
+        // SELECTION funnel through this method: OpenSelectedAsync opens every
+        // entry through it, and TryOpen calls it directly. It does not cover
+        // "Open with", which reaches the launcher on its own — that one
+        // carries its own copy below.
+        if (RefusedInBin()) return Task.CompletedTask;
+
         if (entry.IsDirectory) return NavigateAsync(entry.FullPath);
 
         // **A shortcut to a folder navigates the pane**, rather than being
@@ -2410,6 +2432,15 @@ public sealed partial class PaneViewModel : ObservableObject, IDisposable
     [RelayCommand]
     public void OpenWithApp(LaunchOption? option)
     {
+        // **The same bin hazard, through the other door.** "Open with" is drawn
+        // on a bin row — OpenWithMenu binds HasOpenWithOptions, which is filled
+        // for any file selection and never asks whether the listing is the bin
+        // — and it hands the launcher a path itself rather than going through
+        // OpenAsync, so the guard up there left this open. Choosing an
+        // application for a binned notes.txt opened whatever now holds that
+        // path, with nothing to say so.
+        if (RefusedInBin()) return;
+
         if (option is null || SelectedEntry is not { } entry) return;
 
         // The chooser opens the file itself once something is picked, so it
@@ -2545,6 +2576,12 @@ public sealed partial class PaneViewModel : ObservableObject, IDisposable
         // since been written, Enter opens THAT — a different file, with no sign
         // anything unusual happened. The same shape as the delete that took the
         // wrong file.
+        //
+        // OpenAsync refuses too, and has to, because the pointer route reaches
+        // it without passing through here. This copy is not redundant: it runs
+        // BEFORE the count check below, so a large selection in the bin is told
+        // it is in the bin rather than told to select fewer — the count refusal
+        // would otherwise answer a question the user is not being stopped for.
         if (RefusedInBin()) return;
 
         var entries = EntriesToActOn();
