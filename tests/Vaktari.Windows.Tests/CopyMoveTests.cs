@@ -91,8 +91,9 @@ public class CopyMoveTests
     // ---- KeepBoth ----------------------------------------------------------
 
     /// <summary>
-    /// The descendants-follow-their-ancestor case. Before the fix, `foo - Copy`
-    /// was created empty and `sub/a.txt` went into the pre-existing `foo`.
+    /// The descendants-follow-their-ancestor case. Before the fix, the new
+    /// folder was created empty and `sub/a.txt` went into the pre-existing
+    /// `foo`.
     /// </summary>
     [WindowsFact]
     public async Task KeepBoth_puts_a_whole_folder_beside_the_one_it_clashed_with()
@@ -104,7 +105,7 @@ public class CopyMoveTests
 
         await Finished(ops.Copy([tree.At("foo")], tree.At("dst"), Always(ConflictResolution.KeepBoth)));
 
-        Assert.Equal("mine", tree.Read("dst", "foo - Copy", "sub", "a.txt"));
+        Assert.Equal("mine", tree.Read("dst", "foo (2)", "sub", "a.txt"));
     }
 
     [WindowsFact]
@@ -122,13 +123,17 @@ public class CopyMoveTests
 
     /// <summary>
     /// A folder name is atomic. Splitting it at the last dot the way a file name
-    /// is split produced `my - Copy.project`, which is not a name Explorer would
-    /// ever give and reads as a different project entirely.
+    /// is split produced `my (2).project`, which reads as a different project
+    /// entirely.
+    ///
+    /// The suffix here is the numbered one because this is a conflict in
+    /// ANOTHER folder — nothing about the arrival is a copy of anything the
+    /// user can see.
     /// </summary>
     [WindowsTheory]
-    [InlineData("my.project", "my.project - Copy")]
-    [InlineData("ver.1.2", "ver.1.2 - Copy")]
-    [InlineData("plain", "plain - Copy")]
+    [InlineData("my.project", "my.project (2)")]
+    [InlineData("ver.1.2", "ver.1.2 (2)")]
+    [InlineData("plain", "plain (2)")]
     public async Task KeepBoth_treats_a_folder_name_as_one_piece(string name, string expected)
     {
         using var tree = new TempTree();
@@ -141,9 +146,17 @@ public class CopyMoveTests
         Assert.True(tree.Exists("dst", expected, "a.txt"));
     }
 
-    /// <summary>A file name is still split at its extension, which is the point.</summary>
+    /// <summary>
+    /// A file name is still split at its extension, which is the point — and
+    /// the arrival is NUMBERED rather than called a copy.
+    ///
+    /// **This test used to assert " - Copy" and say Explorer did that.**
+    /// Explorer reserves that for a duplicate in place, where the word is true;
+    /// a conflict in another folder arrives as "(2)", which claims only that
+    /// this is the second thing here wanting the name.
+    /// </summary>
     [WindowsFact]
-    public async Task KeepBoth_still_names_a_file_copy_the_way_Explorer_does()
+    public async Task KeepBoth_numbers_a_file_the_way_Explorer_does()
     {
         using var tree = new TempTree();
         var file = tree.Write("notes.txt", "mine");
@@ -152,12 +165,12 @@ public class CopyMoveTests
 
         await Finished(ops.Copy([file], tree.At("dst"), Always(ConflictResolution.KeepBoth)));
 
-        Assert.Equal("mine", tree.Read("dst", "notes - Copy.txt"));
+        Assert.Equal("mine", tree.Read("dst", "notes (2).txt"));
     }
 
     /// <summary>
     /// The undo that destroyed a bystander. `readme.txt` moved in beside an
-    /// existing one and landed as `readme - Copy.txt`; undo reconstructed the
+    /// existing one and landed as `readme (2).txt`; undo reconstructed the
     /// landing site as destination + name, found the *other* file there, and
     /// moved that one back to the source instead.
     /// </summary>
@@ -170,7 +183,7 @@ public class CopyMoveTests
         var ops = new WindowsFileOperations();
 
         await Finished(ops.Move([file], tree.At("dst"), Always(ConflictResolution.KeepBoth)));
-        Assert.Equal("mine", tree.Read("dst", "readme - Copy.txt"));
+        Assert.Equal("mine", tree.Read("dst", "readme (2).txt"));
 
         await ops.UndoAsync(CancellationToken.None);
 

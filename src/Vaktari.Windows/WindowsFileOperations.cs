@@ -718,7 +718,10 @@ public sealed class WindowsFileOperations : IFileOperations
                         // ORIGINAL with "x - Copy" twins of every file inside
                         // it, reported as success. The KeepBoth branch below
                         // has always recorded one.
-                        var deduped = Deduplicate(target, item.Kind == ItemKind.Directory);
+                        // In place: this is the duplicate branch, where the
+                        // target IS the source, so " - Copy" is the truth.
+                        var deduped = Deduplicate(
+                            target, item.Kind == ItemKind.Directory, inPlace: true);
 
                         if (item.Kind == ItemKind.Directory) redirects.Add((target, deduped));
 
@@ -746,8 +749,12 @@ public sealed class WindowsFileOperations : IFileOperations
                                 handle.ItemFinished();
                                 continue;
                             case ConflictResolution.KeepBoth:
+                                // A conflict in ANOTHER folder. Nothing here
+                                // is a copy of anything the user can see, so
+                                // this arrives as "(2)" rather than claiming a
+                                // provenance it does not have.
                                 var kept = Deduplicate(
-                                    target, item.Kind == ItemKind.Directory);
+                                    target, item.Kind == ItemKind.Directory, inPlace: false);
                                 if (item.Kind == ItemKind.Directory)
                                     redirects.Add((target, kept));
                                 target = kept;
@@ -890,20 +897,52 @@ public sealed class WindowsFileOperations : IFileOperations
     /// platform helper was misleadingly named — the rule differs, so the code
     /// does too rather than being shared.
     /// </summary>
-    internal static string Deduplicate(string target, bool isDirectory = false)
+    /// <summary>
+    /// A free name beside <paramref name="target"/>.
+    ///
+    /// **One naming served two different questions, and only one of them is
+    /// about copying.** Keeping both across a MOVE named the arrival
+    /// "report - Copy.txt" — after an operation that copied nothing and left
+    /// nothing behind, in a folder where no "report.txt" of yours had ever
+    /// been. The word was describing the mechanism rather than what happened.
+    ///
+    /// Explorer splits them and this now does too: " - Copy" is what a
+    /// duplicate IN PLACE is called, because there the word is true and the two
+    /// files really are one beside its copy; a conflict resolved by keeping
+    /// both is "(2)", which says only that this is the second thing here
+    /// wanting that name.
+    ///
+    /// No default. A third caller has to say which of the two it is, because
+    /// getting it wrong is silent and only shows up in a filename somebody
+    /// reads a week later.
+    ///
+    /// The kind matters: see PathRules.SplitLeaf for why a folder — and a
+    /// dotfile — is atomic.
+    /// </summary>
+    internal static string Deduplicate(string target, bool isDirectory, bool inPlace)
     {
         var directory = PathRules.Parent(target);
         if (directory is null) return target;
 
-        // See PathRules.SplitLeaf for why a folder - and a dotfile - is atomic.
         var (stem, extension) = PathRules.SplitLeaf(PathRules.LeafName(target), isDirectory);
 
-        var candidate = Path.Combine(directory, $"{stem} - Copy{extension}");
+        if (inPlace)
+        {
+            var copy = Path.Combine(directory, $"{stem} - Copy{extension}");
 
-        for (var n = 2; File.Exists(candidate) || Directory.Exists(candidate); n++)
-            candidate = Path.Combine(directory, $"{stem} - Copy ({n}){extension}");
+            for (var n = 2; File.Exists(copy) || Directory.Exists(copy); n++)
+                copy = Path.Combine(directory, $"{stem} - Copy ({n}){extension}");
 
-        return candidate;
+            return copy;
+        }
+
+        // From two, because the thing already sitting there is the first.
+        var arrival = Path.Combine(directory, $"{stem} (2){extension}");
+
+        for (var n = 3; File.Exists(arrival) || Directory.Exists(arrival); n++)
+            arrival = Path.Combine(directory, $"{stem} ({n}){extension}");
+
+        return arrival;
     }
 
     /// <summary>

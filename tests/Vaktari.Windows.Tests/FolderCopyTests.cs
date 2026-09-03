@@ -169,7 +169,7 @@ public sealed class FolderCopyTests : IDisposable
             _ => ValueTask.FromResult(ConflictResolution.KeepBoth)));
 
         Assert.Equal(["already-here.jpg"], NamesIn(Path.Combine(destination, "photos")));
-        Assert.Equal(["holiday.jpg"], NamesIn(Path.Combine(destination, "photos - Copy")));
+        Assert.Equal(["holiday.jpg"], NamesIn(Path.Combine(destination, "photos (2)")));
     }
 
     /// <summary>
