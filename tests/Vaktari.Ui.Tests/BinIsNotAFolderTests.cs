@@ -183,13 +183,7 @@ public sealed class BinIsNotAFolderTests : OwnedViewModels
 
         // And the row actually reads that, rather than HasSelection, which is
         // true in the bin and was what it used to bind.
-        var here = AppContext.BaseDirectory;
-
-        while (here is not null && !File.Exists(Path.Combine(here, "Vaktari.slnx")))
-            here = Path.GetDirectoryName(here);
-
-        var markup = File.ReadAllText(
-            Path.Combine(here!, "src", "Vaktari.Ui", "MainWindow.axaml"));
+        var markup = RepoSource.Ui("MainWindow.axaml");
 
         var at = markup.IndexOf("Command=\"{Binding ActiveTab.OpenSelectedCommand}\"",
                                 StringComparison.Ordinal);

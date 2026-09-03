@@ -24,7 +24,12 @@ internal static class RepoSource
         {
             var here = AppContext.BaseDirectory;
 
-            while (here is not null && !File.Exists(Path.Combine(here, "Vaktari.slnx")))
+            // By extension rather than by name. **This looked for
+            // "Vaktari.slnx" and the file is vaktari.slnx** — which matched on
+            // Windows and did not on Linux, so the walk ran off the top of the
+            // filesystem and the null went into Path.Combine. Nothing here is
+            // allowed to depend on how a filesystem feels about case.
+            while (here is not null && !Directory.EnumerateFiles(here, "*.slnx").Any())
                 here = Path.GetDirectoryName(here);
 
             return here ?? throw new InvalidOperationException(

@@ -119,13 +119,7 @@ public sealed class ConfirmationCopyTests
     [AvaloniaFact]
     public void The_prompt_bar_asks_for_the_sentence()
     {
-        var here = AppContext.BaseDirectory;
-
-        while (here is not null && !File.Exists(Path.Combine(here, "Vaktari.slnx")))
-            here = Path.GetDirectoryName(here);
-
-        var source = File.ReadAllText(
-            Path.Combine(here!, "src", "Vaktari.Ui", "MainWindow.axaml.cs"));
+        var source = RepoSource.Ui("MainWindow.axaml.cs");
 
         Assert.DoesNotContain("item(s)? this cannot be undone", source);
         Assert.DoesNotContain("item(s) to {Naming.TheBin}", source);

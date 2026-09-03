@@ -49,18 +49,13 @@ public sealed class BinRowTests
     [AvaloniaFact]
     public void The_row_offers_to_empty_it()
     {
-        var here = AppContext.BaseDirectory;
-
-        while (here is not null && !File.Exists(Path.Combine(here, "Vaktari.slnx")))
-            here = Path.GetDirectoryName(here);
-
-        var path = Path.Combine(here!, "src", "Vaktari.Ui", "MainWindow.axaml");
+        var markup = RepoSource.Ui("MainWindow.axaml");
 
         // Two routes now: the band inside the bin, which is a Button, and the
         // row in the sidebar, which is a menu entry. One was the whole problem.
-        Assert.Equal(2, File.ReadAllText(path).Split("EmptyTrashCommand").Length - 1);
+        Assert.Equal(2, markup.Split("EmptyTrashCommand").Length - 1);
 
-        var onTheRow = XDocument.Load(path).Descendants(Avalonia + "MenuItem")
+        var onTheRow = XDocument.Parse(markup).Descendants(Avalonia + "MenuItem")
             .Where(m => ((string?)m.Attribute("Command"))
                         ?.Contains("EmptyTrashCommand", StringComparison.Ordinal) == true)
             .ToList();

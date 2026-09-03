@@ -173,7 +173,7 @@ public sealed class AccentContrastTests
     {
         var here = AppContext.BaseDirectory;
 
-        while (here is not null && !File.Exists(Path.Combine(here, "Vaktari.slnx")))
+        while (here is not null && !File.Exists(Path.Combine(here, "vaktari.slnx")))
             here = Path.GetDirectoryName(here);
 
         return here ?? throw new InvalidOperationException("could not find the repository root");

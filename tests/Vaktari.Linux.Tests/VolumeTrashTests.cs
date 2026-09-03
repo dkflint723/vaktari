@@ -74,13 +74,7 @@ public sealed class VolumeTrashTests : IDisposable
     [Fact]
     public void The_fallback_is_reached_and_does_not_swallow_a_home_failure()
     {
-        var here = AppContext.BaseDirectory;
-
-        while (here is not null && !File.Exists(Path.Combine(here, "Vaktari.slnx")))
-            here = Path.GetDirectoryName(here);
-
-        var source = File.ReadAllText(
-            Path.Combine(here!, "src", "Vaktari.Linux", "XdgTrash.cs"));
+        var source = RepoSource.Read("src", "Vaktari.Linux", "XdgTrash.cs");
 
         Assert.Contains("var root = PrepareRoot(RootFor(full));", source);
 

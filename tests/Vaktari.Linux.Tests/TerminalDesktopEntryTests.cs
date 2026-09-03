@@ -166,13 +166,7 @@ public sealed class TerminalDesktopEntryTests : IDisposable
     [InlineData("kitty", "[]")]
     public void The_terminals_that_do_not_spell_it_dash_e_are_recorded(string exe, string run)
     {
-        var here = AppContext.BaseDirectory;
-
-        while (here is not null && !File.Exists(Path.Combine(here, "Vaktari.slnx")))
-            here = Path.GetDirectoryName(here);
-
-        var line = File.ReadAllLines(
-                Path.Combine(here!, "src", "Vaktari.Linux", "LinuxLauncher.cs"))
+        var line = RepoSource.Read("src", "Vaktari.Linux", "LinuxLauncher.cs").Split('\n')
             .First(l => l.Contains($"(\"{exe}\",", StringComparison.Ordinal));
 
         Assert.EndsWith(run + "),", line.TrimEnd());

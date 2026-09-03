@@ -136,13 +136,7 @@ public sealed class VolumeMountTests
     [Fact]
     public void The_drag_path_reads_the_table_once()
     {
-        var here = AppContext.BaseDirectory;
-
-        while (here is not null && !File.Exists(Path.Combine(here, "Vaktari.slnx")))
-            here = Path.GetDirectoryName(here);
-
-        var source = File.ReadAllText(
-            Path.Combine(here!, "src", "Vaktari.Ui", "Input", "DragEffect.cs"));
+        var source = RepoSource.Read("src", "Vaktari.Ui", "Input", "DragEffect.cs");
 
         Assert.Contains("Volumes.MountPoints()", source);
         Assert.Contains("Volumes.Same(s, destination, mounts)", source);

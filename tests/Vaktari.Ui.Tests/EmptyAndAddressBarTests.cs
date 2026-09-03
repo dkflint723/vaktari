@@ -105,13 +105,7 @@ public sealed class EmptyAndAddressBarTests : OwnedViewModels
     [AvaloniaFact]
     public void The_listing_shows_the_line_rather_than_a_literal()
     {
-        var here = AppContext.BaseDirectory;
-
-        while (here is not null && !File.Exists(Path.Combine(here, "Vaktari.slnx")))
-            here = Path.GetDirectoryName(here);
-
-        var markup = File.ReadAllText(
-            Path.Combine(here!, "src", "Vaktari.Ui", "MainWindow.axaml"));
+        var markup = RepoSource.Ui("MainWindow.axaml");
 
         Assert.DoesNotContain("Text=\"this folder is empty\"", markup);
         Assert.Contains("Text=\"{Binding EmptyText}\"", markup);
@@ -183,13 +177,7 @@ public sealed class EmptyAndAddressBarTests : OwnedViewModels
     [AvaloniaFact]
     public void The_listing_asks_for_the_listing_rule()
     {
-        var here = AppContext.BaseDirectory;
-
-        while (here is not null && !File.Exists(Path.Combine(here, "Vaktari.slnx")))
-            here = Path.GetDirectoryName(here);
-
-        var source = File.ReadAllText(
-            Path.Combine(here!, "src", "Vaktari.Ui", "MainWindow.axaml.cs"));
+        var source = RepoSource.Ui("MainWindow.axaml.cs");
 
         Assert.Contains("_shell.ActiveTab?.DismissInListing()", source);
         Assert.DoesNotContain("_shell.ActiveTab?.ClearFilter()", source);

@@ -174,13 +174,7 @@ public sealed class SearchResultSelectionTests : OwnedViewModels
     [AvaloniaFact]
     public void The_shell_asks_the_pane_to_reveal_it()
     {
-        var here = AppContext.BaseDirectory;
-
-        while (here is not null && !File.Exists(Path.Combine(here, "Vaktari.slnx")))
-            here = Path.GetDirectoryName(here);
-
-        var shell = File.ReadAllLines(
-            Path.Combine(here!, "src", "Vaktari.Ui", "ViewModels", "ShellViewModel.cs"));
+        var shell = RepoSource.Ui("ViewModels", "ShellViewModel.cs").Split('\n');
 
         var handler = shell.FirstOrDefault(
             l => l.Contains("Sidebar.Search.ResultChosen", StringComparison.Ordinal));

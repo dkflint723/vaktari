@@ -114,13 +114,7 @@ public sealed class OpenWithMenuTests : IDisposable
     [Fact]
     public void The_interactive_budget_is_not_the_background_one()
     {
-        var here = AppContext.BaseDirectory;
-
-        while (here is not null && !File.Exists(Path.Combine(here, "Vaktari.slnx")))
-            here = Path.GetDirectoryName(here);
-
-        var source = File.ReadAllText(
-            Path.Combine(here!, "src", "Vaktari.Linux", "DesktopEntries.cs"));
+        var source = RepoSource.Read("src", "Vaktari.Linux", "DesktopEntries.cs");
 
         Assert.Contains("SemaphoreSlim AskedFor = new(2, 2);", source);
         Assert.Contains("var budget = waiting ? AskedFor : Sniffs;", source);

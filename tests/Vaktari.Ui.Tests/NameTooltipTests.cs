@@ -25,14 +25,7 @@ public sealed class NameTooltipTests
     private static readonly XNamespace Avalonia = "https://github.com/avaloniaui";
 
     private static XDocument Markup()
-    {
-        var here = AppContext.BaseDirectory;
-
-        while (here is not null && !File.Exists(Path.Combine(here, "Vaktari.slnx")))
-            here = Path.GetDirectoryName(here);
-
-        return XDocument.Load(Path.Combine(here!, "src", "Vaktari.Ui", "MainWindow.axaml"));
-    }
+        => XDocument.Parse(RepoSource.Ui("MainWindow.axaml"));
 
     /// <summary>
     /// Discovered from the markup rather than listed here, so a fourth layout
