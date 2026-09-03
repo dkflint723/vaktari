@@ -32,6 +32,7 @@ internal static partial class Native
     internal static readonly nint HKEY_CURRENT_USER = unchecked((nint)(long)0x80000001);
 
     internal const uint RRF_RT_REG_DWORD = 0x00000010;
+    internal const uint RRF_RT_REG_BINARY = 0x00000008;
     internal const uint KEY_READ = 0x00020019;
     internal const uint REG_NOTIFY_CHANGE_LAST_SET = 0x00000004;
     internal const int ERROR_SUCCESS = 0;
@@ -41,6 +42,12 @@ internal static partial class Native
     internal static partial int RegGetValue(
         nint hkey, string subKey, string value, uint flags,
         nint type, out uint data, ref uint dataSize);
+
+    [LibraryImport("advapi32.dll", EntryPoint = "RegGetValueW",
+        StringMarshalling = StringMarshalling.Utf16)]
+    internal static partial int RegGetValueBinary(
+        nint hkey, string subKey, string value, uint flags,
+        nint type, Span<byte> data, ref uint dataSize);
 
     [LibraryImport("advapi32.dll", EntryPoint = "RegOpenKeyExW",
         StringMarshalling = StringMarshalling.Utf16)]
@@ -74,6 +81,25 @@ internal static partial class Native
             HKEY_CURRENT_USER, subKey, value, RRF_RT_REG_DWORD, 0, out data, ref size);
 
         return status == ERROR_SUCCESS ? data : null;
+    }
+
+    /// <summary>
+    /// A REG_BINARY from HKCU, or null if it is not there.
+    ///
+    /// One call with a fixed buffer rather than the usual size-then-read dance:
+    /// the only caller wants a 36-byte structure, and a value too big to fit
+    /// comes back as ERROR_MORE_DATA, which lands on the same null as an absent
+    /// one — "the desktop did not say" either way.
+    /// </summary>
+    internal static byte[]? ReadBinary(string subKey, string value, int max = 256)
+    {
+        var buffer = new byte[max];
+        var size = (uint)buffer.Length;
+
+        var status = RegGetValueBinary(
+            HKEY_CURRENT_USER, subKey, value, RRF_RT_REG_BINARY, 0, buffer, ref size);
+
+        return status == ERROR_SUCCESS && size <= buffer.Length ? buffer[..(int)size] : null;
     }
 
     // ---- Shell file operations ---------------------------------------------

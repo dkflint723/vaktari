@@ -66,12 +66,17 @@ public sealed class WindowsThemeProvider : IThemeProvider, IDisposable
             // fallbacks are used.
             IconTheme = null,
 
-            // **Null, not false.** Windows does store this — in the ShellState
-            // binary blob under Explorer\Advanced, a packed bitfield with no
-            // documented layout. Null means "the desktop did not say", which is
-            // exactly the case here, and the application falls back to its own
-            // setting rather than asserting a preference nobody expressed.
-            SingleClick = null,
+            // **This used to be flatly null, on the strength of a comment that
+            // was wrong twice** — it named Explorer\Advanced when the value is
+            // under Explorer, and called the blob undocumented when it is the
+            // SHELLSTATE structure. So "Whatever the desktop is set to" always
+            // collapsed to double on Windows, however Folder Options was set,
+            // while the same option worked on KDE. ShellState reads it.
+            //
+            // Null is still an answer, and still means "the desktop did not
+            // say" — the value is absent, or does not decode as this layout —
+            // in which case the application's own default applies.
+            SingleClick = ShellState.OpensOnSingleClick(),
         };
     }
 
