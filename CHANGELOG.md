@@ -385,6 +385,17 @@ should not be trusted for compatibility yet.
 
 ### Fixed
 
+- **The sidebar can be walked with the keyboard, and stops taking the
+  listing's keys.** F6 put the keyboard in the sidebar and left it there: the
+  arrow keys did nothing, so the only way on from a place row was to Tab
+  through every button in the panel. Up and Down now move between places,
+  Home and End reach the ends, and the Menu key opens the menu for the row you
+  are on rather than for the folder behind it. The keys that used to act on
+  the listing from there are refused — Delete in the sidebar was trashing
+  whatever happened to be selected in a folder that no longer had the
+  keyboard, and the confirmation named files you could not see. Navigation and
+  undo are unaffected: those are not about the listing's selection.
+
 - **One thing can be deleted out of the bin.** The only ways out of it were
   *Restore* and emptying the lot, so getting rid of a single item meant
   destroying everything else in there with it — and Shift+Delete on a bin row

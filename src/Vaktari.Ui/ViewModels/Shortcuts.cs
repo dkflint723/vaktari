@@ -52,6 +52,10 @@ public static class Shortcuts
             // route into the listing at all, and appeared nowhere — a key
             // nobody can find is a key nobody uses.
             new("F6", "Listing, address bar, sidebar — in turn"),
+            // The other half of F6: it delivered you to a panel with no way to
+            // move in it, so the key that got you there was the only one that
+            // worked once you had arrived.
+            new("↑", "Move up the sidebar, once F6 has taken you there"),
             new("Ctrl+Tab", "Next tab"),
             new("Ctrl+Page Down", "Next tab"),
             new("Ctrl+Page Up", "Previous tab"),

@@ -2578,7 +2578,8 @@ public partial class MainWindow : Window
                 _shell?.ActiveTab?.RevertPathText();
 
                 Dispatcher.UIThread.Post(
-                    () => FirstSidebarRow()?.Focus(), DispatcherPriority.Background);
+                    () => FirstSidebarRow()?.Focus(NavigationMethod.Directional),
+                    DispatcherPriority.Background);
                 break;
 
             default:
@@ -2614,6 +2615,54 @@ public partial class MainWindow : Window
         return sidebar.GetVisualDescendants().OfType<Button>()
                       .FirstOrDefault(b => b.IsVisible
                                            && b is not Avalonia.Controls.Primitives.ToggleButton);
+    }
+
+    /// <summary>
+    /// Everything the arrow keys stop on in the sidebar, top to bottom.
+    ///
+    /// **RepeatButton and ToggleButton both derive from Button, and the panel's
+    /// content sits in a ScrollViewer.** A scrollbar's PART_LineUpButton is a
+    /// Button, so an unfiltered walk would let End put the keyboard on a scroll
+    /// arrow — the same refusal ListForEmptySpace and TabStripEmptySpaceAt
+    /// already make, for the same reason. Derived rather than trusted: whether
+    /// the theme happens to mark those arrows unfocusable is a template detail,
+    /// and this rule must not depend on one.
+    ///
+    /// A section HEADING is a stop, unlike F6's landing. It is the only way to
+    /// unfold a section from the keyboard, and a folded section whose heading
+    /// cannot be reached is a section the keyboard can never open again.
+    /// </summary>
+    private List<Control> SidebarStops()
+    {
+        if (this.FindControl<Border>("SidebarPanel") is not { } sidebar) return [];
+
+        return [.. sidebar.GetVisualDescendants()
+                          .OfType<Button>()
+                          .Where(b => b is not RepeatButton)
+                          .Where(b => b.Focusable && b.IsEffectivelyVisible && b.IsEffectivelyEnabled)];
+    }
+
+    /// <summary>
+    /// Moves the keyboard through the sidebar.
+    ///
+    /// Focused as a DIRECTIONAL move rather than a plain one, so the row draws
+    /// its focus ring: Avalonia sets :focus-visible for keyboard navigation and
+    /// leaves it off for a click, and a keyboard walk with no visible cursor is
+    /// a walk you cannot follow.
+    /// </summary>
+    private void MoveInSidebar(Input.SidebarStep step)
+    {
+        var stops = SidebarStops();
+
+        var from = FocusManager?.GetFocusedElement() is Visual focused
+            ? stops.FindIndex(s => ReferenceEquals(s, focused))
+            : -1;
+
+        var landing = Input.SidebarWalk.Landing(stops.Count, from, step);
+
+        if (landing < 0) return;
+
+        stops[landing].Focus(NavigationMethod.Directional);
     }
 
     private ListBox? ActiveListing()
@@ -4729,6 +4778,69 @@ public partial class MainWindow : Window
             e.Handled = true;
             GoToRegion(Input.FocusCycle.Next(CurrentRegion(), SidebarShowing));
             return;
+        }
+
+        // The sidebar answers its own keys while it has the keyboard.
+        //
+        // **F6 delivered you to a panel you could not move in.** Up, Down, Home
+        // and End were unbound anywhere in the application, so from a place row
+        // the only way on was Tab through every button in the panel — and the
+        // keys that WERE bound went on acting on the listing: Delete trashed
+        // whatever was selected in a folder that no longer had the keyboard.
+        //
+        // **After F6 and above the text-box guard.** After F6, or the panel
+        // this delivers you to would be one F6 could not take you out of; above
+        // the guard is free, because there is no TextBox anywhere in the
+        // sidebar, and putting it there keeps the two region branches together.
+        if (CurrentRegion() == Input.KeyboardRegion.Sidebar)
+        {
+            // Written out here rather than mapped in SidebarWalk, one key to a
+            // line: the shortcuts sheet is cross-checked against the keys this
+            // handler claims, and it reads those claims from `e.Key == Key.X`.
+            // A map behind a helper is a key nothing can see is bound.
+            //
+            // Modifiers must be absent rather than ignored — Shift+Down extends
+            // a selection in a listing and means nothing here, and swallowing it
+            // would take it from anything that later wants it.
+            Input.SidebarStep? step =
+                e.KeyModifiers != KeyModifiers.None ? null
+                : e.Key == Key.Down ? Input.SidebarStep.Next
+                : e.Key == Key.Up ? Input.SidebarStep.Previous
+                : e.Key == Key.Home ? Input.SidebarStep.First
+                : e.Key == Key.End ? Input.SidebarStep.Last
+                : null;
+
+            if (step is { } move)
+            {
+                e.Handled = true;
+                MoveInSidebar(move);
+                return;
+            }
+
+            // The Menu key opens the menu for the ROW, not for the listing.
+            // Avalonia raises ContextRequested for a right-click and for
+            // nothing else, so this is the only keyboard route into a place's
+            // own menu — and the listing's menu, which is what these two keys
+            // opened from here, acts on files that are not on screen.
+            if (e.Key == Key.Apps
+                || (e.Key == Key.F10 && e.KeyModifiers == KeyModifiers.Shift))
+            {
+                e.Handled = true;
+
+                if (FocusManager?.GetFocusedElement() is Interactive row)
+                    row.RaiseEvent(new ContextRequestedEventArgs());
+
+                return;
+            }
+
+            // Refused rather than passed on. See SidebarWalk.ActsOnTheListing:
+            // the selection these act on is not what the keyboard is pointing
+            // at, and Delete is the one that costs files.
+            if (Input.SidebarWalk.ActsOnTheListing(e.Key, e.KeyModifiers))
+            {
+                e.Handled = true;
+                return;
+            }
         }
 
         // Any focused text box owns the keyboard. Checking the type rather
