@@ -1,10 +1,15 @@
+using System.Reflection;
 using Avalonia;
 using Avalonia.Controls;
+using Avalonia.Controls.Primitives;
 using Avalonia.Headless;
 using Avalonia.Headless.XUnit;
 using Avalonia.Input;
 using Avalonia.Interactivity;
+using Avalonia.VisualTree;
+using Vaktari.Core.FileSystem;
 using Vaktari.Ui.Input;
+using Vaktari.Ui.ViewModels;
 using Xunit;
 
 namespace Vaktari.Ui.Tests;
@@ -26,7 +31,7 @@ namespace Vaktari.Ui.Tests;
 /// upgrade quietly makes it false, which is the same reason
 /// <see cref="RightClickSelectionTests"/> exists.
 /// </summary>
-public sealed class SideButtonNavigationTests
+public sealed class SideButtonNavigationTests : OwnedViewModels
 {
     [Theory]
     [InlineData(PointerUpdateKind.XButton1Pressed, SideButtonAction.Back)]
@@ -130,5 +135,149 @@ public sealed class SideButtonNavigationTests
         Assert.Equal("two", list.SelectedItem);
 
         window.Close();
+    }
+
+    // ---- which pane the button drives -------------------------------------
+
+    private sealed class Inert : IFileSystemProvider
+    {
+        public async IAsyncEnumerable<IReadOnlyList<FileEntry>> EnumerateAsync(
+            string path, ListingOptions options,
+            [System.Runtime.CompilerServices.EnumeratorCancellation] CancellationToken ct)
+        {
+            await Task.CompletedTask;
+            yield break;
+        }
+
+        public ValueTask<FileEntry?> GetEntryAsync(string path, CancellationToken ct)
+            => ValueTask.FromResult<FileEntry?>(null);
+
+        public IDisposable Watch(string path, Action<FileSystemChange> onChange) => new Nothing();
+
+        public ValueTask<bool> IsReachableAsync(string path, TimeSpan timeout, CancellationToken ct)
+            => ValueTask.FromResult(true);
+
+        public string Combine(string basePath, string name) => Path.Combine(basePath, name);
+        public string? GetParent(string path) => Path.GetDirectoryName(path);
+        public bool IsCaseSensitive => false;
+
+        private sealed class Nothing : IDisposable { public void Dispose() { } }
+    }
+
+    private static PaneViewModel? NavigationTargetAt(object? source)
+        => (PaneViewModel?)typeof(MainWindow)
+            .GetMethod("NavigationTargetAt", BindingFlags.NonPublic | BindingFlags.Static)!
+            .Invoke(null, [source]);
+
+    private (Window Window, TabStrip Strip, PaneGroupViewModel Group) Strip(int tabs)
+    {
+        var group = new PaneGroupViewModel(() => Own(new PaneViewModel(new Inert())));
+
+        for (var i = 0; i < tabs; i++)
+        {
+            var tab = Own(new PaneViewModel(new Inert()));
+            tab.CurrentPath = Path.Combine(Path.GetTempPath(), "tab" + i);
+            group.Tabs.Add(tab);
+        }
+
+        group.ActiveTab = group.Tabs[0];
+
+        var strip = new TabStrip { ItemsSource = group.Tabs, DataContext = group };
+        var window = new Window { Content = strip, Width = 600, Height = 120 };
+
+        window.Show();
+        window.Measure(new Size(600, 120));
+        window.Arrange(new Rect(0, 0, 600, 120));
+
+        return (window, strip, group);
+    }
+
+    /// <summary>
+    /// **The side buttons navigated a tab nobody could see.** A tab header
+    /// carries its own pane as its data context, so walking up from the press
+    /// answered with the tab that was pointed AT rather than the listing on
+    /// screen. Pressing back while aiming at the third tab's label rewound the
+    /// third tab: nothing visible moved and nothing said anything.
+    /// </summary>
+    [AvaloniaFact]
+    public void A_press_on_another_tabs_header_navigates_the_visible_pane()
+    {
+        var (window, strip, group) = Strip(3);
+
+        try
+        {
+            var header = Assert.IsType<TabStripItem>(strip.ContainerFromIndex(2));
+
+            // The real press lands INSIDE the header — on the label, not on the
+            // item — so it is the walk that has to recognise the tab.
+            var inside = header.GetVisualDescendants().OfType<Control>().FirstOrDefault() ?? header;
+
+            Assert.Same(group.ActiveTab, NavigationTargetAt(inside));
+            Assert.NotSame(group.Tabs[2], NavigationTargetAt(inside));
+        }
+        finally
+        {
+            window.Close();
+        }
+    }
+
+    /// <summary>
+    /// And the rule it must not swallow: point at a half of a split, press
+    /// back, that half moves. An over-correction to "always the group's active
+    /// tab" would fail this.
+    ///
+    /// The two panes are deliberately different objects — in the running
+    /// application only the active listing is hit-testable, so this pins the
+    /// rule rather than a scenario.
+    /// </summary>
+    [AvaloniaFact]
+    public void A_press_in_a_listing_still_navigates_the_pane_it_landed_in()
+    {
+        var group = new PaneGroupViewModel(() => Own(new PaneViewModel(new Inert())));
+        var visible = Own(new PaneViewModel(new Inert()));
+        var aimed = Own(new PaneViewModel(new Inert()));
+
+        group.Tabs.Add(visible);
+        group.ActiveTab = visible;
+
+        var listing = new Border { DataContext = aimed };
+        var side = new Panel { DataContext = group, Children = { listing } };
+        var window = new Window { Content = side, Width = 300, Height = 200 };
+
+        window.Show();
+        window.Measure(new Size(300, 200));
+        window.Arrange(new Rect(0, 0, 300, 200));
+
+        try
+        {
+            Assert.Same(aimed, NavigationTargetAt(listing));
+        }
+        finally
+        {
+            window.Close();
+        }
+    }
+
+    /// <summary>
+    /// That the handler actually asks. The tests above pass on the helper alone
+    /// even if nothing calls it, and the ordering is what stops this matching a
+    /// call in some other branch.
+    /// </summary>
+    [Fact]
+    public void The_press_handler_asks_which_pane_before_navigating()
+    {
+        var body = RepoSource.Body(
+            RepoSource.Ui("MainWindow.axaml.cs"),
+            "private void OnPointerPressedAnywhere(object? sender, Avalonia.Input.PointerPressedEventArgs e)");
+
+        var side = body.IndexOf("Input.SideButtons.For(", StringComparison.Ordinal);
+        var target = body.IndexOf("NavigationTargetAt(e.Source)", StringComparison.Ordinal);
+        var middle = body.IndexOf("PointerUpdateKind.MiddleButtonPressed", StringComparison.Ordinal);
+
+        Assert.True(side > 0, "the side buttons are not handled the way this test looks for them");
+        Assert.True(middle > side, "the middle-button branch has moved above the side buttons");
+        Assert.True(target > side && target < middle,
+            "the side-button branch does not ask NavigationTargetAt, so a press on a tab "
+            + "header navigates a tab nobody can see");
     }
 }

@@ -664,13 +664,16 @@ public partial class MainWindow : Window
         // button is not a click, and stealing the active pane would change what
         // the next keystroke does.
         //
+        // The strip is chrome rather than a pane, though, and a tab header
+        // carries a pane of its own — see NavigationTargetAt.
+        //
         // Claimed on the tunnel, before the listing sees the press. Some
         // controls treat any pointer press as a selection gesture, and a
         // side button would then move the selection as well as the folder.
         if (Input.SideButtons.For(properties.PointerUpdateKind) is var side
             && side is not Input.SideButtonAction.None)
         {
-            var pane = PaneAt(e.Source) ?? _shell.ActiveTab;
+            var pane = NavigationTargetAt(e.Source) ?? _shell.ActiveTab;
 
             if (pane is not null)
             {
@@ -1503,6 +1506,45 @@ public partial class MainWindow : Window
         }
 
         return null;
+    }
+
+    /// <summary>Walks up from whatever was hit to the group that owns it.</summary>
+    private static PaneGroupViewModel? GroupAt(object? source)
+    {
+        for (var visual = source as Visual; visual is not null;
+             visual = visual.GetVisualParent())
+        {
+            if (visual is Control { DataContext: PaneGroupViewModel group }) return group;
+        }
+
+        return null;
+    }
+
+    /// <summary>
+    /// Which pane a navigation button moves, for a press that landed anywhere.
+    ///
+    /// **The side buttons navigated a tab nobody could see.** A tab header
+    /// carries its own pane as its data context — that is how the strip is
+    /// bound, and it is what lets a middle click close the tab under the
+    /// pointer — so walking up from the press answered with the tab that was
+    /// pointed AT rather than the listing on screen. Pressing back while aiming
+    /// at the third tab's label rewound the third tab: the visible listing did
+    /// not move, nothing said anything, and the only trace was a title quietly
+    /// changing on a folder that was not open. Every browser drives the page
+    /// you are looking at, whichever piece of chrome the pointer is over.
+    ///
+    /// The strip belongs to its group, so the group's own active tab is the
+    /// answer — in a split, pointing at one side's tabs still navigates that
+    /// side, which is the pane-under-the-pointer rule the rest of this handler
+    /// follows rather than an exception to it. It also fixes the strip's
+    /// background and its + button, which reached no pane at all and fell
+    /// through to the OTHER side's active tab.
+    /// </summary>
+    private static PaneViewModel? NavigationTargetAt(object? source)
+    {
+        var pane = TabAt(source) is null ? PaneAt(source) : null;
+
+        return pane ?? GroupAt(source)?.ActiveTab;
     }
 
     /// <summary>
