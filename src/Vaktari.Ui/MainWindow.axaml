@@ -971,11 +971,37 @@
                                 IsEnabled="{Binding $parent[Window].((vm:ShellViewModel)DataContext).Sidebar.Search.CanScopeToCurrentFolder}"
                                 FontSize="{DynamicResource FontSizeTiny}"
                                 IsChecked="{Binding $parent[Window].((vm:ShellViewModel)DataContext).Sidebar.Search.ScopeToCurrentFolder}"/>
-                      <TextBlock DockPanel.Dock="Top"
-                                 Text="{Binding $parent[Window].((vm:ShellViewModel)DataContext).Sidebar.Search.Status}"
-                                 Margin="12,2,12,6" TextWrapping="Wrap"
-                                 FontSize="{DynamicResource FontSizeTiny}"
-                                 Foreground="{DynamicResource ViewDimText}"/>
+                      <!-- **A running search neither showed that it was running
+                           nor could be stopped.** IsSearching was set at both
+                           ends of every query and read by nothing at all, and
+                           the only way out was Escape — which clears the query
+                           and takes the hits with it. Stop keeps them, which is
+                           the whole difference between the two.
+
+                           The bar is the other half: the line below changes its
+                           words only when a batch lands, so between batches a
+                           walk that was still going looked exactly like one
+                           that had finished. Indeterminate because the honest
+                           answer to "how far through" is that nothing knows. -->
+                      <ProgressBar x:Name="SearchProgress" DockPanel.Dock="Top"
+                                   IsVisible="{Binding $parent[Window].((vm:ShellViewModel)DataContext).Sidebar.Search.IsSearching}"
+                                   IsIndeterminate="True" Height="3" Margin="12,0,12,6"/>
+                      <DockPanel DockPanel.Dock="Top" Margin="12,2,12,6">
+                        <Button x:Name="StopSearch" DockPanel.Dock="Right"
+                                IsVisible="{Binding $parent[Window].((vm:ShellViewModel)DataContext).Sidebar.Search.IsSearching}"
+                                Command="{Binding $parent[Window].((vm:ShellViewModel)DataContext).Sidebar.Search.StopCommand}"
+                                Content="Stop" Padding="8,1" MinWidth="0" Margin="8,0,0,0"
+                                CornerRadius="4" Background="Transparent" BorderThickness="0"
+                                FontSize="{DynamicResource FontSizeTiny}"
+                                AutomationProperties.Name="stop searching"
+                                ToolTip.Tip="stop searching and keep what was found"/>
+                        <!-- Last child, so it takes the rest of the row: a long
+                             backend name must not push the button off the edge. -->
+                        <TextBlock Text="{Binding $parent[Window].((vm:ShellViewModel)DataContext).Sidebar.Search.Status}"
+                                   VerticalAlignment="Center" TextWrapping="Wrap"
+                                   FontSize="{DynamicResource FontSizeTiny}"
+                                   Foreground="{DynamicResource ViewDimText}"/>
+                      </DockPanel>
                       <ScrollViewer>
                         <!-- **A ListBox, not a column of Buttons.** Buttons
                              carry no selection, so there was nothing for an

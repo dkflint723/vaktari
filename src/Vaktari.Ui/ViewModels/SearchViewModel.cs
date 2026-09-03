@@ -69,6 +69,50 @@ public sealed partial class SearchViewModel : ObservableObject
         if (entry is { } value) ResultChosen?.Invoke(this, value);
     }
 
+    /// <summary>
+    /// Ends a running search where it stands, keeping the hits it already
+    /// found.
+    ///
+    /// **A search that was going could not be stopped, and never showed that it
+    /// was going.** <see cref="IsSearching"/> was set true past the debounce and
+    /// false at all three exits, and nothing in the window read it — no binding,
+    /// no test, nothing — so the flag was state the panel kept about itself and
+    /// never told anybody.
+    ///
+    /// What that cost: an unindexed walk is seconds for one profile directory
+    /// and unbounded from This PC, where the scope box is forced off and every
+    /// drive is read. The only way out was Escape, which clears the query and so
+    /// takes the results and the text that produced them with it. Stop is the
+    /// other exit — the one that lets you keep a partial answer, which for a
+    /// broad query is usually the answer you wanted.
+    ///
+    /// The count it reports is a floor, not a total: results are flushed to the
+    /// list in batches, so up to a batch of already-found rows are still in
+    /// flight and uncounted. "so far" is what makes that honest.
+    ///
+    /// The generation moves so a batch still on its way to the dispatcher
+    /// cannot land after the line below has been written.
+    /// </summary>
+    [RelayCommand]
+    private void Stop()
+    {
+        // Keyed on the token rather than on IsSearching: the first moments of
+        // every query are the debounce, where there is a real search to call
+        // off and the flag is still false.
+        if (_cts is null) return;
+
+        _cts.Cancel();
+        _cts.Dispose();
+        _cts = null;
+        _generation++;
+
+        IsSearching = false;
+
+        Status = Results.Count == 0
+            ? $"stopped ({BackendName})"
+            : $"stopped — {Results.Count} results so far ({BackendName})";
+    }
+
     partial void OnQueryChanged(string value)
     {
         OnPropertyChanged(nameof(HasQuery));
