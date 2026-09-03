@@ -108,6 +108,17 @@ public sealed class PaneStateTests : OwnedViewModels
 
         pane.TrashSelectedCommand.Execute(null);
 
+        // **Drained before the change is raised.** The operation finishes on
+        // the pool and posts a refresh, and a refresh reloads the listing and
+        // puts the selection back — so whether this test saw the fallback or
+        // the reload depended on which side of the change that post landed.
+        // It failed about one run in three.
+        for (var i = 0; i < 50; i++)
+        {
+            Avalonia.Threading.Dispatcher.UIThread.RunJobs();
+            await Task.Yield();
+        }
+
         fs.Raise(new FileSystemChange(ChangeKind.Removed, last.FullPath!));
         Avalonia.Threading.Dispatcher.UIThread.RunJobs();
 

@@ -1353,6 +1353,37 @@ public sealed partial class ShellViewModel : ObservableObject, IDisposable
     public bool OperationFinished => ActiveOperation is null && OperationStatus.Length > 0;
 
     /// <summary>
+    /// How far along, 0 to 1, for the bar.
+    ///
+    /// **There was no bar.** The line counted items and bytes — "34/1200
+    /// 1.2 GiB/4.9 GiB" — which is the one thing a person can work out by
+    /// looking at it twice, and reading two fractions in a monospace line is
+    /// not how anybody judges "nearly done".
+    /// </summary>
+    [ObservableProperty] private double _operationPercent;
+
+    /// <summary>
+    /// Whether there is a fraction worth drawing.
+    ///
+    /// A trash and a delete report a count and no bytes at all, so their bar
+    /// would sit at zero for the whole run and then vanish — which is what a
+    /// hung operation looks like. Item counts fill it instead, and where there
+    /// is neither the bar stays away rather than lying.
+    /// </summary>
+    [ObservableProperty] private bool _hasOperationProgress;
+
+    /// <summary>
+    /// "4.2 MiB/s · about 2 min left", or as much of it as can be said.
+    ///
+    /// Separate from the status line because it answers a different question:
+    /// that one says what is happening, this one says how long it will go on.
+    /// Empty rather than absent when there is nothing to say — a speed that
+    /// appears and disappears as a copy crosses a slow patch is worse than one
+    /// that is simply not there yet.
+    /// </summary>
+    [ObservableProperty] private string _operationRate = "";
+
+    /// <summary>
     /// The offer to go again on what an operation could not do, or null.
     ///
     /// **Set and cleared in the same place the bar's message is**, which is the
@@ -2282,10 +2313,79 @@ public sealed partial class ShellViewModel : ObservableObject, IDisposable
     /// </summary>
     private readonly List<IOperationHandle> _running = [];
 
+    private Avalonia.Threading.DispatcherTimer? _rateTimer;
+
+    /// <summary>
+    /// Overridable so a test can drive the clock instead of waiting on it. The
+    /// whole point of the rate is that it ages out after a few seconds, and a
+    /// test that has to sit through those seconds is slow and flaky at once.
+    /// </summary>
+    internal Func<TransferRate> NewRate { get; set; } = () => new TransferRate();
+
+    /// <summary>
+    /// Re-reads the rate once a second while something is running.
+    ///
+    /// The rate answers null once its newest reading has aged out, and nothing
+    /// else would ever ask it again: a stalled copy fires no progress at all,
+    /// so without this the last number stays on the bar for as long as the
+    /// operation is stuck.
+    /// </summary>
+    private void StartRateTicking(IOperationHandle handle, Action tick)
+    {
+        _rateTimer?.Stop();
+
+        _rateTimer = new Avalonia.Threading.DispatcherTimer
+        {
+            Interval = TimeSpan.FromSeconds(1),
+        };
+
+        _rateTimer.Tick += (_, _) =>
+        {
+            if (!ReferenceEquals(ActiveOperation, handle)) return;
+
+            tick();
+        };
+
+        _rateTimer.Start();
+    }
+
+    /// <summary>
+    /// Puts one reading on the bar: how far along, and how long it has left.
+    ///
+    /// Bytes where there are bytes, items where there are not — a trash and a
+    /// delete report a count and no bytes at all, and a bar sitting at zero for
+    /// the whole run then vanishing is what a hung operation looks like.
+    /// </summary>
+    internal void ShowProgress(TransferRate rate, OperationProgress p)
+    {
+        var speed = rate.BytesPerSecond;
+
+        HasOperationProgress = p.BytesTotal > 0 || p.ItemsTotal > 1;
+
+        OperationPercent = p.BytesTotal > 0
+            ? Math.Clamp((double)p.BytesDone / p.BytesTotal, 0, 1)
+            : p.ItemsTotal > 0 ? Math.Clamp((double)p.ItemsDone / p.ItemsTotal, 0, 1) : 0;
+
+        var parts = new List<string>(2);
+
+        if (speed is { } bytesPerSecond) parts.Add($"{ByteSize.Format((long)bytesPerSecond)}/s");
+
+        if (TransferRate.Remaining(p.BytesDone, p.BytesTotal, speed) is { } left)
+            parts.Add(TransferRate.Describe(left));
+
+        OperationRate = string.Join(" · ", parts);
+    }
+
     private void OnOperationStarted(object? sender, IOperationHandle handle)
     {
         _running.Add(handle);
         ActiveOperation = handle;
+
+        // One rate per operation, because a rate carried across two of them
+        // measures the gap between them as a slow patch in whichever is
+        // running now.
+        var rate = NewRate();
+        var last = default(OperationProgress);
 
         handle.Progressed += (_, p) =>
             Avalonia.Threading.Dispatcher.UIThread.Post(() =>
@@ -2297,7 +2397,20 @@ public sealed partial class ShellViewModel : ObservableObject, IDisposable
                 OperationStatus = p.ItemsTotal <= 1 && p.BytesTotal == 0
                     ? p.CurrentItem ?? ""
                     : $"{p.ItemsDone}/{p.ItemsTotal}  {ByteSize.Format(p.BytesDone)}/{ByteSize.Format(p.BytesTotal)}  {p.CurrentItem}";
+
+                rate.Observe(p.BytesDone);
+
+                last = p;
+
+                ShowProgress(rate, p);
             });
+
+        // **A stall has to be able to age the speed out**, and nothing else can
+        // do it: the engine reports on every buffer and every item, so a copy
+        // stuck inside one file reports nothing at all — and without a tick the
+        // bar would go on claiming a speed while a drive that has given up
+        // moves nothing.
+        StartRateTicking(handle, () => ShowProgress(rate, last));
 
         _ = handle.Completion.ContinueWith(_ =>
             Avalonia.Threading.Dispatcher.UIThread.Post(() =>
@@ -2335,6 +2448,16 @@ public sealed partial class ShellViewModel : ObservableObject, IDisposable
                 // nothing is.
                 if (ReferenceEquals(ActiveOperation, handle))
                     ActiveOperation = _running.Count > 0 ? _running[^1] : null;
+
+                if (_running.Count == 0)
+                {
+                    HasOperationProgress = false;
+                    OperationRate = "";
+                    OperationPercent = 0;
+
+                    _rateTimer?.Stop();
+                    _rateTimer = null;
+                }
             }), TaskScheduler.Default);
     }
 
@@ -2350,6 +2473,11 @@ public sealed partial class ShellViewModel : ObservableObject, IDisposable
     /// </summary>
     public void Dispose()
     {
+        // The rate tick outlives nothing: it holds this shell and would go on
+        // firing into a window that has closed.
+        _rateTimer?.Stop();
+        _rateTimer = null;
+
         Left?.DisposeAll();
         Right?.DisposeAll();
     }

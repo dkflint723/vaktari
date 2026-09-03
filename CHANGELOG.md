@@ -373,6 +373,19 @@ should not be trusted for compatibility yet.
 
 ### Added
 
+- **A copy says how fast it is going and how much longer it has.** The
+  transfer bar counted items and bytes — *34/1200  1.2 GiB/4.9 GiB* — which is
+  the one thing you can work out for yourself by looking at it twice. What it
+  never answered is whether this is a two-minute job or an hour, which is the
+  question behind *wait for it, or go and do something else*. There is now a
+  bar, a speed and an estimate: *10 MiB/s · about 4 min left*. The speed is
+  measured over the last few seconds rather than averaged across the whole
+  run, so a copy that crosses from an SSD onto a memory stick stops promising
+  a speed it will never see again — and a transfer that stalls stops claiming
+  a speed at all, rather than sitting there looking busy. A delete fills its
+  bar from the count of files, since it has no bytes to measure, and promises
+  no time it cannot know.
+
 - **Undo and Redo are in the menu, and they say what they will do.** Ctrl+Z
   was the only route to either, so the whole feature was invisible to anyone
   who had not read the shortcuts sheet — and pressing it told you nothing

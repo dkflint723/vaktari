@@ -2804,6 +2804,25 @@
                 FontSize="{DynamicResource FontSizeSmall}" Padding="8,2"
                 IsVisible="{Binding ActiveOperation, Converter={x:Static ObjectConverters.IsNotNull}}"
                 Command="{Binding PauseOperationCommand}"/>
+        <!-- **How long it will take, which the bar never said.** It counted
+             items and bytes — "34/1200  1.2 GiB/4.9 GiB" — and that is the one
+             thing a person can work out by looking at it twice. Whether this is
+             a two-minute job or an hour is the question behind "wait for it, or
+             go and do something else", and both references answer it.
+
+             Docked with the buttons rather than appended to the line: the line
+             ends in a filename that can be 255 characters, and anything after
+             it would be the first thing to ellipsize away. -->
+        <TextBlock DockPanel.Dock="Right" Text="{Binding OperationRate}" Margin="8,0,0,0"
+                   FontSize="{DynamicResource FontSizeSmall}" VerticalAlignment="Center"
+                   Foreground="{DynamicResource ViewDimText}"/>
+        <!-- No Foreground or Background: the other three bars in the
+             application set neither and take the theme's, and a text scan in
+             the accent tests refuses that Foreground on any control. -->
+        <ProgressBar DockPanel.Dock="Right" Width="90" Height="3" Margin="8,0,0,0"
+                     VerticalAlignment="Center"
+                     Value="{Binding OperationPercent}" Maximum="1"
+                     IsVisible="{Binding HasOperationProgress}"/>
         <!-- Last, so it is the fill child and takes only what is left. Trimmed
              rather than wrapped: wrapping made the bar grow downwards over the
              listing while still not fitting. -->
