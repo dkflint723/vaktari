@@ -1158,7 +1158,8 @@ public sealed partial class ShellViewModel : ObservableObject, IDisposable
     /// longer occupies.
     /// </summary>
     public bool ShowOpenInNewTabInMenu =>
-        Menu.ShowOpenInNewTab && ActiveTab is { HasDirectorySelected: true, IsTrashListing: false };
+        Menu.ShowOpenInNewTab
+        && ActiveTab is { HasAnyDirectorySelected: true, IsTrashListing: false };
     /// <summary>
     /// The files waiting to be moved by a paste, which every row binds to so a
     /// cut one can be greyed the way Explorer greys it.
@@ -1731,10 +1732,42 @@ public sealed partial class ShellViewModel : ObservableObject, IDisposable
         // RelayCommand<FileEntry> could not accept that and threw
         // ArgumentException from the menu rather than doing nothing; taking
         // FileEntry? is what lets the command be handed the empty case at all.
+        //
+        // **Five folders selected opened one tab.** The parameter is a single
+        // row — ActiveTab.SelectedEntry — so the entry that says "Open in new
+        // tab" quietly dropped every folder but that one, with nothing said
+        // about the rest. The same shape as Enter opening one of five files,
+        // and EntriesToActOn is the answer already written for it: the whole
+        // selection when there is one, the focused row when there is not.
+        IReadOnlyList<FileEntry> chosen = ActiveTab?.EntriesToActOn() ?? [];
+
+        // The parameter is the fallback, not the source. It is all a caller
+        // outside the listing hands over, and when it IS the focused row of a
+        // real selection the list above already holds it.
+        if (chosen.Count == 0 && entry is { } handed) chosen = [handed];
+
+        // Folders only, as this verb has always been — the mirror of
+        // OpenSelectedAsync, which launches the files and leaves the folders
+        // alone because there is no navigating into five at once.
+        var folders = chosen.Where(e => e.IsDirectory).ToList();
+
+        if (folders.Count == 0) return;
+
+        // The same bound Enter obeys, for the same reason it exists there:
+        // Ctrl+A in a folder of four hundred subfolders is four hundred tabs,
+        // and it says so rather than doing nothing.
+        if (folders.Count > PaneViewModel.OpenLimit)
+        {
+            if (ActiveTab is { } pane)
+                pane.Status = $"that would open {folders.Count} tabs at once — select fewer";
+
+            return;
+        }
+
         // In the BACKGROUND, which is what the phrase means: you ask for a new
         // tab rather than opening the folder precisely so you can carry on
         // where you are. It used to jump to the new one.
-        if (entry is { IsDirectory: true } folder)
+        foreach (var folder in folders)
             ActiveGroup.AddTab(folder.FullPath, like: ActiveTab, activate: false);
     }
 

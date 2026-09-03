@@ -692,6 +692,7 @@ public sealed partial class PaneViewModel : ObservableObject, IDisposable
         OnPropertyChanged(nameof(CanActOnSelection));
         OnPropertyChanged(nameof(CanRenameInBulk));
         OnPropertyChanged(nameof(HasDirectorySelected));
+        OnPropertyChanged(nameof(HasAnyDirectorySelected));
         OnPropertyChanged(nameof(CanRunSelectionAsAdministrator));
         OnPropertyChanged(nameof(CanMountSelection));
         OnPropertyChanged(nameof(CanUnmountSelection));
@@ -745,6 +746,18 @@ public sealed partial class PaneViewModel : ObservableObject, IDisposable
     /// a selection was not acting on it.
     /// </summary>
     public bool HasDirectorySelected => SelectedEntry is { IsDirectory: true };
+
+    /// <summary>
+    /// Whether a folder is anywhere in the selection, not just under the focus.
+    ///
+    /// **The row hid whenever the FOCUSED row was not one.** Click a file, then
+    /// ctrl-click two folders, and "Open in new tab" — which now opens both —
+    /// was not there to be clicked, because the focus was still on the file.
+    /// HasDirectorySelected asks about one row and is right for the entries
+    /// that act on one; this asks the question the verb actually answers.
+    /// </summary>
+    public bool HasAnyDirectorySelected
+        => HasDirectorySelected || SelectedEntries.Any(e => e.IsDirectory);
 
     /// <summary>
     /// Carries the selection to the layout being switched to, so changing view
@@ -1853,6 +1866,7 @@ public sealed partial class PaneViewModel : ObservableObject, IDisposable
         OnPropertyChanged(nameof(CanActOnSelection));
         OnPropertyChanged(nameof(CanRenameInBulk));
         OnPropertyChanged(nameof(HasDirectorySelected));
+        OnPropertyChanged(nameof(HasAnyDirectorySelected));
         OnPropertyChanged(nameof(CanRunSelectionAsAdministrator));
         OnPropertyChanged(nameof(CanMountSelection));
         OnPropertyChanged(nameof(CanUnmountSelection));
