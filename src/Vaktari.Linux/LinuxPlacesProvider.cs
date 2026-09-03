@@ -249,8 +249,12 @@ public sealed class LinuxPlacesProvider : IPlacesProvider, IDisposable
             foreach (var link in Directory.EnumerateFileSystemEntries("/dev/disk/by-label"))
             {
                 var target = new FileInfo(link).ResolveLinkTarget(returnFinalTarget: true);
+                // **The link's NAME is escaped, and it was printed raw.** A
+                // stick called "MY STICK" reached the sidebar as "MY STICK",
+                // because a directory entry cannot hold every byte a label can
+                // and udev writes the rest as hex.
                 if (target is not null)
-                    map[target.FullName] = Path.GetFileName(link);
+                    map[target.FullName] = UdevNames.Decode(Path.GetFileName(link));
             }
         }
         catch { /* no by-label directory — fall back to mount point names */ }
