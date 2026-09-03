@@ -65,8 +65,145 @@ public static class FileKind
         // grow with the listing rather than with the kinds in it.
         if (extension.Length > 12) return "File";
 
-        return Phrases.GetOrAdd(extension.ToString(), ext => ext.ToUpperInvariant() + " file");
+        return Phrases.GetOrAdd(
+            extension.ToString(),
+            ext => Named.TryGetValue(ext, out var phrase) ? phrase : ext.ToUpperInvariant() + " file");
     }
+
+    /// <summary>
+    /// The kinds worth naming, and the reason this is a table rather than a
+    /// lookup.
+    ///
+    /// **Every file read "&lt;EXT&gt; file".** Explorer says "Application" and
+    /// "Text Document"; this said "EXE file" and "TXT file" — the extension the
+    /// column sits beside, spelled louder. A Type column whose every value can
+    /// be read off the Name column is a column of nothing, and it sorted that
+    /// way too: .exe filed under E, between .dll and .gif, rather than with the
+    /// programs.
+    ///
+    /// A table rather than the platform's own answer, for the reason the class
+    /// comment gives at length: both platforms answer per file and
+    /// asynchronously, and a listing of two hundred thousand rows cannot make
+    /// two hundred thousand round trips to fill a column that scrolls past in a
+    /// second. This is the same trade the fallback already made, made better.
+    ///
+    /// Short of a hundred entries on purpose. The tail of any such list is
+    /// guesswork about which of two names a person would rather read, and an
+    /// unfamiliar extension falling through to "XYZ file" says exactly as much
+    /// as it did before.
+    /// </summary>
+    private static readonly Dictionary<string, string> Named = new(StringComparer.OrdinalIgnoreCase)
+    {
+        // Programs and the things that behave like them.
+        ["exe"] = "Application",
+        ["msi"] = "Installer",
+        ["appimage"] = "Application",
+        ["deb"] = "Package",
+        ["rpm"] = "Package",
+        ["flatpak"] = "Package",
+        ["dll"] = "Library",
+        ["so"] = "Library",
+        ["dylib"] = "Library",
+        ["bat"] = "Batch file",
+        ["cmd"] = "Batch file",
+        ["ps1"] = "PowerShell script",
+        ["sh"] = "Shell script",
+        ["desktop"] = "Launcher",
+
+        // Text and documents.
+        ["txt"] = "Text document",
+        ["md"] = "Markdown document",
+        ["rtf"] = "Rich text document",
+        ["pdf"] = "PDF document",
+        ["doc"] = "Word document",
+        ["docx"] = "Word document",
+        ["odt"] = "OpenDocument text",
+        ["xls"] = "Excel workbook",
+        ["xlsx"] = "Excel workbook",
+        ["ods"] = "OpenDocument spreadsheet",
+        ["ppt"] = "PowerPoint presentation",
+        ["pptx"] = "PowerPoint presentation",
+        ["odp"] = "OpenDocument presentation",
+        ["csv"] = "Comma-separated values",
+        ["epub"] = "E-book",
+
+        // Pictures.
+        ["png"] = "PNG image",
+        ["jpg"] = "JPEG image",
+        ["jpeg"] = "JPEG image",
+        ["gif"] = "GIF image",
+        ["bmp"] = "Bitmap image",
+        ["webp"] = "WebP image",
+        ["tif"] = "TIFF image",
+        ["tiff"] = "TIFF image",
+        ["heic"] = "HEIF image",
+        ["svg"] = "Vector image",
+        ["ico"] = "Icon",
+        ["psd"] = "Photoshop image",
+        ["raw"] = "Camera raw image",
+        ["cr2"] = "Camera raw image",
+        ["nef"] = "Camera raw image",
+
+        // Sound and moving pictures.
+        ["mp3"] = "MP3 audio",
+        ["flac"] = "FLAC audio",
+        ["wav"] = "WAV audio",
+        ["ogg"] = "Ogg audio",
+        ["opus"] = "Opus audio",
+        ["m4a"] = "AAC audio",
+        ["aac"] = "AAC audio",
+        ["mp4"] = "MP4 video",
+        ["mkv"] = "Matroska video",
+        ["mov"] = "QuickTime video",
+        ["avi"] = "AVI video",
+        ["webm"] = "WebM video",
+        ["wmv"] = "Windows Media video",
+
+        // Archives.
+        ["zip"] = "Zip archive",
+        ["7z"] = "7-Zip archive",
+        ["rar"] = "RAR archive",
+        ["tar"] = "Tar archive",
+        ["gz"] = "Gzip archive",
+        ["bz2"] = "Bzip2 archive",
+        ["xz"] = "XZ archive",
+        ["zst"] = "Zstandard archive",
+        ["iso"] = "Disc image",
+        ["img"] = "Disc image",
+        ["vhd"] = "Virtual disk",
+        ["vhdx"] = "Virtual disk",
+
+        // The ones a person editing this repository sees all day.
+        ["json"] = "JSON file",
+        ["xml"] = "XML file",
+        ["yml"] = "YAML file",
+        ["yaml"] = "YAML file",
+        ["toml"] = "TOML file",
+        ["ini"] = "Configuration file",
+        ["conf"] = "Configuration file",
+        ["log"] = "Log file",
+        ["html"] = "HTML document",
+        ["htm"] = "HTML document",
+        ["css"] = "Stylesheet",
+        ["js"] = "JavaScript file",
+        ["ts"] = "TypeScript file",
+        ["cs"] = "C# source file",
+        ["py"] = "Python source file",
+        ["rs"] = "Rust source file",
+        ["go"] = "Go source file",
+        ["c"] = "C source file",
+        ["h"] = "C header file",
+        ["cpp"] = "C++ source file",
+        ["java"] = "Java source file",
+        ["sql"] = "SQL script",
+        ["db"] = "Database file",
+        ["sqlite"] = "Database file",
+        ["ttf"] = "Font",
+        ["otf"] = "Font",
+        ["woff"] = "Font",
+        ["woff2"] = "Font",
+        ["torrent"] = "Torrent file",
+    };
 
     /// <summary>
     /// The Windows shortcut extension, in the shape

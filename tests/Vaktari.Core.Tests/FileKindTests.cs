@@ -22,18 +22,38 @@ public sealed class FileKindTests
     public void A_folder_says_so()
         => Assert.Equal("Folder", FileKind.Describe(File("Documents", directory: true)));
 
+    /// <summary>
+    /// **Every file used to read "&lt;EXT&gt; file".** Explorer says
+    /// "Application" and "Text Document"; this said "EXE file" and "TXT file" —
+    /// the extension the column sits beside, spelled louder. A Type column
+    /// whose every value can be read off the Name column is a column of
+    /// nothing.
+    /// </summary>
     [Theory]
-    [InlineData("photo.png", "PNG file")]
-    [InlineData("notes.txt", "TXT file")]
-    [InlineData("report.DOCX", "DOCX file")]
-    public void A_file_is_named_by_its_extension(string name, string expected)
+    [InlineData("photo.png", "PNG image")]
+    [InlineData("notes.txt", "Text document")]
+    [InlineData("report.DOCX", "Word document")]
+    [InlineData("setup.exe", "Application")]
+    public void A_file_is_named_by_what_it_is(string name, string expected)
+        => Assert.Equal(expected, FileKind.Describe(File(name)));
+
+    /// <summary>
+    /// And one nobody has named falls through to the extension, which says
+    /// exactly as much as it did before — the list stops well short of
+    /// guessing at every suffix in the world.
+    /// </summary>
+    [Theory]
+    [InlineData("data.xyz", "XYZ file")]
+    [InlineData("thing.qqq", "QQQ file")]
+    public void An_unfamiliar_one_still_falls_back_to_its_extension(
+        string name, string expected)
         => Assert.Equal(expected, FileKind.Describe(File(name)));
 
     /// <summary>The last dot decides, the same as everywhere else in this
-    /// codebase — archive.tar.gz is a GZ file.</summary>
+    /// codebase — archive.tar.gz is a gzip archive, not a tar one.</summary>
     [Fact]
     public void The_last_dot_decides()
-        => Assert.Equal("GZ file", FileKind.Describe(File("archive.tar.gz")));
+        => Assert.Equal("Gzip archive", FileKind.Describe(File("archive.tar.gz")));
 
     [Theory]
     [InlineData("README")]
@@ -60,6 +80,23 @@ public sealed class FileKindTests
         => Assert.Equal("File", FileKind.Describe(File("x." + new string('z', 40))));
 
     /// <summary>
+    /// **A named kind sorts and groups with its own sort.** The Type column,
+    /// the Kind sort and the Kind grouping all key on this one phrase, so
+    /// naming a kind moves it: .exe files file under Application rather than
+    /// under E, between .dll and .gif. That is the point of the column, and it
+    /// is why the table is here rather than in the view.
+    /// </summary>
+    [Fact]
+    public void Files_of_one_kind_answer_with_one_phrase_whatever_their_extension()
+    {
+        var jpg = FileKind.Describe(File("a.jpg"));
+        var jpeg = FileKind.Describe(File("b.jpeg"));
+
+        Assert.Equal("JPEG image", jpg);
+        Assert.Equal(jpg, jpeg);
+    }
+
+    /// <summary>
     /// One string shared by every row of a kind. A listing is mostly a handful
     /// of extensions repeated, so the alternative is an allocation per row —
     /// while scrolling, which is the one place that matters.
@@ -70,7 +107,7 @@ public sealed class FileKindTests
         var first = FileKind.Describe(File("a.png"));
         var second = FileKind.Describe(File("b.PNG"));
 
-        Assert.Equal("PNG file", second);
+        Assert.Equal("PNG image", second);
         Assert.Same(first, second);
     }
 
@@ -183,6 +220,6 @@ public sealed class FileKindTests
             "photo.png", Path.Combine(Path.GetTempPath(), "photo.png"), 1,
             DateTimeOffset.UnixEpoch, EntryFlags.Symlink);
 
-        Assert.Equal("PNG file", FileKind.Describe(link));
+        Assert.Equal("PNG image", FileKind.Describe(link));
     }
 }

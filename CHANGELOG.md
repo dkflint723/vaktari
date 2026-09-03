@@ -210,6 +210,14 @@ should not be trusted for compatibility yet.
 
 ### Changed
 
+- **The Type column says what a file is**, rather than its extension in
+  capitals. Every row read "&lt;EXT&gt; file" — the extension the column sits
+  beside, spelled louder — so a column whose every value could be read off the
+  Name column beside it. Programs say Application, a .txt is a Text document, a
+  .png a PNG image. Sorting and grouping by kind follow, so programs file
+  together instead of under E. An extension nobody has named still falls back
+  to what it said before.
+
 - **The status bar says how many folders and how many files**, rather than a
   single count of "items" — a folder of 200 is a different place depending on
   whether it holds two subfolders or two hundred. A selection that holds both
