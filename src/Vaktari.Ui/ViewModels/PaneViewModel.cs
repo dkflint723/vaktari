@@ -1093,6 +1093,20 @@ public sealed partial class PaneViewModel : ObservableObject, IDisposable
     public bool IsTrashListing => CurrentPath == VirtualPaths.Trash;
 
     /// <summary>
+    /// Whether this pane is looking at a real folder rather than one of the
+    /// virtual listings.
+    ///
+    /// **Everything that needed a path on disk asked CurrentPath and was handed
+    /// "vaktari:trash".** The listings that are views rather than folders — the
+    /// bin, Recent, This PC — already gate the things that act on a SELECTION,
+    /// but the things that act on the FOLDER ITSELF had no gate at all: Ctrl+D
+    /// pinned a place whose path was the literal scheme, F4 opened a terminal
+    /// in it, and Ctrl+L put it in the address bar to be read back as a path.
+    /// Each of those is the same mistake, so they share one answer.
+    /// </summary>
+    public bool IsRealFolder => !VirtualPaths.IsVirtual(CurrentPath);
+
+    /// <summary>
     /// The parent folder of each row, shown ONLY in a recent listing — and not
     /// optional there: those entries span the whole filesystem, so a bare
     /// filename says nothing about which of four `config.toml` files you are
@@ -1948,10 +1962,24 @@ public sealed partial class PaneViewModel : ObservableObject, IDisposable
     /// </summary>
     public bool HasSeveralTerminals => Terminals.Count > 1;
 
+    /// <summary>
+    /// The two shapes of the terminal entry, each carrying the folder gate as
+    /// well as the count. Combined here rather than in the markup because a
+    /// menu row hides when it would do nothing -- the convention CanActOnSelection
+    /// sets -- and hiding on two conditions at once is a view-model question.
+    /// </summary>
+    public bool ShowOneTerminal => IsRealFolder && !HasSeveralTerminals;
+
+    public bool ShowTerminalChoice => IsRealFolder && HasSeveralTerminals;
+
     /// <summary>F4 and the plain entry: the chosen terminal.</summary>
     [RelayCommand]
     public void OpenTerminalHere()
     {
+        // A terminal cannot be opened in a listing that is not a folder, and
+        // "cd vaktari:trash" is what it was being asked to do.
+        if (!IsRealFolder) return;
+
         if (Terminals.FirstOrDefault() is { } preferred)
         {
             _launcher?.OpenTerminal(CurrentPath, preferred);
@@ -1967,7 +1995,7 @@ public sealed partial class PaneViewModel : ObservableObject, IDisposable
     [RelayCommand]
     public void OpenTerminalIn(Vaktari.Core.FileSystem.TerminalOption? terminal)
     {
-        if (terminal is null) return;
+        if (terminal is null || !IsRealFolder) return;
 
         _launcher?.OpenTerminal(CurrentPath, terminal);
     }
@@ -2057,10 +2085,13 @@ public sealed partial class PaneViewModel : ObservableObject, IDisposable
             RebuildBreadcrumbs();
             OnPropertyChanged(nameof(IsRecentListing));
             OnPropertyChanged(nameof(IsTrashListing));
+            OnPropertyChanged(nameof(IsRealFolder));
             OnPropertyChanged(nameof(DisplayPath));
             OnPropertyChanged(nameof(EmptyText));
             OnPropertyChanged(nameof(Terminals));
             OnPropertyChanged(nameof(HasSeveralTerminals));
+            OnPropertyChanged(nameof(ShowOneTerminal));
+            OnPropertyChanged(nameof(ShowTerminalChoice));
             OnPropertyChanged(nameof(CanActOnSelection));
             OnPropertyChanged(nameof(ShowParentPath));
             OnPropertyChanged(nameof(ShowMetadata));

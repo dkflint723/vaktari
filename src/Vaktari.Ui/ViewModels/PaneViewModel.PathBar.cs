@@ -60,7 +60,12 @@ public sealed partial class PaneViewModel
 
         _completer.Reset();
 
-        PathText = CurrentPath;
+        // **A virtual listing put its own scheme in the box.** Ctrl+L in This
+        // PC filled the address bar with "vaktari:computer" — an internal name,
+        // in the one place whose whole contract is that what it holds is a path
+        // you can read, edit and press Enter on. Empty is the honest answer:
+        // there is no path here, and typing one is what the keystroke is for.
+        PathText = IsRealFolder ? CurrentPath : "";
         IsPathEditing = true;
     }
 

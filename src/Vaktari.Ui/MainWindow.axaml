@@ -1523,10 +1523,10 @@
               <MenuItem Header="Open terminal here"
                                       Command="{Binding ActiveTab.OpenTerminalHereCommand}"
                                       InputGesture="F4"
-                                      IsVisible="{Binding !ActiveTab.HasSeveralTerminals}"/>
+                                      IsVisible="{Binding ActiveTab.ShowOneTerminal}"/>
               <MenuItem x:Name="TerminalMenu" Header="Open terminal here"
                                       ItemsSource="{Binding ActiveTab.Terminals}"
-                                      IsVisible="{Binding ActiveTab.HasSeveralTerminals}">
+                                      IsVisible="{Binding ActiveTab.ShowTerminalChoice}">
                               <MenuItem.ItemTemplate>
                                 <DataTemplate x:DataType="fs:TerminalOption">
                                   <TextBlock Text="{Binding Name}"/>

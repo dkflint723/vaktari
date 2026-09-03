@@ -1192,7 +1192,9 @@ public sealed partial class ShellViewModel : ObservableObject, IDisposable
     /// reader had to work out.
     /// </summary>
     public bool ShowAddCurrentToPlaces
-        => Menu.ShowAddToPlaces && ActiveTab?.HasDirectorySelected != true;
+        => Menu.ShowAddToPlaces
+           && ActiveTab?.HasDirectorySelected != true
+           && ActiveTab?.IsRealFolder == true;
     public bool ShowCopyLocationInMenu => Menu.ShowCopyLocation;
 
     /// <summary>
@@ -1901,10 +1903,18 @@ public sealed partial class ShellViewModel : ObservableObject, IDisposable
         if (!string.IsNullOrEmpty(path)) _ = ActiveTab?.NavigateAsync(path);
     }
 
+    /// <summary>
+    /// **Ctrl+D in the bin pinned "vaktari:trash".** The gesture asks for the
+    /// folder you are in, and in a listing that is a view rather than a folder
+    /// there is none — so the place that landed in the sidebar was the internal
+    /// scheme, a row that could never be opened and had to be removed by hand.
+    /// The menu row hides for the same reason.
+    /// </summary>
     [RelayCommand]
     private void PinCurrent()
     {
-        if (ActiveTab?.CurrentPath is { Length: > 0 } path) _ = Sidebar.PinAsync(path);
+        if (ActiveTab is { IsRealFolder: true, CurrentPath: { Length: > 0 } path })
+            _ = Sidebar.PinAsync(path);
     }
 
     /// <summary>
