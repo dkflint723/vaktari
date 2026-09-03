@@ -121,25 +121,24 @@ public sealed class SidebarKeysTests : OwnedViewModels
     }
 
     /// <summary>
-    /// **End must not hand the keyboard to a scroll arrow.** The panel's
-    /// content sits in a ScrollViewer, and a scrollbar's PART_LineUpButton is a
-    /// RepeatButton, which derives from Button — and the scrollbar sits after
-    /// the rows in the visual tree, so an unfiltered walk would make an arrow
-    /// the LAST stop.
+    /// **End must not hand the keyboard to a scrollbar's arrow.** The panel's
+    /// content sits in a ScrollViewer, a scrollbar's PART_LineUpButton is a
+    /// RepeatButton, which derives from Button, and the scrollbar sits after
+    /// the rows — so an unfiltered walk would make an arrow the LAST stop.
     ///
-    /// The arrows are staged focusable first, deliberately. Fluent marks them
-    /// unfocusable, so with this theme the focusable filter already keeps them
-    /// out, and a test that did not stage the state would agree with the code
-    /// for a reason the code does not state — and go on agreeing after the rule
-    /// was deleted. Whether a theme's scroll arrows take focus is a template
-    /// detail; this walk must not depend on one.
+    /// The RepeatButton is put there by the test rather than hunted for in the
+    /// theme. Fluent marks its own arrows unfocusable and only realizes them on
+    /// some layouts — the first version of this looked for them, passed here on
+    /// a machine whose sidebar overflowed, and found none at all on the build
+    /// agent. Whether a theme's arrows are focusable, or realized, is a
+    /// template detail; the rule must not depend on one, and neither may the
+    /// test that pins it.
     ///
-    /// Driven through the real keystroke rather than a copy of the filter: a
-    /// test that reimplements the rule it is checking cannot see the rule
-    /// change.
+    /// Driven through the real keystroke: a test that reimplements the rule it
+    /// is checking cannot see the rule change.
     /// </summary>
     [AvaloniaFact]
-    public void End_does_not_land_on_a_scroll_arrow_even_when_one_can_be_focused()
+    public void End_does_not_land_on_a_repeat_button()
     {
         var window = Shown();
 
@@ -147,16 +146,17 @@ public sealed class SidebarKeysTests : OwnedViewModels
         {
             var panel = window.FindControl<Border>("SidebarPanel")!;
 
-            var arrows = panel.GetVisualDescendants().OfType<RepeatButton>().ToList();
+            // The outer stack the sections live in, so the staged control is
+            // the LAST button in the panel — which is where End goes.
+            var sections = panel.GetVisualDescendants().OfType<StackPanel>().First();
 
-            Assert.NotEmpty(arrows);
+            var arrow = new RepeatButton { Content = "arrow", Focusable = true };
 
-            foreach (var arrow in arrows) arrow.Focusable = true;
-
+            sections.Children.Add(arrow);
             Settle();
 
-            Assert.Contains(arrows,
-                            a => a.Focusable && a.IsEffectivelyVisible && a.IsEffectivelyEnabled);
+            Assert.True(arrow.IsEffectivelyVisible && arrow.IsEffectivelyEnabled,
+                        "the staged control is not eligible, so nothing is being tested");
 
             InTheSidebar(window);
 
@@ -165,8 +165,12 @@ public sealed class SidebarKeysTests : OwnedViewModels
 
             var landed = window.FocusManager?.GetFocusedElement();
 
+            Assert.NotSame(arrow, landed);
             Assert.IsNotType<RepeatButton>(landed);
-            Assert.Null((landed as Visual)?.FindAncestorOfType<ScrollBar>());
+
+            // And nothing the walk stops on belongs to a scrollbar, whichever
+            // parts this theme happened to realize.
+            Assert.All(Stops(window), stop => Assert.Null(stop.FindAncestorOfType<ScrollBar>()));
         }
         finally
         {
