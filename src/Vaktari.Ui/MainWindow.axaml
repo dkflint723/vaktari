@@ -1046,7 +1046,7 @@
                        Text="{Binding ActiveTab.FilterText}"
                        local:FocusBehavior.FocusOnVisible="True"
                        PlaceholderText="filter — esc to clear"
-                       FontFamily="monospace" FontSize="{DynamicResource FontSizeSmall}">
+                       FontFamily="{DynamicResource AppMonoFamily}" FontSize="{DynamicResource FontSizeSmall}">
                 <TextBox.KeyBindings>
                   <KeyBinding Gesture="Escape" Command="{Binding ActiveTab.ClearFilterCommand}"/>
                 </TextBox.KeyBindings>
@@ -1138,7 +1138,7 @@
                        ToolTip.Tip="tab completes · enter goes · esc or click away cancels&#10;%ProgramFiles%, %SystemDrive% and ~ are understood"
                        local:FocusBehavior.LostFocusCommand="{Binding ActiveTab.RevertPathTextCommand}"
                        local:FocusBehavior.FocusOnVisible="True"
-                       FontFamily="monospace" FontSize="{DynamicResource FontSizeSmall}">
+                       FontFamily="{DynamicResource AppMonoFamily}" FontSize="{DynamicResource FontSizeSmall}">
                 <TextBox.KeyBindings>
                   <KeyBinding Gesture="Enter"
                               Command="{Binding ActiveTab.NavigateToPathTextCommand}"/>
@@ -2417,7 +2417,7 @@
                     <TextBlock Text="{Binding PreviewTitle}" FontSize="{DynamicResource FontSizeLarge}"
                                TextTrimming="CharacterEllipsis"/>
                     <TextBlock Text="{Binding PreviewDetail}" FontSize="{DynamicResource FontSizeTiny}"
-                               Foreground="{DynamicResource ViewDimText}" FontFamily="monospace"/>
+                               Foreground="{DynamicResource ViewDimText}" FontFamily="{DynamicResource AppMonoFamily}"/>
                   </StackPanel>
 
                   <Image Source="{Binding PreviewImage}"
@@ -2426,7 +2426,7 @@
 
                   <ScrollViewer IsVisible="{Binding HasPreviewText}">
                     <TextBlock Text="{Binding PreviewText}" FontSize="{DynamicResource FontSizeSmall}"
-                               FontFamily="monospace" TextWrapping="NoWrap"
+                               FontFamily="{DynamicResource AppMonoFamily}" TextWrapping="NoWrap"
                                Opacity="0.75"/>
                   </ScrollViewer>
                 </DockPanel>
@@ -2605,7 +2605,7 @@
         <!-- Last, so it is the fill child and takes only what is left. Trimmed
              rather than wrapped: wrapping made the bar grow downwards over the
              listing while still not fitting. -->
-        <TextBlock Text="{Binding OperationStatus}" FontFamily="monospace"
+        <TextBlock Text="{Binding OperationStatus}" FontFamily="{DynamicResource AppMonoFamily}"
                    FontSize="{DynamicResource FontSizeSmall}" VerticalAlignment="Center"
                    TextTrimming="CharacterEllipsis"
                    ToolTip.Tip="{Binding OperationStatus}" ToolTip.ShowDelay="1200"/>
@@ -2618,7 +2618,7 @@
             Background="{DynamicResource AppBackground}" IsVisible="False">
       <StackPanel Orientation="Horizontal" Spacing="8">
         <TextBlock x:Name="PromptLabel" FontSize="{DynamicResource FontSizeBase}" VerticalAlignment="Center"/>
-        <TextBox x:Name="PromptInput" Width="320" FontFamily="monospace"
+        <TextBox x:Name="PromptInput" Width="320" FontFamily="{DynamicResource AppMonoFamily}"
                  FontSize="{DynamicResource FontSizeBase}" IsVisible="False"/>
         <!-- Real buttons, not just a keystroke. A destructive confirmation
              needs a clickable affordance, and a focused Button answers Enter

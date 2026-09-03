@@ -21,7 +21,7 @@
       <TextBlock Text="{Binding Title}" FontSize="{DynamicResource FontSizeLarge}"
                  TextTrimming="CharacterEllipsis"/>
       <TextBlock Text="{Binding Location}" FontSize="{DynamicResource FontSizeSmall}"
-                 FontFamily="monospace" Opacity="0.45"
+                 FontFamily="{DynamicResource AppMonoFamily}" Opacity="0.45"
                  TextTrimming="CharacterEllipsis"/>
       <TextBlock Text="{Binding Kind}" FontSize="{DynamicResource FontSizeSmall}"
                  Opacity="0.55"/>
@@ -38,7 +38,7 @@
                 Command="{Binding MeasureCommand}"/>
         <StackPanel Spacing="2">
           <TextBlock Text="size" FontSize="{DynamicResource FontSizeSmall}" Opacity="0.45"/>
-          <TextBlock Text="{Binding SizeText}" FontFamily="monospace"
+          <TextBlock Text="{Binding SizeText}" FontFamily="{DynamicResource AppMonoFamily}"
                      FontSize="{DynamicResource FontSizeSmall}" TextWrapping="Wrap"/>
         </StackPanel>
       </DockPanel>
@@ -50,7 +50,7 @@
       <StackPanel Spacing="8">
         <DockPanel>
           <TextBlock DockPanel.Dock="Right" Text="{Binding AccessSummary}"
-                     FontFamily="monospace" Opacity="0.5"
+                     FontFamily="{DynamicResource AppMonoFamily}" Opacity="0.5"
                      FontSize="{DynamicResource FontSizeSmall}"/>
           <TextBlock Text="permissions" FontSize="{DynamicResource FontSizeSmall}" Opacity="0.45"/>
         </DockPanel>
@@ -86,7 +86,7 @@
                     VerticalAlignment="Center"/>
         </DockPanel>
 
-        <TextBlock Text="{Binding AccessStatus}" FontFamily="monospace"
+        <TextBlock Text="{Binding AccessStatus}" FontFamily="{DynamicResource AppMonoFamily}"
                    FontSize="{DynamicResource FontSizeSmall}" Opacity="0.45"/>
       </StackPanel>
     </Border>
@@ -107,7 +107,7 @@
                      FontSize="{DynamicResource FontSizeSmall}" Opacity="0.55"/>
         </DockPanel>
 
-        <TextBlock Text="{Binding HashStatus}" FontFamily="monospace"
+        <TextBlock Text="{Binding HashStatus}" FontFamily="{DynamicResource AppMonoFamily}"
                    FontSize="{DynamicResource FontSizeSmall}" Opacity="0.45"
                    IsVisible="{Binding HasHashStatus}"/>
 
@@ -119,21 +119,21 @@
                        FontSize="{DynamicResource FontSizeSmall}" Opacity="0.55"/>
             <SelectableTextBlock Grid.Column="1" Text="{Binding Md5}"
                                  FontSize="{DynamicResource FontSizeSmall}"
-                                 FontFamily="monospace" TextWrapping="Wrap"/>
+                                 FontFamily="{DynamicResource AppMonoFamily}" TextWrapping="Wrap"/>
           </Grid>
           <Grid ColumnDefinitions="80,*">
             <TextBlock Grid.Column="0" Text="SHA-1"
                        FontSize="{DynamicResource FontSizeSmall}" Opacity="0.55"/>
             <SelectableTextBlock Grid.Column="1" Text="{Binding Sha1}"
                                  FontSize="{DynamicResource FontSizeSmall}"
-                                 FontFamily="monospace" TextWrapping="Wrap"/>
+                                 FontFamily="{DynamicResource AppMonoFamily}" TextWrapping="Wrap"/>
           </Grid>
           <Grid ColumnDefinitions="80,*">
             <TextBlock Grid.Column="0" Text="SHA-256"
                        FontSize="{DynamicResource FontSizeSmall}" Opacity="0.55"/>
             <SelectableTextBlock Grid.Column="1" Text="{Binding Sha256}"
                                  FontSize="{DynamicResource FontSizeSmall}"
-                                 FontFamily="monospace" TextWrapping="Wrap"/>
+                                 FontFamily="{DynamicResource AppMonoFamily}" TextWrapping="Wrap"/>
           </Grid>
         </StackPanel>
 
@@ -155,7 +155,7 @@
                                  FontSize="{DynamicResource FontSizeSmall}" Opacity="0.55"/>
                       <TextBlock Grid.Column="1" Text="{Binding Value}"
                                  FontSize="{DynamicResource FontSizeSmall}"
-                                 FontFamily="monospace" TextWrapping="Wrap"/>
+                                 FontFamily="{DynamicResource AppMonoFamily}" TextWrapping="Wrap"/>
                     </Grid>
                   </DataTemplate>
                 </ItemsControl.ItemTemplate>

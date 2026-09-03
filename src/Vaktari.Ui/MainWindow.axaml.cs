@@ -4189,6 +4189,24 @@ public partial class MainWindow : Window
             return;
         }
 
+        // **Escape did not close the preview**, which is the one thing on
+        // screen that is drawn OVER the listing rather than beside it — and the
+        // key everybody tries on a thing that covers something else. Space
+        // reopens it, but Space is also how you got here, and a key that only
+        // toggles is no help to someone who does not know that.
+        //
+        // First, and handled: the topmost dismissible thing goes first, and the
+        // clear below is not something to do on the way past. Escape pressed to
+        // put a preview away should not also throw away a filter the person is
+        // still using.
+        if (e.Key == Key.Escape && e.KeyModifiers == KeyModifiers.None
+            && _shell.ActiveTab is { IsPreviewVisible: true } previewing)
+        {
+            e.Handled = true;
+            previewing.TogglePreview();
+            return;
+        }
+
         // Escape abandons a pending cut, which the F1 sheet has promised all
         // along: "Escape — Clear the filter, and any pending cut".
         //

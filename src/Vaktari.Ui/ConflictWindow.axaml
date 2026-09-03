@@ -18,7 +18,7 @@
                  FontSize="{DynamicResource FontSizeBase}"
                  TextWrapping="Wrap"/>
       <TextBlock Text="{Binding Destination}"
-                 FontFamily="monospace"
+                 FontFamily="{DynamicResource AppMonoFamily}"
                  FontSize="{DynamicResource FontSizeTiny}"
                  Foreground="{DynamicResource ViewDimText}"
                  TextTrimming="CharacterEllipsis"/>

@@ -46,7 +46,7 @@
                            and a gesture reads as something to press rather than
                            as prose. -->
                       <TextBlock Grid.Column="0" Text="{Binding Keys}"
-                                 FontFamily="monospace"
+                                 FontFamily="{DynamicResource AppMonoFamily}"
                                  FontSize="{DynamicResource FontSizeSmall}"/>
                       <TextBlock Grid.Column="1" Text="{Binding Does}"
                                  TextWrapping="Wrap"

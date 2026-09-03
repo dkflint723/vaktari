@@ -37,16 +37,16 @@
             <NumericUpDown Value="{Binding StartAt}" Minimum="0" Maximum="99999"
                            Width="110" FontSize="{DynamicResource FontSizeSmall}"/>
           </StackPanel>
-          <TextBox Text="{Binding Pattern}" FontFamily="monospace"
+          <TextBox Text="{Binding Pattern}" FontFamily="{DynamicResource AppMonoFamily}"
                    FontSize="{DynamicResource FontSizeSmall}"/>
         </DockPanel>
       </StackPanel>
 
       <StackPanel Spacing="8" IsVisible="{Binding !IsNumbered}">
         <TextBox Text="{Binding Find}" PlaceholderText="Find"
-                 FontFamily="monospace" FontSize="{DynamicResource FontSizeSmall}"/>
+                 FontFamily="{DynamicResource AppMonoFamily}" FontSize="{DynamicResource FontSizeSmall}"/>
         <TextBox Text="{Binding Replace}" PlaceholderText="Replace with"
-                 FontFamily="monospace" FontSize="{DynamicResource FontSizeSmall}"/>
+                 FontFamily="{DynamicResource AppMonoFamily}" FontSize="{DynamicResource FontSizeSmall}"/>
         <StackPanel Orientation="Horizontal" Spacing="14">
           <CheckBox Content="Regular expression" IsChecked="{Binding UseRegex}"
                     FontSize="{DynamicResource FontSizeSmall}"/>
@@ -85,7 +85,7 @@
             <Grid ColumnDefinitions="*,Auto,*" Margin="4,3">
               <TextBlock Grid.Column="0" Text="{Binding OldName}"
                          FontSize="{DynamicResource FontSizeSmall}"
-                         FontFamily="monospace"
+                         FontFamily="{DynamicResource AppMonoFamily}"
                          Foreground="{DynamicResource ViewDimText}"
                          TextTrimming="CharacterEllipsis"/>
               <TextBlock Grid.Column="1" Text="  →  " VerticalAlignment="Center"
@@ -94,7 +94,7 @@
               <StackPanel Grid.Column="2">
                 <TextBlock Text="{Binding NewName}"
                            FontSize="{DynamicResource FontSizeSmall}"
-                           FontFamily="monospace"
+                           FontFamily="{DynamicResource AppMonoFamily}"
                            TextTrimming="CharacterEllipsis"/>
                 <!-- Problems are stated, never silently corrected. -->
                 <TextBlock Text="{Binding Problem}"

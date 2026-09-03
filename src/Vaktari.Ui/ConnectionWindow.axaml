@@ -44,7 +44,7 @@
                        Foreground="{DynamicResource ViewDimText}"/>
             <SelectableTextBlock Grid.Column="1" Text="{Binding Value}"
                                  FontSize="{DynamicResource FontSizeSmall}"
-                                 FontFamily="monospace"
+                                 FontFamily="{DynamicResource AppMonoFamily}"
                                  TextWrapping="Wrap"/>
           </Grid>
         </DataTemplate>

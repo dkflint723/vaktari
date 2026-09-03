@@ -43,6 +43,13 @@ internal static class RepoSource
         => File.ReadAllText(Path.Combine([Root, "src", "Vaktari.Ui", .. parts]))
                .Replace("\r\n", "\n", StringComparison.Ordinal);
 
+    /// <summary>Every markup file in the application, by name, for the rules
+    /// that have to hold across all of them rather than in one.</summary>
+    internal static IEnumerable<string> UiMarkup()
+        => Directory.EnumerateFiles(Path.Combine(Root, "src", "Vaktari.Ui"), "*.axaml")
+                    .Select(Path.GetFileName)
+                    .OfType<string>();
+
     /// <summary>
     /// The text of one method, from its declaration to the closing brace at
     /// class indentation.
