@@ -9,7 +9,30 @@
         Foreground="{DynamicResource ViewText}"
         FontFamily="{DynamicResource AppFontFamily}"
         Width="700" Height="560"
+        MinWidth="520" MinHeight="420"
         WindowStartupLocation="CenterOwner">
+
+  <!-- **This window had no floor at all, and its chrome is worse off without
+       one than the main window's was.** The page list is docked LEFT, has no
+       scroller, and its items panel is a WrapPanel — so a short window does not
+       clip the list, it WRAPS it into a second and then a third column, and
+       every one of those columns is taken out of the width the page had. At
+       700x560 the strip is 176px wide; at 700x300 it is 326; at 700x120 it is
+       the full 700 with its last column starting past the right edge of the
+       window, where that page cannot be reached at all.
+
+       The footer is the one thing that never gives. It is docked Bottom, so the
+       DockPanel hands it its 47px first and takes the entire shortfall out of
+       the pages: measured from 560px down to 120px it stayed 47 while the
+       TabControl went 513, 373, 253, 153, 73.
+
+       520 leaves about 340px of page beside the 176px strip, and each page
+       carries 20px margins inside that, so the reading column is the same order
+       as the 350px listing the main window's 560 leaves beside its sidebar. 420
+       is the shortest window that still holds all six rows in ONE column above
+       the footer, with a row of settings beside them. Both numbers are checked
+       against the chrome as it actually measures, in WindowFloorTests, rather
+       than left to rot when a seventh page is added. -->
 
   <!-- NO margin on the shell. It used to be 16 all round, which inset the tab
        strip from the window edges so the sidebar colour read as a floating box

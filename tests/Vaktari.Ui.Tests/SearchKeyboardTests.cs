@@ -313,17 +313,24 @@ public sealed class SearchKeyboardTests : OwnedViewModels
     /// <summary>
     /// And both shortcuts open it. Ctrl+E is Explorer's, Ctrl+F is everyone
     /// else's, and neither may be the one that quietly stopped working.
+    ///
+    /// **Read from the handler, not from the markup.** Both were
+    /// Window KeyBindings, and a KeyBinding is dispatched before the window's
+    /// own key handler runs at all — so an open rename bar could not refuse
+    /// them, and typing a name and reaching for Ctrl+F swapped the listing for
+    /// a search. They live in OnWindowKeyDown now, which is where this asks.
     /// </summary>
     [Theory]
     [InlineData("Ctrl+F")]
     [InlineData("Ctrl+E")]
     public void Both_shortcuts_open_the_field(string gesture)
     {
-        var binding = XDocument.Parse(RepoSource.Ui("MainWindow.axaml"))
-            .Descendants(Avalonia + "KeyBinding")
-            .Single(k => (string?)k.Attribute("Gesture") == gesture);
+        var bound = KeyBindingSites.CodeBehind()
+            .Where(b => b.Key == gesture)
+            .Select(b => b.Value)
+            .ToList();
 
-        Assert.Equal("{Binding ActiveTab.BeginSearchCommand}", (string?)binding.Attribute("Command"));
+        Assert.Contains(bound, c => c.Contains("BeginSearch", StringComparison.Ordinal));
     }
 
     private static async Task WaitUntil(Func<bool> done)

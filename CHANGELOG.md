@@ -13,6 +13,16 @@ should not be trusted for compatibility yet.
 
 ### Added
 
+- **Recent can take you to where a row actually lives.** Both Recent listings
+  gather their rows from the whole machine, and both show the folder each came
+  from in its own column for that reason — but the only entry they added to the
+  menu was *Forget*, so "stop showing me this" was easier to reach than "show me
+  this". *Open file location* is offered there now as well as in a search. In
+  Recent Locations, where every row is a folder, it shows the folder in its
+  parent with the row lit rather than entering it — entering is what
+  double-clicking already does — and a drive root, which has no parent, goes to
+  This PC, which is where Up goes from the top of a drive.
+
 - **A copy or move that left something behind can be asked to go again.** The
   batch never stopped to ask — it carried on past a locked file and named what
   it could not do — but the only verbs on offer were the two it already had:
@@ -416,6 +426,26 @@ should not be trusted for compatibility yet.
   than on a heading.
 
 ### Fixed
+
+- **A window cannot be dragged smaller than its own contents.** The settings
+  window had no floor at all: its page list is docked to the left with no
+  scroller, so a short window wrapped the list into a second and then a third
+  column, each one taken out of the width the page had, until the last column
+  started past the right edge and that page could not be reached. It now stops
+  at a size that holds the whole list in one column beside a readable page. The
+  main window's floor was declared but not applied on restore — a saved size
+  below it was put back as-is and only corrected by the first layout pass, so
+  anything reading the size in between saw the smaller number.
+
+- **Keys pressed while renaming no longer act on the folder behind the bar.**
+  Ctrl+H, Ctrl+I, Ctrl+F, Ctrl+E, Ctrl+D and Ctrl+Shift+N were bound in a way
+  that is dispatched *before* the window sees the key at all, so the rule that
+  hands the keyboard to an open rename bar could not refuse them: reaching for
+  Ctrl+H mid-name flipped the hidden files in behind the bar, and Ctrl+I opened
+  the filter and pulled the caret into it, so the rest of the name was typed
+  somewhere else entirely. All six are answered by the window now. What they do
+  in the path and filter boxes is unchanged — Ctrl+F from the address bar still
+  moves to the search field, and Ctrl+I still closes the filter from inside it.
 
 - **Properties is no longer offered where there is nothing to describe.** With
   no row picked, the sheet describes the folder you are looking at — and This

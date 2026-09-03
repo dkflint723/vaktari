@@ -174,17 +174,31 @@ public sealed class SearchResultSelectionTests : OwnedViewModels
     /// the whole behaviour in its own lambda — which is how it came to select
     /// something the listing had never heard of, and every test above would
     /// pass with that lambda back in place. The results are a listing now, so
-    /// the asking is a menu entry on the search listing itself.
+    /// the asking is a menu entry — and the entry belongs to every listing
+    /// whose rows come from elsewhere rather than to searches alone.
     /// </summary>
     [Fact]
-    public void The_menu_offers_it_on_a_search_and_nowhere_else()
+    public void The_menu_offers_it_wherever_rows_come_from_somewhere_else()
     {
         var item = XDocument.Parse(RepoSource.Ui("MainWindow.axaml"))
             .Descendants(XNamespace.Get("https://github.com/avaloniaui") + "MenuItem")
             .Single(m => (string?)m.Attribute("Header") == "Open file location");
 
         Assert.Equal("{Binding ActiveTab.GoToLocationCommand}", (string?)item.Attribute("Command"));
-        Assert.Equal("{Binding ActiveTab.IsSearchListing}", (string?)item.Attribute("IsVisible"));
+        Assert.Equal("{Binding ActiveTab.CanGoToLocation}", (string?)item.Attribute("IsVisible"));
+
+        // Its rule carries the same gate, or it is the stray line at the top of
+        // an ordinary folder's menu.
+        var rule = item.ElementsBeforeSelf().Last();
+
+        Assert.Equal("Separator", rule.Name.LocalName);
+        Assert.Equal("{Binding ActiveTab.CanGoToLocation}", (string?)rule.Attribute("IsVisible"));
+
+        // And Forget follows it directly: one group, one rule.
+        var next = item.ElementsAfterSelf().First();
+
+        Assert.Equal("MenuItem", next.Name.LocalName);
+        Assert.Contains("ForgetRecentCommand", (string?)next.Attribute("Command") ?? "");
     }
 
     /// <summary>

@@ -3492,12 +3492,36 @@ public partial class MainWindow : Window
 
     // ---- geometry ------------------------------------------------------
 
-    private void ApplyGeometry(SessionState? state)
+    /// <summary>
+    /// The saved size and position, put back.
+    ///
+    /// **This rejected anything at or below 200 and let everything else
+    /// through, and 200 is not a number this window knows anything about.** The
+    /// floor is MinWidth/MinHeight in the markup, and the note beside them says
+    /// a session that saved something smaller is clamped up on restore — which
+    /// was true only because Avalonia raises Width to MinWidth when the window
+    /// is measured, not because anything here did it. Between this call and that
+    /// first measure the property holds the undersized number, and
+    /// CaptureGeometry reads the property.
+    ///
+    /// So the two guards now say the two different things they were conflating.
+    /// Zero is what an absent key deserializes to — the note beside the
+    /// per-layout scales in SessionModel records that these initializers do not
+    /// run — and an absent size must leave the window the size the markup opens
+    /// it at, NOT shrink it to the smallest one allowed. Anything else is a real
+    /// saved size, and a real saved size below the floor is raised to the floor,
+    /// because it is unusable whether it was chosen this session or last.
+    ///
+    /// Internal rather than private so WindowFloorTests can hand it a session
+    /// directly. The store this is otherwise fed from is the real one on the
+    /// machine running the suite.
+    /// </summary>
+    internal void ApplyGeometry(SessionState? state)
     {
         if (state?.Windows.FirstOrDefault() is not { } w) return;
 
-        if (w.Width > 200) Width = w.Width;
-        if (w.Height > 200) Height = w.Height;
+        if (w.Width > 0) Width = Math.Max(w.Width, MinWidth);
+        if (w.Height > 0) Height = Math.Max(w.Height, MinHeight);
 
         if (w.X != 0 || w.Y != 0)
             Position = new PixelPoint((int)w.X, (int)w.Y);
@@ -4867,6 +4891,60 @@ public partial class MainWindow : Window
                 e.Handled = true;
                 return;
             }
+        }
+
+        // The six gestures that could not be Window KeyBindings.
+        //
+        // **All six fired straight through an open rename bar.** A KeyBinding
+        // is dispatched before this handler runs at all — before the key is
+        // even routed — so the prompt guard at the top was structurally unable
+        // to see them, the same fault F2 and Space were lifted out of the
+        // markup for. Ctrl+H flipped the hidden files in behind the bar,
+        // Ctrl+I opened the filter and pulled the caret into it so the rest of
+        // the name was typed somewhere else, Ctrl+F swapped the listing for a
+        // search, Ctrl+D pinned the folder, and Ctrl+Shift+N made a folder
+        // whose own rename request the one-tenant rule then refused — so it was
+        // created and left with the name the file system gave it.
+        //
+        // ABOVE the text-box guard, and a switch of its own because of it.
+        // These are not gestures a text cursor owns, and two of them are
+        // deliberately answered while one has focus: Ctrl+F from the path box
+        // moves the keyboard to the search field on purpose, and Ctrl+I from
+        // inside the filter box is how the filter is put away again. Behind the
+        // guard — which is where the switch at the bottom of this method sits —
+        // both would have been silently dropped, and the fix for a prompt bug
+        // would have taken two working keys away.
+        //
+        // Case labels rather than `if`s, and `.XxxCommand.Execute(null)` rather
+        // than the method: the shortcuts sheet is cross-checked against this
+        // file, and it reads case labels and that call shape.
+        switch (e.Key)
+        {
+            case Key.I when e.KeyModifiers == KeyModifiers.Control:
+                e.Handled = true;
+                _shell.ActiveTab?.ToggleFilterCommand.Execute(null);
+                return;
+
+            case Key.N when e.KeyModifiers == (KeyModifiers.Control | KeyModifiers.Shift):
+                e.Handled = true;
+                _shell.ActiveTab?.NewFolderCommand.Execute(null);
+                return;
+
+            case Key.H when e.KeyModifiers == KeyModifiers.Control:
+                e.Handled = true;
+                _shell.ActiveTab?.ToggleHiddenCommand.Execute(null);
+                return;
+
+            case Key.D when e.KeyModifiers == KeyModifiers.Control:
+                e.Handled = true;
+                _shell.PinCurrentCommand.Execute(null);
+                return;
+
+            case Key.E when e.KeyModifiers == KeyModifiers.Control:
+            case Key.F when e.KeyModifiers == KeyModifiers.Control:
+                e.Handled = true;
+                _shell.ActiveTab?.BeginSearchCommand.Execute(null);
+                return;
         }
 
         // Any focused text box owns the keyboard. Checking the type rather

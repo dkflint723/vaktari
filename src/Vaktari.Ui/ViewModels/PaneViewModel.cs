@@ -1145,6 +1145,24 @@ public sealed partial class PaneViewModel : ObservableObject, IDisposable
     /// </summary>
     public bool IsSearchListing => VirtualPaths.IsSearch(CurrentPath);
 
+    /// <summary>
+    /// Whether "where does this row actually live" is a question this listing
+    /// can answer.
+    ///
+    /// **Recent asked it and offered no answer.** A search and both Recent
+    /// listings gather rows from the whole machine, and all three show the
+    /// parent-path column for that one reason — a bare `config.toml` says
+    /// nothing about which of four it is — but only a search carried the row
+    /// that takes you there. Recent's only addition to the menu was Forget,
+    /// which made "stop showing me this" easier to reach than "show me this".
+    ///
+    /// The bin is deliberately not included: a bin row's <c>FullPath</c> is the
+    /// ORIGINAL path the file occupied before it was deleted, so going there
+    /// lands on a folder that does not contain the row and may well contain
+    /// something else wearing its name.
+    /// </summary>
+    public bool CanGoToLocation => IsSearchListing || IsRecentListing;
+
     /// <summary>What was asked, drawn in the band and in the empty state.</summary>
     public string SearchQueryText => VirtualPaths.QueryOf(CurrentPath);
 
@@ -1329,7 +1347,37 @@ public sealed partial class PaneViewModel : ObservableObject, IDisposable
     [RelayCommand]
     private async Task GoToLocation()
     {
-        if (SelectedEntry is { } entry) await RevealAsync(entry);
+        if (SelectedEntry is not { } entry) return;
+
+        // **In Recent Locations every row is a folder, and revealing a folder
+        // ENTERS it** — which is what double-clicking the row already does, so
+        // offered there unchanged this would have been a second name for Open
+        // rather than an answer to "where is this". Shown in its parent with
+        // the row lit instead, which is ShowAsync's whole distinction from
+        // RevealAsync. A search keeps the other behaviour: a hit you asked to
+        // be taken to is somewhere you want to BE.
+        if (entry.IsDirectory && IsRecentListing)
+        {
+            // **A drive root has no parent directory, and GetParent says so on
+            // both platforms — but for two different reasons, so neither is
+            // worth leaning on.** The Windows provider returns
+            // PathRules.Parent, which answers null for anything IsRoot accepts;
+            // the Linux one returns Path.GetDirectoryName, which answers null
+            // for `/`. Asking IsRoot here is what turns that null into an
+            // ANSWER: the machine, which is where Up already goes from the top
+            // of a drive. Recent Locations collects drive roots like any other
+            // folder you visit, and without this line the entry would sit on
+            // one doing nothing.
+            var parent = PathRules.IsRoot(entry.FullPath)
+                ? VirtualPaths.Computer
+                : _fs.GetParent(entry.FullPath);
+
+            if (!string.IsNullOrEmpty(parent)) await ShowAsync(parent, [entry.FullPath]);
+
+            return;
+        }
+
+        await RevealAsync(entry);
     }
 
     /// <summary>Which index answered, so slow results are explained.</summary>
@@ -2641,6 +2689,12 @@ public sealed partial class PaneViewModel : ObservableObject, IDisposable
             // to another, and a band that only appeared and disappeared would
             // go on showing the previous question.
             OnPropertyChanged(nameof(IsSearchListing));
+
+            // The menu row that goes to where a row lives is bound to this one,
+            // and a change announced for IsSearchListing is not a change
+            // announced for this: without the line the row keeps whatever
+            // visibility the previous listing left it with.
+            OnPropertyChanged(nameof(CanGoToLocation));
             OnPropertyChanged(nameof(SearchQueryText));
             OnPropertyChanged(nameof(CanScopeSearch));
             OnPropertyChanged(nameof(SearchScopedHere));

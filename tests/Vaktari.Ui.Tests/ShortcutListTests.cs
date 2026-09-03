@@ -180,7 +180,11 @@ public sealed class ShortcutListTests
                 .Split(" / ", StringSplitOptions.TrimEntries)
                 .Contains("F3", StringComparer.OrdinalIgnoreCase));
 
+        // Both spellings moved out of the markup and into OnWindowKeyDown, so
+        // that a rename bar can refuse them: a KeyBinding is dispatched before
+        // the window's own handler runs at all.
         var searchKeys = KeyBindingSites.Markup()
+            .Concat(KeyBindingSites.CodeBehind())
             .Where(b => b.Value.Contains("BeginSearch", StringComparison.Ordinal))
             .Select(b => Readable(b.Key))
             .ToList();

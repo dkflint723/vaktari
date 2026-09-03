@@ -1659,15 +1659,23 @@
                               </MenuItem.Styles>
                             </MenuItem>
               <!-- **The one thing the popup could do that the listing must
-                   not lose.** Choosing a result WAS this: you were taken to
-                   its folder with the row lit. Acting on results in place is
-                   the better default, but a search is drawn from everywhere at
-                   once and "where is this actually" still needs an answer. -->
-              <Separator IsVisible="{Binding ActiveTab.IsSearchListing}"/>
+                   not lose, and the thing Recent never had.** Choosing a
+                   result WAS this: you were taken to its folder with the row
+                   lit. Acting on results in place is the better default, but a
+                   search and both Recent listings draw rows from everywhere at
+                   once, and all of them show the parent-path column to say
+                   which of four `config.toml` a row is — only the search could
+                   then take you there, so Recent named a place and could not go
+                   to it.
+
+                   One rule for the pair: CanGoToLocation is true wherever
+                   Forget is, so the rule that used to sit between them was
+                   deleted rather than left to draw a stray line INSIDE a group
+                   of two. -->
+              <Separator IsVisible="{Binding ActiveTab.CanGoToLocation}"/>
               <MenuItem Header="Open file location"
-                                      IsVisible="{Binding ActiveTab.IsSearchListing}"
+                                      IsVisible="{Binding ActiveTab.CanGoToLocation}"
                                       Command="{Binding ActiveTab.GoToLocationCommand}"/>
-              <Separator IsVisible="{Binding ActiveTab.IsRecentListing}"/>
               <MenuItem Header="Forget (keeps the file)"
                                       IsVisible="{Binding ActiveTab.IsRecentListing}"
                                       Command="{Binding ActiveTab.ForgetRecentCommand}"/>
@@ -2691,8 +2699,18 @@
          Shift+Insert, Ctrl+Insert and Shift+Delete are the same commands under
          their older names; those were never bound here, which is why they kept
          working in the address bar the whole time. -->
-    <KeyBinding Gesture="Ctrl+I"         Command="{Binding ActiveTab.ToggleFilterCommand}"/>
-    <KeyBinding Gesture="Ctrl+Shift+N"   Command="{Binding ActiveTab.NewFolderCommand}"/>
+    <!-- **Ctrl+I, Ctrl+Shift+N, Ctrl+H, Ctrl+D, Ctrl+F and Ctrl+E are NOT
+         here.** They were, and a KeyBinding is dispatched before the window's
+         own key handler runs at all — before the key is even routed — so the
+         guard that hands the keyboard to an open rename bar could not see one
+         of them. Typing a name and reaching for Ctrl+H flipped the hidden files
+         in behind the bar; Ctrl+I opened the filter and pulled the caret into
+         it, so the rest of the name went into the filter box; Ctrl+F swapped
+         the listing for a search; Ctrl+D pinned the folder; and Ctrl+Shift+N
+         made a folder whose own rename request the one-tenant rule then
+         refused, so it was created and left with the name the file system gave
+         it. Handled in OnWindowKeyDown, ABOVE the focused-text-box guard, so
+         what they do in the path and filter boxes is exactly what it was. -->
     <!-- **Ctrl and the number pad's nought did nothing**, while the pad's plus
          and minus already worked. Avalonia folds the pad's arithmetic keys onto
          the top row's when it matches a gesture — Add onto OemPlus, Subtract
@@ -2707,20 +2725,17 @@
     <KeyBinding Gesture="Ctrl+B"         Command="{Binding Sidebar.CycleRailCommand}"/>
     <!-- Dolphin's own gesture for the same panel, and free here. -->
     <KeyBinding Gesture="F9"            Command="{Binding Sidebar.CycleRailCommand}"/>
-    <!-- Ctrl+H is what every file manager on this desktop uses for hidden files;
-         it existed only as a checkbox in the layout flyout. -->
-    <KeyBinding Gesture="Ctrl+H"         Command="{Binding ActiveTab.ToggleHiddenCommand}"/>
-    <KeyBinding Gesture="Ctrl+D"         Command="{Binding PinCurrentCommand}"/>
     <!-- The gesture Windows uses for the same action, so the menu can show it
          without inventing one. Added WITH the menu entry: a shortcut printed
          beside a row and bound to nothing is worse than no shortcut at all. -->
     <KeyBinding Gesture="Ctrl+Shift+C"   Command="{Binding CopyLocationCommand}"/>
     <!-- Alt rather than Ctrl for panels: Ctrl+1..9 already switches tabs,
          browser-style, and that convention is the stronger one. -->
-    <KeyBinding Gesture="Ctrl+F"         Command="{Binding ActiveTab.BeginSearchCommand}"/>
-    <!-- Ctrl+E is what Explorer binds search to; Ctrl+F is what
-         everything else does. Both, for the same reason as Alt+D. -->
-    <KeyBinding Gesture="Ctrl+E"         Command="{Binding ActiveTab.BeginSearchCommand}"/>
+    <!-- **Ctrl+F and Ctrl+E are not here either.** Explorer binds search to
+         Ctrl+E and everything else to Ctrl+F; they are two spellings of one
+         habit, so they have to answer alike, and leaving one in the markup
+         would have meant the rename bar refused one and not the other. Both
+         are in OnWindowKeyDown with the four above. -->
     <KeyBinding Gesture="Ctrl+L"         Command="{Binding ActiveTab.BeginEditPathCommand}"/>
     <!-- Alt+D is the other half of the same habit: Explorer and every
          browser answer both, and which one somebody reaches for is a

@@ -1,5 +1,8 @@
 using System.Xml.Linq;
 using Avalonia.Controls;
+using Avalonia.Threading;
+using Avalonia.Input;
+using Avalonia.Headless;
 using Avalonia.Headless.XUnit;
 using Vaktari.Core.FileSystem;
 using Vaktari.Ui;
@@ -100,6 +103,122 @@ public sealed class RenamePromptTenancyTests
         }
     }
 
+    /// <summary>
+    /// Down to Background, because the window posts work at that priority and
+    /// a key that half ran is not a key that did nothing.
+    /// </summary>
+    private static void Settle()
+    {
+        Dispatcher.UIThread.RunJobs();
+        Dispatcher.UIThread.RunJobs(DispatcherPriority.Input);
+        Dispatcher.UIThread.RunJobs(DispatcherPriority.Background);
+    }
+
+    /// <summary>
+    /// **A gesture bound in the markup fired straight through an open rename
+    /// bar.** A KeyBinding is dispatched before the window's own key handler
+    /// runs at all — before the key is even routed — so the guard that hands
+    /// the keyboard to the bar was structurally unable to see one. Typing a
+    /// name and reaching for Ctrl+I opened the filter and pulled the caret into
+    /// it, so the rest of the name was typed somewhere else entirely.
+    /// </summary>
+    [AvaloniaFact]
+    public void A_gesture_the_markup_used_to_bind_does_not_fire_while_the_bar_is_open()
+    {
+        var window = new MainWindow();
+
+        try
+        {
+            window.Show();
+            Settle();
+
+            var pane = Assert.IsType<ShellViewModel>(window.DataContext).ActiveTab!;
+
+            Assert.False(pane.IsFilterVisible, "the filter is already open, so this proves nothing");
+
+            pane.SelectedEntry = Row("first.txt");
+            pane.BeginRenameCommand.Execute(null);
+            Settle();
+
+            window.KeyPress(Key.I, RawInputModifiers.Control, PhysicalKey.I, null);
+            Settle();
+
+            Assert.False(pane.IsFilterVisible,
+                         "Ctrl+I opened the filter while a name was being typed");
+        }
+        finally
+        {
+            window.Close();
+        }
+    }
+
+    /// <summary>
+    /// The twin that stops the guard being "swallow it always". With no bar
+    /// open the gesture has to do exactly what it always did.
+    /// </summary>
+    [AvaloniaFact]
+    public void But_the_same_gesture_still_works_with_no_prompt_open()
+    {
+        var window = new MainWindow();
+
+        try
+        {
+            window.Show();
+            Settle();
+
+            var pane = Assert.IsType<ShellViewModel>(window.DataContext).ActiveTab!;
+
+            Assert.False(pane.IsFilterVisible, "the filter is already open, so this proves nothing");
+
+            window.KeyPress(Key.I, RawInputModifiers.Control, PhysicalKey.I, null);
+            Settle();
+
+            Assert.True(pane.IsFilterVisible);
+        }
+        finally
+        {
+            window.Close();
+        }
+    }
+
+    /// <summary>
+    /// **And the placement is above the text-box guard, not below it.** Two of
+    /// these six are deliberately answered while a text box has focus: Ctrl+F
+    /// from the path box moves the keyboard to the search field on purpose, and
+    /// Ctrl+I from inside the filter box is how the filter is put away. Behind
+    /// the guard the fix for a prompt bug would have taken two working keys
+    /// away.
+    /// </summary>
+    [AvaloniaFact]
+    public void And_Ctrl_F_still_works_from_the_path_box()
+    {
+        var window = new MainWindow();
+
+        try
+        {
+            window.Show();
+            Settle();
+
+            var pane = Assert.IsType<ShellViewModel>(window.DataContext).ActiveTab!;
+
+            pane.BeginEditPathCommand.Execute(null);
+            Settle();
+
+            Assert.True(window.FocusManager?.GetFocusedElement() is TextBox,
+                        "the path box does not have the keyboard, so this proves nothing");
+            Assert.False(pane.IsSearchOpen);
+
+            window.KeyPress(Key.F, RawInputModifiers.Control, PhysicalKey.F, null);
+            Settle();
+
+            Assert.True(pane.IsSearchOpen);
+        }
+        finally
+        {
+            window.Close();
+        }
+    }
+
     // ---- and the gestures reach the guard at all ---------------------------
 
     /// <summary>
@@ -140,5 +259,60 @@ public sealed class RenamePromptTenancyTests
         // red.
         Assert.Contains("pane.BeginRenameCommand.Execute(null);", body);
         Assert.Contains("_shell.BatchRenameCommand.Execute(null);", body);
+    }
+
+    /// <summary>
+    /// The runtime tests above cover one gesture each; this is what says the
+    /// other five moved rather than being deleted, and that all six sit above
+    /// the focused-text-box guard.
+    /// </summary>
+    [Fact]
+    public void The_six_gestures_moved_out_of_the_markup_into_the_handler()
+    {
+        string[] moved = ["Ctrl+I", "Ctrl+Shift+N", "Ctrl+H", "Ctrl+D", "Ctrl+F", "Ctrl+E"];
+
+        var bindings = XDocument.Parse(RepoSource.Ui("MainWindow.axaml"))
+            .Descendants(Avalonia + "KeyBinding")
+            .Select(b => (string?)b.Attribute("Gesture"))
+            .ToList();
+
+        var body = RepoSource.Body(
+            RepoSource.Ui("MainWindow.axaml.cs"),
+            "private void OnWindowKeyDown(object? sender, KeyEventArgs e)");
+
+        var guard = body.IndexOf("if (FocusManager?.GetFocusedElement() is TextBox) return;",
+                                 StringComparison.Ordinal);
+
+        Assert.True(guard > 0, "the focused-text-box guard is not in this handler any more");
+
+        foreach (var gesture in moved)
+        {
+            // Every KeyBinding in the file, not only the window's: a gesture
+            // moved to a pane's own TextBox KeyBindings would be claimed ahead
+            // of this handler in exactly the same way.
+            Assert.False(bindings.Contains(gesture),
+                         $"{gesture} is a KeyBinding in the markup again, so the rename "
+                         + "bar cannot refuse it — handle it in OnWindowKeyDown.");
+
+            Assert.Contains(gesture, KeyBindingSites.CodeBehindHandled());
+        }
+
+        // Above the guard, not below it: two of the six are answered while a
+        // text box has focus on purpose.
+        foreach (var label in new[]
+                 {
+                     "case Key.I when e.KeyModifiers == KeyModifiers.Control:",
+                     "case Key.N when e.KeyModifiers == (KeyModifiers.Control | KeyModifiers.Shift):",
+                     "case Key.H when e.KeyModifiers == KeyModifiers.Control:",
+                     "case Key.D when e.KeyModifiers == KeyModifiers.Control:",
+                     "case Key.E when e.KeyModifiers == KeyModifiers.Control:",
+                     "case Key.F when e.KeyModifiers == KeyModifiers.Control:",
+                 })
+        {
+            var at = body.IndexOf(label, StringComparison.Ordinal);
+
+            Assert.True(at > 0, $"{label} is not in the guarded key handler");
+            Assert.True(at < guard, $"{label} sits behind the focused-text-box guard");
+        }
     }
 }
