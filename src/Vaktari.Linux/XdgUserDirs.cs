@@ -22,36 +22,56 @@ public static class XdgUserDirs
 
         var home = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
 
-        var configHome = Environment.GetEnvironmentVariable("XDG_CONFIG_HOME");
-        if (string.IsNullOrWhiteSpace(configHome)) configHome = Path.Combine(home, ".config");
-
-        var file = Path.Combine(configHome, "user-dirs.dirs");
+        var file = ConfigFile(Environment.GetEnvironmentVariable("XDG_CONFIG_HOME"), home);
 
         try
         {
             if (!File.Exists(file)) return result;
 
-            foreach (var raw in File.ReadLines(file))
-            {
-                var line = raw.Trim();
-                if (line.Length == 0 || line[0] == '#') continue;
-
-                var split = line.IndexOf('=');
-                if (split <= 0) continue;
-
-                var key = line[..split].Trim();
-                var value = line[(split + 1)..].Trim().Trim('"');
-
-                if (!key.StartsWith("XDG_", StringComparison.Ordinal)) continue;
-
-                result[key] = value.Replace("$HOME", home, StringComparison.Ordinal);
-            }
+            return Parse(File.ReadLines(file), home);
         }
         catch
         {
             // No file, or unreadable: callers fall back to conventional names.
+            return result;
+        }
+    }
+
+    /// <summary>
+    /// The file's rules, over lines that have already been read.
+    ///
+    /// Split out because this is now the ONLY parser for this file. The places
+    /// provider had a second one that hardcoded ~/.config, matched keys with a
+    /// bare StartsWith on an untrimmed line, and did not skip comments; it
+    /// delegates here instead, so these rules had better be worth relying on.
+    /// </summary>
+    internal static Dictionary<string, string> Parse(IEnumerable<string> lines, string home)
+    {
+        var result = new Dictionary<string, string>(StringComparer.Ordinal);
+
+        foreach (var raw in lines)
+        {
+            var line = raw.Trim();
+            if (line.Length == 0 || line[0] == '#') continue;
+
+            var split = line.IndexOf('=');
+            if (split <= 0) continue;
+
+            var key = line[..split].Trim();
+            var value = line[(split + 1)..].Trim().Trim('"');
+
+            if (!key.StartsWith("XDG_", StringComparison.Ordinal)) continue;
+
+            result[key] = value.Replace("$HOME", home, StringComparison.Ordinal);
         }
 
         return result;
     }
+
+    /// <summary>Where the file lives: XDG_CONFIG_HOME when the session sets one,
+    /// and ~/.config when it does not.</summary>
+    internal static string ConfigFile(string? configHome, string home)
+        => Path.Combine(
+            string.IsNullOrWhiteSpace(configHome) ? Path.Combine(home, ".config") : configHome,
+            "user-dirs.dirs");
 }

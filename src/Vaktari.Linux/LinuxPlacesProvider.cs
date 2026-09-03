@@ -189,24 +189,20 @@ public sealed class LinuxPlacesProvider : IPlacesProvider, IDisposable
         return places;
     }
 
-    private static string? ReadUserDir(string key)
-    {
-        var config = Path.Combine(Home, ".config", "user-dirs.dirs");
-        if (!File.Exists(config)) return null;
-
-        foreach (var line in File.ReadLines(config))
-        {
-            if (!line.StartsWith(key, StringComparison.Ordinal)) continue;
-
-            var eq = line.IndexOf('=');
-            if (eq < 0) continue;
-
-            var value = line[(eq + 1)..].Trim().Trim('"');
-            return value.Replace("$HOME", Home);
-        }
-
-        return null;
-    }
+    /// <summary>
+    /// Where the user actually keeps Documents, Downloads and the rest.
+    ///
+    /// **There were two parsers for one file, and this was the worse one.**
+    /// XdgUserDirs, whose own comment calls the file "the only authority", reads
+    /// XDG_CONFIG_HOME, trims each line, skips comments and requires an XDG_
+    /// prefix. This one hardcoded ~/.config -- so on a setup that moves the
+    /// config home, the sidebar's Documents and Downloads rows vanished while
+    /// the icons that name the same folders went on working -- and matched with
+    /// a bare StartsWith on an untrimmed line, so a leading space hid a key.
+    ///
+    /// One authority now, which is what the other file already said it was.
+    /// </summary>
+    private static string? ReadUserDir(string key) => XdgUserDirs.Read(key);
 
     /// <summary>Volume label to device, reversed from /dev/disk/by-label.</summary>
     /// <summary>
