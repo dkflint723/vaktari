@@ -386,14 +386,14 @@ public static class DesktopEntries
     /// Expands an Exec= line. Field codes %f %F %u %U take the file; the rest
     /// (%i %c %k and any unknown) are dropped, per the desktop entry spec.
     /// </summary>
-    private static List<string> SplitExec(string exec, string path)
+    internal static List<string> SplitExec(string exec, string path)
     {
         var result = new List<string>();
         var substituted = false;
 
-        foreach (var token in exec.Split(' ', StringSplitOptions.RemoveEmptyEntries))
+        foreach (var token in Tokens(exec))
         {
-            var clean = token.Trim('"');
+            var clean = token;
 
             switch (clean)
             {
@@ -411,7 +411,19 @@ public static class DesktopEntries
                     break;
 
                 default:
-                    if (!clean.StartsWith('%')) result.Add(clean);
+                    // A field code is a token of its own, so anything else
+                    // beginning with % is one this build does not know, and the
+                    // spec says to drop those.
+                    //
+                    // **Except "%%", which is a literal percent** — and folding
+                    // it in the tokenizer instead would be worse than dropping
+                    // it: "%%f" would become "%f" before this switch ran and be
+                    // substituted with the FILENAME. Percent is folded last for
+                    // that reason, which is the order GLib uses too.
+                    if (clean.StartsWith('%')
+                        && !clean.StartsWith("%%", StringComparison.Ordinal)) break;
+
+                    result.Add(clean.Replace("%%", "%", StringComparison.Ordinal));
                     break;
             }
         }
@@ -421,5 +433,66 @@ public static class DesktopEntries
         if (!substituted && result.Count > 0) result.Add(path);
 
         return result;
+    }
+
+    /// <summary>
+    /// Splits an Exec= line the way the desktop entry spec says to.
+    ///
+    /// **It was split on spaces and the quotes were then trimmed off each
+    /// piece.** An application installed in a directory with a space in its
+    /// name — "/opt/My App/bin/app", which is exactly what a quoted Exec= is
+    /// FOR — came out as two arguments, neither of which is a program, so
+    /// launching it failed with a message about a file that does not exist.
+    ///
+    /// Inside quotes the spec escapes with a backslash, and the four characters
+    /// it names are the ones a shell would otherwise eat. Quoting only: the
+    /// field codes are the caller's, because "%%" has to be folded to a literal
+    /// percent AFTER they are read and not before.
+    ///
+    /// Not a shell: no word splitting after substitution, no globbing, no
+    /// variable expansion. The spec is explicit that an Exec= line is not
+    /// passed to one, and running it through a shell is how a filename becomes
+    /// an argument list.
+    /// </summary>
+    internal static List<string> Tokens(string exec)
+    {
+        var tokens = new List<string>();
+        var current = new System.Text.StringBuilder();
+        var quoted = false;
+        var started = false;
+
+        for (var i = 0; i < exec.Length; i++)
+        {
+            var c = exec[i];
+
+            if (quoted)
+            {
+                if (c == '\\' && i + 1 < exec.Length && exec[i + 1] is '"' or '\\' or '`' or '$')
+                {
+                    current.Append(exec[++i]);
+                    continue;
+                }
+
+                if (c == '"') { quoted = false; continue; }
+
+                current.Append(c);
+                continue;
+            }
+
+            if (c == '"') { quoted = true; started = true; continue; }
+
+            if (c is ' ' or '	')
+            {
+                if (started) { tokens.Add(current.ToString()); current.Clear(); started = false; }
+                continue;
+            }
+
+            current.Append(c);
+            started = true;
+        }
+
+        if (started) tokens.Add(current.ToString());
+
+        return tokens;
     }
 }
