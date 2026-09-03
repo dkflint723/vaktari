@@ -2835,6 +2835,9 @@ public sealed partial class PaneViewModel : ObservableObject, IDisposable
         OnPropertyChanged(nameof(CanGoBack));
         OnPropertyChanged(nameof(CanGoForward));
         OnPropertyChanged(nameof(CanGoUp));
+
+        // The menus behind the two chevrons are built from the same stacks.
+        NotifyHistory();
     }
 
     public void Dispose()

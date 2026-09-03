@@ -795,6 +795,28 @@
                     AutomationProperties.Name="back  (alt+left)" ToolTip.Tip="back  (alt+left)"
                     Command="{Binding ActiveTab.GoBackCommand}"
                     IsEnabled="{Binding ActiveTab.CanGoBack}">
+              <!-- **Back and Forward exposed one step each**, out of a
+                   history the pane had kept all along and had been writing to
+                   the session file since tabs became restorable. A pane ten
+                   folders deep could only be walked out one press at a time,
+                   with no way to see where the next press went.
+
+                   The row carries its own command rather than reaching out
+                   through $parent[Window]: a flyout is its own popup root, and
+                   a reach-out would resolve to the SHELL's active tab, which is
+                   the wrong pane on the quiet half of a split. -->
+              <Button.ContextFlyout>
+                <MenuFlyout ItemsSource="{Binding ActiveTab.BackSteps}">
+                  <MenuFlyout.ItemContainerTheme>
+                    <ControlTheme TargetType="MenuItem" BasedOn="{StaticResource {x:Type MenuItem}}"
+                                  x:DataType="vm:HistoryStep">
+                      <Setter Property="Header" Value="{Binding Name}"/>
+                      <Setter Property="Command" Value="{Binding Open}"/>
+                      <Setter Property="ToolTip.Tip" Value="{Binding FullPath}"/>
+                    </ControlTheme>
+                  </MenuFlyout.ItemContainerTheme>
+                </MenuFlyout>
+              </Button.ContextFlyout>
               <Path Data="M15 5 L8 12 L15 19" Stroke="{DynamicResource ViewText}"
                     StrokeThickness="1.2" StrokeLineCap="Round" StrokeJoin="Round"
                     Width="16" Height="16" Stretch="Uniform"/>
@@ -804,6 +826,28 @@
                     AutomationProperties.Name="forward  (alt+right)" ToolTip.Tip="forward  (alt+right)"
                     Command="{Binding ActiveTab.GoForwardCommand}"
                     IsEnabled="{Binding ActiveTab.CanGoForward}">
+              <!-- **Back and Forward exposed one step each**, out of a
+                   history the pane had kept all along and had been writing to
+                   the session file since tabs became restorable. A pane ten
+                   folders deep could only be walked out one press at a time,
+                   with no way to see where the next press went.
+
+                   The row carries its own command rather than reaching out
+                   through $parent[Window]: a flyout is its own popup root, and
+                   a reach-out would resolve to the SHELL's active tab, which is
+                   the wrong pane on the quiet half of a split. -->
+              <Button.ContextFlyout>
+                <MenuFlyout ItemsSource="{Binding ActiveTab.ForwardSteps}">
+                  <MenuFlyout.ItemContainerTheme>
+                    <ControlTheme TargetType="MenuItem" BasedOn="{StaticResource {x:Type MenuItem}}"
+                                  x:DataType="vm:HistoryStep">
+                      <Setter Property="Header" Value="{Binding Name}"/>
+                      <Setter Property="Command" Value="{Binding Open}"/>
+                      <Setter Property="ToolTip.Tip" Value="{Binding FullPath}"/>
+                    </ControlTheme>
+                  </MenuFlyout.ItemContainerTheme>
+                </MenuFlyout>
+              </Button.ContextFlyout>
               <Path Data="M9 5 L16 12 L9 19" Stroke="{DynamicResource ViewText}"
                     StrokeThickness="1.2" StrokeLineCap="Round" StrokeJoin="Round"
                     Width="16" Height="16" Stretch="Uniform"/>
