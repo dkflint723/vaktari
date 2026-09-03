@@ -19,19 +19,19 @@ public sealed class MimeDescriptionTests : IDisposable
     private readonly string _root = Path.Combine(
         Path.GetTempPath(), "vaktari-mime-" + Guid.NewGuid().ToString("N")[..8]);
 
-    private readonly IReadOnlyList<string>? _before = SharedMimeInfo.RootsOverride;
+    private readonly IReadOnlyList<string>? _before = SharedMimeInfo.DescriptionRootsOverride;
 
     public MimeDescriptionTests()
     {
         Directory.CreateDirectory(Path.Combine(_root, "image"));
         Directory.CreateDirectory(Path.Combine(_root, "application"));
 
-        SharedMimeInfo.RootsOverride = [_root];
+        SharedMimeInfo.DescriptionRootsOverride = [_root];
     }
 
     public void Dispose()
     {
-        SharedMimeInfo.RootsOverride = _before;
+        SharedMimeInfo.DescriptionRootsOverride = _before;
 
         try { Directory.Delete(_root, recursive: true); }
         catch (Exception) { /* a temp dir is not worth failing over */ }
@@ -147,6 +147,28 @@ public sealed class MimeDescriptionTests : IDisposable
     }
 
     /// <summary>
+    /// **Lending the description roots must not move the GLOB database**, which
+    /// is what this seam did when it was first written — and it broke CI.
+    ///
+    /// The database is a Lazy: loaded once per process and never again. Point it
+    /// at an empty directory in one test and every later test in the assembly
+    /// sees a machine with no mime types at all, which is not a failure anybody
+    /// can trace back to here.
+    ///
+    /// Posix, because it asks the desktop's own database for an answer — the
+    /// very thing that would go missing.
+    /// </summary>
+    [PosixFact]
+    public void Lending_the_descriptions_leaves_the_type_lookup_alone()
+    {
+        // The override is already set by the constructor, to a temp directory
+        // holding no globs2 whatsoever.
+        Assert.NotNull(SharedMimeInfo.DescriptionRootsOverride);
+
+        Assert.Equal("text/plain", SharedMimeInfo.ForPath("/tmp/notes.txt"));
+    }
+
+    /// <summary>
     /// The roots are the database's own, in its own precedence: a type
     /// described locally overrides the system's wording for it. A lookup that
     /// consulted a different set of roots than the one that decided the TYPE
@@ -166,7 +188,7 @@ public sealed class MimeDescriptionTests : IDisposable
         File.WriteAllText(Path.Combine(local, "text/x-note.xml"),
                           "<mime-type><comment>Lab notebook</comment></mime-type>");
 
-        SharedMimeInfo.RootsOverride = [system, local];
+        SharedMimeInfo.DescriptionRootsOverride = [system, local];
 
         Assert.Equal("Lab notebook", SharedMimeInfo.Describe("text/x-note"));
     }

@@ -25,21 +25,9 @@ public static class SharedMimeInfo
     /// <summary>
     /// The mime directories, in the spec's precedence order — later overrides
     /// earlier.
-    ///
-    /// Both the glob database and the per-type descriptions live under these,
-    /// so they are named once: a lookup that consulted a different set of roots
-    /// than the one that decided the type could describe a type this machine
-    /// does not have.
     /// </summary>
     private static IEnumerable<string> MimeRoots()
     {
-        if (RootsOverride is { } given)
-        {
-            foreach (var root in given) yield return root;
-
-            yield break;
-        }
-
         yield return "/usr/share/mime";
         yield return "/usr/local/share/mime";
 
@@ -52,15 +40,21 @@ public static class SharedMimeInfo
     }
 
     /// <summary>
-    /// Where the database is, for a test.
+    /// Where to look for the per-type DESCRIPTIONS, for a test.
     ///
-    /// A seam rather than an environment variable, because XDG_DATA_HOME is
-    /// process-global and xUnit runs test classes in parallel — one class
-    /// setting it has already broken another class's test in this repository.
-    /// And the whole Linux suite runs on Windows agents too, where there is no
-    /// /usr/share/mime to describe anything with.
+    /// **Descriptions only, and that is not tidiness — it is the bug this
+    /// caused.** An override that also moved the glob database repointed it for
+    /// the whole PROCESS: the database is a Lazy, loaded once and never again,
+    /// so a test that pointed it at an empty directory left every later test in
+    /// the assembly with no types at all. The Linux suite runs its classes in
+    /// parallel, so which tests those were varied by run.
+    ///
+    /// A seam rather than XDG_DATA_HOME for the same family of reasons — that
+    /// variable is process-global too — and because the suite also runs on
+    /// Windows agents, where there is no /usr/share/mime to describe anything
+    /// with.
     /// </summary>
-    internal static IReadOnlyList<string>? RootsOverride
+    internal static IReadOnlyList<string>? DescriptionRootsOverride
     {
         get;
         set
@@ -68,10 +62,13 @@ public static class SharedMimeInfo
             field = value;
 
             // Every remembered description came from the old roots, so keeping
-            // them would answer about a database that is no longer being read.
+            // them would answer about files that are no longer being read.
             Descriptions.Clear();
         }
     }
+
+    private static IEnumerable<string> DescriptionRoots()
+        => DescriptionRootsOverride ?? MimeRoots().ToList();
 
     private static IEnumerable<string> Roots()
         => MimeRoots().Select(root => Path.Combine(root, "globs2"));
@@ -185,7 +182,7 @@ public static class SharedMimeInfo
             // Every root, keeping the LAST answer: the precedence is the
             // database's own, where a type described locally overrides the
             // system's wording for it.
-            foreach (var root in MimeRoots())
+            foreach (var root in DescriptionRoots())
             {
                 var file = Path.Combine(root, type + ".xml");
 
