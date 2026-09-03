@@ -220,6 +220,25 @@ should not be trusted for compatibility yet.
 
 ### Changed
 
+- **A second "New folder" is called "New folder (2)".** It was "New folder 2" —
+  a space and a bare digit — which is neither what Explorer does nor what the
+  rest of Vaktari does: a copy that keeps both is already parenthesised on both
+  platforms, "report (2).txt" from the Windows engine and "report (1).txt" from
+  the Linux one. New folder, new file and new-from-template each carried their
+  own copy of the rule, which is how the three of them drifted apart; there is
+  one now. New folder also used to check only whether a *folder* was in the way,
+  so a file of that name stopped it dead with an IO error and nothing created.
+  And a template called `.gitignore` duplicated to " 2.gitignore", with nothing
+  in front of the space.
+
+- **The New menu offers a batch file on Windows and a shell script
+  elsewhere.** The list was written on Linux and never asked which machine it
+  was on, so Windows offered to create a `.sh` that nothing on the system runs
+  — and the executable bit that is the point of the entry is skipped there
+  anyway. Python stays on both: a `.py` on Windows is associated with the
+  launcher the installer puts there.
+
+
 - **A drive's tab is called what the sidebar calls it** — "Windows (C:)" rather
   than "C:". The title falls back to a path's last segment, which for a drive
   root is the root, while the sidebar three inches away had the volume label
@@ -426,6 +445,16 @@ should not be trusted for compatibility yet.
   than on a heading.
 
 ### Fixed
+
+- **Windows search finds links by name.** A junction or symbolic link was the
+  one name it could never return: the walk skipped reparse points, and that
+  setting drops the entry from the results as well as stopping the recursion —
+  so a folder link somebody made and named was missing from every search, with
+  nothing to say it had been left out, while the same query on Linux listed it.
+  Links come back now, drawn with the link emblem the listing already gives
+  them everywhere else, and are still not walked into: searching a folder that
+  holds a link back into itself does not hand you the same files again under
+  the link's name.
 
 - **A window cannot be dragged smaller than its own contents.** The settings
   window had no floor at all: its page list is docked to the left with no

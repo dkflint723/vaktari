@@ -25,9 +25,10 @@ else
 Adding Windows means adding an `else if (OperatingSystem.IsWindows())` branch
 and one project. **The UI names no other platform type** — verified by grepping
 `Vaktari.Ui` for every `Xdg*`, `Linux*`, `Avahi*`, `Copyparty*` identifier; the
-only hits are that one line, a comment, and a local helper misleadingly named
-`XdgDeduplicate` (it implements the *freedesktop* "file (1)" rename convention,
-which is not Windows' "file - Copy", so it needs a platform hook or a rename).
+only hits are that one line and a comment. The local helper once named
+`XdgDeduplicate` is gone: naming a new folder or file is `Core`'s
+`NewItemName.Free`, which parenthesises on both platforms because both copy
+engines already do.
 
 `IPlatform` is the whole surface: 19 members, seven of them nullable because the
 interface already anticipates a platform that lacks the capability. **Those

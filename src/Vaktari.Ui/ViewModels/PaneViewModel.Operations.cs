@@ -139,8 +139,7 @@ public sealed partial class PaneViewModel
     {
         if (RefusedVirtualDestination(CurrentPath)) return;
 
-        var baseName = Path.Combine(CurrentPath, "New folder");
-        var target = Directory.Exists(baseName) ? XdgDeduplicate(baseName) : baseName;
+        var target = NewItemName.Free(CurrentPath, "New folder", "");
 
         try
         {
@@ -202,15 +201,7 @@ public sealed partial class PaneViewModel
 
         try
         {
-            var target = Path.Combine(CurrentPath, "New file" + kind.Extension);
-            var unique = target;
-            var counter = 2;
-
-            while (File.Exists(unique) || Directory.Exists(unique))
-            {
-                unique = Path.Combine(CurrentPath,
-                    $"New file {counter++}{kind.Extension}");
-            }
+            var unique = NewItemName.Free(CurrentPath, "New file", kind.Extension);
 
             await Task.Run(() => File.Create(unique).Dispose()).ConfigureAwait(true);
 
@@ -241,19 +232,6 @@ public sealed partial class PaneViewModel
             // one create that did not ask for it.
             Status = Failures.Describe(ex, "make that file");
         }
-    }
-
-    /// <summary>The built-in kinds, for the menu.</summary>
-    public IReadOnlyList<NewFileKind> NewFileKinds => FileKinds.Common;
-
-    private static string XdgDeduplicate(string path)
-    {
-        for (var i = 2; i < 1000; i++)
-        {
-            var candidate = $"{path} {i}";
-            if (!Directory.Exists(candidate) && !File.Exists(candidate)) return candidate;
-        }
-        return path + " " + Guid.NewGuid().ToString("N")[..6];
     }
 
     /// <summary>Copy or move into a specific folder — used when a drop lands on
@@ -612,6 +590,9 @@ public sealed partial class PaneViewModel
             await Dispatcher.UIThread.InvokeAsync(() => Status = Failures.Describe(ex));
         }
     }
+
+    /// <summary>The built-in kinds, for the menu.</summary>
+    public IReadOnlyList<NewFileKind> NewFileKinds => FileKinds.Common;
 
     [RelayCommand]
     public void DuplicateSelected()

@@ -78,15 +78,15 @@ public sealed partial class PaneViewModel
         {
             // A copy, then straight into rename — the name is the only thing
             // the user actually wants to decide.
-            var target = Path.Combine(CurrentPath, Path.GetFileName(template.Path));
-            var unique = target;
-            var counter = 2;
+            // **A dotfile is a name, not a bare extension.** Splitting on the
+            // last dot made a second .gitignore into " 2.gitignore", with
+            // nothing at all in front of the space. PathRules.SplitLeaf is
+            // where that answer already lives — the copy engine and the trash
+            // both ask it, and this was the third caller still guessing.
+            var leaf = Path.GetFileName(template.Path);
+            var (stem, extension) = PathRules.SplitLeaf(leaf, isDirectory: false);
 
-            while (File.Exists(unique) || Directory.Exists(unique))
-            {
-                unique = Path.Combine(CurrentPath,
-                    $"{Path.GetFileNameWithoutExtension(target)} {counter++}{Path.GetExtension(target)}");
-            }
+            var unique = NewItemName.Free(CurrentPath, stem, extension);
 
             await Task.Run(() => File.Copy(template.Path, unique)).ConfigureAwait(true);
 

@@ -21,12 +21,40 @@ public sealed record NewFileKind(string Label, string Extension, bool Executable
 /// </summary>
 public static class FileKinds
 {
-    public static readonly IReadOnlyList<NewFileKind> Common =
+    /// <summary>
+    /// The list one platform offers.
+    ///
+    /// **The menu offered a shell script on Windows.** These were written on
+    /// Linux and never asked which machine they were on, so the Windows build
+    /// offered to make a .sh: nothing on a stock Windows runs one, and the
+    /// executable bit that is the whole point of the entry is skipped there by
+    /// the create path itself. The slot is worth keeping — "a script I can
+    /// run" is why it is on the list — so what fills it is the thing the
+    /// platform actually executes. .cmd rather than .ps1: cmd.exe runs it as
+    /// it stands, where a PowerShell script meets the execution policy first,
+    /// and an empty file that refuses to run is the failure this list exists
+    /// to avoid.
+    ///
+    /// **Python stays on both.** It is not a Unix file type — a .py on Windows
+    /// is associated with the launcher the installer puts there — so dropping
+    /// it would take away something that works.
+    ///
+    /// Chosen by argument rather than by asking the operating system, so both
+    /// answers can be pinned by a test running on either machine.
+    /// </summary>
+    public static IReadOnlyList<NewFileKind> For(bool windows) =>
     [
         new("Text file", ".txt"),
         new("Markdown document", ".md"),
-        new("Shell script", ".sh", Executable: true),
-        new("Python script", ".py", Executable: true),
+
+        windows
+            ? new NewFileKind("Batch file", ".cmd")
+            : new NewFileKind("Shell script", ".sh", Executable: true),
+
+        // Windows has no executable bit to set, and the create path refuses to
+        // try — so the flag says false there rather than being quietly ignored.
+        new("Python script", ".py", Executable: !windows),
+
         new("JSON file", ".json"),
         new("CSV spreadsheet", ".csv"),
         new("HTML page", ".html"),
@@ -35,4 +63,7 @@ public static class FileKinds
         // above does not cover.
         new("Empty file", ""),
     ];
+
+    /// <summary>The list for the machine this is running on.</summary>
+    public static IReadOnlyList<NewFileKind> Common { get; } = For(OperatingSystem.IsWindows());
 }

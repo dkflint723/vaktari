@@ -110,10 +110,30 @@ public sealed class WindowsSearchProvider : ISearchProvider
     /// <see cref="FileSystemEnumerable{TResult}"/> hands over name, attributes,
     /// length and timestamp from the entry the OS already returned.
     ///
-    /// **Reparse points are skipped**, which is correctness rather than speed:
-    /// a profile directory is full of legacy junctions — "Application Data",
-    /// "My Documents" — that point back at their own ancestors, and a recursive
-    /// walk that follows them does not terminate.
+    /// **A link was not descended into and was not listed either.** Reparse
+    /// points were named in <see cref="EnumerationOptions.AttributesToSkip"/>,
+    /// which is one setting doing two jobs when only one of them was wanted.
+    /// The job that was wanted is termination: a profile directory is full of
+    /// legacy junctions — "Application Data", "My Documents" — that point back
+    /// at their own ancestors, and a recursive walk that follows them does not
+    /// terminate. The job that was not is that AttributesToSkip drops the entry
+    /// from the results as well, so a junction or symbolic link a person made
+    /// and named was the one name this search could never return, with nothing
+    /// to say it had been left out — while the same query on Linux listed it.
+    /// Termination is the push below's business now; the link itself is matched
+    /// and returned like any other name.
+    ///
+    /// System stays skipped, because that is a separate question from links:
+    /// every junction or symbolic link an ordinary user makes is a plain
+    /// reparse point carrying no System bit, and the legacy profile junctions
+    /// carry System as well, so they stay out of the results on the attribute
+    /// that was always hiding them.
+    ///
+    /// The Symlink flag <c>ToFlags</c> sets below is load-bearing twice over
+    /// now: it draws the link emblem in the listing, and it is what the push
+    /// reads to stop. Both come out of the one directory read, so the guard
+    /// costs no extra syscall — but deleting that line un-terminates the walk
+    /// as well as losing the emblem.
     /// </summary>
     private static IEnumerable<FileEntry> Walk(SearchQuery query, CancellationToken ct)
     {
@@ -141,7 +161,9 @@ public sealed class WindowsSearchProvider : ISearchProvider
         {
             RecurseSubdirectories = false,
             IgnoreInaccessible = true,
-            AttributesToSkip = FileAttributes.System | FileAttributes.ReparsePoint,
+            // ReparsePoint is deliberately absent, per the note above: this
+            // setting hides the row, and hiding the row was never the point.
+            AttributesToSkip = FileAttributes.System,
             ReturnSpecialDirectories = false,
         };
 
@@ -174,7 +196,10 @@ public sealed class WindowsSearchProvider : ISearchProvider
 
             foreach (var entry in entries)
             {
-                if (entry.IsDirectory) pending.Push(entry.FullPath);
+                // A junction is a name in this folder, so it is matched below
+                // like any other; it is simply not a way in. This is where the
+                // walk terminates now that the attribute no longer hides them.
+                if (entry.IsDirectory && !entry.IsSymlink) pending.Push(entry.FullPath);
 
                 if (!Matches(entry.Name, query.Text, glob, comparison, query.CaseSensitive))
                     continue;
