@@ -145,10 +145,7 @@ public sealed class LinuxSearchProvider : ISearchProvider
                 var path = line.Trim();
                 if (path.Length == 0 || path[0] != '/') continue;
 
-                // Baloo indexes the whole home; the scope is applied here rather
-                // than trusting a flag whose name differs across KDE versions.
-                if (query.ScopePath is { Length: > 0 } scope &&
-                    !path.StartsWith(scope, StringComparison.Ordinal)) continue;
+                if (!InScope(query.ScopePath, path)) continue;
 
                 if (Describe(path) is { } entry)
                 {
@@ -166,6 +163,26 @@ public sealed class LinuxSearchProvider : ISearchProvider
             }
         }
     }
+
+    /// <summary>
+    /// Whether one of Baloo's answers is inside the folder being searched.
+    ///
+    /// Baloo indexes the whole home, so the scope is applied here rather than
+    /// trusting a flag whose name differs across KDE versions.
+    ///
+    /// **It was a bare string prefix, so searching one folder searched its
+    /// neighbours too.** Scoped to /home/u/proj this also let through
+    /// /home/u/projects and /home/u/proj-old — "this folder only" quietly
+    /// meaning something else, and only in the indexed path, so the same search
+    /// gave different answers depending on whether Baloo happened to be
+    /// running. The prefix has to end at a separator, which is what
+    /// PathRules.Contains says and documents for mount points.
+    ///
+    /// Named rather than inline because the loop it came out of drives a
+    /// subprocess, and this is the whole of the rule worth pinning.
+    /// </summary>
+    internal static bool InScope(string? scope, string path)
+        => scope is not { Length: > 0 } || PathRules.Contains(scope, path);
 
     private static async IAsyncEnumerable<FileEntry> SearchByWalkingAsync(
         SearchQuery query, [EnumeratorCancellation] CancellationToken ct)
