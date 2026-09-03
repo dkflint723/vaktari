@@ -17,6 +17,8 @@ public sealed class LinuxPlatform : IPlatform
 
     public LinuxPlatform(string stateDirectory)
     {
+        FileManagerService = new FreedesktopFileManager(_defaults);
+
         // Started here rather than in its constructor, for the reason given on
         // the Windows twin.
         var places = new LinuxPlacesProvider(stateDirectory);
@@ -32,7 +34,19 @@ public sealed class LinuxPlatform : IPlatform
     /// one: the freedesktop specification calls it the trash, and Dolphin and
     /// Nautilus write it in running text without capitals.
     /// </summary>
-    public IDefaultFileManager? DefaultFileManager { get; } = new LinuxDefaultFileManager();
+    /// <summary>
+    /// Held as a field rather than rebuilt, because the D-Bus service asks it
+    /// the same question the settings page does — whether Vaktari is the
+    /// desktop's folder handler — and two objects answering it separately is
+    /// two answers waiting to disagree.
+    /// </summary>
+    private readonly LinuxDefaultFileManager _defaults = new();
+
+    public IDefaultFileManager? DefaultFileManager => _defaults;
+
+    /// <summary>Answers other applications' "show this file in its folder".
+    /// Built here, dormant until something calls ReconcileAsync.</summary>
+    public IFileManagerService? FileManagerService { get; }
 
     public string BinName => "trash";
 

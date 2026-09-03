@@ -9,6 +9,25 @@
     <ProjectReference Include="..\Vaktari.Core\Vaktari.Core.csproj" />
   </ItemGroup>
 
+  <!-- **Already in the build, and this only makes it sayable here.** Avalonia
+       pulls Tmds.DBus.Protocol in through Avalonia.Desktop -> Avalonia.X11 ->
+       Avalonia.FreeDesktop, at this exact version — it is in
+       src/Vaktari.Ui/obj/project.assets.json today — and it is what Avalonia
+       itself talks to the session bus with under NativeAOT. This project
+       references no Avalonia, so the transitive route does not reach it and the
+       reference has to be written down. Nothing new is downloaded or published.
+
+       The low-level protocol package, NOT Tmds.DBus: that one builds dynamic
+       proxies by reflection and would fail the AOT analyser Directory.Build.props
+       turns on everywhere.
+
+       Pinned to what Avalonia resolves today. If Avalonia moves ahead, NuGet
+       takes the higher version and nothing breaks; the pin exists so a LOWER
+       one here can never quietly win. -->
+  <ItemGroup>
+    <PackageReference Include="Tmds.DBus.Protocol" Version="0.94.1" />
+  </ItemGroup>
+
 
   <!-- The launcher's terminal list and the search backend's binary are probed
        from the machine, so the interesting states — a terminal that refuses to
