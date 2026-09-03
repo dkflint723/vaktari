@@ -195,6 +195,16 @@ public sealed partial class PaneViewModel : ObservableObject, IDisposable
     public static Vaktari.Core.Places.IPlacesProvider? Places { get; set; }
 
     /// <summary>
+    /// The search backend, for the `vaktari:search:` listing. Static like the
+    /// other providers here.
+    ///
+    /// **Null is an empty result, never a crash** — the same rule the rest of
+    /// this block follows. A desktop with no index still lets you type a
+    /// question; it just cannot answer it.
+    /// </summary>
+    public static Vaktari.Core.Search.ISearchProvider? Search { get; set; }
+
+    /// <summary>
     /// Reads this platform's kind of shortcut, so opening one can follow it.
     /// Static like the other providers here; null where the desktop has no such
     /// indirection to read.
@@ -2665,6 +2675,7 @@ public sealed partial class PaneViewModel : ObservableObject, IDisposable
             VirtualPaths.IsRecent(path) ? RecentListing.EnumerateAsync(Recents, path, ct)
             : path == VirtualPaths.Trash ? RecentListing.EnumerateTrashAsync(Trash, ct)
             : path == VirtualPaths.Computer ? ComputerListing.EnumerateAsync(Places, ct)
+            : VirtualPaths.IsSearch(path) ? SearchListing.EnumerateAsync(Search, path, options, ct)
             : _fs.EnumerateAsync(path, options, ct);
 
         var sw = Stopwatch.StartNew();
