@@ -2593,10 +2593,28 @@ public partial class MainWindow : Window
         }
     }
 
+    /// <summary>
+    /// Where F6 puts the keyboard when it reaches the sidebar.
+    ///
+    /// **A section heading is a Button.** Folding made every heading a
+    /// ToggleButton, which derives from Button, so the first visible one in
+    /// the panel became PLACES rather than Home — and F6 landed on a control
+    /// whose Space bar folds the list you were trying to reach. The rule is
+    /// still "the first row", and a heading is not a row.
+    ///
+    /// Written with a body rather than as an expression so the rule can be
+    /// pinned: RepoSource.Body ends a method at a closing brace at class
+    /// indentation, and an expression-bodied member has none — it would have
+    /// returned this declaration plus the whole of the next method.
+    /// </summary>
     private Control? FirstSidebarRow()
-        => this.FindControl<Border>("SidebarPanel") is { } sidebar
-            ? sidebar.GetVisualDescendants().OfType<Button>().FirstOrDefault(b => b.IsVisible)
-            : null;
+    {
+        if (this.FindControl<Border>("SidebarPanel") is not { } sidebar) return null;
+
+        return sidebar.GetVisualDescendants().OfType<Button>()
+                      .FirstOrDefault(b => b.IsVisible
+                                           && b is not Avalonia.Controls.Primitives.ToggleButton);
+    }
 
     private ListBox? ActiveListing()
     {

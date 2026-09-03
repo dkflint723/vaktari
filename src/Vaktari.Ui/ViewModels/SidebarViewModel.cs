@@ -48,20 +48,115 @@ public sealed partial class SidebarViewModel : ObservableObject
     [ObservableProperty] private RailState _rail = RailState.Full;
     [ObservableProperty] private double _width = 210;
 
-    // One sidebar, all sections visible at once — the point of the workspace
-    // layout is that the things you organise by are never behind a toggle.
+    // One sidebar, every section reachable at once — the point of the workspace
+    // layout is that the application never decides which of them you can see.
+    // Folding is the other thing: the PERSON decides, one section at a time,
+    // and it stays that way because they asked for it.
     //
     // An `ActivePanel` used to sit beside this, persisted in the session and
     // restored, with `ShowPanel` as its only mutator — and nothing ever called
     // that. Removed 30 July 2026: state that cannot be changed is not state.
     public bool IsPanelVisible => Rail != RailState.Hidden;
 
-    /// <summary>The folder tree is the one section worth collapsing: it is tall,
-    /// and it is the least used of the four.</summary>
-
-
-
     [ObservableProperty] private bool _isSearching;
+
+    // ---- folding -----------------------------------------------------------
+
+    /// <summary>
+    /// Which sections are folded away.
+    ///
+    /// **A full sidebar was a scrolling sidebar.** Eight groups — Places,
+    /// Devices, Shares, Network, Remote, Sharing, Recent and the bin — do not
+    /// fit above the fold on a laptop, so reaching Recent meant scrolling past
+    /// four sections that were never going to be clicked, and both references
+    /// let you fold a heading away. Nothing is folded until somebody folds it.
+    ///
+    /// Held here rather than on the groups because a group is rebuilt from the
+    /// desktop's own list every time anything changes — plug in a stick and
+    /// every PlaceGroupViewModel is thrown away. State that lives on one would
+    /// last until the next reload.
+    ///
+    /// Without case, because half the keys are provider labels and a provider
+    /// is free to change how it capitalises one between two runs.
+    /// </summary>
+    private readonly HashSet<string> _collapsed = new(StringComparer.OrdinalIgnoreCase);
+
+    /// <summary>What the session stores. Order is not meaningful.</summary>
+    public IReadOnlyList<string> CollapsedSections => _collapsed.ToList();
+
+    public bool IsCollapsed(string key) => _collapsed.Contains(key);
+
+    /// <summary>
+    /// Folds or unfolds one section.
+    ///
+    /// Raises <see cref="CollapsedSections"/> whatever the key, because that is
+    /// what the shell watches to know the session has changed — a per-key
+    /// notification would need the shell to know every key there is.
+    /// </summary>
+    public void SetCollapsed(string key, bool collapsed)
+    {
+        var changed = collapsed ? _collapsed.Add(key) : _collapsed.Remove(key);
+
+        if (!changed) return;
+
+        OnPropertyChanged(nameof(CollapsedSections));
+
+        // The four written into the markup bind to their own property, so each
+        // has to be named. A provider group reads through IsCollapsed on its
+        // own view model and is notified there.
+        OnPropertyChanged(key switch
+        {
+            SidebarSections.Network => nameof(IsNetworkCollapsed),
+            SidebarSections.Remote => nameof(IsRemoteCollapsed),
+            SidebarSections.Sharing => nameof(IsSharingCollapsed),
+            SidebarSections.Recent => nameof(IsRecentCollapsed),
+            _ => nameof(CollapsedSections),
+        });
+    }
+
+    /// <summary>
+    /// Takes the folded set from a restored session.
+    ///
+    /// Applied before the places load, so the first list to arrive is already
+    /// folded the way it was left rather than opening and shutting on screen.
+    /// </summary>
+    public void RestoreCollapsed(IEnumerable<string> keys)
+    {
+        _collapsed.Clear();
+
+        foreach (var key in keys)
+            if (!string.IsNullOrWhiteSpace(key)) _collapsed.Add(key);
+
+        OnPropertyChanged(nameof(CollapsedSections));
+        OnPropertyChanged(nameof(IsNetworkCollapsed));
+        OnPropertyChanged(nameof(IsRemoteCollapsed));
+        OnPropertyChanged(nameof(IsSharingCollapsed));
+        OnPropertyChanged(nameof(IsRecentCollapsed));
+    }
+
+    public bool IsNetworkCollapsed
+    {
+        get => IsCollapsed(SidebarSections.Network);
+        set => SetCollapsed(SidebarSections.Network, value);
+    }
+
+    public bool IsRemoteCollapsed
+    {
+        get => IsCollapsed(SidebarSections.Remote);
+        set => SetCollapsed(SidebarSections.Remote, value);
+    }
+
+    public bool IsSharingCollapsed
+    {
+        get => IsCollapsed(SidebarSections.Sharing);
+        set => SetCollapsed(SidebarSections.Sharing, value);
+    }
+
+    public bool IsRecentCollapsed
+    {
+        get => IsCollapsed(SidebarSections.Recent);
+        set => SetCollapsed(SidebarSections.Recent, value);
+    }
 
     // ---- navigation --------------------------------------------------------
     //
@@ -394,7 +489,7 @@ public sealed partial class SidebarViewModel : ObservableObject
         {
             Groups.Clear();
             foreach (var group in groups)
-                Groups.Add(new PlaceGroupViewModel(group));
+                Groups.Add(new PlaceGroupViewModel(group, this));
 
                 // **The bin drew the same glyph full or empty.** Asked once per
             // rebuild rather than per row, and asked with HasAny rather than
@@ -505,9 +600,33 @@ public sealed partial class SidebarViewModel : ObservableObject
     }
 }
 
-public sealed class PlaceGroupViewModel(PlaceGroup group)
+public sealed partial class PlaceGroupViewModel(PlaceGroup group, SidebarViewModel? sidebar = null)
+    : ObservableObject
 {
     public string Label { get; } = group.Label;
+
+    /// <summary>
+    /// Whether this group is folded away.
+    ///
+    /// Read from the sidebar when the group is built and written back to it
+    /// when it changes, because the group itself does not live long enough to
+    /// remember anything: plugging in a stick rebuilds every one of them from
+    /// the desktop's list. The sidebar is optional so the five test fakes and
+    /// the two other construction sites need no argument — a group with no
+    /// sidebar behind it simply never folds.
+    /// </summary>
+    private bool _isCollapsed = sidebar?.IsCollapsed(group.Label) ?? false;
+
+    public bool IsCollapsed
+    {
+        get => _isCollapsed;
+        set
+        {
+            if (!SetProperty(ref _isCollapsed, value)) return;
+
+            sidebar?.SetCollapsed(Label, value);
+        }
+    }
 
     /// <summary>
     /// Observable so a reorder can move a row under the pointer. A rebuilt list

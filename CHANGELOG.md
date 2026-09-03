@@ -371,6 +371,18 @@ should not be trusted for compatibility yet.
   was called "properties", so opening three files side by side to compare them
   — which is the reason to open three — gave three identical taskbar buttons.
 
+### Added
+
+- **A sidebar section can be folded away.** Places, Devices, Shares, Network,
+  Remote, Sharing and Recent do not all fit on a laptop screen, so reaching the
+  bottom of the list meant scrolling past four headings that were never going to
+  be clicked. Every heading is now a fold: click it and the section closes to
+  its title, click again and it comes back. What you folded is remembered
+  between runs, and it survives the rebuild that plugging in a drive causes —
+  which is when the sidebar is at its longest. Nothing is folded until you fold
+  it, and the keyboard walking into the sidebar still lands on a place rather
+  than on a heading.
+
 ### Fixed
 
 - **One thing can be deleted out of the bin.** The only ways out of it were

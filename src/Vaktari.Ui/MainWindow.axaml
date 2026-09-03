@@ -2838,6 +2838,62 @@
         <ScrollViewer>
           <StackPanel Margin="0,0,0,12">
 
+            <!-- Every section heading is a fold. A full sidebar does not fit
+                 above the fold on a laptop, so reaching Recent meant scrolling
+                 past four sections that were never going to be clicked.
+
+                 Checked means FOLDED, which is the way the chevron reads: it
+                 points down at what it is showing, and turns to point at a
+                 section that has been put away. -->
+            <StackPanel.Styles>
+              <Style Selector="ToggleButton.section">
+                <Setter Property="Background" Value="Transparent"/>
+                <Setter Property="BorderThickness" Value="0"/>
+                <Setter Property="Padding" Value="0"/>
+                <Setter Property="MinWidth" Value="0"/>
+                <Setter Property="MinHeight" Value="0"/>
+                <Setter Property="HorizontalAlignment" Value="Stretch"/>
+                <Setter Property="HorizontalContentAlignment" Value="Left"/>
+                <Setter Property="Cursor" Value="Hand"/>
+              </Style>
+              <!-- Fluent paints its states on the ContentPresenter, so they
+                   have to be answered there: a pseudo-class style writes at
+                   StyleTrigger priority and a plain setter at Style priority,
+                   so the theme's :checked rule beats a local unconditional
+                   Background however local it is. Checked is not a selection
+                   here — it is a fold — so it must look like nothing. -->
+              <Style Selector="ToggleButton.section /template/ ContentPresenter">
+                <Setter Property="Background" Value="Transparent"/>
+                <Setter Property="CornerRadius" Value="3"/>
+              </Style>
+              <Style Selector="ToggleButton.section:checked /template/ ContentPresenter">
+                <Setter Property="Background" Value="Transparent"/>
+              </Style>
+              <Style Selector="ToggleButton.section:pointerover /template/ ContentPresenter">
+                <Setter Property="Background" Value="{DynamicResource HoverBackground}"/>
+              </Style>
+              <Style Selector="ToggleButton.section:checked:pointerover /template/ ContentPresenter">
+                <Setter Property="Background" Value="{DynamicResource HoverBackground}"/>
+              </Style>
+              <Style Selector="ToggleButton.section:pressed /template/ ContentPresenter">
+                <Setter Property="Background" Value="{DynamicResource HoverBackground}"/>
+              </Style>
+              <Style Selector="ToggleButton.section:checked:pressed /template/ ContentPresenter">
+                <Setter Property="Background" Value="{DynamicResource HoverBackground}"/>
+              </Style>
+              <Style Selector="ToggleButton.section Path.chevron">
+                <Setter Property="Width" Value="6"/>
+                <Setter Property="Height" Value="6"/>
+                <Setter Property="Margin" Value="0,0,5,0"/>
+                <Setter Property="VerticalAlignment" Value="Center"/>
+                <Setter Property="Fill" Value="{DynamicResource ViewDimText}"/>
+                <Setter Property="Data" Value="M0,1 L6,1 L3,5 Z"/>
+              </Style>
+              <Style Selector="ToggleButton.section:checked Path.chevron">
+                <Setter Property="Data" Value="M1,0 L5,3 L1,6 Z"/>
+              </Style>
+            </StackPanel.Styles>
+
             <!-- The search results that used to live here are now a popup under
                  the toolbar field. They replaced the places list while a query
                  was live, which meant searching took away the thing you
@@ -2855,13 +2911,27 @@
                            be rewritten to make a heading look right. The
                            tracking is what separates the heading from its rows,
                            so the group needs no rule above it. -->
-                      <TextBlock Text="{Binding Label, Converter={x:Static vm:FileConverters.Upper}}"
-                                 Margin="12,0,12,6"
-                                 FontSize="{DynamicResource FontSizeTiny}"
-                                 FontWeight="Medium"
-                                 LetterSpacing="1.1"
-                                 Foreground="{DynamicResource ViewDimText}"/>
-                      <ItemsControl ItemsSource="{Binding Places}">
+                      <!-- Named with the same converted text the heading shows,
+                           rather than the raw Label: it reads PLACES on screen,
+                           and a bare `{Binding Label}` here would become the
+                           FIRST such attribute in this file — which is the one
+                           DiscoverabilityTests slices from to check that a place
+                           row carries its path as a tooltip. -->
+                      <ToggleButton Classes="section" Margin="12,0,12,6" Padding="0,1"
+                                    IsChecked="{Binding IsCollapsed, Mode=TwoWay}"
+                                    AutomationProperties.Name="{Binding Label, Converter={x:Static vm:FileConverters.Upper}}"
+                                    ToolTip.Tip="fold this section away">
+                        <StackPanel Orientation="Horizontal">
+                          <Path Classes="chevron"/>
+                          <TextBlock Text="{Binding Label, Converter={x:Static vm:FileConverters.Upper}}"
+                                     FontSize="{DynamicResource FontSizeTiny}"
+                                     FontWeight="Medium"
+                                     LetterSpacing="1.1"
+                                     Foreground="{DynamicResource ViewDimText}"/>
+                        </StackPanel>
+                      </ToggleButton>
+                      <ItemsControl ItemsSource="{Binding Places}"
+                                    IsVisible="{Binding !IsCollapsed}">
                         <ItemsControl.ItemTemplate>
                           <DataTemplate x:DataType="vm:PlaceItemViewModel">
                           <StackPanel>
@@ -3116,13 +3186,28 @@
                             Command="{Binding RequestShareCommand}"/>
                     <!-- Written upper-case rather than run through the Upper
                          converter: this is a literal, and the converter exists
-                         for Place.Label, which is data. -->
-                    <TextBlock Text="NETWORK" FontSize="{DynamicResource FontSizeTiny}"
-                               FontWeight="Medium" LetterSpacing="1.1"
-                               Foreground="{DynamicResource ViewDimText}"/>
+                         for Place.Label, which is data.
+
+                         Scan and share stay docked to the right, outside the
+                         toggle. The toggle is the DockPanel's fill child and
+                         takes every pixel they leave — which is what a heading
+                         should do — but a click on "scan" did not ask for the
+                         section to fold as well. -->
+                    <ToggleButton Classes="section"
+                                  IsChecked="{Binding Sidebar.IsNetworkCollapsed, Mode=TwoWay}"
+                                  AutomationProperties.Name="NETWORK"
+                                  ToolTip.Tip="fold this section away">
+                      <StackPanel Orientation="Horizontal">
+                        <Path Classes="chevron"/>
+                        <TextBlock Text="NETWORK" FontSize="{DynamicResource FontSizeTiny}"
+                                   FontWeight="Medium" LetterSpacing="1.1"
+                                   Foreground="{DynamicResource ViewDimText}"/>
+                      </StackPanel>
+                    </ToggleButton>
                   </DockPanel>
 
-                  <ItemsControl ItemsSource="{Binding Discovered}">
+                  <ItemsControl ItemsSource="{Binding Discovered}"
+                                IsVisible="{Binding !Sidebar.IsNetworkCollapsed}">
                     <ItemsControl.ItemTemplate>
                       <DataTemplate x:DataType="pl:DiscoveredService">
                         <Button HorizontalAlignment="Stretch" HorizontalContentAlignment="Left"
@@ -3186,11 +3271,20 @@
                             AutomationProperties.Name="connect to a server…" ToolTip.Tip="connect to a server…"
                             IsEnabled="{Binding CanConnect}"
                             Command="{Binding ConnectCommand}"/>
-                    <TextBlock Text="REMOTE" FontSize="{DynamicResource FontSizeTiny}"
-                               FontWeight="Medium" LetterSpacing="1.1"
-                               Foreground="{DynamicResource ViewDimText}"/>
+                    <ToggleButton Classes="section"
+                                  IsChecked="{Binding Sidebar.IsRemoteCollapsed, Mode=TwoWay}"
+                                  AutomationProperties.Name="REMOTE"
+                                  ToolTip.Tip="fold this section away">
+                      <StackPanel Orientation="Horizontal">
+                        <Path Classes="chevron"/>
+                        <TextBlock Text="REMOTE" FontSize="{DynamicResource FontSizeTiny}"
+                                   FontWeight="Medium" LetterSpacing="1.1"
+                                   Foreground="{DynamicResource ViewDimText}"/>
+                      </StackPanel>
+                    </ToggleButton>
                   </DockPanel>
-                  <ItemsControl ItemsSource="{Binding Sidebar.Remotes}">
+                  <ItemsControl ItemsSource="{Binding Sidebar.Remotes}"
+                                IsVisible="{Binding !Sidebar.IsRemoteCollapsed}">
                     <ItemsControl.ItemTemplate>
                       <DataTemplate x:DataType="pl:RemoteMount">
                         <!-- Name and tooltip on the row, not on the label: the
@@ -3298,11 +3392,20 @@
                      a folder open to the network must never be something you
                      have to remember. -->
                 <StackPanel IsVisible="{Binding HasAnySharing}" Margin="0,8,0,12">
-                  <TextBlock Text="SHARING" Margin="12,0,12,6"
-                             FontSize="{DynamicResource FontSizeTiny}"
-                             FontWeight="Medium" LetterSpacing="1.1"
-                             Foreground="{DynamicResource ViewDimText}"/>
-                  <ItemsControl ItemsSource="{Binding Shares}">
+                  <ToggleButton Classes="section" Margin="12,0,12,6" Padding="0,1"
+                                IsChecked="{Binding Sidebar.IsSharingCollapsed, Mode=TwoWay}"
+                                AutomationProperties.Name="SHARING"
+                                ToolTip.Tip="fold this section away">
+                    <StackPanel Orientation="Horizontal">
+                      <Path Classes="chevron"/>
+                      <TextBlock Text="SHARING"
+                                 FontSize="{DynamicResource FontSizeTiny}"
+                                 FontWeight="Medium" LetterSpacing="1.1"
+                                 Foreground="{DynamicResource ViewDimText}"/>
+                    </StackPanel>
+                  </ToggleButton>
+                  <ItemsControl ItemsSource="{Binding Shares}"
+                                IsVisible="{Binding !Sidebar.IsSharingCollapsed}">
                     <ItemsControl.ItemTemplate>
                       <DataTemplate x:DataType="sh:ShareSession">
                         <Border Margin="8,2" Padding="6,4" CornerRadius="4"
@@ -3338,7 +3441,8 @@
                   <!-- Proton links, under the served folders. Same row, same
                        kill switch — a link that outlives the app is MORE worth
                        keeping in sight than a server that dies with it. -->
-                  <ItemsControl ItemsSource="{Binding DriveLinks}">
+                  <ItemsControl ItemsSource="{Binding DriveLinks}"
+                                IsVisible="{Binding !Sidebar.IsSharingCollapsed}">
                     <ItemsControl.ItemTemplate>
                       <DataTemplate x:DataType="sh:DriveLink">
                         <Border Margin="8,2" Padding="6,4" CornerRadius="4"
@@ -3377,11 +3481,20 @@
                      places that exist whether or not they currently hold
                      anything. -->
                 <StackPanel Margin="0,14,0,0">
-                  <TextBlock Text="RECENT" Margin="12,0,12,6"
-                             FontSize="{DynamicResource FontSizeTiny}"
-                             FontWeight="Medium" LetterSpacing="1.1"
-                             Foreground="{DynamicResource ViewDimText}"/>
-                  <Button Command="{Binding Sidebar.OpenRecentFilesCommand}"
+                  <ToggleButton Classes="section" Margin="12,0,12,6" Padding="0,1"
+                                IsChecked="{Binding Sidebar.IsRecentCollapsed, Mode=TwoWay}"
+                                AutomationProperties.Name="RECENT"
+                                ToolTip.Tip="fold this section away">
+                    <StackPanel Orientation="Horizontal">
+                      <Path Classes="chevron"/>
+                      <TextBlock Text="RECENT"
+                                 FontSize="{DynamicResource FontSizeTiny}"
+                                 FontWeight="Medium" LetterSpacing="1.1"
+                                 Foreground="{DynamicResource ViewDimText}"/>
+                    </StackPanel>
+                  </ToggleButton>
+                  <Button IsVisible="{Binding !Sidebar.IsRecentCollapsed}"
+                          Command="{Binding Sidebar.OpenRecentFilesCommand}"
                           Background="Transparent" BorderThickness="0"
                           HorizontalAlignment="Stretch"
                           HorizontalContentAlignment="Left" Padding="12,7">
@@ -3402,7 +3515,8 @@
                                  VerticalAlignment="Center"/>
                     </DockPanel>
                   </Button>
-                  <Button Command="{Binding Sidebar.OpenRecentLocationsCommand}"
+                  <Button IsVisible="{Binding !Sidebar.IsRecentCollapsed}"
+                          Command="{Binding Sidebar.OpenRecentLocationsCommand}"
                           Background="Transparent" BorderThickness="0"
                           HorizontalAlignment="Stretch"
                           HorizontalContentAlignment="Left" Padding="12,7">

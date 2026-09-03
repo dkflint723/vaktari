@@ -165,6 +165,17 @@ public sealed record WindowSession
     // the same commit.
     public double SidebarWidth { get; init; } = 210;
     public RailState Rail { get; init; } = RailState.Full;
+
+    /// <summary>
+    /// Sidebar sections the person folded away, by key.
+    ///
+    /// No version bump: a file written before this existed simply has no such
+    /// key, and an absent key arrives as null — the same rule the scales above
+    /// record. Every reader must therefore write `?? []`, and that is not
+    /// defensive, it is the difference between starting and not: the restore
+    /// iterates this list.
+    /// </summary>
+    public IReadOnlyList<string> CollapsedSections { get; init; } = [];
 }
 
 public sealed record SessionState

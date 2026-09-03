@@ -90,7 +90,8 @@ public sealed partial class ShellViewModel : ObservableObject, IDisposable
         Sidebar.PropertyChanged += (_, e) =>
         {
             if (e.PropertyName is nameof(SidebarViewModel.Rail)
-                               or nameof(SidebarViewModel.Width))
+                               or nameof(SidebarViewModel.Width)
+                               or nameof(SidebarViewModel.CollapsedSections))
                 MarkDirty();
         };
     }
@@ -2380,6 +2381,17 @@ public sealed partial class ShellViewModel : ObservableObject, IDisposable
         {
             Sidebar.Width = window.SidebarWidth;
             Sidebar.Rail = window.Rail;
+
+            // Before InitializeAsync below, so the first list of places arrives
+            // already folded the way it was left rather than opening and
+            // shutting on screen.
+            //
+            // `?? []` is load-bearing rather than defensive: a session written
+            // before folding existed has no such key, deserialization does not
+            // run property initializers, and the absent key arrives as null —
+            // so without this the first launch after an upgrade would throw on
+            // the foreach inside, for everybody.
+            Sidebar.RestoreCollapsed(window.CollapsedSections ?? []);
             SplitRatio = window.SplitRatio;
             FontScale = window.FontScale <= 0 ? 1.0 : window.FontScale;
             IconScale = window.IconScale <= 0 ? 1.0 : window.IconScale;
@@ -2451,6 +2463,7 @@ public sealed partial class ShellViewModel : ObservableObject, IDisposable
                 {
                     SidebarWidth = Sidebar.Width,
                     Rail = Sidebar.Rail,
+                    CollapsedSections = Sidebar.CollapsedSections,
                     SplitRatio = SplitRatio,
                     FontScale = FontScale,
                     IconScale = IconScale,

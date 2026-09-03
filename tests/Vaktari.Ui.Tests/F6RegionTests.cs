@@ -1,5 +1,6 @@
 using Avalonia;
 using Avalonia.Controls;
+using Avalonia.Controls.Primitives;
 using Avalonia.Headless;
 using Avalonia.Headless.XUnit;
 using Avalonia.Input;
@@ -132,6 +133,13 @@ public sealed class F6RegionTests : OwnedViewModels
                 && window.FocusManager?.GetFocusedElement() is Visual landed
                 && panel.GetVisualDescendants().Contains(landed),
                 "the second press went back to the listing instead of on to the sidebar");
+
+            // **And it landed on a place, not on a heading.** Every section
+            // heading is a ToggleButton that folds the section away, and a
+            // ToggleButton IS a Button — so "the first visible button in the
+            // panel" became PLACES rather than Home, and F6 handed the keyboard
+            // to a control whose Space bar hides the list you were reaching for.
+            Assert.IsNotType<ToggleButton>(window.FocusManager?.GetFocusedElement());
         }
         finally
         {
