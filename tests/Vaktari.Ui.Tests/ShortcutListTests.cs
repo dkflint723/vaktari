@@ -67,6 +67,13 @@ public sealed class ShortcutListTests
         .Replace("OemMinus", "-", StringComparison.Ordinal)
         .Replace("OemComma", ",", StringComparison.Ordinal)
         .Replace("D0", "0", StringComparison.Ordinal)
+
+        // **The pad's zero is a second key wearing the first one's keycap.**
+        // Avalonia calls it NumPad0 and the top row's D0; both are printed 0,
+        // so the sheet keeps one line and this folds the spelling onto it. The
+        // rule above cannot do the job — its "D" is a capital and the pad's
+        // spelling has a lowercase one.
+        .Replace("NumPad0", "0", StringComparison.Ordinal)
         .Replace("Left", "←", StringComparison.Ordinal)
         .Replace("Right", "→", StringComparison.Ordinal)
         .Replace("Up", "↑", StringComparison.Ordinal)
@@ -117,6 +124,41 @@ public sealed class ShortcutListTests
 
             return data;
         }
+    }
+
+    /// <summary>
+    /// **F3 opens search in Explorer and splits the window in Dolphin, and
+    /// Vaktari chose Dolphin.** A Windows user presses it, gets a second pane,
+    /// and opens this sheet to find out why — so the split line itself has to
+    /// name the key that does what they wanted, rather than leaving them to
+    /// scroll to a heading they have no reason to look under.
+    ///
+    /// The key it must name is read from the BINDINGS, not from the sheet's own
+    /// Search rows: a sheet checked against itself would go on passing after
+    /// search moved to another key, which is the drift this file exists to stop.
+    /// </summary>
+    [Fact]
+    public void The_split_key_says_where_search_is()
+    {
+        var split = Shortcuts.All
+            .SelectMany(g => g.Keys)
+            .Single(k => k.Keys
+                .Split(" / ", StringSplitOptions.TrimEntries)
+                .Contains("F3", StringComparer.OrdinalIgnoreCase));
+
+        var searchKeys = KeyBindingSites.Markup()
+            .Where(b => b.Value.Contains("BeginSearch", StringComparison.Ordinal))
+            .Select(b => Readable(b.Key))
+            .ToList();
+
+        Assert.NotEmpty(searchKeys);
+
+        Assert.True(
+            searchKeys.Any(key => split.Does.Contains(key, StringComparison.OrdinalIgnoreCase)),
+            $"the F3 line reads \"{split.Does}\" and names none of "
+            + $"{string.Join(", ", searchKeys)} — somebody who pressed F3 expecting "
+            + "Explorer's search and got a split learns nothing from the line they "
+            + "are looking at.");
     }
 
     /// <summary>

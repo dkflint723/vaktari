@@ -2599,9 +2599,17 @@
          working in the address bar the whole time. -->
     <KeyBinding Gesture="Ctrl+I"         Command="{Binding ActiveTab.ToggleFilterCommand}"/>
     <KeyBinding Gesture="Ctrl+Shift+N"   Command="{Binding ActiveTab.NewFolderCommand}"/>
+    <!-- **Ctrl and the number pad's nought did nothing**, while the pad's plus
+         and minus already worked. Avalonia folds the pad's arithmetic keys onto
+         the top row's when it matches a gesture — Add onto OemPlus, Subtract
+         onto OemMinus — so those two are answered by the lines below with no
+         second spelling. It folds nothing onto D0, so the pad's zero reached no
+         binding at all: of the three, the dead one was the key somebody with a
+         hand on the pad actually reaches for. -->
     <KeyBinding Gesture="Ctrl+OemPlus"   Command="{Binding ZoomInCommand}"/>
     <KeyBinding Gesture="Ctrl+OemMinus"  Command="{Binding ZoomOutCommand}"/>
     <KeyBinding Gesture="Ctrl+D0"        Command="{Binding ZoomResetCommand}"/>
+    <KeyBinding Gesture="Ctrl+NumPad0"   Command="{Binding ZoomResetCommand}"/>
     <KeyBinding Gesture="Ctrl+B"         Command="{Binding Sidebar.CycleRailCommand}"/>
     <!-- Dolphin's own gesture for the same panel, and free here. -->
     <KeyBinding Gesture="F9"            Command="{Binding Sidebar.CycleRailCommand}"/>

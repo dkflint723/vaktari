@@ -249,12 +249,47 @@ public sealed class ExplorerConventionTests : OwnedViewModels
     // ---- the keyboard ------------------------------------------------------
 
     /// <summary>
+    /// **Which number-pad keys the framework answers for us, and which it does
+    /// not.** This is the fact the binding list depends on: Avalonia folds the
+    /// pad's arithmetic keys onto the top row's when matching a gesture, so
+    /// Ctrl and the pad's plus or minus reach bindings written for OemPlus and
+    /// OemMinus — but nothing folds onto D0, so the pad's nought reaches a
+    /// binding only if one is written for it by name.
+    ///
+    /// Asked of Avalonia rather than assumed, because the answer is what
+    /// decides how many bindings the markup needs: reading the fold as covering
+    /// all three leaves the reset dead, and reading it as covering none adds two
+    /// bindings that already work.
+    /// </summary>
+    [Theory]
+    [InlineData("Ctrl+OemPlus", Key.Add, true)]
+    [InlineData("Ctrl+OemMinus", Key.Subtract, true)]
+    [InlineData("Ctrl+D0", Key.NumPad0, false)]
+    [InlineData("Ctrl+NumPad0", Key.NumPad0, true)]
+    public void The_pad_reaches_only_the_zoom_keys_the_framework_folds(
+        string gesture, Key pressed, bool reaches)
+        => Assert.Equal(reaches, KeyGesture.Parse(gesture).Matches(
+            new KeyEventArgs { Key = pressed, KeyModifiers = KeyModifiers.Control }));
+
+    /// <summary>
     /// **Two names for the same habit.** Which of these somebody reaches for
     /// depends on where they learned it: Explorer answers Alt+D and Ctrl+E,
     /// browsers answer Ctrl+L and Ctrl+F, and an application that answers only
     /// one half feels broken to whoever learned the other.
+    ///
+    /// The number pad is the same habit in another place. Avalonia folds the
+    /// pad's plus and minus onto OemPlus and OemMinus when matching a gesture,
+    /// so those two need no second spelling; it folds nothing onto D0, so the
+    /// reset is bound twice.
+    ///
+    /// **Both spellings of the reset are pinned here because the F1
+    /// cross-check cannot tell them apart** — it prints both as "Ctrl+0", so
+    /// either binding alone satisfies it and the other could be deleted with a
+    /// green suite.
     /// </summary>
     [Theory]
+    [InlineData("Ctrl+NumPad0", "ZoomReset")]
+    [InlineData("Ctrl+D0", "ZoomReset")]
     [InlineData("Ctrl+L", "BeginEditPath")]
     [InlineData("Alt+D", "BeginEditPath")]
     [InlineData("Ctrl+F", "BeginSearch")]

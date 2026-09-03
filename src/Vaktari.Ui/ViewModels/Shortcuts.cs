@@ -58,7 +58,15 @@ public static class Shortcuts
             // gesture reached neither a place nor a crumb.
             new("Middle click a place or crumb", "Open it in a new tab"),
             new("Ctrl+click a place or crumb", "Open it in a new tab"),
-            new("F3", "Split the window"),
+            // **Explorer opens search on F3; Vaktari splits the window on it,
+            // matching Dolphin.** Somebody arriving from Explorer presses it,
+            // gets a second pane, and opens this sheet to find out what
+            // happened — landing on this line, which answers only the question
+            // they did not ask. The key they wanted is two headings down under
+            // "Finding things", off the bottom of a 620px sheet. The Dolphin
+            // meaning stays; the answer moves to the line being read at the
+            // moment the question is asked.
+            new("F3", "Split the window — search is Ctrl+F"),
             new("F11", "Details panel"),
             new("Ctrl+B", "Sidebar"),
             new("F9", "Sidebar"),
