@@ -423,7 +423,10 @@ public partial class MainWindow : Window
             e.Handled = true;
         }, RoutingStrategies.Tunnel);
         AddHandler(PointerMovedEvent, OnPointerMovedAnywhere, RoutingStrategies.Tunnel);
-        AddHandler(PointerReleasedEvent, (_, _) => EndBand(), RoutingStrategies.Tunnel);
+        AddHandler(
+            PointerReleasedEvent,
+            (_, _) => { EndBand(); EndTabDrag(); },
+            RoutingStrategies.Tunnel);
 
         // Tunnel, so the gesture is claimed before the listing's ScrollViewer
         // sees it — otherwise the view zooms and scrolls at the same time.
@@ -750,6 +753,8 @@ public partial class MainWindow : Window
         // Recorded here so a drag can start on the first move past the
         // threshold rather than on the press itself.
         _dragOrigin = e.GetPosition(this);
+
+        ArmTabDrag(e, properties);
 
         // **A drag from empty space is a SELECTION, not a file drag.** Both
         // begin with a left press inside a pane, so the only thing separating
@@ -1422,6 +1427,12 @@ public partial class MainWindow : Window
     private readonly List<object> _bandTaken = [];
 
     private Point _dragOrigin;
+
+    private PaneViewModel? _tabDrag;
+    private Avalonia.Controls.Primitives.TabStrip? _tabStrip;
+    private double _tabGrab;
+    private bool _tabDragging;
+
     private PaneViewModel? _dragSource;
     private bool _dragging;
 
@@ -1485,6 +1496,118 @@ public partial class MainWindow : Window
         }
 
         return null;
+    }
+
+    /// <summary>
+    /// Notes that a press landed on a tab, so a move past the threshold can
+    /// reorder the strip.
+    ///
+    /// **Tabs could not be reordered at all** — the press was recorded and then
+    /// dropped, because neither of the things a press arms is a tab: EntryAt
+    /// finds no row, and ListForEmptySpace bails on the tab template. This must
+    /// leave both of those alone; a tab that armed <c>_dragSource</c> would drag
+    /// real files again, which is the fault the ROW rule above was written to
+    /// fix.
+    ///
+    /// Not the DragDrop system, deliberately: the strip already declares
+    /// AllowDrop so a tab is a target for FILE drops, and starting a real drag
+    /// from a tab would put a drop target and a reorder on one gesture.
+    ///
+    /// The close button lives inside the item, so a press on it reaches here
+    /// too — a wobble while pressing ✕ should close the tab, not shuffle the
+    /// strip first.
+    /// </summary>
+    private void ArmTabDrag(PointerPressedEventArgs e, PointerPointProperties properties)
+    {
+        EndTabDrag();
+
+        if (!properties.IsLeftButtonPressed) return;
+
+        for (var visual = e.Source as Visual; visual is not null;
+             visual = visual.GetVisualParent())
+        {
+            if (visual is Button) return;
+
+            if (visual is not Avalonia.Controls.Primitives.TabStripItem
+                { DataContext: PaneViewModel tab } item) continue;
+
+            if (item.FindAncestorOfType<Avalonia.Controls.Primitives.TabStrip>() is not { } strip)
+                return;
+
+            _tabDrag = tab;
+            _tabStrip = strip;
+
+            // Where inside the tab it was grabbed, so the tab keeps its grip on
+            // the pointer however the strip scrolls underneath.
+            _tabGrab = e.GetPosition(item).X;
+
+            return;
+        }
+    }
+
+    /// <summary>
+    /// Moves the pressed tab under the pointer.
+    ///
+    /// Container bounds rather than accumulated widths: margins and the strip's
+    /// own padding are not this function's business, and TranslatePoint is exact
+    /// whatever the panel does with them. A container that is not laid out yet
+    /// gives no geometry to reason about, so the frame is skipped rather than
+    /// computed from zeroes — the strip would shuffle at random.
+    /// </summary>
+    private void DragTab(PointerEventArgs e)
+    {
+        if (_tabDrag is not { } tab
+            || _tabStrip is not { DataContext: PaneGroupViewModel group })
+        {
+            EndTabDrag();
+            return;
+        }
+
+        // The button can be released outside the window, where no release
+        // arrives — the live state ends the drag, not just the event that ought
+        // to have come. The band already works this way.
+        if (!e.GetCurrentPoint(this).Properties.IsLeftButtonPressed)
+        {
+            EndTabDrag();
+            return;
+        }
+
+        var here = e.GetPosition(this);
+
+        // X only: the strip is one horizontal row, and a vertical wobble while
+        // pressing a tab is not a reorder.
+        if (!_tabDragging && Math.Abs(here.X - _dragOrigin.X) < 6) return;
+
+        _tabDragging = true;
+
+        var from = group.Tabs.IndexOf(tab);
+        if (from < 0)
+        {
+            EndTabDrag();
+            return;
+        }
+
+        var middles = new List<double>(group.Tabs.Count);
+        double width = 0;
+
+        for (var i = 0; i < group.Tabs.Count; i++)
+        {
+            if (_tabStrip.ContainerFromIndex(i) is not Control box
+                || box.TranslatePoint(default, this) is not { } at) return;
+
+            middles.Add(at.X + box.Bounds.Width / 2);
+
+            if (i == from) width = box.Bounds.Width;
+        }
+
+        group.MoveTab(tab, TabReorder.SlotFor(here.X - _tabGrab + width / 2, middles, from));
+    }
+
+    private void EndTabDrag()
+    {
+        _tabDrag = null;
+        _tabStrip = null;
+        _tabDragging = false;
     }
 
     /// <summary>
@@ -1868,6 +1991,16 @@ public partial class MainWindow : Window
         if (_bandList is not null)
         {
             UpdateBand(e);
+            return;
+        }
+
+        // **Before the file drag gives up.** A tab arms no _dragSource -- it is
+        // not a row -- so a block placed after the line below would never run
+        // at all, which is why a tab drag did nothing. The order here is
+        // load-bearing.
+        if (_tabDrag is not null)
+        {
+            DragTab(e);
             return;
         }
 

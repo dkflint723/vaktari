@@ -565,6 +565,53 @@ public sealed partial class PaneGroupViewModel : ObservableObject
         if (index >= 0 && index < Tabs.Count) ActiveTab = Tabs[index];
     }
 
+    /// <summary>
+    /// Moves a tab to another slot.
+    ///
+    /// **The order tabs opened in was the order they stayed in.** There was no
+    /// move here at all — no drag, no menu item, no key gesture — while
+    /// Explorer, Dolphin and every browser reorder by dragging.
+    ///
+    /// <c>Tabs.Move</c>, never remove-then-add: a remove takes the tab out of
+    /// the strip and the selection with it, so the active tab would come back
+    /// deselected and the listing beneath it would blank for a frame.
+    /// ObservableCollection raises a single Move that the strip's selection
+    /// follows.
+    ///
+    /// <see cref="LayoutChanged"/> because the order is persisted —
+    /// <see cref="ToPaneState"/> writes the tabs in order and derives the active
+    /// index from it — so a reorder is a layout change exactly as the panel's
+    /// width is. Without it the drag is forgotten at the next launch. The no-op
+    /// returns above it matter for the same reason in reverse: a drag fires this
+    /// on every pointer move, and only the ones that cross a boundary should
+    /// mark the session dirty.
+    ///
+    /// The active tab is put back afterwards, and that is not belt and braces.
+    /// Avalonia's SelectingItemsControl does not follow a Move — it keeps the
+    /// INDEX, so the strip ends up selecting whatever slid into the old slot and
+    /// the two-way `SelectedItem="{Binding ActiveTab}"` writes that back here.
+    /// Dragging a tab would silently switch to a different one and swap the
+    /// listing underneath, which is the same fault as the remove-then-add above
+    /// arriving by a different road. Restoring it makes this side the source of
+    /// truth and the binding pushes the right item back out.
+    /// </summary>
+    public void MoveTab(PaneViewModel tab, int to)
+    {
+        var from = Tabs.IndexOf(tab);
+        if (from < 0) return;
+
+        to = Math.Clamp(to, 0, Tabs.Count - 1);
+        if (to == from) return;
+
+        var active = ActiveTab;
+
+        Tabs.Move(from, to);
+
+        if (active is not null) ActiveTab = active;
+
+        LayoutChanged?.Invoke(this, EventArgs.Empty);
+    }
+
     public PaneState ToPaneState() => new()
     {
         Tabs = Tabs.Select(t => t.ToTabState()).ToList(),
