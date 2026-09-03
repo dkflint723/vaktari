@@ -1139,6 +1139,100 @@ public sealed partial class PaneViewModel : ObservableObject, IDisposable
     public bool IsTrashListing => CurrentPath == VirtualPaths.Trash;
 
     /// <summary>
+    /// True while this pane is showing a search, which is what puts the band
+    /// above the listing.
+    /// </summary>
+    public bool IsSearchListing => VirtualPaths.IsSearch(CurrentPath);
+
+    /// <summary>What was asked, drawn in the band and in the empty state.</summary>
+    public string SearchQueryText => VirtualPaths.QueryOf(CurrentPath);
+
+    /// <summary>
+    /// Whether "this folder only" has a folder to mean.
+    ///
+    /// **"This folder only" over This PC searched for a folder called
+    /// "vaktari:computer".** A search started somewhere that is not a folder
+    /// has no origin to scope to, so the box is disabled rather than ticked and
+    /// quietly ignored.
+    /// </summary>
+    public bool CanScopeSearch => VirtualPaths.OriginOf(CurrentPath) is not null;
+
+    /// <summary>
+    /// The scope, as a place rather than a flag.
+    ///
+    /// **Ticking it navigates**, which is the whole difference from the popup's
+    /// version: the scope is part of where you are, so changing it is going
+    /// somewhere else and Back returns to the answer you had. The getter reads
+    /// the path, so nothing has to keep the two in step.
+    /// </summary>
+    public bool SearchScopedHere
+    {
+        get => VirtualPaths.IsScoped(CurrentPath);
+        set
+        {
+            // The navigation below raises this property again as the path
+            // lands; without the guard that write starts a second navigation.
+            if (!IsSearchListing || value == SearchScopedHere) return;
+
+            _ = NavigateAsync(VirtualPaths.Search(
+                SearchQueryText, VirtualPaths.OriginOf(CurrentPath), value));
+        }
+    }
+
+    /// <summary>
+    /// The box's own words, which carry the truth when it is disabled — a box
+    /// still reading "This folder only" while being ignored claims a scope the
+    /// search does not have.
+    /// </summary>
+    public string SearchScopeLabel
+    {
+        get
+        {
+            var origin = VirtualPaths.OriginOf(CurrentPath);
+
+            if (origin is null) return "searching everywhere";
+
+            return VirtualPaths.IsVirtual(origin)
+                ? $"{VirtualPaths.Label(origin)} is not a folder — searching everywhere"
+                : $"Only in {System.IO.Path.GetFileName(origin.TrimEnd(
+                    System.IO.Path.DirectorySeparatorChar,
+                    System.IO.Path.AltDirectorySeparatorChar))}";
+        }
+    }
+
+    /// <summary>Which index answered, so slow results are explained.</summary>
+    public string SearchBackendLine =>
+        Search is { IsAvailable: true } backend
+            ? $"searching with {backend.BackendName}"
+            : "searching by reading every folder — there is no index on this machine";
+
+    /// <summary>
+    /// Ends a running search where it stands, keeping the hits already found.
+    ///
+    /// **An unindexed walk is unbounded**, and the only other way out of one is
+    /// to navigate away, which takes the results with it. Stop keeps them, and
+    /// that is the whole difference between the two.
+    ///
+    /// The load's own cancellation path deliberately clears nothing, because it
+    /// assumes a newer navigation is following and owns the state. Nothing
+    /// follows this one, so it finishes the listing itself.
+    /// </summary>
+    [RelayCommand]
+    private void StopSearch()
+    {
+        if (!IsSearchListing || !IsLoading) return;
+
+        _cts?.Cancel();
+
+        IsLoading = false;
+        IsLoaded = true;
+
+        Status = Entries.Count == 0
+            ? "stopped"
+            : $"stopped — {Entries.Count:N0} results so far";
+    }
+
+    /// <summary>
     /// Whether this pane is looking at a real folder rather than one of the
     /// virtual listings.
     ///
@@ -1220,6 +1314,11 @@ public sealed partial class PaneViewModel : ObservableObject, IDisposable
         VirtualPaths.Computer => "no drives found",
         VirtualPaths.Files    => "no files opened lately",
         VirtualPaths.Locations => "no folders visited lately",
+
+        // Above the catch-all, or a search that found nothing reports that a
+        // folder is empty — about a folder nobody named.
+        _ when IsSearchListing => $"nothing found for “{SearchQueryText}”",
+
         _ => "this folder is empty",
     };
 
@@ -2206,6 +2305,17 @@ public sealed partial class PaneViewModel : ObservableObject, IDisposable
             RebuildBreadcrumbs();
             OnPropertyChanged(nameof(IsRecentListing));
             OnPropertyChanged(nameof(IsTrashListing));
+
+            // All five, because a search moves between searches: retyping the
+            // query or ticking the scope box changes the path from one search
+            // to another, and a band that only appeared and disappeared would
+            // go on showing the previous question.
+            OnPropertyChanged(nameof(IsSearchListing));
+            OnPropertyChanged(nameof(SearchQueryText));
+            OnPropertyChanged(nameof(CanScopeSearch));
+            OnPropertyChanged(nameof(SearchScopedHere));
+            OnPropertyChanged(nameof(SearchScopeLabel));
+
             OnPropertyChanged(nameof(IsRealFolder));
             OnPropertyChanged(nameof(DisplayPath));
             OnPropertyChanged(nameof(EmptyText));

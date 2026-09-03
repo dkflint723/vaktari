@@ -1756,6 +1756,55 @@
                 </StackPanel>
               </Border>
 
+              <!-- What was searched for, and the two things you can do about
+                   it. Docked above the column header for the same reason the
+                   trash band is: the header is bound to IsDetailsView, so
+                   anything below it disappears in grid and compact.
+
+                   **The scope box had no control at all in the popup**, and now
+                   it navigates rather than restarting a query in place — the
+                   scope is part of where you are, so Back returns to the answer
+                   you had. OneWay plus a setter that navigates, which is what
+                   stops the write-back the navigation itself provokes. -->
+              <Border DockPanel.Dock="Top" Padding="12,6"
+                      Background="{DynamicResource ChromeBrush}"
+                      BorderThickness="0,0,0,1" BorderBrush="{DynamicResource SeparatorColour}"
+                      IsVisible="{Binding IsSearchListing}">
+                <DockPanel x:Name="SearchBand">
+                  <!-- **A running search showed no sign of running and could
+                       not be stopped.** The line beside it changes only when a
+                       batch lands, so between batches a walk still going looked
+                       exactly like one that had finished. Indeterminate,
+                       because the honest answer to "how far through" is that
+                       nothing knows.
+
+                       Docked first, so it spans the whole band rather than only
+                       the width left over by the two controls beside it. -->
+                  <ProgressBar x:Name="SearchWalking" DockPanel.Dock="Bottom"
+                               IsVisible="{Binding IsLoading}"
+                               IsIndeterminate="True" Height="3" Margin="0,6,0,0"/>
+                  <Button x:Name="SearchStop" DockPanel.Dock="Right"
+                          IsVisible="{Binding IsLoading}"
+                          Command="{Binding StopSearchCommand}"
+                          Content="Stop" Padding="10,3" MinWidth="0" Margin="8,0,0,0"
+                          FontSize="{DynamicResource FontSizeSmall}"
+                          AutomationProperties.Name="stop searching and keep what was found"
+                          ToolTip.Tip="stop searching and keep what was found"/>
+                  <CheckBox x:Name="SearchScope" DockPanel.Dock="Right" Margin="12,0,0,0"
+                            Content="{Binding SearchScopeLabel}"
+                            IsEnabled="{Binding CanScopeSearch}"
+                            IsChecked="{Binding SearchScopedHere}"
+                            FontSize="{DynamicResource FontSizeSmall}"/>
+                  <!-- Last child, so a long question takes the rest of the row
+                       rather than pushing the controls off the edge. -->
+                  <TextBlock VerticalAlignment="Center" TextTrimming="CharacterEllipsis"
+                             FontSize="{DynamicResource FontSizeSmall}">
+                    <Run Text="Results for"/>
+                    <Run Text="{Binding SearchQueryText}" FontWeight="SemiBold"/>
+                  </TextBlock>
+                </DockPanel>
+              </Border>
+
               <!-- Below the chain, because it labels the listing rather than
                    the strip. Column widths and margin match the row template so
                    the headings actually sit over their columns. -->
