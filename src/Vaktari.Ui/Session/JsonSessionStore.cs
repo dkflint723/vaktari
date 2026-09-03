@@ -39,9 +39,56 @@ public sealed class JsonSessionStore : ISessionStore, IAsyncDisposable
         _timer.Tick += OnTick;
     }
 
-    /// <summary>~/.local/state/vaktari on Linux, %LOCALAPPDATA%\vaktari on Windows.</summary>
+    /// <summary>
+    /// Somewhere else to keep all of it, for a test.
+    ///
+    /// **Every headless test that built a MainWindow wrote the developer's own
+    /// state.** The constructor makes eight stores out of this one directory —
+    /// the session, the settings, the folder views, the recents, the drive
+    /// links, the icon index and the platform's own — and closing the window
+    /// flushes them. So running the suite overwrote the open tabs, the window
+    /// geometry and the back stack of whoever ran it: one back stack held
+    /// eighty entries named after temp folders a rename test had visited, and a
+    /// test that left a tab in the bin made the bin the folder the application
+    /// opened on next launch — which then failed two unrelated tests, because
+    /// renaming is refused there.
+    ///
+    /// A property rather than an environment variable because there is nothing
+    /// to read on Windows: StateRoot honours XDG_STATE_HOME on Linux, and
+    /// GetFolderPath(LocalApplicationData) does not consult the environment at
+    /// all. One seam that works the same on both platforms is worth more than
+    /// two that do not.
+    ///
+    /// Set once for the whole test assembly from a module initializer, so that
+    /// no test has to remember — the class that did the damage was the one of
+    /// the four building a window that did not share the common base.
+    ///
+    /// A factory rather than a path, because "somewhere else" is not one place:
+    /// a window flushes its session on close and the NEXT window restores it,
+    /// so a single directory for the whole run leaves the tests poisoning each
+    /// other exactly as they poisoned the developer — one that ended on the bin
+    /// made the bin the folder the next test's window opened on. Asked per
+    /// store rather than per run, the test side can answer with a directory of
+    /// its own for each test class.
+    /// </summary>
+    internal static Func<string>? DirectoryOverride { get; set; }
+
+    /// <summary>~/.local/state/vaktari on Linux, %LOCALAPPDATA%\vaktari on Windows —
+    /// or <see cref="DirectoryOverride"/> when a test has set one.</summary>
     public static string DefaultDirectory()
     {
+        // Before the adoptions below, deliberately: those MOVE a directory when
+        // they find one, and a test directory has no heimdall or rove beside it
+        // to find. Asking anyway would be two stat calls per store to answer a
+        // question about a machine this is not running as.
+        if (DirectoryOverride is { } ask)
+        {
+            var elsewhere = ask();
+
+            Directory.CreateDirectory(elsewhere);
+            return elsewhere;
+        }
+
         var directory = Path.Combine(StateRoot(), "vaktari");
 
         // **Two renames now, and they are tried newest first.** ROVE became

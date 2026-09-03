@@ -242,17 +242,13 @@ public sealed class BinPurgeTests : OwnedViewModels
 
         var window = new MainWindow();
 
-        ShellViewModel? shell = null;
-        string? was = null;
-
         try
         {
             window.Show();
             Settle();
 
-            shell = Assert.IsType<ShellViewModel>(window.DataContext);
+            var shell = Assert.IsType<ShellViewModel>(window.DataContext);
             var pane = shell.ActiveTab!;
-            was = pane.CurrentPath;
 
             // AFTER the window, both of them: its constructor installs the
             // platform's own bin over whatever was there, and applies the
@@ -289,13 +285,10 @@ public sealed class BinPurgeTests : OwnedViewModels
         }
         finally
         {
-            // **Put the tab back before closing it.** Closing a real window
-            // flushes the session, and the session is the real one: a test that
-            // ends on the bin makes the bin the folder the application opens on
-            // next launch, for the person running the test. Restored rather
-            // than left, so the flush writes back what it found.
-            if (shell?.ActiveTab is { } tab && was is not null) await tab.NavigateAsync(was);
-
+            // Closing flushes the session. That used to be the developer's
+            // own — a test ending on the bin made the bin the folder the
+            // application opened on next launch, which then failed two
+            // unrelated tests — and it is now this run's, per TestState.
             window.Close();
         }
     }
@@ -315,17 +308,13 @@ public sealed class BinPurgeTests : OwnedViewModels
 
         var window = new MainWindow();
 
-        ShellViewModel? shell = null;
-        string? was = null;
-
         try
         {
             window.Show();
             Settle();
 
-            shell = Assert.IsType<ShellViewModel>(window.DataContext);
+            var shell = Assert.IsType<ShellViewModel>(window.DataContext);
             var pane = shell.ActiveTab!;
-            was = pane.CurrentPath;
 
             PaneViewModel.Trash = bin;
 
@@ -358,13 +347,10 @@ public sealed class BinPurgeTests : OwnedViewModels
         }
         finally
         {
-            // **Put the tab back before closing it.** Closing a real window
-            // flushes the session, and the session is the real one: a test that
-            // ends on the bin makes the bin the folder the application opens on
-            // next launch, for the person running the test. Restored rather
-            // than left, so the flush writes back what it found.
-            if (shell?.ActiveTab is { } tab && was is not null) await tab.NavigateAsync(was);
-
+            // Closing flushes the session. That used to be the developer's
+            // own — a test ending on the bin made the bin the folder the
+            // application opened on next launch, which then failed two
+            // unrelated tests — and it is now this run's, per TestState.
             window.Close();
         }
     }

@@ -98,9 +98,6 @@ public sealed class WindowFloorTests : OwnedViewModels
 
         var window = new MainWindow();
 
-        var wasWidth = window.Width;
-        var wasHeight = window.Height;
-
         try
         {
             window.Width = 120;
@@ -116,11 +113,9 @@ public sealed class WindowFloorTests : OwnedViewModels
         }
         finally
         {
-            // Closing flushes the REAL session, and CaptureGeometry writes the
-            // Width property — so the size this test asked for is put back
-            // before the window is allowed to save it.
-            window.Width = wasWidth;
-            window.Height = wasHeight;
+            // Closing flushes the session and CaptureGeometry writes the Width
+            // property — which used to mean this test resized the developer's
+            // own window. TestState points the store at this run's directory.
             window.Close();
         }
     }
@@ -136,9 +131,6 @@ public sealed class WindowFloorTests : OwnedViewModels
 
         var window = new MainWindow();
 
-        var wasWidth = window.Width;
-        var wasHeight = window.Height;
-
         try
         {
             // Not shown, deliberately: showing it would raise the size itself,
@@ -153,8 +145,6 @@ public sealed class WindowFloorTests : OwnedViewModels
         }
         finally
         {
-            window.Width = wasWidth;
-            window.Height = wasHeight;
             window.Close();
         }
     }
@@ -172,9 +162,6 @@ public sealed class WindowFloorTests : OwnedViewModels
         UseSearch(PaneViewModel.Search);
 
         var window = new MainWindow();
-
-        var wasWidth = window.Width;
-        var wasHeight = window.Height;
 
         try
         {
@@ -198,8 +185,6 @@ public sealed class WindowFloorTests : OwnedViewModels
         }
         finally
         {
-            window.Width = wasWidth;
-            window.Height = wasHeight;
             window.Close();
         }
     }

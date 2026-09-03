@@ -27,23 +27,16 @@ public sealed class RenameStepTests : OwnedViewModels
         Dispatcher.UIThread.RunJobs(DispatcherPriority.Background);
     }
 
-    private sealed record Rig(
-        Window Window, ShellViewModel Shell, TextBox Input, string Root, string? Was)
+    private sealed record Rig(Window Window, ShellViewModel Shell, TextBox Input, string Root)
         : IDisposable
     {
         public void Dispose()
         {
-            // **Put the tab back before closing it.** Closing a real window
-            // flushes the session, and the session is the real one — so every
-            // run of this class used to leave its temp folder in the developer's
-            // own back stack, and would have left the application opening on a
-            // folder that no longer exists.
-            if (Was is not null && Shell.ActiveTab is { } tab)
-            {
-                Dispatcher.UIThread.InvokeAsync(() => tab.NavigateAsync(Was));
-                Settle();
-            }
-
+            // Closing flushes the session, which used to be the developer's own
+            // — this class left its temp folders in their back stack, and once
+            // left the application opening on a folder that no longer existed.
+            // TestState points every store this window builds at a directory
+            // belonging to the run, so there is nothing to put back here.
             Window.Close();
 
             try { Directory.Delete(Root, recursive: true); }
@@ -72,8 +65,6 @@ public sealed class RenameStepTests : OwnedViewModels
 
         var shell = Assert.IsType<ShellViewModel>(window.DataContext);
 
-        var was = shell.ActiveTab?.CurrentPath;
-
         // Awaited, never blocked on: a headless test runs ON the dispatcher, and
         // the load posts its finishing work back to it — so a GetResult here
         // waits for a callback that cannot run until the wait ends.
@@ -85,7 +76,7 @@ public sealed class RenameStepTests : OwnedViewModels
         Assert.NotNull(input);
         Assert.Equal(3, shell.ActiveTab.Entries.Count);
 
-        return new Rig(window, shell, input!, root, was);
+        return new Rig(window, shell, input!, root);
     }
 
     /// <summary>The reload a rename starts is not awaited, so a test has to
