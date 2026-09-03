@@ -3203,14 +3203,14 @@ public partial class MainWindow : Window
     /// the Exec key says, and percent-decoding is the difference between
     /// opening "My Documents" and opening nothing.
     /// </summary>
-    private static string LocalPath(string raw)
-    {
-        if (!raw.StartsWith("file:", StringComparison.OrdinalIgnoreCase)) return raw;
-
-        return Uri.TryCreate(raw, UriKind.Absolute, out var uri) && uri.IsFile
-            ? uri.LocalPath
-            : raw;
-    }
+    /// Moved to Vaktari.Core.FileSystem.FileUri, because there are two callers
+    /// now — the command line and the desktop's own request channel — and two
+    /// copies of a decoder is how one of them keeps a bug the other has already
+    /// fixed. The shared one also refuses what it cannot open rather than
+    /// handing the raw string on, which is the same silent drop by a different
+    /// route.
+    /// </summary>
+    private static string? LocalPath(string raw) => FileUri.ToLocalPath(raw);
 
     /// <summary>
     /// Opens folders in tabs. Files resolve to the folder holding them, because
@@ -3220,7 +3220,14 @@ public partial class MainWindow : Window
     {
         foreach (var raw in paths)
         {
-            var path = LocalPath(raw);
+            // **A URI this process cannot open now says so.** It used to be
+            // handed on as its own raw text, fail Directory.Exists and vanish;
+            // trash:/// and sftp:// are real things a desktop sends.
+            if (LocalPath(raw) is not { } path)
+            {
+                _shell.OperationStatus = $"cannot open {raw}";
+                continue;
+            }
 
             if (File.Exists(path) && Path.GetDirectoryName(path) is { Length: > 0 } parent)
                 path = parent;

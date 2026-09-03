@@ -114,6 +114,18 @@ public interface IPlatform
     IDefaultFileManager? DefaultFileManager { get; }
 
     /// <summary>
+    /// Answers other applications asking this file manager to show a file where
+    /// it lives, or null where the desktop has no such notion — which is
+    /// Windows, where the shell owns that gesture and there is nothing to claim.
+    ///
+    /// Defaulted to null rather than made a required member like the two above,
+    /// so a platform that has no such thing says nothing at all: the feature is
+    /// ABSENT rather than a no-op that reports success, and the Windows
+    /// implementation needs no line for it.
+    /// </summary>
+    IFileManagerService? FileManagerService => null;
+
+    /// <summary>
     /// Null where the platform has no trash this application may prune. Kept
     /// separate from <see cref="Operations"/> deliberately: trashing one file
     /// and unattended bulk expiry are different risks.
