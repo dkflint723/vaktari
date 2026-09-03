@@ -15,23 +15,66 @@ public static class SharedMimeInfo
 {
     private static readonly Lazy<Database> Loaded = new(Load, isThreadSafe: true);
 
+    private static readonly System.Collections.Concurrent.ConcurrentDictionary<string, string>
+        Descriptions = new(StringComparer.Ordinal);
+
     private sealed record Database(
         Dictionary<string, string> ByExtension,
         Dictionary<string, string> ByName);
 
-    /// <summary>Later roots override earlier ones, per the spec's precedence.</summary>
-    private static IEnumerable<string> Roots()
+    /// <summary>
+    /// The mime directories, in the spec's precedence order — later overrides
+    /// earlier.
+    ///
+    /// Both the glob database and the per-type descriptions live under these,
+    /// so they are named once: a lookup that consulted a different set of roots
+    /// than the one that decided the type could describe a type this machine
+    /// does not have.
+    /// </summary>
+    private static IEnumerable<string> MimeRoots()
     {
-        yield return "/usr/share/mime/globs2";
-        yield return "/usr/local/share/mime/globs2";
+        if (RootsOverride is { } given)
+        {
+            foreach (var root in given) yield return root;
+
+            yield break;
+        }
+
+        yield return "/usr/share/mime";
+        yield return "/usr/local/share/mime";
 
         var dataHome = Environment.GetEnvironmentVariable("XDG_DATA_HOME");
         if (string.IsNullOrWhiteSpace(dataHome))
             dataHome = Path.Combine(
                 Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), ".local", "share");
 
-        yield return Path.Combine(dataHome, "mime", "globs2");
+        yield return Path.Combine(dataHome, "mime");
     }
+
+    /// <summary>
+    /// Where the database is, for a test.
+    ///
+    /// A seam rather than an environment variable, because XDG_DATA_HOME is
+    /// process-global and xUnit runs test classes in parallel — one class
+    /// setting it has already broken another class's test in this repository.
+    /// And the whole Linux suite runs on Windows agents too, where there is no
+    /// /usr/share/mime to describe anything with.
+    /// </summary>
+    internal static IReadOnlyList<string>? RootsOverride
+    {
+        get;
+        set
+        {
+            field = value;
+
+            // Every remembered description came from the old roots, so keeping
+            // them would answer about a database that is no longer being read.
+            Descriptions.Clear();
+        }
+    }
+
+    private static IEnumerable<string> Roots()
+        => MimeRoots().Select(root => Path.Combine(root, "globs2"));
 
     private static Database Load()
     {
@@ -114,6 +157,86 @@ public static class SharedMimeInfo
             if (database.ByExtension.TryGetValue(suffix, out var mime)) return mime;
 
             start = dot + 1;
+        }
+    }
+
+    /// <summary>
+    /// What a mime type is CALLED, for somebody to read.
+    ///
+    /// **Properties printed the type itself.** "application/vnd.oasis.
+    /// opendocument.text" is an identifier for programs, and it was the whole
+    /// answer to "what is this file" — where Dolphin says "ODT document" and
+    /// Explorer says "OpenDocument Text". The description has been sitting in
+    /// the same database the glob table comes from all along, one XML file per
+    /// type, which is exactly what every other file manager reads.
+    ///
+    /// Falls back to the type itself, which is worse than a description and far
+    /// better than nothing: a machine with no shared-mime-info installed, or a
+    /// type too new for it, still says something true.
+    /// </summary>
+    public static string Describe(string mime)
+    {
+        if (string.IsNullOrEmpty(mime)) return "";
+
+        return Descriptions.GetOrAdd(mime, static type =>
+        {
+            var found = "";
+
+            // Every root, keeping the LAST answer: the precedence is the
+            // database's own, where a type described locally overrides the
+            // system's wording for it.
+            foreach (var root in MimeRoots())
+            {
+                var file = Path.Combine(root, type + ".xml");
+
+                if (!File.Exists(file)) continue;
+
+                try
+                {
+                    if (CommentIn(File.ReadAllText(file)) is { Length: > 0 } comment)
+                        found = comment;
+                }
+                catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+                {
+                    // **Narrow, so it cannot hide the parse.** A bare catch here
+                    // swallows a malformed file as well as an unreadable one,
+                    // which makes the XML handling below unreachable and
+                    // untestable — code that looks like a guard and is not one.
+                    // An unreadable description is one fewer description.
+                }
+            }
+
+            return found.Length > 0 ? found : type;
+        });
+    }
+
+    /// <summary>
+    /// The untranslated comment out of one shared-mime-info type file.
+    ///
+    /// **The bare element, never a translated one.** These files carry a
+    /// comment per locale — dozens of them, all named "comment" and separated
+    /// only by an xml:lang attribute — so taking the first match hands back
+    /// whichever language happens to be sorted first in that file. The one
+    /// without the attribute is the original.
+    ///
+    /// Read with XDocument rather than by hand: the text is real XML and holds
+    /// entities that a substring scan would return raw.
+    /// </summary>
+    private static string CommentIn(string xml)
+    {
+        try
+        {
+            var document = System.Xml.Linq.XDocument.Parse(xml);
+            var lang = System.Xml.Linq.XNamespace.Xml + "lang";
+
+            return document.Root?
+                .Elements()
+                .FirstOrDefault(e => e.Name.LocalName == "comment" && e.Attribute(lang) is null)?
+                .Value.Trim() ?? "";
+        }
+        catch (System.Xml.XmlException)
+        {
+            return "";
         }
     }
 }

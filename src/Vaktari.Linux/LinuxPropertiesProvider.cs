@@ -44,7 +44,13 @@ public sealed class LinuxPropertiesProvider : IPropertiesProvider, IAccessEditor
         var mime = SharedMimeInfo.ForPath(path) is { Length: > 0 } known
             ? known
             : DesktopEntries.QueryMimeType(path, waiting: true);
-        return string.IsNullOrEmpty(mime) ? "File" : mime;
+
+        // **The type itself was the whole answer.** "application/vnd.oasis.
+        // opendocument.text" is an identifier for programs, and this row is the
+        // one place somebody asks "what IS this file" — where Dolphin answers
+        // "ODT document". Describe falls back to the type when the machine has
+        // no description for it, so the worst case is what this said before.
+        return string.IsNullOrEmpty(mime) ? "File" : SharedMimeInfo.Describe(mime);
     }
 
     private static PropertyGroup? BuildPermissions(string path)
