@@ -2736,6 +2736,57 @@ public sealed partial class PaneViewModel : ObservableObject, IDisposable
         CutMarks.Clear();
     }
 
+    /// <summary>
+    /// Enter or Down in the filter box: hand the keyboard to the rows.
+    ///
+    /// **Getting out of the filter needed Tab, F6 or the mouse.** Explorer's
+    /// box runs the search and moves focus to the results, and Enter in a box
+    /// above a list means "I am done here" everywhere else in the desktop — so
+    /// the two keys somebody presses to leave both did nothing, and the filter
+    /// they had just typed sat there holding the keyboard.
+    ///
+    /// The filter and its text stay: this is crossing to the rows, not
+    /// finishing with the filter. Escape is still what clears it.
+    /// </summary>
+    [RelayCommand]
+    public void GoToListing()
+    {
+        // **The crossing was invisible, and Down crossed nothing.** The
+        // binding is claimed while the box still has the keyboard, and the
+        // listing is focused a dispatcher turn later, so the keystroke that
+        // crossed never reaches the rows — and a filter that has just narrowed
+        // the listing leaves no selection behind, because the rows it was on
+        // are gone. Enter would have changed nothing on screen at all, and
+        // Down, which means "go down one row", would have moved zero. The first
+        // row is where both Explorer and Dolphin land.
+        //
+        // Only when there is nothing picked, because a selection that survived
+        // the filter is the person's own and must not be thrown away.
+        //
+        // **And only when there is a row to pick.** FileEntry is a record
+        // STRUCT, so FirstOrDefault over an empty listing hands back a
+        // zero-valued one rather than null — which is not nothing, it is a row
+        // with an empty name and an empty path, and everything downstream that
+        // acts on a selection would have taken it for a real file.
+        if (SelectedEntry is null && Entries.Count > 0) SelectedEntry = Entries[0];
+
+        FocusListing = true;
+        FocusListing = false;
+    }
+
+    /// <summary>
+    /// Pulses true to put the keyboard on the rows.
+    ///
+    /// A signal rather than a state, the same shape as <see cref="FocusFilter"/>
+    /// and for the same reason: the focus behaviour acts on the false-to-true
+    /// edge, so the gesture has to work a second time.
+    ///
+    /// Bound by all three listings. Only one is on screen at once, and focusing
+    /// a hidden control is a no-op that fails quietly — so the visible one
+    /// answers and the other two do nothing.
+    /// </summary>
+    [ObservableProperty] private bool _focusListing;
+
     [RelayCommand]
     public void ToggleFilter()
     {

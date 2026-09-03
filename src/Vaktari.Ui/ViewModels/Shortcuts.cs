@@ -82,6 +82,11 @@ public static class Shortcuts
             // Down is gone with the popup it moved into — the results are the
             // listing now, and every key that works in a listing works on them.
             new("Enter", "Go to the search results"),
+            // And the same idea one box along: both keys somebody presses to
+            // leave the filter did nothing, so the way out was Tab, F6 or the
+            // mouse. Listed as its own row because it is a different box and a
+            // different destination — the rows you have just narrowed.
+            new("Enter / ↓", "From the filter, go to the rows"),
             new("Escape", "Clear the filter, and any pending cut"),
             new("Type any letters", "Jump to the first matching name"),
         ]),

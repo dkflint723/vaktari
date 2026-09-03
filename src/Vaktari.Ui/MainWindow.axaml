@@ -997,9 +997,19 @@
                        Text="{Binding ActiveTab.FilterText}"
                        local:FocusBehavior.FocusWhen="{Binding ActiveTab.FocusFilter}"
                        PlaceholderText="filter — esc to clear"
+                       ToolTip.Tip="enter or ↓ goes to the rows · esc clears"
                        FontFamily="{DynamicResource AppMonoFamily}" FontSize="{DynamicResource FontSizeSmall}">
                 <TextBox.KeyBindings>
                   <KeyBinding Gesture="Escape" Command="{Binding ActiveTab.ClearFilterCommand}"/>
+                  <!-- **Both keys somebody presses to leave the box did
+                       nothing.** Explorer's box runs the search and moves focus
+                       to the results, and Enter in a field above a list means
+                       "I am done here" everywhere else on the desktop — so the
+                       filter sat holding the keyboard and the way out was Tab,
+                       F6 or the mouse. The text stays; Escape above is still
+                       what clears it. -->
+                  <KeyBinding Gesture="Enter" Command="{Binding ActiveTab.GoToListingCommand}"/>
+                  <KeyBinding Gesture="Down"  Command="{Binding ActiveTab.GoToListingCommand}"/>
                 </TextBox.KeyBindings>
               </TextBox>
 
@@ -1872,6 +1882,7 @@
                    fills, so two bare siblings would dock the list to the left. -->
               <Panel>
               <ListBox ItemsSource="{Binding DetailsEntries}"
+                       local:FocusBehavior.FocusWhen="{Binding FocusListing}"
                        SelectedItem="{Binding SelectedEntry}"
                        SelectedItems="{Binding DetailsSelection}"
                        DragDrop.AllowDrop="True"
@@ -2152,6 +2163,7 @@
                    binding one selection are simpler than one that rewrites
                    itself twice. -->
               <ListBox ItemsSource="{Binding CompactEntries}"
+                       local:FocusBehavior.FocusWhen="{Binding FocusListing}"
                        SelectedItem="{Binding SelectedEntry}"
                        SelectedItems="{Binding CompactSelection}"
                        IsVisible="{Binding IsCompactView}"
@@ -2318,6 +2330,7 @@
                    panel and the item template change together, and two lists binding one
                    selection are simpler than one list rewriting itself. -->
               <ListBox ItemsSource="{Binding GridEntries}"
+                       local:FocusBehavior.FocusWhen="{Binding FocusListing}"
                        SelectedItem="{Binding SelectedEntry}"
                        SelectedItems="{Binding GridSelection}"
                        IsVisible="{Binding IsGridView}"

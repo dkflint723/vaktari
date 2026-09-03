@@ -210,6 +210,13 @@ should not be trusted for compatibility yet.
 
 ### Changed
 
+- **Enter or ↓ in the filter box hands the keyboard to the rows.** Both keys
+  somebody presses to leave that box did nothing, so the way out was Tab, F6 or
+  the mouse — the filter sat holding the keyboard over a listing it had just
+  narrowed. The first row is selected as you arrive, so the arrow keys have
+  somewhere to move from and Enter opens something; the filter and its text
+  stay where they are, since Escape is what clears them.
+
 - **The keyboard sheet answers the question F3 raises.** Explorer opens search
   on F3; Vaktari splits the window on it, matching Dolphin. Somebody arriving
   from Explorer presses it, gets a second pane, and opens the sheet to find out
