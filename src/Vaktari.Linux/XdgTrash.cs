@@ -111,6 +111,36 @@ public static partial class XdgTrash
     }
 
     /// <summary>
+    /// The top of the volume a trash directory belongs to, or null for the home
+    /// trash — which has no top directory to be relative to.
+    ///
+    /// Read off the root's own SHAPE rather than by comparing it with the home
+    /// trash: the two spellings the spec allows are recognisable on sight, and
+    /// a comparison would be wrong the moment either path crosses a symbolic
+    /// link. $topdir/.Trash-$uid puts the top one level up; $topdir/.Trash/$uid
+    /// puts it two.
+    /// </summary>
+    internal static string? TopDirOf(string root)
+    {
+        var name = Path.GetFileName(root.TrimEnd('/'));
+        var parent = Path.GetDirectoryName(root.TrimEnd('/'));
+
+        if (parent is null || name is null) return null;
+
+        if (name.StartsWith(".Trash-", StringComparison.Ordinal)
+            && name.AsSpan(7).Length > 0
+            && !name.AsSpan(7).ContainsAnyExcept("0123456789"))
+            return parent;
+
+        if (!name.AsSpan().ContainsAnyExcept("0123456789")
+            && name.Length > 0
+            && Path.GetFileName(parent) == ".Trash")
+            return Path.GetDirectoryName(parent);
+
+        return null;
+    }
+
+    /// <summary>
     /// The trash to actually write into, having made sure it exists.
     ///
     /// **A volume whose top directory the user cannot write to had no trash at
@@ -284,7 +314,7 @@ public static partial class XdgTrash
     /// this ordering: two processes trashing "notes.txt" at the same moment
     /// must not both win the same slot.
     /// </summary>
-    private static string ReserveName(string preferred, string originalPath, string root)
+    internal static string ReserveName(string preferred, string originalPath, string root)
     {
         var stem = Path.GetFileNameWithoutExtension(preferred);
         var ext = Path.GetExtension(preferred);
@@ -302,7 +332,7 @@ public static partial class XdgTrash
                 using var writer = new StreamWriter(stream, new UTF8Encoding(false));
 
                 writer.WriteLine("[Trash Info]");
-                writer.WriteLine("Path=" + EncodePath(originalPath));
+                writer.WriteLine("Path=" + EncodePath(RecordedPath(originalPath, root)));
                 writer.WriteLine("DeletionDate=" + DateTime.Now.ToString(
                     "yyyy-MM-ddTHH:mm:ss", CultureInfo.InvariantCulture));
 
@@ -331,11 +361,64 @@ public static partial class XdgTrash
 
         foreach (var line in File.ReadLines(infoPath))
         {
-            if (line.StartsWith("Path=", StringComparison.Ordinal))
-                return DecodePath(line[5..]);
+            if (!line.StartsWith("Path=", StringComparison.Ordinal)) continue;
+
+            var recorded = DecodePath(line[5..]);
+
+            // Nothing recorded stays nothing. Path.Combine would answer the
+            // volume's own top directory for an empty second part, which is a
+            // real folder and the wrong one — a restore aimed at it would write
+            // over the root of the drive.
+            if (recorded.Length == 0) return recorded;
+
+            // **A relative path is relative to the VOLUME, not to wherever this
+            // process happens to be.** gvfs and Dolphin both write one for a
+            // trash on a removable drive, so this is the ordinary case for
+            // anything trashed on a stick by another file manager — and
+            // returning it raw hands the restore a path resolved against the
+            // working directory, which is somewhere in the user's home.
+            //
+            // The info file's own location says which volume: it sits at
+            // $root/info/x.trashinfo, so the root is two levels up.
+            var root = Path.GetDirectoryName(Path.GetDirectoryName(infoPath));
+
+            // An absolute path needs no clause of its own: Path.Combine
+            // discards everything before a rooted part, which is exactly the
+            // rule wanted here — a trashinfo that already names the whole path
+            // means it, and every file already in the home trash carries one.
+            return root is not null && TopDirOf(root) is { } top
+                ? Path.Combine(top, recorded)
+                : recorded;
         }
 
         return null;
+    }
+
+    /// <summary>
+    /// The path to write down: relative to the volume for a trash that lives on
+    /// one, absolute for the home trash.
+    ///
+    /// **An absolute path on a removable volume records where the stick was
+    /// mounted THAT time.** /run/media/me/USB today, /media/USB1 tomorrow, and
+    /// a restore then puts the file back at a path on some other filesystem —
+    /// or nowhere at all. The spec allows relative for exactly this reason, and
+    /// it is what gvfs and Dolphin write, which is also why reading one has to
+    /// work: a stick trashed from Nautilus and restored here goes through the
+    /// same field.
+    /// </summary>
+    internal static string RecordedPath(string originalPath, string root)
+    {
+        if (TopDirOf(root) is not { } top) return originalPath;
+
+        var relative = Path.GetRelativePath(top, originalPath);
+
+        // Only when it really is inside the volume. GetRelativePath answers
+        // with ".." rather than failing, and a path that climbs out of the top
+        // directory is not one this volume's trash can describe.
+        return relative.StartsWith("..", StringComparison.Ordinal)
+               || Path.IsPathRooted(relative)
+            ? originalPath
+            : relative;
     }
 
     /// <summary>Percent-encoded per the spec, but with separators left intact.</summary>
