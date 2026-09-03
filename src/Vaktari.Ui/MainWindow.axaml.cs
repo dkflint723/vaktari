@@ -3325,6 +3325,10 @@ public partial class MainWindow : Window
         // before the settings load and so never applied one.
         ViewModels.PaneViewModel.Trash = maintenance;
 
+        // The sidebar was built before this was installed and asked an absent
+        // bin, so the row starts on the empty glyph however full the bin is.
+        _shell.Sidebar.RefreshBinState();
+
         _ = SweepTrashAsync();
 
         _trashTimer = new DispatcherTimer { Interval = TimeSpan.FromHours(1) };

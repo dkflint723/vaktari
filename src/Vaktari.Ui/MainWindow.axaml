@@ -2016,6 +2016,25 @@
                              Stretch="Uniform"/>
                       <Image th:ThumbnailImage.Path="{Binding FullPath}"
                              th:ThumbnailImage.Size="64" Stretch="Uniform"/>
+                      <!-- **A link was drawn exactly like the thing it points
+                           at.** The flag has been on every entry and correct
+                           all along, with nothing reading it. Bottom-left, the
+                           corner Explorer uses and the one a name never grows
+                           into; not hit-testable, so it never eats a click
+                           meant for the row. -->
+                      <Viewbox IsVisible="{Binding IsSymlink}" Stretch="Uniform"
+                               IsHitTestVisible="False">
+                        <Canvas Width="24" Height="24">
+                          <Path Data="{x:Static th:LinkEmblem.Ground}"
+                                Fill="{DynamicResource ViewBackground}"
+                                Stroke="{DynamicResource ViewText}"
+                                StrokeThickness="1.6" StrokeJoin="Round"/>
+                          <Path Data="{x:Static th:LinkEmblem.Arrow}"
+                                Stroke="{DynamicResource ViewText}"
+                                StrokeThickness="1.6"
+                                StrokeLineCap="Round" StrokeJoin="Round"/>
+                        </Canvas>
+                      </Viewbox>
                     </Panel>
                         <!-- DockPanel, not StackPanel: a horizontal StackPanel gives
                              its children unlimited width, so TextTrimming can never
@@ -2242,6 +2261,25 @@
                                  Margin="8,0">
                             <Image th:RowIcon.Entry="{Binding}" th:RowIcon.Size="48"
                                    Stretch="Uniform"/>
+                      <!-- **A link was drawn exactly like the thing it points
+                           at.** The flag has been on every entry and correct
+                           all along, with nothing reading it. Bottom-left, the
+                           corner Explorer uses and the one a name never grows
+                           into; not hit-testable, so it never eats a click
+                           meant for the row. -->
+                      <Viewbox IsVisible="{Binding IsSymlink}" Stretch="Uniform"
+                               IsHitTestVisible="False">
+                        <Canvas Width="24" Height="24">
+                          <Path Data="{x:Static th:LinkEmblem.Ground}"
+                                Fill="{DynamicResource ViewBackground}"
+                                Stroke="{DynamicResource ViewText}"
+                                StrokeThickness="1.6" StrokeJoin="Round"/>
+                          <Path Data="{x:Static th:LinkEmblem.Arrow}"
+                                Stroke="{DynamicResource ViewText}"
+                                StrokeThickness="1.6"
+                                StrokeLineCap="Round" StrokeJoin="Round"/>
+                        </Canvas>
+                      </Viewbox>
                           </Panel>
                           <!-- Same mark, same words as the details row — it
                                was details-only, so switching view silently
@@ -2362,6 +2400,23 @@
                           <Image th:ThumbnailImage.Path="{Binding FullPath}"
                                  th:ThumbnailImage.Size="256" Stretch="Uniform"
                                  VerticalAlignment="Bottom"/>
+                          <!-- **A link was drawn exactly like the thing it
+                               points at.** Aligned to the bottom like the icon
+                               it marks, because a tile's artwork sits on the
+                               floor of its box rather than filling it. -->
+                          <Viewbox IsVisible="{Binding IsSymlink}" Stretch="Uniform"
+                                   VerticalAlignment="Bottom" IsHitTestVisible="False">
+                            <Canvas Width="24" Height="24">
+                              <Path Data="{x:Static th:LinkEmblem.Ground}"
+                                    Fill="{DynamicResource ViewBackground}"
+                                    Stroke="{DynamicResource ViewText}"
+                                    StrokeThickness="1.6" StrokeJoin="Round"/>
+                              <Path Data="{x:Static th:LinkEmblem.Arrow}"
+                                    Stroke="{DynamicResource ViewText}"
+                                    StrokeThickness="1.6"
+                                    StrokeLineCap="Round" StrokeJoin="Round"/>
+                            </Canvas>
+                          </Viewbox>
                           <!-- A tile has no column to keep aligned, so unlike
                                details and compact this DISAPPEARS when the file
                                is clean rather than reserving an empty slot —
@@ -2866,7 +2921,7 @@
                                         Stroke="{DynamicResource ViewText}"
                                         StrokeThickness="{DynamicResource IconStroke}"
                                         StrokeLineCap="Round" StrokeJoin="Round"
-                                        th:SidebarIcon.Token="{Binding Icon}"/>
+                                        th:SidebarIcon.Token="{Binding IconToken}"/>
                                   <!-- **Declared first among the right-docked
                                        children, so it takes the far edge** —
                                        the order the sharing rows already prove,

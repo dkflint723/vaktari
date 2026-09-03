@@ -77,7 +77,8 @@ public sealed partial class ShellViewModel : ObservableObject, IDisposable
         _launcher = launcher;
         _clipboard = clipboard;
 
-        Sidebar = new SidebarViewModel(places, search, () => ActiveTab?.CurrentPath);
+        Sidebar = new SidebarViewModel(
+            places, search, () => ActiveTab?.CurrentPath, () => PaneViewModel.Trash);
 
         // A chosen result navigates the active tab to its folder and selects it,
         // rather than opening the file — search is for finding, not launching.
@@ -1358,7 +1359,17 @@ public sealed partial class ShellViewModel : ObservableObject, IDisposable
     /// but nothing left to pause or cancel.</summary>
     public bool OperationFinished => ActiveOperation is null && OperationStatus.Length > 0;
 
-    partial void OnActiveOperationChanged(IOperationHandle? value) => NotifyOperationBar();
+    partial void OnActiveOperationChanged(IOperationHandle? value)
+    {
+        NotifyOperationBar();
+
+        // An operation that has just ENDED may have been a trash or a restore,
+        // and the bin's glyph follows what it holds. One directory entry, and
+        // this is the single point every file operation passes through — the
+        // alternative is remembering to call it at each of the four sites that
+        // change the bin, which is the kind of list that grows a fifth.
+        if (value is null) Sidebar.RefreshBinState();
+    }
     partial void OnOperationStatusChanged(string value) => NotifyOperationBar();
 
     private void NotifyOperationBar()

@@ -55,6 +55,20 @@ public interface ITrashMaintenance
     IReadOnlyList<TrashedItem> List();
 
     /// <summary>
+    /// Whether the bin is holding anything at all.
+    ///
+    /// Separate from <see cref="List"/> because the sidebar asks this every
+    /// time it rebuilds, and listing is not cheap: it walks every volume's bin
+    /// and reads a sidecar per item to recover where each one came from. "Is
+    /// there anything" needs none of that, and both platforms can answer it
+    /// without opening a single sidecar.
+    ///
+    /// Defaulted to the expensive answer so an implementation that has no
+    /// cheaper route is still correct rather than absent.
+    /// </summary>
+    bool HasAny() => List().Count > 0;
+
+    /// <summary>
     /// Puts one item back where it came from, returning the path it landed at —
     /// which is NOT always the original: if something has since taken that name
     /// it restores alongside rather than clobbering.

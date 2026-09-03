@@ -52,6 +52,17 @@ public static class SidebarIcon
         });
     }
 
+    /// <summary>
+    /// The path data behind a token, for tests that need to compare two glyphs.
+    ///
+    /// A parsed Geometry does not stringify to its own path data and does not
+    /// answer StrokeContains headlessly, so two different drawings are
+    /// indistinguishable through the public surface — which is how a test
+    /// comparing ToString() passed while asserting nothing at all.
+    /// </summary>
+    internal static string? DataFor(string token)
+        => Paths.TryGetValue(token, out var data) ? data : null;
+
     public static void SetToken(Path shape, string? value) => shape.SetValue(TokenProperty, value);
     public static string? GetToken(Path shape) => shape.GetValue(TokenProperty);
 
@@ -110,6 +121,19 @@ public static class SidebarIcon
         // The two ribs are gone. A bin is a lid, a body and a handle.
         ["trash"] =
             "M4 6.75 H20 M9.75 6.75 V4.25 H14.25 V6.75 M6.5 6.75 V20 H17.5 V6.75",
+
+        // **The bin drew the same glyph whether it held a thousand items or
+        // nothing**, so the one question you ask a bin was the one thing it
+        // would not answer.
+        //
+        // A contents line, meeting both walls so nothing floats. It is an
+        // interior stroke in a glyph that had two removed for being a smudge at
+        // 16px, which is the argument against it — [stated] the choice between
+        // this, a tilted lid and strokes above the rim was made by looking at
+        // all three at 16px, and this is the one that was picked.
+        ["trash-full"] =
+            "M4 6.75 H20 M9.75 6.75 V4.25 H14.25 V6.75 M6.5 6.75 V20 H17.5 V6.75 "
+            + "M6.5 11 H17.5",
 
         ["bookmark"] =
             "M6 4 H18 V20 L12 15.25 L6 20 Z",

@@ -87,6 +87,33 @@ internal static class RecycleBin
         }
     }
 
+    /// <summary>
+    /// Whether any volume's bin holds anything, without reading a single
+    /// sidecar or sorting anything.
+    ///
+    /// The same walk as <see cref="List"/> and then it stops at the first hit:
+    /// EnumerateFiles rather than GetFiles, so a bin with ten thousand items
+    /// costs one directory entry rather than ten thousand plus a metadata read
+    /// each. The sidebar asks this on every rebuild.
+    /// </summary>
+    internal static bool HasAny()
+    {
+        foreach (var directory in Directories())
+        {
+            try
+            {
+                if (Directory.EnumerateFiles(directory, "$I*").Any()) return true;
+            }
+            catch (Exception e) when (e is IOException or UnauthorizedAccessException)
+            {
+                // A volume that will not answer is not a reason to claim the
+                // bin is full, and not a reason to stop asking the others.
+            }
+        }
+
+        return false;
+    }
+
     /// <summary>Everything currently in the bin, newest first.</summary>
     internal static List<RecycleEntry> List()
     {

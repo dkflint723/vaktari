@@ -21,13 +21,22 @@ namespace Vaktari.Ui.ViewModels;
 public sealed partial class SidebarViewModel : ObservableObject
 {
     private readonly IPlacesProvider? _places;
+    /// <summary>
+    /// A SOURCE rather than the thing itself. The trash is installed well after
+    /// the shell is built — the window sets it while wiring up the hourly sweep
+    /// — so a constructor that captured the value would capture null and the
+    /// bin would never fill.
+    /// </summary>
+    private readonly Func<Vaktari.Core.FileSystem.ITrashMaintenance?>? _trash;
 
     public SidebarViewModel(
         IPlacesProvider? places,
         ISearchProvider? search = null,
-        Func<string?>? currentPath = null)
+        Func<string?>? currentPath = null,
+        Func<Vaktari.Core.FileSystem.ITrashMaintenance?>? trash = null)
     {
         _places = places;
+        _trash = trash;
         Search = new SearchViewModel(search, currentPath ?? (() => null));
 
         if (places is not null)
@@ -355,6 +364,36 @@ public sealed partial class SidebarViewModel : ObservableObject
     /// roughly one run in four on this machine and would have been a rare,
     /// unreproducible stale sidebar in the hand.
     /// </summary>
+    /// <summary>
+    /// Re-asks the bin whether it is holding anything and marks its row.
+    ///
+    /// Public because the answer changes without the PLACES changing: binning a
+    /// file, restoring one and emptying the bin all leave the sidebar's rows
+    /// exactly as they were, so a full reload would be both wasteful and, on
+    /// its own, not something any of those three currently ask for.
+    /// </summary>
+    public void RefreshBinState()
+    {
+        if (_trash?.Invoke() is not { } trash) return;
+
+        var holding = Holding(trash);
+
+        foreach (var group in Groups)
+            foreach (var place in group.Places)
+                if (place.IsBin) place.BinHasItems = holding;
+    }
+
+    /// <summary>
+    /// Whether the bin is holding anything, or false if it will not say. A bin
+    /// that cannot be read is drawn empty rather than full: the glyph is a hint,
+    /// and the wrong hint is worse than the plain one.
+    /// </summary>
+    private static bool Holding(Vaktari.Core.FileSystem.ITrashMaintenance trash)
+    {
+        try { return trash.HasAny(); }
+        catch (Exception ex) { Vaktari.Core.Quiet.Swallowed("bin-state", ex); return false; }
+    }
+
     private async Task RunReloadsAsync(Vaktari.Core.Places.IPlacesProvider places)
     {
         while (true)
@@ -405,7 +444,13 @@ public sealed partial class SidebarViewModel : ObservableObject
             foreach (var group in groups)
                 Groups.Add(new PlaceGroupViewModel(group));
 
-            // This PC is drawn directly under the Home row, so that row has to
+                // **The bin drew the same glyph full or empty.** Asked once per
+            // rebuild rather than per row, and asked with HasAny rather than
+            // List — the answer is one directory entry instead of a walk of
+            // every volume's bin with a sidecar read per item.
+            RefreshBinState();
+
+        // This PC is drawn directly under the Home row, so that row has to
             // know it is the one. Set here rather than computed on the item: a
             // place has no idea what it sits among, and "the first row in the
             // sidebar" is a fact about the sidebar rather than about the place.
@@ -539,6 +584,26 @@ public sealed partial class PlaceItemViewModel(Place place) : ObservableObject
     public string Label { get; } = place.Label;
     public string Path { get; } = place.Path;
     public string Icon { get; } = place.Icon;
+
+    /// <summary>
+    /// Whether the bin is holding anything. Meaningless on every other row.
+    /// </summary>
+    [ObservableProperty] private bool _binHasItems;
+
+    /// <summary>
+    /// The glyph this row draws.
+    ///
+    /// **The bin drew the same one whether it held a thousand items or
+    /// nothing**, so the one question you ask a bin was the one thing it would
+    /// not answer. Every other row is its provider's token unchanged.
+    ///
+    /// Computed here rather than by swapping Place.Icon, because a Place comes
+    /// from the provider and is rebuilt on every reload — the fill state is a
+    /// property of the moment, not of the place.
+    /// </summary>
+    public string IconToken => IsBin && BinHasItems ? "trash-full" : Icon;
+
+    partial void OnBinHasItemsChanged(bool value) => OnPropertyChanged(nameof(IconToken));
     public bool IsAvailable { get; } = place.IsAvailable;
 
     /// <summary>

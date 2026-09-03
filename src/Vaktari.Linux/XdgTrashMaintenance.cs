@@ -141,6 +141,36 @@ public sealed class XdgTrashMaintenance : ITrashMaintenance
     /// volume's bin". Now that Vaktari puts a delete on the volume it came
     /// from, its own deletions would have vanished from its own trash view too.
     /// </summary>
+    /// <summary>
+    /// Whether any trash root holds anything, without parsing a .trashinfo or
+    /// sorting across volumes.
+    ///
+    /// The same walk as <see cref="List"/> and then it stops at the first hit.
+    /// The sidebar asks this on every rebuild, and listing reads and parses a
+    /// sidecar per item to recover where each one came from — none of which
+    /// this question needs.
+    /// </summary>
+    public bool HasAny()
+    {
+        foreach (var root in XdgTrash.AllRoots())
+        {
+            var infoDir = Path.Combine(root, "info");
+
+            try
+            {
+                if (Directory.Exists(infoDir)
+                    && Directory.EnumerateFiles(infoDir, "*.trashinfo").Any()) return true;
+            }
+            catch (Exception e) when (e is IOException or UnauthorizedAccessException)
+            {
+                // A volume that will not answer is not a reason to claim the
+                // bin is full, and not a reason to stop asking the others.
+            }
+        }
+
+        return false;
+    }
+
     public IReadOnlyList<TrashedItem> List()
     {
         var items = new List<TrashedItem>();

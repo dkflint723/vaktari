@@ -22,6 +22,8 @@ namespace Vaktari.Windows;
 /// </summary>
 public sealed class WindowsTrashMaintenance : ITrashMaintenance
 {
+    public bool HasAny() => RecycleBin.HasAny();
+
     public IReadOnlyList<TrashedItem> List()
         => RecycleBin.List()
             .Select(e => new TrashedItem(
