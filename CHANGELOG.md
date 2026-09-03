@@ -210,6 +210,11 @@ should not be trusted for compatibility yet.
 
 ### Changed
 
+- **A drive's tab is called what the sidebar calls it** — "Windows (C:)" rather
+  than "C:". The title falls back to a path's last segment, which for a drive
+  root is the root, while the sidebar three inches away had the volume label
+  all along because building that list is where it gets read.
+
 - **The Type column says what a file is**, rather than its extension in
   capitals. Every row read "&lt;EXT&gt; file" — the extension the column sits
   beside, spelled louder — so a column whose every value could be read off the

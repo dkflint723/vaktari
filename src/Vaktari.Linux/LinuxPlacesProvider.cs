@@ -101,6 +101,9 @@ public sealed class LinuxPlacesProvider : IPlacesProvider, IDisposable
 
         var (devices, network) = BuildMounts();
 
+        _names = devices.Concat(network)
+                        .ToDictionary(p => p.Path, p => p.Label, Vaktari.Core.FileSystem.PathRules.Comparer);
+
         if (devices.Count > 0) groups.Add(new PlaceGroup(PlaceGroups.Devices, devices));
         if (network.Count > 0) groups.Add(new PlaceGroup(PlaceGroups.Shares, network));
 
@@ -261,6 +264,23 @@ public sealed class LinuxPlacesProvider : IPlacesProvider, IDisposable
 
         return map;
     }
+
+
+    /// <summary>
+    /// What the last listing called each drive, by its root path.
+    ///
+    /// Kept so a tab title can be named without asking the disk: reading a
+    /// volume label blocks for the whole timeout on a mapped drive that has
+    /// gone away, and a title must never wait for that. Written on every
+    /// rebuild, which is startup and every device change.
+    ///
+    /// Replaced rather than mutated: this is read from the UI thread while the
+    /// rebuild runs on a pool one, which is the rule the pins beside it follow.
+    /// </summary>
+    private Dictionary<string, string> _names = new(Vaktari.Core.FileSystem.PathRules.Comparer);
+
+    public string? NameFor(string path)
+        => _names.TryGetValue(path, out var name) ? name : null;
 
     private (List<Place> Devices, List<Place> Network) BuildMounts()
     {

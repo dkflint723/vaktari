@@ -35,6 +35,16 @@ public static class PathRules
         : StringComparison.Ordinal;
 
     /// <summary>
+    /// The same rule as <see cref="Comparison"/>, for the places that need a
+    /// comparer rather than an enum — a dictionary keyed by path, chiefly.
+    ///
+    /// Derived from it rather than written out again, because two statements of
+    /// one rule are two things to keep in step and this is the rule the whole
+    /// file exists to state once.
+    /// </summary>
+    public static StringComparer Comparer => StringComparer.FromComparison(Comparison);
+
+    /// <summary>
     /// Reduces the two separator spellings to one, because <b>Windows accepts
     /// both</b>: <c>C:\Users</c> and <c>C:/Users</c> are one folder, and every
     /// comparison below is a string comparison that would otherwise call them

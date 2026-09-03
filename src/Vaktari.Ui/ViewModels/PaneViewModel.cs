@@ -2535,9 +2535,19 @@ public sealed partial class PaneViewModel : ObservableObject, IDisposable
             return;
         }
 
-        // LeafName gives the root back as itself, so the "/" fallback is no
-        // longer a Linux-shaped guess about what a root looks like.
-        Title = PathRules.LeafName(value);
+        // **A drive root was titled "C:".** LeafName gives a root back as
+        // itself, while the sidebar three inches away called the same drive
+        // "Windows (C:)" — because building THAT list is where the volume label
+        // is read. One machine, two names for one drive, and the useless one in
+        // the place you look most.
+        //
+        // The places provider answers from what its last listing worked out,
+        // never by asking the disk, so this cannot wait on a mapped drive that
+        // has gone away. It answers null for anything that is not a drive, and
+        // then LeafName is what it always was — which also keeps the "/"
+        // fallback from being a Linux-shaped guess about what a root looks
+        // like.
+        Title = Places?.NameFor(value) ?? PathRules.LeafName(value);
     }
 
     /// <summary>

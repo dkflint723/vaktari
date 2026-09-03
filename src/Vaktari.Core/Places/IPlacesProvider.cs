@@ -71,6 +71,30 @@ public interface IPlacesProvider
     ValueTask RenameAsync(string id, string label, CancellationToken ct);
     ValueTask ReorderAsync(IReadOnlyList<string> orderedIds, CancellationToken ct);
 
+    /// <summary>
+    /// The name this machine gives a path, when it has a better one than the
+    /// path's own last segment. Null when it has not.
+    ///
+    /// **A drive root was titled "C:".** The tab, the crumb and the window
+    /// title all fall back to the last path segment, which for a root is the
+    /// root — while the sidebar three inches away called the same drive
+    /// "Windows (C:)", because building THAT list is where the volume label is
+    /// read. One machine, two names for one drive, and the useless one in the
+    /// two places you look most.
+    ///
+    /// Answered from what the last listing already worked out, never by asking
+    /// the disk. This is called on every navigation, and reading a volume label
+    /// is a call that blocks for the whole SMB timeout on a mapped drive that
+    /// has gone away — which is exactly the kind of thing a tab title must
+    /// never wait for. An empty cache answers null and the caller falls back,
+    /// which is what it did before.
+    ///
+    /// Defaulted to "no better name", the way HasAny defaults to the expensive
+    /// answer: a provider with nothing to add is correct rather than obliged to
+    /// say so, and every caller has a fallback already.
+    /// </summary>
+    string? NameFor(string path) => null;
+
     ValueTask MountAsync(string id, CancellationToken ct);
 
     /// <summary>
