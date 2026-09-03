@@ -2775,6 +2775,19 @@ public sealed partial class PaneViewModel : ObservableObject, IDisposable
     }
 
     /// <summary>
+    /// Pulses true to put the caret in the address bar and select what is in
+    /// it.
+    ///
+    /// A signal rather than a state, the same shape as <see cref="FocusFilter"/>
+    /// and <see cref="FocusListing"/>. Only the SECOND press needs it — the
+    /// first is answered by the box appearing, which is a different behaviour
+    /// on the same control and stays, because the address bar closes when focus
+    /// leaves it and so never re-appears on a tab switch the way the filter
+    /// does.
+    /// </summary>
+    [ObservableProperty] private bool _focusPathBox;
+
+    /// <summary>
     /// Pulses true to put the keyboard on the rows.
     ///
     /// A signal rather than a state, the same shape as <see cref="FocusFilter"/>

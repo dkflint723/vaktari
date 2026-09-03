@@ -1099,6 +1099,7 @@
                        ToolTip.Tip="tab completes · enter goes · esc or click away cancels&#10;%ProgramFiles%, %SystemDrive% and ~ are understood"
                        local:FocusBehavior.LostFocusCommand="{Binding ActiveTab.RevertPathTextCommand}"
                        local:FocusBehavior.FocusOnVisible="True"
+                       local:FocusBehavior.FocusWhen="{Binding ActiveTab.FocusPathBox}"
                        FontFamily="{DynamicResource AppMonoFamily}" FontSize="{DynamicResource FontSizeSmall}">
                 <TextBox.KeyBindings>
                   <KeyBinding Gesture="Enter"

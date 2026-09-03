@@ -210,6 +210,13 @@ should not be trusted for compatibility yet.
 
 ### Changed
 
+- **Ctrl+L pressed again re-selects the path** instead of doing nothing. The
+  first press opens the address bar and selects what is in it; the second used
+  to reach nothing at all, because only the box appearing put the caret there
+  and by then it was already on screen. Both references answer a repeat press
+  by re-selecting, which is how you replace a path you have half-edited without
+  going for the mouse. What you typed is still kept, as it has been.
+
 - **Ctrl+Page Up and Ctrl+Page Down move through tabs**, the other way every
   browser does it. Ctrl+Tab has always worked; this pair simply was not bound.
 

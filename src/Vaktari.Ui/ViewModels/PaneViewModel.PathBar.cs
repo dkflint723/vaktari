@@ -55,8 +55,19 @@ public sealed partial class PaneViewModel
         // double-click on the bar all land here, and the second one reset the
         // box to the folder you are in — so half a typed path went, silently,
         // for a keystroke whose meaning is "put me in the address bar", which
-        // is where you already were. Both references just leave the text.
-        if (IsPathEditing) return;
+        // is where you already were.
+        //
+        // **And then it did nothing at all**, which is the other half of what
+        // both references do: theirs re-select the text, so a second press is
+        // how you replace a path you have half-edited without reaching for the
+        // mouse. Only the box appearing focused it here, and on the second
+        // press it is already on screen — so the keystroke reached nothing.
+        if (IsPathEditing)
+        {
+            FocusPathBox = true;
+            FocusPathBox = false;
+            return;
+        }
 
         _completer.Reset();
 
