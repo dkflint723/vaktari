@@ -71,6 +71,26 @@ public sealed class LinuxLauncher : IApplicationLauncher
             });
         }
 
+        // **The desktop's own setting, which was read by nothing.** Plasma
+        // has had a terminal preference since forever and puts it in
+        // kdeglobals; a KDE user who set it to Alacritty still got Konsole,
+        // because Konsole is simply first in the list below. $TERMINAL comes
+        // first of the two — it is the more explicit choice, and the one a
+        // person sets per session — but a desktop preference beats a list of
+        // guesses.
+        if (found.Count == 0
+            && DesktopTerminal() is { Length: > 0 } chosen
+            && OnPath(chosen) is { } fromDesktop)
+        {
+            var known = Known.FirstOrDefault(k =>
+                fromDesktop.EndsWith("/" + k.Exe, StringComparison.Ordinal));
+
+            found.Add(new TerminalOption("terminal-desktop", chosen, fromDesktop, known.Args ?? [])
+            {
+                RunArguments = known.Run ?? ["-e"],
+            });
+        }
+
         foreach (var (id, name, exe, args, run) in Known)
         {
             if (found.Any(t => t.Command.EndsWith("/" + exe, StringComparison.Ordinal))) continue;
@@ -95,8 +115,101 @@ public sealed class LinuxLauncher : IApplicationLauncher
         ("wezterm",        "WezTerm",        "wezterm",        ["start", "--cwd", "{dir}"],      ["start", "--"]),
         ("foot",           "foot",           "foot",           ["--working-directory={dir}"],    ["-e"]),
         ("xfce4-terminal", "Xfce Terminal",  "xfce4-terminal", ["--working-directory={dir}"],    ["-x"]),
+
+        // **Everything below was missing, and between them they are the
+        // default terminal on a good many desktops.** Ptyxis ships as GNOME's
+        // on recent Fedora, Terminator and Tilix are what people install when
+        // they want splits, Ghostty is new and spreading quickly, and
+        // x-terminal-emulator is the Debian alternatives link that answers when
+        // none of the others is installed under its own name. Without them
+        // Vaktari fell through to xterm on machines with a perfectly good
+        // terminal on them.
+        ("ptyxis",         "Ptyxis",         "ptyxis",         ["--working-directory={dir}"],    ["--"]),
+        ("ghostty",        "Ghostty",        "ghostty",        ["--working-directory={dir}"],    ["-e"]),
+        ("terminator",     "Terminator",     "terminator",     ["--working-directory={dir}"],    ["-x"]),
+        ("tilix",          "Tilix",          "tilix",          ["--working-directory={dir}"],    ["-e"]),
+        ("mate-terminal",  "MATE Terminal",  "mate-terminal",  ["--working-directory={dir}"],    ["-e"]),
+        ("lxterminal",     "LXTerminal",     "lxterminal",     ["--working-directory={dir}"],    ["-e"]),
+        ("qterminal",      "QTerminal",      "qterminal",      ["--workdir", "{dir}"],           ["-e"]),
+
+        // Last two, and in this order: the alternatives link is whatever the
+        // machine chose, which is a better answer than xterm and a worse one
+        // than any terminal named above. It guarantees only -e, and no working
+        // directory flag — which costs nothing, because the folder arrives as
+        // the directory the process is started in.
+        ("x-terminal-emulator", "Terminal",  "x-terminal-emulator", [],                          ["-e"]),
         ("xterm",          "xterm",          "xterm",          [],                               ["-e"]),
     ];
+
+    /// <summary>
+    /// The terminal the desktop is configured to use, or null.
+    ///
+    /// Plasma's, because Plasma is the desktop with a setting for this — GNOME
+    /// dropped its equivalent, and the others never had one. Read straight out
+    /// of kdeglobals rather than through kreadconfig5, which is a process per
+    /// call and is not installed outside KDE.
+    ///
+    /// A ".desktop" suffix is trimmed: Plasma 6 records the entry name there
+    /// where Plasma 5 recorded a command, and the two differ by exactly that.
+    /// </summary>
+    internal static string? DesktopTerminal()
+    {
+        try
+        {
+            var file = Path.Combine(ConfigHome(), "kdeglobals");
+
+            if (!File.Exists(file)) return null;
+
+            var general = false;
+
+            foreach (var raw in File.ReadLines(file))
+            {
+                var line = raw.Trim();
+
+                if (line.StartsWith('['))
+                {
+                    // Only the [General] group: the key name appears in others
+                    // — a per-application override among them — and taking the
+                    // first match anywhere reads somebody else's setting.
+                    general = line.Equals("[General]", StringComparison.Ordinal);
+                    continue;
+                }
+
+                if (!general || !line.StartsWith("TerminalApplication", StringComparison.Ordinal))
+                    continue;
+
+                var equals = line.IndexOf('=');
+                if (equals < 0) continue;
+
+                var value = line[(equals + 1)..].Trim();
+
+                if (value.EndsWith(".desktop", StringComparison.Ordinal))
+                    value = value[..^8];
+
+                return value.Length > 0 ? value : null;
+            }
+        }
+        catch (Exception e) when (e is IOException or UnauthorizedAccessException)
+        {
+            Vaktari.Core.Quiet.Swallowed("terminal", e);
+        }
+
+        return null;
+    }
+
+    /// <summary>Where the desktop keeps its configuration. A seam, because the
+    /// suite runs where there is no such directory.</summary>
+    internal static Func<string>? ConfigHomeOverride { get; set; }
+
+    private static string ConfigHome()
+    {
+        if (ConfigHomeOverride is { } given) return given();
+
+        return Environment.GetEnvironmentVariable("XDG_CONFIG_HOME") is { Length: > 0 } set
+            ? set
+            : Path.Combine(
+                Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), ".config");
+    }
 
     private static string? OnPath(string exe)
     {
