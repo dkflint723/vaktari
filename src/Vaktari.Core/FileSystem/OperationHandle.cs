@@ -38,7 +38,7 @@ public sealed class OperationHandle : IOperationHandle
     /// run leaves it null: somebody who pressed cancel is not asking to be
     /// offered the same work back.
     /// </summary>
-    public Func<IOperationHandle>? Retry { get; set; }
+    public RetryOffer? Retry { get; set; }
 
     private readonly List<ItemProblem> _problems = [];
 

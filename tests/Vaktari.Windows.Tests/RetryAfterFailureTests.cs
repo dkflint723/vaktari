@@ -54,7 +54,7 @@ public sealed class RetryAfterFailureTests
         }
 
         // The program has been closed. Now the offer is taken.
-        var second = handle.Retry!();
+        var second = handle.Retry!.Again();
         await second.Completion;
 
         Assert.Equal(OperationState.Completed, second.State);
@@ -94,7 +94,7 @@ public sealed class RetryAfterFailureTests
         // every conflict those successes already answered, asked again.
         File.Delete(tree.At("dst", "src", "first.txt"));
 
-        var second = handle.Retry!();
+        var second = handle.Retry!.Again();
         await second.Completion;
 
         Assert.False(tree.Exists("dst", "src", "first.txt"));
@@ -153,7 +153,7 @@ public sealed class RetryAfterFailureTests
             await handle.Completion;
         }
 
-        var second = handle.Retry!();
+        var second = handle.Retry!.Again();
         await second.Completion;
 
         // Into the kept-separate folder...
@@ -191,7 +191,7 @@ public sealed class RetryAfterFailureTests
             await handle.Completion;
         }
 
-        var second = handle.Retry!();
+        var second = handle.Retry!.Again();
         await second.Completion;
 
         Assert.Equal("two", tree.Read("Alpha - Copy", "second.txt"));
@@ -236,7 +236,7 @@ public sealed class RetryAfterFailureTests
         // The obstruction is removed, the way closing the program would be.
         File.Delete(tree.At("dst", "A"));
 
-        var second = handle.Retry!();
+        var second = handle.Retry!.Again();
         await second.Completion;
 
         Assert.Equal("one", tree.Read("dst", "A", "first.txt"));
@@ -266,7 +266,7 @@ public sealed class RetryAfterFailureTests
             Assert.NotNull(handle.Retry);
         }
 
-        var second = handle.Retry!();
+        var second = handle.Retry!.Again();
         await second.Completion;
 
         Assert.False(File.Exists(locked));

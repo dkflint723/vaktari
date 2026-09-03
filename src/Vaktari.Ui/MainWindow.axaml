@@ -2726,6 +2726,21 @@
                 FontSize="{DynamicResource FontSizeSmall}" Padding="8,2"
                 IsVisible="{Binding OperationFinished}"
                 Command="{Binding DismissOperationStatusCommand}"/>
+        <!-- **The batch never stopped to ask, so the asking happens here.**
+             Retry is the one verb that needs the person to go and DO something
+             first — close the program holding the file — and a modal in the
+             middle of five thousand items cannot express "wait, I need a
+             minute". Skip is what the batch already did and cancel is the
+             button beside this one; this is the third.
+
+             The count is what it will ATTEMPT, not how many problems were
+             reported: a folder that could not be created reports every one of
+             its planned descendants. -->
+        <Button x:Name="RetryOperation" DockPanel.Dock="Right" Margin="6,0,0,0"
+                Content="{Binding RetryLabel}"
+                FontSize="{DynamicResource FontSizeSmall}" Padding="8,2"
+                IsVisible="{Binding CanRetryOperation}"
+                Command="{Binding RetryOperationCommand}"/>
         <Button DockPanel.Dock="Right" Content="cancel" Margin="6,0,0,0"
                 FontSize="{DynamicResource FontSizeSmall}" Padding="8,2"
                 IsVisible="{Binding ActiveOperation, Converter={x:Static ObjectConverters.IsNotNull}}"

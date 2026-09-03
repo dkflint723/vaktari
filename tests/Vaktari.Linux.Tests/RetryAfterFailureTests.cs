@@ -74,7 +74,7 @@ public sealed class RetryAfterFailureTests : IDisposable
 
         File.Delete(At("dst", "A"));
 
-        var second = handle.Retry!();
+        var second = handle.Retry!.Again();
         await second.Completion;
 
         Assert.Equal("one", File.ReadAllText(At("dst", "A", "first.txt")));
@@ -154,7 +154,7 @@ public sealed class RetryAfterFailureTests : IDisposable
         File.Delete(At("blocker"));
         Write("blocker/x.txt", "x");
 
-        var second = handle.Retry!();
+        var second = handle.Retry!.Again();
         await second.Completion;
 
         Assert.False(File.Exists(At("blocker", "x.txt")));

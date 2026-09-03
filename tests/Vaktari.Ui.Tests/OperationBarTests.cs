@@ -210,7 +210,13 @@ public sealed class OperationBarTests : OwnedViewModels
 
     /// <summary>
     /// Declaration order decides which is rightmost, so this reads
-    /// "pause cancel" rather than "cancel pause".
+    /// "pause cancel" rather than "cancel pause" while an operation runs, and
+    /// "retry 3   dismiss" once one has finished leaving something behind.
+    ///
+    /// Retry sits to the LEFT of dismiss deliberately: dismiss is the one that
+    /// throws the sentence away, and the rightmost slot is where a hand lands
+    /// by habit. The two never coexist with pause and cancel — one pair is
+    /// while it runs, the other after.
     /// </summary>
     [AvaloniaFact]
     public void Pause_sits_to_the_left_of_cancel()
@@ -227,6 +233,7 @@ public sealed class OperationBarTests : OwnedViewModels
 
         Assert.Equal(
             ["{Binding DismissOperationStatusCommand}",
+             "{Binding RetryOperationCommand}",
              "{Binding CancelOperationCommand}",
              "{Binding PauseOperationCommand}"],
             commands);

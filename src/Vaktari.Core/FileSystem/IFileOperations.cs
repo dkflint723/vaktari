@@ -85,7 +85,7 @@ public interface IOperationHandle
     /// So the batch never pauses. It finishes, the bar names what was left
     /// behind, and this is how the person says "I have closed it now".
     /// </summary>
-    Func<IOperationHandle>? Retry { get; }
+    RetryOffer? Retry { get; }
 }
 
 /// <summary>

@@ -1359,6 +1359,56 @@ public sealed partial class ShellViewModel : ObservableObject, IDisposable
     /// but nothing left to pause or cancel.</summary>
     public bool OperationFinished => ActiveOperation is null && OperationStatus.Length > 0;
 
+    /// <summary>
+    /// The offer to go again on what an operation could not do, or null.
+    ///
+    /// **Set and cleared in the same place the bar's message is**, which is the
+    /// whole of keeping it honest: an offer that outlived its sentence would
+    /// reappear underneath the NEXT operation's failure, attached to work
+    /// nobody was looking at. Every branch that writes OperationStatus decides
+    /// this too.
+    /// </summary>
+    [ObservableProperty] private Core.FileSystem.RetryOffer? _retryable;
+
+    /// <summary>The pane to hang the retry's progress on, so it reports where
+    /// the original did.</summary>
+    private PaneViewModel? _retryPane;
+
+    public bool CanRetryOperation => Retryable is not null;
+
+    /// <summary>
+    /// The count is what the button will ATTEMPT, which is not the number of
+    /// problems: a folder that could not be created reports every one of its
+    /// planned descendants, and "retry 431" for one unreadable folder says
+    /// nothing about what pressing it does.
+    /// </summary>
+    public string RetryLabel => Retryable is { } offer ? $"retry {offer.Count}" : "retry";
+
+    partial void OnRetryableChanged(Core.FileSystem.RetryOffer? value)
+    {
+        OnPropertyChanged(nameof(CanRetryOperation));
+        OnPropertyChanged(nameof(RetryLabel));
+    }
+
+    /// <summary>
+    /// Goes again on the failures, as an ordinary operation: it gets the bar,
+    /// the progress, the pause and the cancel that any other one does, and it
+    /// can itself leave something behind and offer another retry.
+    /// </summary>
+    [RelayCommand]
+    private void RetryOperation()
+    {
+        if (Retryable is not { } offer) return;
+
+        // Taken first. The new operation writes its own line to the bar, and an
+        // offer still standing while that runs is an offer for work already
+        // being redone.
+        Retryable = null;
+        OperationStatus = "";
+
+        (_retryPane ?? ActiveTab)?.Adopt(offer.Again());
+    }
+
     partial void OnActiveOperationChanged(IOperationHandle? value)
     {
         NotifyOperationBar();
@@ -1383,7 +1433,13 @@ public sealed partial class ShellViewModel : ObservableObject, IDisposable
     /// operation: without it a failure would sit there until the next copy.
     /// </summary>
     [RelayCommand]
-    private void DismissOperationStatus() => OperationStatus = "";
+    private void DismissOperationStatus()
+    {
+        OperationStatus = "";
+
+        // Dismissing the sentence dismisses the offer attached to it.
+        Retryable = null;
+    }
 
     // ---- construction --------------------------------------------------
 
@@ -2256,6 +2312,12 @@ public sealed partial class ShellViewModel : ObservableObject, IDisposable
                 _running.Remove(handle);
 
                 // A failure stays on screen; only success clears silently.
+                // Travels with the message below, in every branch: an offer
+                // that outlived its sentence would reappear under the next
+                // operation's failure.
+                Retryable = handle.Retry;
+                _retryPane = ActiveTab;
+
                 if (handle.State == OperationState.Failed && handle.Error is { } error)
                 {
                     // Described the way the rest of the application describes a

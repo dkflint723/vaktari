@@ -403,7 +403,9 @@ public sealed class WindowsFileOperations : IFileOperations
 
                 // Before Complete, so a cancelled run offers nothing.
                 if (RetryRoots.Outermost(failed) is { Count: > 0 } worthRetrying)
-                    handle.Retry = () => Delete([.. worthRetrying.Select(r => r.Source)]);
+                    handle.Retry = new RetryOffer(
+                        worthRetrying.Count,
+                        () => Delete([.. worthRetrying.Select(r => r.Source)]));
 
                 handle.Complete();
             }
@@ -949,8 +951,9 @@ public sealed class WindowsFileOperations : IFileOperations
                 // callback, so an "apply to the rest" already answered is not asked
                 // again.
                 if (RetryRoots.Outermost(failed) is { Count: > 0 } worthRetrying)
-                    handle.Retry = () =>
-                        Run(sources, destination, onConflict, move, worthRetrying);
+                    handle.Retry = new RetryOffer(
+                        worthRetrying.Count,
+                        () => Run(sources, destination, onConflict, move, worthRetrying));
 
                 handle.Complete();
             }

@@ -1922,6 +1922,16 @@ public sealed partial class PaneViewModel : ObservableObject, IDisposable
     /// </summary>
     internal const int OpenLimit = 15;
 
+    /// <summary>
+    /// Takes on an operation this pane did not start, so it gets the bar, the
+    /// progress, the pause and the cancel that any other one does.
+    ///
+    /// A public door onto the private tracking, for the retry: the offer is
+    /// pressed on the shell's bar, but the operation behind it belongs to a
+    /// pane like every other.
+    /// </summary>
+    public void Adopt(IOperationHandle handle) => Track(handle);
+
     private void Track(IOperationHandle handle)
     {
         OperationStarted?.Invoke(this, handle);

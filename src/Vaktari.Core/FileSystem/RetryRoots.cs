@@ -21,6 +21,17 @@ namespace Vaktari.Core.FileSystem;
 /// </param>
 public readonly record struct RetryRoot(string Source, string Target, bool IsDirectory);
 
+/// <summary>
+/// The offer itself: how many things a retry will attempt, and how to attempt
+/// them.
+///
+/// **The count is the number of ROOTS, not the number of problems.** A folder
+/// that could not be created reports every one of its planned descendants as a
+/// problem, so "retry 431" for one unreadable folder is a number that tells the
+/// person nothing about what the button will do.
+/// </summary>
+public sealed record RetryOffer(int Count, Func<IOperationHandle> Again);
+
 public static class RetryRoots
 {
     /// <summary>
