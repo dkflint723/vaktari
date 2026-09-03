@@ -18,24 +18,29 @@ namespace Vaktari.Linux.Tests;
 /// </summary>
 public sealed class FileManagerServiceTests : IDisposable
 {
-    private readonly string? _dataHome = Environment.GetEnvironmentVariable("XDG_DATA_HOME");
-
     private readonly string _temp = Path.Combine(
         Path.GetTempPath(), "vaktari-fm1-" + Guid.NewGuid().ToString("N")[..8]);
 
     /// <summary>
-    /// The service file goes under XDG_DATA_HOME, and the NotDefault branch
-    /// DELETES it — so these must not run against the real one.
+    /// The service file goes under the user's data directory, and the
+    /// NotDefault branch DELETES it — so these must not run against the real
+    /// one.
+    ///
+    /// **Redirected through the seam rather than by moving XDG_DATA_HOME**,
+    /// which is process-global: xUnit runs test classes in parallel, and
+    /// setting it here took the terminal-entry tests' data directory out from
+    /// under them. That failed only on the Linux job, where those tests have
+    /// something to find.
     /// </summary>
     public FileManagerServiceTests()
     {
         Directory.CreateDirectory(_temp);
-        Environment.SetEnvironmentVariable("XDG_DATA_HOME", _temp);
+        FileManager1ServiceFile.DataHomeOverride = _temp;
     }
 
     public void Dispose()
     {
-        Environment.SetEnvironmentVariable("XDG_DATA_HOME", _dataHome);
+        FileManager1ServiceFile.DataHomeOverride = null;
 
         try { Directory.Delete(_temp, recursive: true); }
         catch (Exception) { /* a temp dir is not worth failing over */ }

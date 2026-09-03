@@ -30,15 +30,31 @@ internal static class FileManager1ServiceFile
 {
     internal const string FileName = "org.freedesktop.FileManager1.service";
 
+    /// <summary>
+    /// The data directory the tests use instead of the session's.
+    ///
+    /// **A seam rather than the tests moving XDG_DATA_HOME**, which is process
+    /// -global: xUnit runs test classes in parallel, and redirecting it here
+    /// took the terminal-entry tests' data directory out from under them — a
+    /// failure that appeared only on the Linux job, because that is the only
+    /// one where those tests have anything to find.
+    ///
+    /// The data HOME rather than the whole directory, so the dbus-1/services
+    /// layout below stays the thing under test.
+    /// </summary>
+    internal static string? DataHomeOverride { get; set; }
+
     internal static string Directory
     {
         get
         {
+
             // The same fallback DesktopEntries, SharedMimeInfo, XdgTrash and
             // LinuxScriptRunner each spell out; spelled again rather than
             // shared, because those four each want a different leaf and this
             // wants none of them.
-            var dataHome = Environment.GetEnvironmentVariable("XDG_DATA_HOME");
+            var dataHome = DataHomeOverride
+                           ?? Environment.GetEnvironmentVariable("XDG_DATA_HOME");
 
             if (string.IsNullOrWhiteSpace(dataHome))
                 dataHome = Path.Combine(
