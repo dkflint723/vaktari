@@ -1273,6 +1273,12 @@ public partial class MainWindow : Window
         {
             tab.RefreshScripts();
             tab.RefreshTemplates();
+
+            // Not awaited: a menu opens now. The Paste row shows what the last
+            // answer was and corrects itself a round trip later. Deliberately
+            // in THIS block, above the early return further down that has
+            // silently swallowed work in this handler before.
+            _ = tab.RefreshClipboardAsync();
         }
 
         // The Proton entries live inside the Share submenu now, so the walk

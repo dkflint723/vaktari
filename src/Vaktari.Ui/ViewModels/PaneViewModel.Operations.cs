@@ -1,4 +1,5 @@
 using System.Collections.ObjectModel;
+using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using Avalonia.Threading;
 using Vaktari.Core;
@@ -44,6 +45,11 @@ public sealed partial class PaneViewModel
                 // does — the earlier cut is no longer going to happen.
                 if (!ok) return;
 
+                // Known without asking: this pane just put them there. The
+                // probe runs when a menu opens, which is later than the moment
+                // the row becomes true.
+                CanPaste = true;
+
                 if (action == ClipboardAction.Cut) CutMarks.Mark(paths);
                 else CutMarks.Clear();
             });
@@ -51,6 +57,47 @@ public sealed partial class PaneViewModel
         catch (Exception ex)
         {
             await Dispatcher.UIThread.InvokeAsync(() => Status = $"copy failed: {ex.Message}");
+        }
+    }
+
+    /// <summary>
+    /// Whether there is anything to paste.
+    ///
+    /// **Paste was live with an empty clipboard.** The row was offered in every
+    /// listing but the bin, and picking it posted "clipboard has no files" — an
+    /// answer the row could have given by looking grey, which is what Explorer
+    /// does with the same menu.
+    ///
+    /// It starts true and is corrected by the probe rather than the other way
+    /// round. An over-offered Paste is exactly today's behaviour and the
+    /// command still explains itself; an under-offered one refuses a paste that
+    /// would have worked, and that is the worse of the two to be wrong about
+    /// while the answer is still in flight.
+    /// </summary>
+    [ObservableProperty] private bool _canPaste = true;
+
+    /// <summary>
+    /// Asks the clipboard whether it holds files, for the menu that is about to
+    /// show the Paste row.
+    ///
+    /// ConfigureAwait(true) rather than the hop through InvokeAsync the rest of
+    /// this file makes: this is asked FROM the UI thread, as a menu opens, and
+    /// the answer is written to a bound property.
+    /// </summary>
+    public async Task RefreshClipboardAsync()
+    {
+        if (_clipboard is null) return;
+
+        try
+        {
+            CanPaste = await _clipboard.HasFilesAsync().ConfigureAwait(true);
+        }
+        catch (Exception ex)
+        {
+            // Fails OPEN. A probe that could not answer must not be the reason
+            // a paste is refused — the command itself still says "clipboard has
+            // no files" when there is nothing there.
+            Quiet.Swallowed("clipboard-probe", ex);
         }
     }
 

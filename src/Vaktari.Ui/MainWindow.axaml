@@ -1376,8 +1376,16 @@
                                       Command="{Binding $parent[Window].((vm:ShellViewModel)DataContext).CopyLocationCommand}"
                                       InputGesture="Ctrl+Shift+C"
                                       IsVisible="{Binding $parent[Window].((vm:ShellViewModel)DataContext).ShowCopyLocationInMenu}"/>
+              <!-- **Live with an empty clipboard.** Picking it posted
+                   "clipboard has no files", which is an answer the row could
+                   have given by looking grey. Greyed rather than hidden, unlike
+                   its neighbours here: they hide on a rule about the SELECTION,
+                   and a row that came and went with the clipboard would move
+                   the entries under it between two right-clicks in the same
+                   folder. -->
               <MenuItem Header="Paste" Command="{Binding ActiveTab.PasteCommand}"
                                       InputGesture="Ctrl+V"
+                                      IsEnabled="{Binding ActiveTab.CanPaste}"
                                       IsVisible="{Binding !ActiveTab.IsTrashListing}"/>
               <MenuItem x:Name="CopyToMenu" Header="Copy to"
                                       IsVisible="{Binding $parent[Window].((vm:ShellViewModel)DataContext).ShowCopyToInMenu}"

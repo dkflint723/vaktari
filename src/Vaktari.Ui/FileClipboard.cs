@@ -105,6 +105,23 @@ public static class FileClipboard
         await clipboard.FlushAsync().ConfigureAwait(false);
     }
 
+    /// <summary>
+    /// Whether anything on the clipboard claims to be a file, without reading
+    /// the files themselves.
+    ///
+    /// Separate from <see cref="GetAsync"/> because the Paste row asks this on
+    /// every right-click and does not want the payload: reading that
+    /// materialises a storage item per file, which after a copy of ten thousand
+    /// of them is a pause on a menu that has to appear at once. The format list
+    /// is one round trip whatever is on there.
+    /// </summary>
+    public static async Task<bool> HasFilesAsync(IClipboard clipboard)
+    {
+        using var data = await clipboard.TryGetDataAsync().ConfigureAwait(false);
+
+        return data is not null && data.Contains(DataFormat.File);
+    }
+
     public static async Task<ClipboardPayload?> GetAsync(IClipboard clipboard)
     {
         using var data = await clipboard.TryGetDataAsync().ConfigureAwait(false);
