@@ -9,6 +9,764 @@ Newest first. Dates are the day the tag was cut. Versions follow
 [Status](README.md#status): there has been no stable release, and the numbers
 should not be trusted for compatibility yet.
 
+## [Unreleased]
+
+### Added
+
+- **A search shows that it is running, and can be stopped.** Nothing on screen
+  said a search was under way: the status line changes its words only when a
+  batch of results lands, so between batches a walk that was still going looked
+  exactly like one that had finished — and from This PC, where the scope box is
+  forced off and every drive is read, that walk is unbounded. There is a bar
+  while it runs and a *Stop* beside it. Stop keeps the hits it already found,
+  which is the whole difference between it and Escape: Escape clears the query
+  and takes the results and the text that produced them with it.
+
+- **There is somewhere above a drive root, and it lists your drives.** Up was
+  disabled at the top of `C:\` by construction, the breadcrumbs stopped at the
+  drive, and typing "This PC" answered that no such directory existed — so the
+  only way to another drive was the sidebar, which you cannot sort, select in,
+  or open two of in tabs. This PC ("This computer" on Linux) is now a listing
+  like any other, built from the same drives the sidebar shows, with its own
+  row directly under Home, a crumb above every path, and each drive's capacity
+  in the size column. A drive has no modified date, so that column is now empty
+  there rather than reading "31 Dec 1969", which looked like a fact.
+
+- **Tabs behave like tabs.** They stayed in the order they were opened in —
+  pressing one and dragging did nothing at all, while the order was already
+  remembered between sessions with no way to alter it. You can drag them into
+  place now, and the tab you dragged stays the tab you are looking at. Closing
+  one used to throw its whole state away, so Ctrl+Shift+T had nothing to put
+  back; each side now remembers its last ten, newest first. A tab has a
+  right-click menu — *Duplicate*, *Close other tabs*, *Close tabs to the
+  right*, *Reopen closed tab* — and none of those can leave a side with no
+  tabs. Middle-clicking a sidebar place or a breadcrumb opens one too, behind
+  the tab you are in, which is what that gesture has always meant.
+
+- **A drag says where it is about to land, and has somewhere new to land.** The
+  only thing marked while you dragged was the pane, and which half of the
+  window your pointer is in was never the question — what you could not tell is
+  whether releasing puts the files into the folder under the pointer or into
+  the folder being listed, and finding out meant releasing and going to look.
+  A folder row now takes a ring in all three layouts and a sidebar place takes
+  a wash of its own, neither of which moves the row while you aim at it. Files
+  can also be dropped onto another tab, which rests for a moment and then
+  switches so you can see where you are aiming, and onto the bin, where they go
+  to the bin the same as pressing Delete.
+
+- **The details view lets you choose its columns, and there is a Type column to
+  choose.** Right-click the headings, where Explorer and Dolphin both put it:
+  Name, Type, Size, Modified — Name ticked and greyed, because a listing of
+  sizes with no names is not a listing of anything. Nothing could turn a column
+  off before, and sorting by type had been there from the start with no heading
+  to click. The new column spells the extension the way Explorer does when it
+  has nothing better — "PNG file", "Folder", "File" — and a symlinked folder,
+  a junction or a mount point reads "Folder link" rather than being drawn
+  exactly like the thing it points at. The choice belongs to the pane you
+  opened the menu over and travels with the tab into your next session, and a
+  narrow pane still drops columns to keep the name readable whatever is ticked.
+
+- **Ctrl+Z takes back a paste, a new folder, and — on Windows — a delete.**
+  Copies were deliberately not undoable, because undoing one means removing
+  files; but pasting into the wrong folder is one of the easiest mistakes a
+  file manager lets you make, and Ctrl+Z doing nothing left them there for you
+  to find and remove by hand. The undo now sends what that paste created to the
+  bin, where it is recoverable — only what it created, and only if it is still
+  there. Ctrl+Shift+N, a new file and new-from-template can be taken back the
+  same way. Recycling something on Windows also left nothing to undo, behind a
+  note explaining that putting it back was impossible, which had stopped being
+  true long before; Vaktari now reads the bin either side of the delete so it
+  knows exactly which entries it made. A move still undoes as a move, and there
+  is no redo yet.
+
+- **Back and forward remember the whole walk, not just one step.** Both buttons
+  offered a single step at a time out of a history the pane had kept all along,
+  so a pane ten folders deep could only be walked out one press at a time with
+  no way to see where the next press went. Right-click either chevron for a
+  list of where it goes, nearest first, twelve deep — and picking a row several
+  steps back leaves both buttons exactly as that many presses would have, so
+  forward walks back through everything you stepped over.
+
+- **A copy can be paused now, not just cancelled.** The machinery was there
+  from the day it was written — both engines stop between items and inside the
+  byte loop, so holding a large transfer mid-flight always worked — and nothing
+  in the window could ask for it. There is a *pause* button on the transfer bar
+  beside *cancel*, and it reads *resume* while the transfer is held.
+
+- **Search can leave the folder you are standing in.** The results panel now
+  carries a *This folder only* tick box, on by default; clear it and the search
+  runs over the whole machine. Both platforms could already search unscoped —
+  the switch for it was bound to no control at all, so every search you ever
+  ran was confined to the current folder whether that was what you wanted or
+  not.
+
+- **A drive you plug in appears on its own, and there is a way to remove it
+  safely.** The sidebar never watched for devices, so a stick showed up
+  whenever something else happened to rebuild the list — and *Eject* did
+  nothing on either platform. Removable drives now carry an eject button on the
+  row and an *Eject* entry in the menu, and Vaktari steps every tab off the
+  drive first, so its own folder watch cannot veto the removal and blame a
+  program you would never find. The answer says which of three things happened:
+  safe to unplug, unmounted but still held by the system, or something still
+  has a file open — the middle one being the state where pulling the stick is
+  what loses data. On Linux, removability was read from the mount point alone,
+  so a USB disk given a stable line in fstab or mounted by hand came out a
+  fixed disk with no eject button; the kernel is asked as well now, anything
+  reached over the USB bus counts, and the disk you are running from is never
+  offered.
+
+- **On Linux, the sidebar lists volumes you have not mounted.** The mount table
+  was the only thing it read, so a partition nobody had mounted did not exist
+  as far as Vaktari was concerned — and on a desktop that does not automount, a
+  stick you plugged in never appeared at all. Every device carrying a
+  filesystem is now listed under devices, dimmed and in place rather than
+  silently dropped, and clicking one mounts it. Plugging one in is noticed as
+  it happens. A data CD appears too: discs were being filtered out by the rule
+  that hides snap images, which are not that kind of image at all.
+
+- **Mount an .iso from the right-click menu, and put it away again.** Choose
+  *Mount* and the pane opens what is inside the image; the same row reads
+  *Unmount* while it is attached. Double-click is deliberately left alone, so
+  an image you had opening in an archive tool still does. What is mounted is
+  asked of the machine rather than remembered, so an image something else
+  attached reads as mounted here too, and can be put away from here.
+
+- **The keyboard reaches the menu, the listing and your home folder.** The Menu
+  key and Shift+F10 raise the right-click menu on the row you are standing on;
+  until now it was reachable with the mouse and nothing else. F6 puts the
+  keyboard back in the listing, which had no way in at all — at startup, or
+  after Ctrl+L and Escape, the arrow keys were dead until you touched the
+  mouse. Alt+Home goes home, which was only ever a fallback starting point
+  rather than somewhere you could ask to go, and Ctrl+Q closes the window,
+  which the keyboard could not do at all.
+
+- **Refresh, Select and the sidebar have somewhere to be clicked.** Refresh had
+  answered F5 all along and appeared in no menu, which is a problem exactly
+  when a listing has gone stale; it sits low in the right-click menu now,
+  because the folder watcher covers most of what it is for. Choosing things had
+  one command and no menu home, and no way at all to clear a selection or turn
+  one inside out, so there is a *Select* menu with all three and Ctrl+Shift+A
+  for Invert. The sidebar could only be hidden with Ctrl+B, which nothing said
+  — and getting it back was the same problem with the sidebar gone; the view
+  flyout carries a *Sidebar* tick beside *Show hidden files*, F9 does the same,
+  and that flyout also has a row for the shortcut list, which until now could
+  only be reached by already knowing one of the shortcuts. The F1 sheet gained
+  six more that worked all along and were never listed.
+
+- **Hover something too narrow to read, and it will tell you what it says.**
+  The name was the one thing in a row that trimmed itself and then said nothing
+  about it: in a narrow split pane, or a grid tile that gets two lines and an
+  ellipsis, reading one meant pressing F2 for the edit box and Escape to get
+  out again. All three layouts pop the whole name now, after a long pause,
+  because a tip over a name that already fits is noise. A sidebar place shows
+  its path the same way — two of them are easily both called Documents, one
+  local and one on a share, and nothing said which was which.
+
+### Changed
+
+- **On Windows, "whatever the desktop is set to" now means it.** That setting
+  worked on KDE and quietly meant double-click on Windows however Folder
+  Options was configured, on the belief that Explorer's preference was not
+  recorded anywhere readable. It is, and Vaktari reads it at startup and after
+  every settings save — so if your Explorer opens items with a single click,
+  Vaktari now does too. That is the one change here you may notice the moment
+  you upgrade. When the preference cannot be read, your own setting decides, as
+  before.
+
+- **Moving files within one drive is instant.** A move copied every byte and
+  deleted the original, so shifting a folder of video across one disk rewrote
+  the whole folder — while *undoing* that same move took no time at all,
+  because undo had always renamed rather than copied. A move that stays on one
+  volume now renames too, and the progress bar still advances through it.
+
+- **The first click on Date modified puts the newest file on top.** Every
+  heading started ascending, so the download that had just finished — the
+  reason anybody clicks that heading — landed at the very bottom of the folder
+  and took a second click to find; Size did the same with the empty files.
+  Dates and sizes now start descending, while Name and Type still start at A,
+  because A to Z is what those two mean. Clicking again still reverses.
+
+- **A new tab keeps the view you were working in.** Ctrl+T reset hidden files,
+  the layout, the sort, the grouping and the zoom, so a new tab was a tab you
+  had to set up again; it carries all of that across now. *Open in new tab*
+  also leaves you where you are rather than jumping to the tab it just opened —
+  asking for a tab is precisely how you carry on with what you were doing —
+  while Ctrl+T still takes you there, because that one is a request for
+  somewhere to work.
+
+- **The confirmation names what it is about to destroy.** "permanently delete 1
+  item(s)?" asked you to approve something irreversible with a sentence that
+  would have read identically for any file on the machine, so selecting the
+  wrong row and pressing Shift+Delete cost a keystroke and told you nothing.
+  One thing is named now and several are counted, and the parenthesised plural
+  has gone with it. A very long name is elided in the middle so the extension
+  survives: `.pdf` against `.exe` is the part that changes what deleting it
+  means. Delete, move to the bin and empty the bin all did it. A refused
+  *New file* also spoke .NET where *New folder*, one menu row away, spoke
+  English: "could not create file: Could not find a part of the path '…'"
+  against "that folder is not there any more". Both ask the same describer
+  every other refusal in Vaktari already used.
+
+- **Hidden and system files look hidden.** With "show hidden files" turned on,
+  desktop.ini, thumbs.db, .DS_Store and every dotfile stood in the listing at
+  full strength, indistinguishable from the folder's real contents — which is
+  the whole reason turning that setting on is survivable elsewhere. Their names
+  are ghosted now, faded rather than recoloured, so it reads the same on a
+  selected row and in every theme.
+
+- **On Windows, a shortcut is called a Shortcut, and one to a folder opens
+  here.** Windows hides the .lnk extension everywhere else on the machine, so
+  Desktop and the Start Menu — folders that hold nothing else — read here as a
+  wall of "Chrome.lnk" rows typed "LNK file", in a window sitting beside others
+  that all disagreed with it. Names drop the extension in every view now, and
+  the Type column and the properties window both say Shortcut. Double-clicking
+  a shortcut to a folder used to hand it to Windows, which opened a separate
+  Explorer window over the top of you; it navigates the pane instead. A
+  shortcut to a program is still the system's to launch, and on Linux a .lnk
+  stays an ordinary file from another system, because nothing here can follow
+  it.
+
+- **An empty bin no longer calls itself an empty folder.** "This folder is
+  empty" was printed over the bin, over Recent and over This PC, none of which
+  is a folder — and over an empty bin it invites the reading that a folder
+  somewhere has lost its contents, when all it means is that nothing has been
+  deleted lately. Each listing says its own line now: "the Recycle Bin is
+  empty", "no drives found", "no files opened lately".
+
+- **Group by is offered only in the details view.** Choosing a grouping in the
+  icon or compact view reordered the tiles and drew no headings, so the runs it
+  made were invisible and the menu looked as though it had done nothing.
+  Headings for those two layouts are a feature in their own right rather than a
+  gate, so the entry is hidden there until they can draw them.
+
+- **The properties window is titled with what it describes.** Every one of them
+  was called "properties", so opening three files side by side to compare them
+  — which is the reason to open three — gave three identical taskbar buttons.
+
+### Fixed
+
+- **"Open in new tab" opens all the folders you chose.** Selecting five folders
+  and picking it opened one — the focused one — and said nothing about the
+  other four. It opens every folder in the selection now, still in the
+  background, and still refuses politely rather than silently when the
+  selection is large enough to be a wall of tabs. The entry also used to
+  disappear whenever the *focused* row was not a folder, so clicking a file and
+  then ctrl-clicking two folders took away the very row that would open both.
+
+- **Paste goes grey when there is nothing to paste.** The row was live in every
+  listing but the bin, and picking it answered "clipboard has no files" — which
+  is something the row could have told you by looking grey, the way Explorer's
+  does. Ctrl+V still speaks, because with no menu open there is nothing to go
+  grey.
+
+- **Searching no longer reopens a sidebar you deliberately hid.** Ctrl+F, Ctrl+E
+  and the toolbar magnifier each forced the sidebar back to full width, undoing
+  a Ctrl+B or an F9 without a word — and because the sidebar's width is
+  remembered between sessions, it was still there on the next launch. The
+  search field lives in the path bar and every result carries its own full
+  path, so there was nothing in the sidebar it needed.
+
+- **Inside a git repository the "name" heading lines up with the names again.**
+  Every filename in a repository is indented to leave room for its
+  version-control letter, so names stay aligned whether or not a file is
+  marked. The heading was not, so the word "name" sat over the marks instead of
+  over the names — and only inside a repository, which is the one place those
+  marks are the reason you are looking.
+
+- **On Linux, "use my desktop's icons" is no longer offered where it does
+  nothing.** The setting reaches the listing through a per-file icon lookup
+  that Windows has and freedesktop does not, so on Linux the box could be
+  ticked, saved, and found still ticked, while every row went on drawing
+  exactly what it drew before — and what the label promises was already true
+  there, because a Linux listing draws with your icon theme anyway. Its
+  explanation also named Windows on both platforms. The icon-theme chooser
+  below it is unaffected; that one works on both.
+
+- **A click means what it means everywhere else.** Ctrl+click and Shift+click
+  opened what they were selecting: neither handler looked at the modifiers, so
+  extending a selection launched whatever it passed over, and Shift+click
+  opened the far end of the range. A modified click is a selection gesture and
+  never an open. Right-clicking the blank half of a row inside a five-file
+  selection cleared the selection before the menu opened, so the Delete you
+  chose next took one file — the rule that clicking empty space means never
+  mind ran for every button, and a details row spans the width of the list.
+  Pressing the scrollbar did it too, and dragging the thumb drew a selection
+  band down the side of the list while the view scrolled underneath. A plain
+  left click on the background, which is the one that ought to clear, cleared
+  nothing at all, and now does. And there is deliberately no time limit on the
+  two halves of a double-click, so a folder you had opened stayed remembered as
+  "clicked once": press Back, click it a single time to rename it, and it
+  opened again, minutes later if you liked.
+
+- **A file drag starts on a file, carries all of them, and keeps what it
+  sweeps.** Any left-drag inside a pane that was not on a row began dragging
+  the current selection — the column headings, the tab strip, the transfer bar,
+  the preview overlay — so a six-pixel twitch on any of them started a file
+  drag, and a drop at the end of it moved real files. Pressing on a row also
+  collapsed the selection to that one row before the drag had read it, so a
+  five-file drag arrived as one file, while the right-button drag carried all
+  five and made it look like the listing's fault; what was selected when the
+  button went down is what travels, and pressing a row that was *not* selected
+  still means just that one. And the rubber band was anchored to the window
+  rather than to the content, so dragging to the bottom edge scrolled the list
+  out from under the rectangle and dropped every row that left the view —
+  sweeping two hundred files kept the last screenful and lost the rest without
+  saying so. Rows the band has taken stay taken now; drag back up over one
+  still on screen and it comes off again.
+
+- **Open, Open with and Run as administrator act on everything you picked.**
+  Selecting five images and pressing Enter opened one of them, silently, with
+  nothing to say the other four had been dropped — and choosing an application
+  for them, or running them as administrator, did the same. All three take the
+  whole selection now, up to fifteen things at once; past that the status line
+  says so rather than starting four hundred processes. A folder caught up in a
+  multi-selection is left alone, since there is no navigating into five folders
+  at once.
+
+- **Duplicating a folder no longer wrecks the folder it copies.** Copy and
+  paste a folder without leaving the folder it lives in, and you were left with
+  an empty "A - Copy" while the *original* filled up with "x - Copy.txt" beside
+  every file and "sub - Copy" beside every subfolder — reported as a success
+  throughout. Answering *Skip* for a folder that already existed was its own
+  disaster: the folder entry was skipped and every file planned inside it still
+  went in, merging two trees nobody asked to merge, and on a move the emptied
+  source folder was then deleted by the tidy-up, so Skip lost the folder
+  outright. And copying and pasting a file into the folder it already lives in
+  could not work at all, since the conflict prompt could only offer to replace
+  the file with itself. All three do what Explorer does now: a real duplicate
+  beside the original, and a skipped folder untouched at both ends.
+
+- **A folder cannot be copied or moved into itself.** Only a drag-and-drop
+  refused it: Ctrl+V, *Copy to* and *Move to* all went ahead, and a cut folder
+  pasted into one of its own subfolders was scrambled — the plan is built by
+  walking the source, so a copy feeds itself its own output and a move
+  dismantles the tree it is halfway through reading. The routes that claimed to
+  check only asked whether the two paths were equal, which catches dropping a
+  folder onto itself and misses the case that actually goes wrong, and one of
+  them had no check at all. Every route now refuses by name, including dropping
+  a selection onto a folder that is part of that selection, which a six-pixel
+  twitch used to be enough to start. Copying into the parent is untouched, so
+  Duplicate still works.
+
+- **One file that cannot be copied or deleted no longer ends the batch.**
+  Copying twelve files with the third open in another program copied two and
+  gave up on nine, naming neither the file nor what was left undone; deleting
+  did the same, and named the error rather than the file. Each item now stands
+  or falls alone and the status line names the first one left behind and counts
+  the others, the way copying should have all along. A folder you are not
+  allowed to read is skipped and named too, before the copying starts — on
+  Windows one protected directory anywhere under the selection used to stop the
+  whole operation while it was still being planned, and on Linux it was
+  swallowed, so the copy reported success having quietly left files behind. On
+  Windows a refused move to the bin used to read "SHFileOperation returned 32",
+  naming no file and quoting a number from an interface you have never heard
+  of; the batch is now retried one file at a time so the line can say which one
+  and what stopped it. That refusal also used to take the undo with it, leaving
+  every file ahead of it with no way back at exactly the moment you reach for
+  Ctrl+Z.
+
+- **A copy keeps the file's dates and permissions, and leaves nothing behind
+  when it fails.** Only the bytes were carried, so every copy landed dated
+  today with default permissions: a copied shell script lost its executable
+  bit, a private key came out readable by everyone, and a copied photo library
+  was re-dated entirely — which nobody notices until the sort order is wrong
+  months later. A cancelled or failed copy also left a truncated file under the
+  final name, which opened and was silently incomplete, and worse when you had
+  chosen to replace, because the original was already gone to make room for it.
+  And fifty gigabytes onto a drive with room for thirty used to fill the disk
+  and then fail somewhere in the middle; Vaktari asks for the room first now
+  and says how much is needed against how much there is.
+
+- **On Windows, deleting "report " no longer deletes "report".** A name ending
+  in a space or a dot is legal on NTFS and arrives routinely from WSL, from a
+  Linux SMB client and from git — and Windows quietly strips that last
+  character before the question is asked, so an operation aimed at "report "
+  landed on its neighbour instead. The listing showed the true name, and
+  nothing on screen said the row you clicked and the file that went were two
+  different things. Delete, trash, rename, copy and move now refuse such a name
+  and say which character is the problem, which is what Explorer does. Delete
+  refuses one file at a time so the rest of the selection still goes; copy and
+  move stop before they start, because a move deletes what it believes it has
+  copied.
+
+- **A refused rename keeps what you typed, and refuses before it reaches the
+  disk.** Typing a colon, or CON, or "..", tore the edit box down and reported
+  the refusal as a status line a moment later, so correcting one character
+  meant F2 and retyping the whole name; a name of nothing but spaces vanished
+  without a word. The box stays open with the reason under it now, and the
+  reason follows what you type, so a colon is answered the moment it appears.
+  On Windows the check itself was empty-or-a-slash and nothing else, so a colon
+  reached the filesystem and came back as the raw "The parameter is
+  incorrect." — and `d:notes` was worse than an error, being drive-relative:
+  the file left the listing altogether for whatever the current directory of D:
+  happened to be. Device names, `.` and `..` are refused as well, and
+  "CON.tar.gz" no longer slips past by having two extensions. On Linux a colon
+  in a name stays perfectly ordinary.
+
+- **Renaming several files at once works.** Renumbering img001, img002, img003
+  to start at 2 reported "stopped after 0": the preview was right to let img001
+  take img002's name, since img002 was being renamed too, but the rows were
+  then applied in the order they were shown and the filesystem refuses a rename
+  onto a name that is still occupied. The renames are ordered now, each chain
+  worked from its far end, with a temporary name only where two files genuinely
+  swap. F2 with several files selected also reaches that dialog rather than
+  renaming the focused row and ignoring the rest without a word — and
+  *Rename in bulk…* has stopped being offered for a single file, directly under
+  the entry that handles that case.
+
+- **The address bar can copy and paste, and understands what you type.** Ctrl+C,
+  Ctrl+X, Ctrl+V, Ctrl+Z and both spellings of redo were claimed by the window
+  before the box you were typing in ever saw them. Ctrl+V pasted the *files* on
+  the clipboard into the folder behind the bar, or said "clipboard has no
+  files" and left the field looking dead; Ctrl+C replaced the clipboard with
+  whatever was selected in the listing, so copying a path out of the bar
+  destroyed the thing you were copying; and Ctrl+Z, pressed to take back a
+  typo, reversed your last copy, move or delete on disk. All six now go to the
+  text cursor when one has the keyboard. Right-clicking the bar works too —
+  opening its own Cut/Copy/Paste menu used to collapse the field back to
+  breadcrumbs out from under the menu, taking the typed path with it. A
+  relative path such as ".." or "src" is counted from the folder on screen
+  rather than from wherever Vaktari was started, and a path to a file opens its
+  folder and highlights it instead of failing as a missing directory. *Copy as
+  path* puts every path you selected on the clipboard, one per line, rather
+  than one of five with nothing said about the other four — and pasting one of
+  those back into the bar works, where the quotes used to make it a relative
+  path and produce a raw Windows error naming Vaktari's own folder. And Ctrl+L
+  pressed twice keeps what you have typed: beginning to edit again used to
+  reset the box to the folder you were in, so half a typed path disappeared,
+  silently, for a keystroke whose only meaning is "put me in the address bar".
+
+- **A listing that is not a folder stops pretending to be one.** The bin, Recent
+  and This PC are views rather than places on disk, and everything that wanted
+  a path was handed Vaktari's internal name for them: Ctrl+D pinned a sidebar
+  place called "vaktari:trash" that could never be opened and had to be removed
+  by hand, F4 opened a terminal in it, and Ctrl+L typed it into the address bar
+  — the one box whose whole contract is that what it holds is a path you can
+  read, edit and press Enter on. All three hold back now, and Ctrl+L opens the
+  bar empty there. Properties did the same thing from the other side: Alt+Enter
+  went round the check the menu entry makes, and Windows answers a question
+  about a path that is empty with a size of zero, 1601 for every date and every
+  attribute set, which reads as fact rather than as nothing. And pressing Enter
+  on a binned row opened the path the item *used* to occupy — delete notes.txt,
+  write a new notes.txt, and the bin row opened the new one with nothing at all
+  to say so.
+
+- **The keyboard stays where you put it.** Tab between split panes moved the
+  highlight and left the keyboard behind, so the arrow keys went on moving the
+  old pane's selection while Enter, Delete and Ctrl+C/X/V acted on the new one:
+  arrow to a file, press Delete, and the wrong file went to the bin. Escape in
+  the filter, Enter in the address bar and either answer to a confirmation each
+  left focus on a control that had just been collapsed to nothing, so the arrow
+  keys, Enter, Delete, Home, End and type-ahead were dead until you pressed F6
+  or clicked. And a breadcrumb, a sidebar place, Back and Up are each a button,
+  and each kept the focus after taking you somewhere, so Enter re-pressed the
+  button that had just moved you. The listing takes the keyboard back, unless
+  something else has deliberately claimed it.
+
+- **A pane keeps its place.** Rebuilding the rows cleared the selection, so F5
+  lost your place in a long folder and clicking a column heading quietly
+  deselected everything you had picked; it is restored by path now, so a file
+  that changed while you were looking at it keeps its highlight. Delete,
+  Delete, Delete did not walk down the list either — once the rows had gone
+  nothing was selected, so the next press had nothing to act on; the row after
+  the ones you removed is selected instead, or the new last row when you
+  deleted from the end. A new folder is selected as well as renamed, since the
+  prompt used to open with nothing selected at all. And a load that failed left
+  the last successful one's answer standing, so plugging the drive back in and
+  retyping the same path did nothing at all until you had visited some other
+  folder first. The item count and the empty message were worked out only
+  when you navigated, too, so a finished download left "36 items" beside 37
+  rows,
+  and a folder that was empty when you arrived kept "this folder is empty"
+  printed across the middle of it while real rows appeared underneath.
+
+- **The filter is dropped when you leave the folder, takes wildcards, and says
+  when nothing matches.** Type "report" to find something, open a folder from
+  the results, and the new folder came up filtered by a word that had nothing
+  to do with it — which reads as an empty folder. Refreshing where you are is
+  not leaving, so that keeps what you typed. `*.png` hid everything, because
+  the filter only ever asked whether a name contained the text and no name
+  contains an asterisk, while the very same text works in the search box; a
+  filter that looks like a pattern is now used as one. And a filter that
+  matched nothing printed "this folder is empty" over a folder full of files,
+  which reads as data loss — while clearing the filter, the one way out, was
+  the one thing that message gave no reason to try. It names the filter now,
+  because the box may be somewhere your eye is not.
+
+- **Escape does what Escape does.** It closed nothing but the shortcut sheet:
+  Settings, Properties, Batch rename, Share, Connection and the conflict prompt
+  all had to be dismissed with the mouse — and the conflict prompt is the one
+  that turns up in the middle of a copy, when both hands are already on the
+  keyboard. Escape now presses each window's own Cancel, so abandoning a
+  conflict prompt still cancels the copy behind it. In the listing it closes
+  the preview, which is the one thing drawn *over* the rows and the one thing
+  the key could not put away, and otherwise clears the filter text and any
+  pending cut — the two things the F1 sheet has always promised it does. It no
+  longer takes the filter bar away with it, which was a long walk back through
+  a menu for a key people press to mean "never mind"; and a pending cut can now
+  be abandoned from anywhere rather than only while the filter box happens to
+  be open.
+
+- **A space belongs to the name you are typing.** Space opens the preview panel,
+  and it was claimed by the window ahead of every rule that knows a text box has
+  the keyboard — so renaming a file to "My Report" flipped a preview open over
+  the listing instead of putting a space in the name. Typing "new folder" to
+  jump to it did the same on the fourth keystroke and threw the prefix away,
+  which left every two-word name in a folder unreachable by typing. The gesture
+  is unchanged and still listed under F1; it waits its turn now.
+
+- **Group headings behave like the sort they belong to.** Reversing a sort
+  reversed the files and left the headings where they were, so the listing read
+  Today, Yesterday, This week downwards while the rows inside each band ran the
+  other way. Grouping by Name or Modified drew every band twice — "Today" over
+  the folders, then "Today" again over the files — because folders-first was
+  applied ahead of the group. The bands were also worked out once when the
+  listing was built, so deleting the first row of a band took its heading away
+  and a download landing at the top of one got no heading at all. And a file
+  saved at six in the evening was filed under "Later" west of Greenwich,
+  because the band was read in UTC while the Modified column on the very same
+  row said today. All four are right now.
+
+- **Accented names sort with their own letter instead of after Z.** "Écoles",
+  "Über" and "Ångström" sat below "Zebra" and were banded under '#' beside
+  ".gitignore", because the comparison upper-cased each character and then
+  compared code numbers — 'É' is 201 where 'Z' is 90, so a European folder
+  threw its own names off the end of its alphabet. They band and sort under E,
+  U and A now, with the accent deciding only between names that are otherwise
+  identical, so "Ecoles" and "Écoles" land next to each other.
+
+- **"Show item counts for folders" does something.** The setting saved and
+  restored faithfully, both platforms could count a directory, and the Size
+  column was wired all the while to something that printed an em dash for every
+  folder whatever the setting said — so a feature that is on by default had
+  never worked once. Folder rows count their contents as they scroll into view
+  now, with the em dash standing in while a count is in flight or when the
+  folder cannot be read, and the counting happens off the drawing thread so a
+  slow share does not stutter the scroll.
+
+- **The window is named after the folder you are looking at.** The title was
+  worked out at startup and once more when Settings closed, and never
+  otherwise: with the full-path option on it named your startup folder all
+  session, and with it off the title bar read "Vaktari" and nothing else, ever.
+  Four open windows meant four identical taskbar buttons and four identical
+  alt-tab entries. It follows the folder now, tab switches included, and the
+  bin and This PC are named the way they are labelled.
+
+- **The sidebar's right-click menu opens at last.** It had never appeared for
+  anything since it was written — not a pinned place, not a drive, not the bin.
+  The menu is its own popup and inherits nothing from the row beneath it, so
+  the guard deciding whether to show it asked for a row, got nothing, and
+  cancelled every time; the row is handed over before the menu opens now, which
+  is also what gives *Eject*, *Remove from places* and *Properties* something
+  to act on. Every row carries *Open in new tab*, plus *Copy path* and
+  *Properties* wherever it names a real folder. The bin's row carries *Empty
+  the Recycle Bin*, named the way your platform names it — emptying it used to
+  be reachable from exactly one place, the band of buttons that appears once
+  you have navigated into the bin. And a place you pinned yourself can be given
+  a name of your own: two folders both called "src" no longer sit there as two
+  identical rows, told apart only by editing a file by hand.
+
+- **Search answers the keyboard, lands on the file, and searches where you
+  asked it to.** The results were a column of buttons, which carry no
+  selection — so there was nothing for an arrow key to move and nothing for
+  Enter to open, and a result could only be reached with the mouse; Enter now
+  opens the top result straight from the box and Down puts the keyboard in the
+  list. Choosing a hit took you to the right folder and then highlighted
+  nothing whenever the file was read-only or a symbolic link, and a hidden hit
+  had no row to land on at all, so opening one now turns hidden files on rather
+  than leaving you in a folder that cannot show it; one that has since gone
+  says so. "This folder only" is ticked by default and scoped itself to the
+  pane's path, which for This PC, the bin or a recents listing is an internal
+  name rather than a folder — so a search from This PC hunted for a folder that
+  does not exist and then reported no results, a flat denial about the whole
+  machine; such a listing now searches everywhere and the box says so. A
+  one-character query runs rather than answering "keep typing…", since "b" for
+  a folder of build outputs is a real question. And on Linux, where KDE's index
+  answers, "this folder only" was applied as a plain text prefix, so a search
+  scoped to `proj` also returned hits from `projects` and `proj-old` — the
+  same search gave different answers depending on whether the index happened
+  to be running.
+
+- **The transfer bar keeps its buttons, and keeps its last word.** The progress
+  line ends with the file being copied, which can run to 255 characters, and it
+  was laid out with no width to fit into — so pause and cancel ended up past
+  the right edge, and they are the only route to either command anywhere in
+  Vaktari. The line trims now, with the whole of it in a tooltip. Every failure
+  message was also written and hidden in the same instant, because the bar
+  showed only while something was running: a copy that skipped a locked file
+  reported a clean run, which is the whole reason the engine carries on past a
+  locked file rather than stopping. The bar stays while there is something to
+  say, and pause and cancel give way to a dismiss once the work is over.
+
+- **A listing that has lost track reloads itself, and a busy folder no longer
+  freezes the window.** The watcher behind each pane has a fixed buffer, and
+  unpacking an archive or finishing a large download in the folder on screen
+  overruns it — after which changes were dropped in silence and what you saw
+  drifted out of date with no cure but F5. The buffer is larger, an overrun
+  re-reads the folder, and a folder that is deleted or a share that drops says
+  so instead of leaving you on rows for a place that is gone. Every single
+  change also re-checked the whole listing for look-alike names and rewrote the
+  count, on the thread that draws, so extracting an archive into the folder on
+  screen stopped the application answering for seconds; both now happen once,
+  a fifth of a second after things stop moving. On Linux a row the watcher
+  noticed also carried less than the same row from a full listing — it lost
+  read-only and symlink — so the selection would not settle on a file that had
+  just been created, and a symlink that appeared while you watched was drawn as
+  the thing it points at.
+
+- **Measuring a mixed selection counts the files too, and Stop stops it.**
+  Properties reads "12 MB in 3 files, plus 1 folder unmeasured" until you press
+  *Measure*, and the answer that replaced it held only what the folder
+  contained — a smaller number than the line before it, from the one action
+  whose whole purpose is to make that number right. The same button both starts
+  and stops the walk, and it greyed itself out the instant the walk began, so
+  measuring a home folder ran to the end whatever you pressed.
+
+- **Restoring one thing from the bin restores one thing.** A row there carries
+  the path the file came from, and two entries can honestly share one — delete
+  a file, restore it, delete it again, which is exactly when somebody reaches
+  for restore. Both came back, the second landing beside the first under a
+  made-up name. The row you picked is the one that returns, and it is the most
+  recent of them.
+
+- **Dragging onto a breadcrumb moves things up the tree, and a folder below the
+  fold can be reached.** The crumbs sit above the listing, so a drag over
+  "Documents" found the pane underneath and offered the folder you were already
+  in: the cursor said yes, the drop happened, and the file went exactly where
+  it already was. The listing also held still for the whole gesture, so
+  dropping into a folder below the fold meant abandoning the drag, scrolling,
+  and starting again; rest near the top or bottom edge and it moves now, the
+  same as it already did while you drew a rubber band. And a row in the bin can
+  no longer be picked up at all — its path is where the item used to be, so the
+  drag armed, the cursor showed a payload, and letting go did nothing and said
+  nothing; it is refused now, with a line pointing at Restore.
+
+- **Closing the last tab closes the window.** With one tab open, Ctrl+W and the
+  tab's ✕ were drawn, clickable, tooltipped and inert: a side is not allowed to
+  be left with no tabs, so both routes hit that rule and returned without a
+  word. They now do what Explorer and every browser do. A split still collapses
+  instead, because there is another side to fall back to. And one folder called
+  "Screenshots from the trip to Norway 2024" no longer grows a tab hundreds of
+  pixels wide and pushes the others off the strip — titles are capped and
+  trimmed, with the full path in the tooltip.
+
+- **Text and marks you have to read are readable.** Small accent-coloured text —
+  "offline", "look-alike", the tile badge, the settings status lines, the
+  link-style buttons — came out at 3.4:1 against the chrome in the dark theme,
+  which is the one that ships as the default; it now takes a shade derived from
+  whatever the accent turns out to be, including a colour your desktop hands
+  over. The column headings, the status bar, the inactive tab titles and the
+  breadcrumb ancestors sat a hair under the standard, an earlier pass having
+  raised that grey for the listing and never checked the chrome. On a selected
+  row the type, size, date and path cells kept the dim grey chosen against the
+  listing's own background while the row was filled with the accent colour —
+  the one row you are certainly looking at. The version-control letters were
+  coloured for a dark listing and used on both, so on a white one the M came
+  out at 2.20:1, and the letter is the whole signal. Row banding was judged in
+  raw colour values and sat behind a setting that is off by default, so the
+  scheme almost everybody sees striped at 1.04:1, which is to say not at all.
+  The age ramp had six names and five shades, so a file a year old and one a
+  decade old were drawn identically. The small instructional hints were dimmed
+  twice over. The theme cards in Settings and the overwrite dialog's panel had
+  no background at all, having asked for a colour that nothing defined. And the
+  sidebar places, This PC, the breadcrumbs and the four sortable column
+  headings had no accessible name, so a screen reader announced each as a bare
+  button.
+
+- **The monospace font you chose reaches everything monospaced.** The setting
+  was arriving at two labels in the details pane and nowhere else: the
+  batch-rename pattern box, the filter and address bars, the conflict window's
+  paths, the status line and the nine monospace fields in Properties all asked
+  the system for a generic monospace family instead, so the application showed
+  two different fixed-width fonts at once.
+
+- **An empty submenu, a script that needed a restart, and a limit box reading
+  zero.** *Open with* was drawn whenever anything was selected rather than
+  when there was anything to offer, so every folder — and on Linux any file
+  whose type would not resolve — drew a row with a chevron and an empty popup
+  behind it. Scripts and templates were both read once when the pane was built,
+  so the menu that invites you to go and add a script never noticed the one you
+  added; they are re-read each time the menu opens. And the preview size boxes
+  in Settings showed a literal "0" beside help text promising that blank or 0
+  means no limit — which reads as "skip files larger than nothing", and also
+  hid the placeholder written to say what was really going on. With no limit
+  set, the box is empty.
+
+- **On Linux, "open containing folder" from another program opens it.** The
+  desktop entry the installer writes asked the system for URIs and nothing
+  decoded one, so on GNOME, Xfce, Cinnamon and plain xdg-open the folder
+  arrived as `file:///home/me/Documents`, was judged not to exist, and was
+  dropped without a word — on the primary install route, which therefore could
+  not open a folder at all. The entry now asks for paths, and a `file://` URI
+  is understood anyway, because a portal can still send one.
+
+- **On Linux, dragging files no longer freezes the window.** Deciding whether a
+  drag copies or moves asks which volume each path is on, and answering it
+  walked every mount on the machine — twice per file, for every twitch of the
+  pointer — so a two-hundred-file drag meant hundreds of scans a second, and a
+  single hung network mount stopped the window dead. The mounts are read once
+  per drag from a text file now, touching no filesystem at all. A stale mount
+  counts as its own volume, so a plain drag out of one copies and leaves the
+  original where it is.
+
+- **On Linux, deleting from a USB stick uses that drive's own bin, and a moved
+  folder leaves nothing behind.** Everything went to the bin in your home
+  folder, so every delete from another drive quietly *copied* the file across
+  first — twenty gigabytes of video, slowly, onto a disk you were not deleting
+  from — and the entry then died with the stick when you unplugged it. Deletes
+  now land at the top of the volume the file lives on, the same place Dolphin
+  and Nautilus put them, with your home bin as the fallback where the top of a
+  volume is not yours to write; the listing and restore sweep every drive
+  rather than only home, so items other desktops trashed onto a drive are
+  finally visible, and emptying no longer skips them while reporting them as
+  removed. Separately, a moved tree took its files and left every directory
+  standing at the source, all the way down, so the folder you had just moved
+  was still sitting there, empty.
+
+- **On Linux, applying permissions to a folder and everything in it no longer
+  follows links out of it.** The recursive apply walked into symbolic links and
+  set the mode on whatever they pointed at, so a folder holding a link to your
+  photo library, given a recursive 700, quietly rewrote the real library, and a
+  link pointing back up the tree never finished at all. Links are reported,
+  left alone and counted as skipped, so the summary is honest about the tree
+  not being uniform. The same rule now guards the other walks that used to
+  follow them: the folder size in Properties, the bin's size, and a search
+  under a folder that links to your home directory, which used to walk your
+  whole home directory.
+
+- **On Linux, "Open with" stops offering applications it cannot run, and stops
+  going missing.** vim, nano and htop all register themselves for plain text,
+  so they appeared for any text file — and choosing one started it with no
+  terminal to appear in: the launch reported success and nothing whatever
+  showed up. Such an application is now wrapped in a terminal emulator, with
+  the flags that particular terminal wants, and is not offered at all on a
+  machine with no terminal installed. The submenu also disappeared
+  intermittently, because working out a file's type shared a budget with the
+  row icons and never waited its turn, so a right-click while a listing was
+  still drawing icons got no answer — and no answer meant no options and no
+  submenu drawn at all. The menu and the properties dialog have a small budget
+  nobody else can spend, and an ordinary extension is answered from the
+  desktop's own type database rather than by starting a process to be told
+  that .txt is text.
+
+- **On Linux, Documents and Downloads stay in the sidebar when your config
+  lives somewhere else.** Two parts of Vaktari read the same list of user
+  folders and disagreed about where it is: the sidebar looked only in
+  `~/.config`, so a session with XDG_CONFIG_HOME set elsewhere lost those rows
+  while the icons naming the very same folders carried on working. There is one
+  reader now, the one that honours the setting, and a key written with a
+  leading space is no longer missed.
+
+- **On Windows, a program you start runs in its own folder, and a mapped drive
+  counts as remote.** Opening an `.exe` or a `.bat` handed it Vaktari's working
+  directory instead of its own, so a portable tool or a script that reads a
+  file sitting beside it failed — and the failure looked like the program being
+  broken rather than like how it was started. And Vaktari knew only about the
+  shares it had discovered itself, which deliberately skips lettered
+  connections, so a drive mounted as `Z:` was judged local and every visible row
+  on it fired off a directory read over SMB just to draw its icon, which is the
+  round-trip storm that check exists to prevent.
+
 ## [0.9.16] — 2026-08-29
 
 ### Fixed
