@@ -210,6 +210,19 @@ should not be trusted for compatibility yet.
 
 ### Changed
 
+- **A folder's size is counted when you open its properties**, not when you ask
+  for it — the one figure people open that window for was the one thing not on
+  the page. Folders on network shares still wait to be asked: measuring walks
+  the whole tree, which over SMB or SFTP is a round trip per directory, and the
+  button is right there for when you want it.
+
+- **A selected row can be dragged from anywhere on it.** In details view, the
+  gaps around the Size and Date text are row background, and those gaps are most
+  of the width of both columns — so reaching for a selection you had just built
+  started a rubber band and cleared it instead. A row that is already selected
+  now drags; one that is not still starts a band, which is what keeps
+  rubber-band selection reachable in a listing that fills the window.
+
 - **Tab keeps the name and renames the next file.** Renaming a run of them cost
   three keystrokes each — Enter, arrow, F2 — and the arrow was the worst of the
   three: a rename can re-sort the folder, so the row under the one just

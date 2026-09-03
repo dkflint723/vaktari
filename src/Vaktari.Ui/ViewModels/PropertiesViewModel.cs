@@ -251,6 +251,11 @@ public sealed partial class PropertiesViewModel : ObservableObject
             SizeText = details.IsDirectory ? "not measured" : ByteSize.Format(details.Size);
             CanMeasure = details.IsDirectory;
 
+            // **Both references start counting the moment the window opens**,
+            // and this waited to be asked — so the one figure somebody opens a
+            // folder's properties FOR was the one thing not on the page.
+            if (ShouldMeasureNow) _ = MeasureAsync();
+
             // Only ever for one actual file: a folder has no digest, and
             // hashing a multi-selection would be three answers to a question
             // nobody asked in the singular.
@@ -298,8 +303,29 @@ public sealed partial class PropertiesViewModel : ObservableObject
                 : $"{ByteSize.Format(total)} in {files} file(s)";
 
             CanMeasure = folders > 0;
+
+            if (ShouldMeasureNow) _ = MeasureAsync();
         });
     }
+
+    /// <summary>
+    /// Whether to start counting without being asked.
+    ///
+    /// **Local disks only.** Measuring walks the whole tree, which over SMB or
+    /// SFTP is a round trip per directory — so opening properties on a folder
+    /// of a mounted share would spend the connection before anybody had decided
+    /// they wanted the number. On this machine's own disks it is the figure the
+    /// window is opened for, and both references produce it unasked.
+    ///
+    /// Asked of ThumbnailLoader because that is where the judgement already
+    /// lives, roots and UNC shape and all — its own comment says asking the
+    /// question twice from two lists is how the two come to disagree.
+    ///
+    /// Any remote path in a multiple selection is enough to wait: the walk
+    /// would cross it either way.
+    /// </summary>
+    private bool ShouldMeasureNow
+        => CanMeasure && !_paths.Any(Thumbnails.ThumbnailLoader.IsRemote);
 
     /// <summary>
     /// **The stop button was disabled while measuring.** This is one command

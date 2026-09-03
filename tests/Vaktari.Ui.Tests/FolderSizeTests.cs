@@ -79,6 +79,138 @@ public sealed class FolderSizeTests : IDisposable
         return path;
     }
 
+    // ---- measuring without being asked ---------------------------------------
+
+    /// <summary>
+    /// The walk is started and not awaited, so the window opens at once and the
+    /// figures arrive into it. A test therefore has to wait for the answer the
+    /// way the window does.
+    /// </summary>
+    private static async Task Settles(Func<bool> done)
+    {
+        for (var i = 0; i < 200 && !done(); i++)
+        {
+            await Task.Delay(5);
+            Avalonia.Threading.Dispatcher.UIThread.RunJobs();
+        }
+
+        Assert.True(done(), "the measurement never arrived");
+    }
+
+    /// <summary>
+    /// **Long enough that "it has not happened" is not just "not yet".** A walk
+    /// is started and not awaited, so asserting a negative the instant the load
+    /// returns passes whether or not one was started — which is exactly the
+    /// mistake these tests exist to catch in the code.
+    /// </summary>
+    private static async Task Quiet()
+    {
+        for (var i = 0; i < 40; i++)
+        {
+            await Task.Delay(5);
+            Avalonia.Threading.Dispatcher.UIThread.RunJobs();
+        }
+    }
+
+    /// <summary>
+    /// **Both references start counting the moment the window opens**, and this
+    /// waited to be asked — so the one figure somebody opens a folder's
+    /// properties FOR was the one thing not on the page.
+    /// </summary>
+    [AvaloniaFact]
+    public async Task Opening_a_local_folder_measures_it_without_being_asked()
+    {
+        var model = new PropertiesViewModel(new Measures(4096), [Folder("here")], access: null);
+
+        await model.LoadAsync();
+        await Settles(() => model.SizeText.Contains("4 KiB", StringComparison.Ordinal));
+
+        Assert.Contains("4 KiB", model.SizeText);
+    }
+
+    /// <summary>
+    /// **Not over a wire.** Measuring walks the whole tree, which on SMB or
+    /// SFTP is a round trip per directory — so opening properties on a folder
+    /// of a mounted share would spend the connection before anybody had decided
+    /// they wanted the number. The button is still there for when they have.
+    /// </summary>
+    [AvaloniaFact]
+    public async Task A_folder_on_a_share_waits_to_be_asked()
+    {
+        var before = Vaktari.Ui.Thumbnails.ThumbnailLoader.RemoteRoots;
+
+        try
+        {
+            Vaktari.Ui.Thumbnails.ThumbnailLoader.RemoteRoots = [_root];
+
+            var model = new PropertiesViewModel(new Measures(4096), [Folder("far")], access: null);
+
+            await model.LoadAsync();
+            await Quiet();
+
+            Assert.Equal("not measured", model.SizeText);
+            Assert.True(model.CanMeasure, "and the button is still offered");
+        }
+        finally
+        {
+            Vaktari.Ui.Thumbnails.ThumbnailLoader.RemoteRoots = before;
+        }
+    }
+
+    /// <summary>
+    /// A file has nothing to walk, so nothing starts — its size was on the page
+    /// already.
+    /// </summary>
+    [AvaloniaFact]
+    public async Task A_file_starts_no_walk()
+    {
+        var model = new PropertiesViewModel(
+            new Measures(4096), [File("a.bin", 300)], access: null);
+
+        await model.LoadAsync();
+        await Quiet();
+
+        Assert.False(model.CanMeasure);
+
+        // The size line is still the file's own, not a walk's. A walk reports
+        // "N · files · folders" whatever it was pointed at, so a stray one over
+        // a file would be counting a file it already had the size of.
+        Assert.DoesNotContain("files", model.SizeText);
+    }
+
+    /// <summary>
+    /// **One remote path in a selection is enough to wait**, because the walk
+    /// would cross it either way — and a selection that measured three local
+    /// folders quickly and then stalled on a share is worse than one that waits
+    /// to be asked.
+    /// </summary>
+    [AvaloniaFact]
+    public async Task One_remote_folder_holds_back_the_whole_selection()
+    {
+        var before = Vaktari.Ui.Thumbnails.ThumbnailLoader.RemoteRoots;
+        var far = Path.Combine(Path.GetTempPath(), "vaktari-far-" + Guid.NewGuid().ToString("N")[..8]);
+
+        try
+        {
+            Directory.CreateDirectory(far);
+            Vaktari.Ui.Thumbnails.ThumbnailLoader.RemoteRoots = [far];
+
+            var model = new PropertiesViewModel(
+                new Measures(1000), [Folder("near"), far], access: null);
+
+            await model.LoadAsync();
+            await Quiet();
+
+            Assert.Contains("unmeasured", model.SizeText);
+        }
+        finally
+        {
+            Vaktari.Ui.Thumbnails.ThumbnailLoader.RemoteRoots = before;
+
+            try { Directory.Delete(far, recursive: true); } catch (Exception) { }
+        }
+    }
+
     /// <summary>
     /// The one that matters: measuring a mixed selection must not lose the
     /// files it already knew about.

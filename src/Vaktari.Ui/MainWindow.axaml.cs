@@ -597,7 +597,7 @@ public partial class MainWindow : Window
     /// the same reason: a press on templated content has no logical path back to
     /// the list, so the visual tree is the only route.
     /// </summary>
-    private static ListBox? ListForEmptySpace(object? source)
+    internal static ListBox? ListForEmptySpace(object? source)
     {
         ListBoxItem? row = null;
 
@@ -633,11 +633,23 @@ public partial class MainWindow : Window
             // Nothing under the pointer but the list itself: always a band.
             if (row is null) return found;
 
-            // The press landed on a row's BACKGROUND. Allow a band only where the
-            // row spans the list, because then there is no empty space beside it
-            // and the background is the only place left to start one. A tile
-            // leaves gaps of its own, and stealing its background would make
-            // dragging a file out of the grid needlessly fiddly.
+            // **A row that is already selected drags from anywhere on it.**
+            // Building a selection and then reaching for it destroyed the
+            // selection instead: the gaps around the Size and Date text are
+            // row background, so pressing one started a band and cleared
+            // everything — and those gaps are most of the width of both
+            // columns, because the text is short. Explorer drags the whole row.
+            //
+            // Only when selected, because that is what makes the two readings
+            // of the same pixel unambiguous: on something picked out it means
+            // "take these", and on something not it means "start again here".
+            if (row.IsSelected) return null;
+
+            // Otherwise a band, but only where the row spans the list, because
+            // then there is no empty space beside it and the background is the
+            // only place left to start one. A tile leaves gaps of its own, and
+            // stealing its background would make dragging a file out of the
+            // grid needlessly fiddly.
             return row.Bounds.Width >= found.Bounds.Width * 0.9 ? found : null;
         }
 
