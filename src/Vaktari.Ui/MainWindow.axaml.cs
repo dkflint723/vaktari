@@ -899,7 +899,8 @@ public partial class MainWindow : Window
     /// </summary>
     private void ShowSettings()
     {
-        var model = new SettingsViewModel(AppSettings.Current, _defaultFileManager);
+        var model = new SettingsViewModel(
+            AppSettings.Current, _defaultFileManager, _platform.FileIcons);
 
         // The pane already holds the detected list, ordered and cached, so the
         // dialog borrows it rather than probing the disk again as it opens.

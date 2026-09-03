@@ -1771,15 +1771,41 @@
                         <ColumnDefinition Width="Auto"/>
                       </Grid.ColumnDefinitions>
                   <Border Grid.Column="0" Width="{DynamicResource ThumbSize}" Margin="0,0,8,0"/>
-                  <Button Grid.Column="1" Command="{Binding SortByCommand}" CommandParameter="name"
-                          AutomationProperties.Name="sort by name"
-                          Background="Transparent" BorderThickness="0" Padding="0"
-                          HorizontalAlignment="Stretch" HorizontalContentAlignment="Left">
-                    <TextBlock FontSize="{DynamicResource FontSizeSmall}"
-                               Foreground="{DynamicResource ViewDimText}">
-                      <Run Text="name"/><Run Text="{Binding NameSortGlyph}"/>
-                    </TextBlock>
-                  </Button>
+                  <!-- **Inside a repository the heading stood 16px left of the
+                       names it labels.** The name cell docks a fixed slot for
+                       the version-control mark ahead of every filename, so
+                       names stay aligned whether or not a row is marked — and
+                       every name therefore starts 16px further right. The
+                       heading has no mark and so never moved, which left the
+                       word sitting over the marks instead of over the names,
+                       and only inside a repository: the one place those marks
+                       are the reason somebody is looking.
+
+                       An empty slot, the same width, the same gap and the same
+                       condition as the row's. No Background, so it is spacing
+                       rather than a control. That does cost the sort button its
+                       leftmost 16px inside a repository — that strip now falls
+                       through to the header band and its column menu — which is
+                       the strip sitting over the marks rather than over the
+                       names.
+
+                       The two grids are kept in step by hand, so this is a
+                       third pair of numbers that has to match the row's; the
+                       test that reads both sites is what keeps them matching. -->
+                  <DockPanel Grid.Column="1">
+                    <Border x:Name="NameHeadingVcsSlot" DockPanel.Dock="Left"
+                            Width="11" Margin="0,0,5,0"
+                            IsVisible="{Binding IsRepository}"/>
+                    <Button Command="{Binding SortByCommand}" CommandParameter="name"
+                            AutomationProperties.Name="sort by name"
+                            Background="Transparent" BorderThickness="0" Padding="0"
+                            HorizontalAlignment="Stretch" HorizontalContentAlignment="Left">
+                      <TextBlock FontSize="{DynamicResource FontSizeSmall}"
+                                 Foreground="{DynamicResource ViewDimText}">
+                        <Run Text="name"/><Run Text="{Binding NameSortGlyph}"/>
+                      </TextBlock>
+                    </Button>
+                  </DockPanel>
                   <!-- Column 2 is the recent listing's "path" only. It used to
                        share the slot with an "info" column carrying a
                        type-specific fact; that one is gone. -->

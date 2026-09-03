@@ -208,16 +208,27 @@ public sealed partial class SidebarViewModel : ObservableObject
 
 
     /// <summary>
-    /// Ctrl+F puts the caret in the toolbar's search box.
+    /// Ctrl+F, Ctrl+E and the toolbar magnifier all put the caret in the path
+    /// bar's search box.
     ///
-    /// The field lives in the path bar now, not behind the sidebar, so revealing
-    /// the rail is no longer what this gesture is for — but it is kept, because
-    /// the rail is also where a search result's place context is read from.
+    /// **Every one of them also forced the sidebar back open.** This set
+    /// <see cref="Rail"/> to <see cref="RailState.Full"/>, so a search gesture
+    /// silently reversed a Ctrl+B or an F9 — and because the rail is written
+    /// into the session, the sidebar you hid was back again on the next launch.
+    ///
+    /// The line was kept on the grounds that a result's place context is read
+    /// off the rail, and that stopped being true when the results moved: the
+    /// field lives in the path bar, its results are a popup anchored under it,
+    /// and every row carries its own full path. The sidebar holds the places
+    /// list and nothing else, so there is nothing in it a search needs.
+    ///
+    /// Searching is orthogonal to the layout now. However the sidebar was left,
+    /// this leaves it there — a gesture that quietly undoes a choice you made
+    /// on purpose is a gesture you stop trusting.
     /// </summary>
     [RelayCommand]
     private void FocusSearch()
     {
-        Rail = RailState.Full;
         IsSearchOpen = true;
 
         // Re-raised rather than set once. The flag was already true after the

@@ -242,13 +242,25 @@
                      Foreground="{DynamicResource ViewDimText}"/>
 
           <StackPanel Spacing="6">
-            <CheckBox Content="Use my desktop's icons"
-                      FontSize="{DynamicResource FontSizeSmall}"
-                      IsChecked="{Binding UseSystemIcons}"/>
-            <TextBlock Text="Off, files use the set drawn for Vaktari. On, they use the ones Windows draws — so a program shows its own icon, a shortcut carries its arrow, and a folder you gave a custom icon keeps it. Thumbnails are unaffected either way."
-                       FontSize="{DynamicResource FontSizeTiny}"
-                       Foreground="{DynamicResource ViewDimText}"
-                       TextWrapping="Wrap"/>
+            <!-- **This choice was on screen on Linux, where nothing could act
+                 on it, and its explanation named Windows on both platforms.**
+                 The setting reaches the listing only through IconLoader.Files,
+                 which is IPlatform.FileIcons — Windows has one, freedesktop has
+                 none — so on Linux it was a box that remembered being ticked and
+                 changed nothing, offering something the desktop's own icon theme
+                 was already doing. Hidden where it cannot work, exactly as the
+                 default-file-manager section above is; the theme chooser below
+                 stays, because that one is live on both. -->
+            <StackPanel x:Name="DesktopIconsChoice" Spacing="6"
+                        IsVisible="{Binding CanUseDesktopIcons}">
+              <CheckBox Content="Use my desktop's icons"
+                        FontSize="{DynamicResource FontSizeSmall}"
+                        IsChecked="{Binding UseSystemIcons}"/>
+              <TextBlock Text="Off, files use the set drawn for Vaktari. On, they use the ones your desktop draws — so a program shows its own icon, a shortcut carries its arrow, and a folder you gave a custom icon keeps it. Thumbnails are unaffected either way."
+                         FontSize="{DynamicResource FontSizeTiny}"
+                         Foreground="{DynamicResource ViewDimText}"
+                         TextWrapping="Wrap"/>
+            </StackPanel>
 
             <!-- An imported theme wins over both, because it is the most
                  deliberate of the three: somebody found a theme, downloaded it

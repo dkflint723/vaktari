@@ -43,11 +43,16 @@ public sealed partial class SettingsViewModel : ObservableObject
     private readonly SettingsState _original;
 
     private readonly Core.IDefaultFileManager? _defaults;
+    private readonly Core.FileSystem.IFileIconProvider? _desktopIcons;
 
-    public SettingsViewModel(SettingsState current, Core.IDefaultFileManager? defaults = null)
+    public SettingsViewModel(
+        SettingsState current,
+        Core.IDefaultFileManager? defaults = null,
+        Core.FileSystem.IFileIconProvider? desktopIcons = null)
     {
         _original = current;
         _defaults = defaults;
+        _desktopIcons = desktopIcons;
         _isDefaultFileManager = defaults?.IsDefault() ?? false;
 
         var startup = current.Startup;
@@ -694,6 +699,24 @@ public sealed partial class SettingsViewModel : ObservableObject
     /// <summary>Whether to offer the control at all. Null platform, no control:
     /// a switch that cannot work is worse than an absent one.</summary>
     public bool CanBeDefault => _defaults is not null;
+
+    /// <summary>
+    /// Whether to offer the desktop's-own-icons choice at all.
+    ///
+    /// **This checkbox was on screen on Linux, where nothing could act on it.**
+    /// The setting is honoured through IconLoader.Files alone, which is
+    /// IPlatform.FileIcons: Windows composes an icon per file and has such a
+    /// provider, freedesktop answers by icon NAME and has none. So on Linux the
+    /// box could be ticked, saved, and found still ticked on reopening, while
+    /// every row went on drawing exactly what it drew before — and what the
+    /// label promises was already true there, because a Linux listing draws
+    /// with the desktop's icon theme anyway.
+    ///
+    /// Null provider, no control — the same bargain <see cref="CanBeDefault"/>
+    /// makes, for the same reason. A platform that grows a per-file provider
+    /// gets the control back with nothing here changed.
+    /// </summary>
+    public bool CanUseDesktopIcons => _desktopIcons is not null;
 
     /// <summary>The honest limits for this platform, or blank where none.</summary>
     public string DefaultCaveat => _defaults?.Caveat ?? "";
