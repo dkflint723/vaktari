@@ -2585,8 +2585,16 @@
     <KeyBinding Gesture="Alt+Right"      Command="{Binding ActiveTab.GoForwardCommand}"/>
     <KeyBinding Gesture="Alt+Up"         Command="{Binding ActiveTab.GoUpCommand}"/>
     <KeyBinding Gesture="F5"             Command="{Binding ActiveTab.RefreshCommand}"/>
-    <KeyBinding Gesture="F2"             Command="{Binding ActiveTab.BeginRenameCommand}"/>
-    <KeyBinding Gesture="Shift+F2"       Command="{Binding BatchRenameCommand}"/>
+    <!-- **F2 and Shift+F2 are NOT here either.** A Window KeyBinding is
+         dispatched ahead of the window's own key handler, so the rename guard
+         could never see them. A second F2 while the rename bar was open threw
+         away the name being typed and re-pointed the bar at whatever the
+         listing had selected by then — which after a click on another row is a
+         DIFFERENT FILE, because the bar is inline and the listing stays live
+         behind it. Shift+F2 put the batch dialog on top of the open bar.
+         Handled in OnWindowKeyDown, both sit behind the prompt guard and the
+         focused-text-box rule, so F2 in the address or filter box no longer
+         renames a row hidden behind the box either. -->
     <KeyBinding Gesture="F11"            Command="{Binding ToggleInfoCommand}"/>
     <!-- Every key this application answers, in one place. It calls itself
          keyboard-friendly and had nowhere to look them up. -->

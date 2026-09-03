@@ -3624,6 +3624,14 @@ public partial class MainWindow : Window
     {
         if (PromptBar is null || PromptInput is null) return;
 
+        // **Any second request re-pointed a bar that was already open.** F2 was
+        // the loud way in; Ctrl+Shift+N is the quiet one — new folder, new file
+        // and new-from-template all hand off to the rename bar when they are
+        // done, and each raised this straight over a name somebody was still
+        // typing. One bar, one tenant: whoever got here first keeps it, and a
+        // caller that wants it must close the one it has.
+        if (_prompt is not PromptMode.None) return;
+
         _prompt = PromptMode.Rename;
         _renameTarget = entry;
 
@@ -4391,6 +4399,33 @@ public partial class MainWindow : Window
             case Key.Back:
                 e.Handled = true;
                 _ = pane.GoBackAsync();
+                break;
+
+            // Rename, and rename in bulk.
+            //
+            // **F2 re-entered the rename bar that was already open.** Both were
+            // Window KeyBindings, and a KeyBinding is dispatched ahead of this
+            // handler — so the prompt guard at the top was structurally unable
+            // to see them. Pressing F2 again discarded the name being typed and
+            // re-pointed the bar at the listing's CURRENT selection, which is a
+            // different file the moment another row has been clicked: the bar
+            // is inline, non-modal, and the listing behind it stays live.
+            // Shift+F2 opened the batch dialog over the top of the open bar.
+            //
+            // Handled here, both sit behind the prompt guard and behind the
+            // rule that a focused text box owns the keyboard — so F2 while the
+            // address or filter box has focus no longer renames a row hidden
+            // behind that box. The modifiers are spelled out on both arms so
+            // the pair matches exactly the two gestures the markup bound and
+            // nothing more.
+            case Key.F2 when e.KeyModifiers == KeyModifiers.Shift:
+                e.Handled = true;
+                _shell.BatchRenameCommand.Execute(null);
+                break;
+
+            case Key.F2 when e.KeyModifiers == KeyModifiers.None:
+                e.Handled = true;
+                pane.BeginRenameCommand.Execute(null);
                 break;
 
 
