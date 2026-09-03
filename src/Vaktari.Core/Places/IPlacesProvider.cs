@@ -23,6 +23,24 @@ public sealed record Place
     public bool IsAvailable { get; init; } = true;
 
     public bool CanEject { get; init; }
+
+    /// <summary>
+    /// Whether this place can be disconnected — a mapped network drive.
+    ///
+    /// **A mapped drive could not be got rid of.** Its row offered Open, Open
+    /// in a new tab, Pin and Properties, and Eject is for removable media, so
+    /// the only way to take Z: off the sidebar was `net use /delete` in a
+    /// console. Explorer has Disconnect on exactly this row.
+    ///
+    /// Set by the provider rather than inferred from Kind in the view: what can
+    /// be disconnected is a fact about the platform's own connection table, and
+    /// a Network place is not always one of them — Linux's are cifs and nfs
+    /// mounts read out of /proc/mounts, and the only unmounter that side is
+    /// `gio mount -u`, which has no authority over a kernel mount. That is the
+    /// same reason LinuxRemoteMounts refuses a kio-fuse path rather than
+    /// failing confusingly.
+    /// </summary>
+    public bool CanDisconnect { get; init; }
     public bool IsUserPinned { get; init; }
 }
 

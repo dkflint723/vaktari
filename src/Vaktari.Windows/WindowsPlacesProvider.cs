@@ -283,6 +283,10 @@ public sealed class WindowsPlacesProvider : IPlacesProvider, IDisposable
             FreeBytes = free,
             IsAvailable = ready,
             CanEject = removable,
+
+            // A letter that came from a network connection is one Windows can
+            // be told to give back. Eject is for media you take out.
+            CanDisconnect = drive.DriveType is DriveType.Network,
         };
     }
 

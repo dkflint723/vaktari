@@ -28,12 +28,56 @@ public sealed class DriveSetTests
     {
         var asked = false;
 
-        var line = DriveSet.Snapshot([
+        DriveSet.Snapshot([
             ("Z:\\", DriveType.Network, () => { asked = true; return true; }),
         ]);
 
         Assert.False(asked, "a network drive must not be probed — that call blocks");
-        Assert.Equal("", line);
+    }
+
+    /// <summary>
+    /// **And it is still watched, by name.** It used to be skipped entirely,
+    /// which was right while nothing could disconnect one — now a person can,
+    /// and a drive that has been given back must leave the sidebar rather than
+    /// sit there until something else happens to rebuild it.
+    /// </summary>
+    [Fact]
+    public void A_network_drive_is_watched_without_being_asked_anything()
+    {
+        var line = DriveSet.Snapshot([
+            ("Z:\\", DriveType.Network, () => throw new IOException("never ask me")),
+        ]);
+
+        Assert.Equal(@"Z:\|4|1", line);
+    }
+
+    /// <summary>
+    /// **Its readiness is a constant, so a share cannot flap the key.** A
+    /// mapped drive whose server comes and goes would otherwise rebuild the
+    /// sidebar every time it changed its mind — and the rebuild is the work
+    /// that freezes.
+    /// </summary>
+    [Fact]
+    public void A_share_going_up_and_down_is_not_a_change()
+    {
+        var up = DriveSet.Snapshot([("Z:\\", DriveType.Network, () => true)]);
+        var down = DriveSet.Snapshot([("Z:\\", DriveType.Network, () => false)]);
+
+        Assert.Equal(up, down);
+    }
+
+    /// <summary>But the letter going away is.</summary>
+    [Fact]
+    public void A_drive_that_has_been_disconnected_is_a_change()
+    {
+        var mapped = DriveSet.Snapshot([
+            ("C:\\", DriveType.Fixed, () => true),
+            ("Z:\\", DriveType.Network, () => true),
+        ]);
+
+        var gone = DriveSet.Snapshot([("C:\\", DriveType.Fixed, () => true)]);
+
+        Assert.NotEqual(mapped, gone);
     }
 
     [Fact]

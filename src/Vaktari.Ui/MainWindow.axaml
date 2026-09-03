@@ -3046,6 +3046,21 @@
                                             IsEnabled="{Binding CanClickEject}"
                                             Command="{Binding $parent[Window].((vm:ShellViewModel)DataContext).EjectPlaceCommand}"
                                             CommandParameter="{Binding}"/>
+                                  <!-- **A mapped drive could not be got rid
+                                       of.** Its row offered Open, Open in a new
+                                       tab, Pin and Properties, and Eject is for
+                                       media you take out — so the only way to
+                                       take Z: off the sidebar was
+                                       `net use /delete` in a console. Explorer
+                                       has Disconnect on exactly this row, and
+                                       it clears the sign-in profile too, which
+                                       is what stops the drive coming back
+                                       tomorrow. -->
+                                  <MenuItem Header="Disconnect"
+                                            IsVisible="{Binding CanDisconnect}"
+                                            AutomationProperties.Name="{Binding DisconnectHint}"
+                                            Command="{Binding $parent[Window].((vm:ShellViewModel)DataContext).DisconnectPlaceCommand}"
+                                            CommandParameter="{Binding}"/>
                                   <!-- **Emptying the bin was reachable only from
                                        inside the bin.** The command was bound in
                                        one place, the band that appears once you

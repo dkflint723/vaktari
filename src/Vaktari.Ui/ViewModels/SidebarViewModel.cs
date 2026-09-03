@@ -759,6 +759,19 @@ public sealed partial class PlaceItemViewModel(Place place) : ObservableObject
     public bool CanEject { get; } = place.CanEject;
 
     /// <summary>
+    /// Whether this row is a mapped network drive, which can be given back.
+    ///
+    /// Compiled bindings are on, so the menu row cannot reach through to the
+    /// Place: a binding to a property this type does not have is a build error
+    /// rather than the silent nothing an interpreted one would be.
+    /// </summary>
+    public bool CanDisconnect { get; } = place.CanDisconnect;
+
+    /// <summary>Names the drive, because "disconnect" on its own does not say
+    /// which — and this is what a screen reader reads.</summary>
+    public string DisconnectHint => $"disconnect {Label}";
+
+    /// <summary>
     /// Whether this is the very first row in the sidebar — Home. This PC is
     /// drawn immediately under it, and a DataTemplate cannot ask where it sits.
     /// </summary>

@@ -60,11 +60,24 @@ internal static class DriveSet
 
         foreach (var drive in drives)
         {
+            // A letter with no root directory is not a drive at all.
+            if (drive.Type is DriveType.NoRootDirectory) continue;
+
             // **Never ask a network drive anything.** Not even whether it is
-            // ready: that is the call that blocks for the SMB timeout. A share
-            // appearing or going away is not what this watches for, and the
-            // sidebar rebuild it would trigger is the very work that freezes.
-            if (drive.Type is DriveType.Network or DriveType.NoRootDirectory) continue;
+            // ready: that is the call that blocks for the SMB timeout, and
+            // asking it in a loop would be a machine that hangs for a moment,
+            // forever.
+            //
+            // It is still WATCHED, by name alone. Its readiness is written as a
+            // constant, so a share going up or down cannot flap the key — but a
+            // letter appearing or disappearing does change it, which is what
+            // makes a drive the person just disconnected leave the sidebar
+            // rather than sit there until something else happens to rebuild it.
+            if (drive.Type is DriveType.Network)
+            {
+                lines.Add($"{drive.Name}|{(int)drive.Type}|1");
+                continue;
+            }
 
             bool ready;
 

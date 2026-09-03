@@ -573,9 +573,27 @@ internal static partial class Native
     internal const uint CONNECT_INTERACTIVE = 0x00000008;
     internal const uint CONNECT_PROMPT = 0x00000010;
 
+    /// <summary>
+    /// Take the connection out of the user profile as well as out of this
+    /// session.
+    ///
+    /// **Without it a disconnected drive comes back at the next sign-in.**
+    /// "Reconnect at sign-in" is the default in Explorer's own Map Network
+    /// Drive dialog, so a mapping made the ordinary way is persistent — and
+    /// tearing down only the session leaves the entry in place. The drive
+    /// vanishes from the sidebar and is back tomorrow, which is not what
+    /// anybody means by disconnect. `net use /delete` clears it, and this is
+    /// the flag that does.
+    /// </summary>
+    internal const uint CONNECT_UPDATE_PROFILE = 0x00000001;
+
     internal const int NO_ERROR = 0;
     internal const int ERROR_MORE_DATA = 234;
     internal const int ERROR_NO_MORE_ITEMS = 259;
+
+    /// <summary>There was no such connection — somebody else got there first,
+    /// or it was never one.</summary>
+    internal const int ERROR_NOT_CONNECTED = 2250;
     internal const int ERROR_ACCESS_DENIED = 5;
     internal const int ERROR_INVALID_PASSWORD = 86;
     internal const int ERROR_LOGON_FAILURE = 1326;

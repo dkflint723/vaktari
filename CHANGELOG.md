@@ -373,6 +373,16 @@ should not be trusted for compatibility yet.
 
 ### Added
 
+- **A mapped network drive can be disconnected.** Its row in the sidebar
+  offered Open, Open in a new tab, Pin and Properties; Eject is for media you
+  take out, so the only way to get a drive letter off the sidebar was
+  `net use /delete` in a console. Right-clicking a mapped drive now offers
+  Disconnect, the way Explorer does — and it clears the sign-in profile too, so
+  a drive mapped with *Reconnect at sign-in* stays gone rather than coming back
+  tomorrow. Any tab standing on the drive is moved away first, including tabs
+  in the other pane and behind other tabs, and the sidebar notices the letter
+  going without ever asking a network drive a question that can block.
+
 - **A copy says how fast it is going and how much longer it has.** The
   transfer bar counted items and bytes — *34/1200  1.2 GiB/4.9 GiB* — which is
   the one thing you can work out for yourself by looking at it twice. What it

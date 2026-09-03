@@ -2252,6 +2252,69 @@ public sealed partial class ShellViewModel : ObservableObject, IDisposable
     }
 
     /// <summary>
+    /// Gives a mapped network drive back.
+    ///
+    /// **There was no way to.** A mapped drive's row offered Open, Open in a
+    /// new tab, Pin and Properties; Eject is for media you take out, so the
+    /// only way to take Z: off the sidebar was `net use /delete` in a console.
+    /// Explorer has Disconnect on exactly this row.
+    ///
+    /// Shaped like the eject beside it, and for the same reasons: every tab in
+    /// both panes is moved off the drive first, because a background tab holds
+    /// its directory watch open exactly like a visible one and an unseen tab
+    /// vetoing the disconnect is the least explicable failure of the lot — and
+    /// the message is written after that navigation, because a finished listing
+    /// clears the status line.
+    /// </summary>
+    [RelayCommand]
+    private async Task DisconnectPlaceAsync(PlaceItemViewModel? place)
+    {
+        if (place is not { CanDisconnect: true }) return;
+        if (_remotes is null) return;
+
+        var pane = ActiveTab;
+
+        foreach (var group in new[] { Left, Right }.OfType<PaneGroupViewModel>())
+        {
+            foreach (var tab in group.Tabs.ToList())
+            {
+                if (!IsUnder(tab.CurrentPath, place.Path)) continue;
+
+                await tab.NavigateAsync(
+                    Environment.GetFolderPath(Environment.SpecialFolder.UserProfile))
+                    .ConfigureAwait(true);
+            }
+        }
+
+        if (pane is not null) pane.Status = $"disconnecting {place.Label}…";
+
+        try
+        {
+            var ok = await _remotes.DisconnectAsync(place.Path, CancellationToken.None)
+                                   .ConfigureAwait(true);
+
+            // The sidebar is rebuilt because the drive has gone, and the remote
+            // list with it: RemoteRoots decides which paths get the cheap icon
+            // treatment, and a letter left in it after the drive has gone is a
+            // path nothing will ever ask about again.
+            await Sidebar.ReloadAsync().ConfigureAwait(true);
+            Sidebar.RefreshRemotes();
+
+            if (pane is not null)
+            {
+                pane.Status = ok
+                    ? $"disconnected {place.Label}"
+                    : $"could not disconnect {place.Label} — something may still be using it";
+            }
+        }
+        catch (Exception ex)
+        {
+            if (pane is not null)
+                pane.Status = Core.FileSystem.Failures.Describe(ex, $"disconnect {place.Label}");
+        }
+    }
+
+    /// <summary>
     /// What to say when a batch finished with items left behind.
     ///
     /// **Names the file when there is one to name.** "3 items could not be

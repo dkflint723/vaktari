@@ -37,4 +37,30 @@ internal static class RepoSource
     internal static string Read(params string[] parts)
         => File.ReadAllText(Path.Combine([Root, .. parts]))
                .Replace("\r\n", "\n", StringComparison.Ordinal);
+
+    /// <summary>
+    /// The text of one method, from its declaration to the closing brace at
+    /// class indentation.
+    ///
+    /// Throws rather than falling back to the whole file: a declaration that
+    /// cannot be found means the test is looking for something that has been
+    /// renamed, and answering that with "here is everything" turns a broken
+    /// test into a passing one.
+    /// </summary>
+    internal static string Body(string source, string declaration)
+    {
+        var at = source.IndexOf(declaration, StringComparison.Ordinal);
+
+        if (at < 0)
+            throw new InvalidOperationException(
+                $"'{declaration}' is not declared the way this test looks for it");
+
+        var end = source.IndexOf("\n    }\n", at, StringComparison.Ordinal);
+
+        if (end < 0)
+            throw new InvalidOperationException(
+                $"could not find the end of '{declaration}'");
+
+        return source[at..end];
+    }
 }

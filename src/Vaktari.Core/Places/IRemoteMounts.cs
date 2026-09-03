@@ -64,4 +64,20 @@ public interface IRemoteMounts
     /// rather than retrying behind the user's back.
     /// </summary>
     Task<bool> UnmountAsync(RemoteMount mount, CancellationToken ct);
+
+    /// <summary>
+    /// Gives back a connection named by the path it appears at.
+    ///
+    /// **A mapped drive is not one of the mounts this reports.** Discover names
+    /// the letterless connections Vaktari made itself, deliberately, so a drive
+    /// the person mapped does not appear in the sidebar twice — but its row
+    /// still needs a way to be given back, and Z: is what identifies it.
+    ///
+    /// Defaulted to "there is nothing here I can disconnect", because a place
+    /// only offers the verb when its provider says the platform can: Linux's
+    /// network places are cifs and nfs mounts read out of /proc/mounts, and
+    /// `gio mount -u` has no authority over a kernel mount.
+    /// </summary>
+    Task<bool> DisconnectAsync(string path, CancellationToken ct)
+        => Task.FromResult(false);
 }

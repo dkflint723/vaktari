@@ -348,10 +348,45 @@ public sealed class WindowsRemoteMounts : IRemoteMounts
         _ => $"could not connect to {unc} (error {status})",
     };
 
-    public async Task<bool> UnmountAsync(RemoteMount mount, CancellationToken ct)
+    /// <summary>
+    /// What to hand WNetCancelConnection2, and with which flags.
+    ///
+    /// **A drive letter is spelled "Z:", not "Z:" with a backslash.** A place's Path is the
+    /// root the rest of the application navigates to, which carries the
+    /// trailing separator; the connection table is keyed on the device name
+    /// without it, and the call answers ERROR_NOT_CONNECTED for the other
+    /// spelling.
+    ///
+    /// The profile is only cleared for a letter. A letterless connection is one
+    /// Vaktari made and never persisted, so there is nothing in the profile to
+    /// take out — and asking to update a profile entry that does not exist is
+    /// a difference worth not inventing.
+    /// </summary>
+    internal static (string Name, uint Flags) CancelTarget(string? path)
     {
+        var trimmed = (path ?? "").TrimEnd('\\', '/');
+
+        return trimmed.Length == 2 && trimmed[1] == ':'
+            ? (trimmed, Native.CONNECT_UPDATE_PROFILE)
+            : (trimmed, 0);
+    }
+
+    public Task<bool> UnmountAsync(RemoteMount mount, CancellationToken ct)
+        => DisconnectAsync(mount.Path, ct);
+
+    /// <summary>
+    /// Gives a connection back, by the path it appears at.
+    ///
+    /// By path rather than by RemoteMount because a mapped drive is not one:
+    /// that list holds the letterless connections Vaktari made itself, and
+    /// Z: comes from the drive table.
+    /// </summary>
+    public async Task<bool> DisconnectAsync(string path, CancellationToken ct)
+    {
+        var (name, flags) = CancelTarget(path);
+
         var status = await Task.Run(
-            () => Native.WNetCancelConnection2(mount.Path, 0, force: false), ct).ConfigureAwait(false);
+            () => Native.WNetCancelConnection2(name, flags, force: false), ct).ConfigureAwait(false);
 
         // Worth saying rather than retrying behind the user's back, which is
         // what the interface asks for.
@@ -359,6 +394,9 @@ public sealed class WindowsRemoteMounts : IRemoteMounts
             throw new IOException(
                 "something still has a file open on that share — close it and try again");
 
-        return status == Native.NO_ERROR;
+        // Already gone is not a failure: something else may have disconnected
+        // it, and reporting "something may still be using it" about a drive
+        // nothing is using is the wrong sentence twice over.
+        return status is Native.NO_ERROR or Native.ERROR_NOT_CONNECTED;
     }
 }
