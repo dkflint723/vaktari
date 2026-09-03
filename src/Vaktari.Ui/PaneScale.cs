@@ -32,6 +32,30 @@ public static class PaneScale
     // 72px folder on a grid tile. They stay the BASE of the scale rather than
     // becoming literals in the markup — the pane's zoom still multiplies them,
     // which is what Ctrl+scroll and the per-layout zoom both ride on.
+    // The icon each layout draws at 100%, named once so nothing else has to
+    // keep a copy.
+    //
+    // **The flyout's typed size box kept one, and it went stale.** It
+    // multiplied 26 — what ThumbSize was before the design-reference pass took
+    // the details row icon to 18 — so the box read 26 beside an 18px icon, and
+    // read 26 in Grid and Compact too, where the icons are 72 and 36. A number
+    // no layout had drawn since.
+    private const double DetailsIcon = 18;
+    private const double CompactIcon = 36;
+    private const double GridIcon = 72;
+
+    /// <summary>
+    /// The icon a given layout draws at 100%: the base the flyout's typed size
+    /// box multiplies and divides by. Read from here rather than restated in
+    /// the view model, because restating it is how it drifted.
+    /// </summary>
+    public static double BaseIcon(Vaktari.Core.Session.ViewMode mode) => mode switch
+    {
+        Vaktari.Core.Session.ViewMode.Grid => GridIcon,
+        Vaktari.Core.Session.ViewMode.Compact => CompactIcon,
+        _ => DetailsIcon,
+    };
+
     private static readonly (string Key, double Value)[] IconMetrics =
     [
         // **The details row icon sets the row height, not the label.**
@@ -44,9 +68,9 @@ public static class PaneScale
         // the text: max(29.4, 30). Rows go from 38 to 30 at 100%, which is about
         // eight more files on screen in a full-height window, and the icon still
         // reads at a glance because it is an icon rather than a thumbnail.
-        ("ThumbSize", 18),
+        ("ThumbSize", DetailsIcon),
         ("IconSize", 16),
-        ("TileSize", 72),
+        ("TileSize", GridIcon),
 
         // **Stroke width is not a stretch-invariant in Avalonia, and it is in
         // SVG.** The design draws its glyphs on a 24-unit viewBox at 16px with
@@ -105,7 +129,7 @@ public static class PaneScale
         // The row still cannot be set independently: it has to fit the taller of
         // the icon and the label, which is why this is a max rather than a
         // constant.
-        var compactIcon = Math.Round(36 * iconScale, 1);
+        var compactIcon = Math.Round(CompactIcon * iconScale, 1);
         var compactRow = Math.Round(Math.Max(body * 1.9, compactIcon + pad), 1);
 
         // Icons.MaximumLines and the two text-width settings are NOT wired, and

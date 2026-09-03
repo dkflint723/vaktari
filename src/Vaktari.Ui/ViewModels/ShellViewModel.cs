@@ -2354,6 +2354,12 @@ public sealed partial class ShellViewModel : ObservableObject, IDisposable
                 MarkDirty();
                 break;
 
+            // The flyout's box reads the pane through TargetIconPixels, so the
+            // pane saying its pixels changed is not enough on its own.
+            case nameof(PaneViewModel.IconPixels):
+                NotifyTargetSizes();
+                break;
+
             case nameof(PaneViewModel.Selection):
                 NotifySelectionMenu();
                 break;

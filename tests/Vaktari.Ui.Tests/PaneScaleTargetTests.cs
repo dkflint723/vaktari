@@ -1,5 +1,7 @@
 using Avalonia.Headless.XUnit;
 using Vaktari.Core.FileSystem;
+using Vaktari.Core.Session;
+using Vaktari.Ui;
 using Vaktari.Ui.ViewModels;
 using Xunit;
 
@@ -181,5 +183,88 @@ public sealed class PaneScaleTargetTests : OwnedViewModels
 
         Assert.True(shell.ActiveTab!.FontScale > 1.0);
         Assert.Equal(shell.ActiveTab.FontPoints, shell.TargetFontPoints);
+    }
+
+    // ---- the number beside the box is a size something actually is ---------
+
+    /// <summary>
+    /// **The box quoted 26, and nothing on screen was 26 pixels.** It
+    /// multiplied a private copy of what the details row icon used to be; the
+    /// design-reference pass took that icon to 18 and left the copy behind — so
+    /// the box read 26 beside an 18px icon, and read 26 in Grid and Compact
+    /// too, where the icons are 72 and 36.
+    /// </summary>
+    [AvaloniaTheory]
+    [InlineData(ViewMode.Details, 18)]
+    [InlineData(ViewMode.Compact, 36)]
+    [InlineData(ViewMode.Grid, 72)]
+    public void At_full_size_the_box_reads_the_icon_that_layout_draws(ViewMode mode, double drawn)
+    {
+        var pane = Own(new PaneViewModel(new InertFileSystem()) { ViewportWidth = 1400 });
+
+        pane.View = mode;
+        pane.IconScale = 1.0;
+
+        Assert.Equal(drawn, pane.IconPixels);
+    }
+
+    /// <summary>
+    /// And it is the size the layout really draws, not a number that merely
+    /// agrees with another constant — asked of the metrics the markup binds.
+    /// </summary>
+    [AvaloniaTheory]
+    [InlineData(ViewMode.Details, "ThumbSize")]
+    [InlineData(ViewMode.Grid, "TileSize")]
+    public void Which_is_the_size_that_layout_is_told_to_draw(ViewMode mode, string key)
+    {
+        var drawn = PaneScale.Compute(1.0, 1.0).Single(m => m.Key == key).Value;
+
+        Assert.Equal(PaneScale.BaseIcon(mode), drawn);
+    }
+
+    /// <summary>
+    /// **Two layouts sitting at the same scale switched silently.** The readout
+    /// hangs off the scale, and restoring an identical one raises nothing — so
+    /// a Details-to-Grid switch at 100%, which is the default, left 18 in the
+    /// box beside 72px tiles.
+    /// </summary>
+    [AvaloniaFact]
+    public void Switching_layout_at_the_same_scale_still_moves_the_number()
+    {
+        var pane = Own(new PaneViewModel(new InertFileSystem()) { ViewportWidth = 1400 });
+
+        pane.View = ViewMode.Details;
+        pane.IconScale = 1.0;
+
+        var raised = 0;
+        pane.PropertyChanged += (_, e) =>
+        {
+            if (e.PropertyName == nameof(PaneViewModel.IconPixels)) raised++;
+        };
+
+        pane.View = ViewMode.Grid;
+
+        Assert.True(raised > 0, "nothing said the size had changed");
+        Assert.Equal(72, pane.IconPixels);
+    }
+
+    /// <summary>Typing back the number shown is still a no-op, in every
+    /// layout — get and set go through the same base.</summary>
+    [AvaloniaTheory]
+    [InlineData(ViewMode.Details)]
+    [InlineData(ViewMode.Compact)]
+    [InlineData(ViewMode.Grid)]
+    public void Typing_back_what_it_says_changes_nothing(ViewMode mode)
+    {
+        var pane = Own(new PaneViewModel(new InertFileSystem()) { ViewportWidth = 1400 });
+
+        pane.View = mode;
+        pane.IconScale = 1.0;
+
+        var shown = pane.IconPixels;
+        pane.IconPixels = shown;
+
+        Assert.Equal(shown, pane.IconPixels);
+        Assert.Equal(1.0, pane.IconScale, 3);
     }
 }

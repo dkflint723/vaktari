@@ -947,7 +947,19 @@ public sealed partial class PaneViewModel : ObservableObject, IDisposable
     /// "1.15" is not.
     /// </summary>
     private const double BaseFontSize = 14;
-    private const double BaseIconSize = 26;
+    /// <summary>
+    /// **The icon size box quoted 26, and nothing on screen was 26 pixels.**
+    /// This was a private copy of what ThumbSize used to be; the
+    /// design-reference pass took the details row icon to 18 and left the copy
+    /// behind, so the box read 26 beside an 18px icon — and in Grid and
+    /// Compact, where the icons are 72 and 36, it read 26 there as well. A
+    /// number no layout had drawn since.
+    ///
+    /// Per LAYOUT, because the scale it multiplies is per layout: the flyout
+    /// edits the ACTIVE mode's IconScale, so the active mode's icon is the only
+    /// size the number beside it can honestly be.
+    /// </summary>
+    private double BaseIconSize => PaneScale.BaseIcon(View);
 
     private const double MinScale = 0.7;
     private const double MaxScale = 2.5;
@@ -1339,6 +1351,13 @@ public sealed partial class PaneViewModel : ObservableObject, IDisposable
         {
             _swappingScales = false;
         }
+
+        // **Two layouts sitting at the same scale switched silently.** The size
+        // readout hangs off IconScale, and restoring an identical scale raises
+        // nothing — so a Details-to-Grid switch at 100%, which is the default,
+        // left "18" in the box beside 72px tiles. The base moved even though
+        // the scale did not.
+        OnPropertyChanged(nameof(IconPixels));
 
         // Timed because the un-virtualized layouts realize a container per
         // item, and how bad that is at a given count is the one number the
