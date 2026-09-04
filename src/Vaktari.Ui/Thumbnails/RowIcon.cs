@@ -82,8 +82,8 @@ public static class RowIcon
             // **The desktop's own icons, when asked for.** Checked before the
             // theme provider because it answers a different question — per
             // file rather than per icon name — so an executable shows its own
-            // icon and a shortcut carries its overlay, which is most of the
-            // reason somebody turns this on.
+            // icon and a folder shows the custom one it was given, which is
+            // most of the reason somebody turns this on.
             //
             // The drawn glyph goes up first either way, so a row is never blank
             // while the shell composes.

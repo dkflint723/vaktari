@@ -70,13 +70,27 @@ public readonly record struct FileEntry(
     /// </summary>
     public bool IsConcealed => IsHidden || (Flags & EntryFlags.System) != 0;
 
-    public ReadOnlySpan<char> Extension
+    public ReadOnlySpan<char> Extension => IsDirectory ? default : ExtensionOf(Name);
+
+    /// <summary>
+    /// The extension rule on its own, for the one kind of caller that has a
+    /// NAME and no entry to ask yet.
+    ///
+    /// **The rule was about to be written a second time, to decide whether a
+    /// row is a link.** The Windows providers work a row's flags out from the
+    /// directory entry the OS handed them, while the FileEntry that would
+    /// answer this is still being constructed — and a private copy of "the
+    /// last dot, and never the first character" there is free to drift from
+    /// this one. That is the same drift the properties window's Kind was
+    /// pulled back from, which is why <see cref="FileKind.IsShortcut"/> is
+    /// public and platform-blind.
+    ///
+    /// A leading dot begins a name rather than an extension: ".gitignore" is a
+    /// file called .gitignore, not a GITIGNORE file.
+    /// </summary>
+    public static ReadOnlySpan<char> ExtensionOf(ReadOnlySpan<char> name)
     {
-        get
-        {
-            if (IsDirectory) return default;
-            var i = Name.LastIndexOf('.');
-            return i <= 0 ? default : Name.AsSpan(i + 1);
-        }
+        var dot = name.LastIndexOf('.');
+        return dot <= 0 ? default : name[(dot + 1)..];
     }
 }

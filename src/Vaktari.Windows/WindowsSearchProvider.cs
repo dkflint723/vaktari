@@ -129,11 +129,19 @@ public sealed class WindowsSearchProvider : ISearchProvider
     /// carry System as well, so they stay out of the results on the attribute
     /// that was always hiding them.
     ///
-    /// The Symlink flag <c>ToFlags</c> sets below is load-bearing twice over
-    /// now: it draws the link emblem in the listing, and it is what the enqueue
-    /// below reads to stop. Both come out of the one directory read, so the guard
-    /// costs no extra syscall — but deleting that line un-terminates the walk
-    /// as well as losing the emblem.
+    /// The Symlink flag <c>WindowsEntryFlags</c> sets is load-bearing twice
+    /// over now: it draws the link emblem in the listing, and it is what the
+    /// enqueue below reads to stop. Both come out of the one directory read, so
+    /// the guard costs no extra syscall — but deleting that line un-terminates
+    /// the walk as well as losing the emblem.
+    ///
+    /// It marks a Windows shortcut as well, off the name rather than the
+    /// attributes. That changes nothing about the walk: a .lnk is a file, so
+    /// it was always a row and never a way in. It matters because these
+    /// results ARE a listing — they fill the same Entries the three row
+    /// templates draw — so a backend that described a shortcut differently
+    /// from the folder it came from would draw the arrow in one place and
+    /// not the other.
     /// </summary>
     private static IEnumerable<FileEntry> Walk(SearchQuery query, CancellationToken ct)
     {
@@ -247,19 +255,5 @@ public sealed class WindowsSearchProvider : ISearchProvider
         FullPath: entry.ToFullPath(),
         Length: entry.IsDirectory ? 0 : entry.Length,
         LastWriteTime: entry.LastWriteTimeUtc,
-        Flags: ToFlags(ref entry));
-
-    private static EntryFlags ToFlags(ref FileSystemEntry entry)
-    {
-        var flags = EntryFlags.None;
-        var attributes = entry.Attributes;
-
-        if (entry.IsDirectory) flags |= EntryFlags.Directory;
-        if ((attributes & FileAttributes.Hidden) != 0) flags |= EntryFlags.Hidden;
-        if ((attributes & FileAttributes.System) != 0) flags |= EntryFlags.System;
-        if ((attributes & FileAttributes.ReparsePoint) != 0) flags |= EntryFlags.Symlink;
-        if ((attributes & FileAttributes.ReadOnly) != 0) flags |= EntryFlags.ReadOnly;
-
-        return flags;
-    }
+        Flags: WindowsEntryFlags.For(entry.FileName, entry.Attributes, entry.IsDirectory));
 }

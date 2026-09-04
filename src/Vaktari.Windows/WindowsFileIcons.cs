@@ -14,8 +14,9 @@ namespace Vaktari.Windows;
 /// **IShellItemImageFactory rather than SHGetFileInfo.** The old API answers
 /// with a 32×32 HICON and nothing larger, which is a blurry smear on a grid
 /// tile; this one composes at whatever size is asked for, and returns the
-/// executable's own icon, the shortcut overlay and the custom folder icon that
-/// the shell would draw. It is what Explorer uses.
+/// executable's own icon and the custom folder icon that the shell would draw.
+/// Not the shortcut overlay: asked this way it composes none, which is why a
+/// .lnk gets its arrow from the listing's own emblem instead. It is what Explorer uses.
 ///
 /// **SIIGBF_ICONONLY, deliberately.** Without it the shell returns a THUMBNAIL
 /// where it has one, so every photograph would come back as a picture of

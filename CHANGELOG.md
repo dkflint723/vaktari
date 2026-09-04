@@ -625,9 +625,11 @@ should not be trusted for compatibility yet.
 
 - **The bin's icon says whether it has anything in it**, which is the one
   question you ask a bin and the one thing it would not answer — it drew the
-  same glyph holding a thousand items as holding none. A symbolic link now
-  carries a small arrow too, so a link to a folder is distinguishable from the
-  folder.
+  same glyph holding a thousand items as holding none. A symbolic link, a junction and a
+  Windows shortcut now carry a small arrow too, so a link to a folder is
+  distinguishable from the folder — and Desktop and the Start Menu, which are
+  folders of nothing but shortcuts, no longer draw every row exactly like the
+  thing it points at.
 
 - **The icon-size number matches the icons on screen.** The box quoted 26 next
   to 18-pixel icons in Details, and quoted 26 in Grid and Compact as well,

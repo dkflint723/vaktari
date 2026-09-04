@@ -85,7 +85,7 @@ public sealed class WindowsFileSystemProvider : IFileSystemProvider
                 FullPath: entry.ToFullPath(),
                 Length: entry.IsDirectory ? 0 : entry.Length,
                 LastWriteTime: entry.LastWriteTimeUtc,
-                Flags: ToFlags(ref entry)),
+                Flags: WindowsEntryFlags.For(entry.FileName, entry.Attributes, entry.IsDirectory)),
             new EnumerationOptions
             {
                 RecurseSubdirectories = false,
@@ -119,34 +119,6 @@ public sealed class WindowsFileSystemProvider : IFileSystemProvider
         };
     }
 
-    private static EntryFlags ToFlags(ref FileSystemEntry entry)
-    {
-        var flags = EntryFlags.None;
-        var attributes = entry.Attributes;
-
-        if (entry.IsDirectory)
-            flags |= EntryFlags.Directory;
-
-        // An attribute, not a leading dot. A file named ".gitignore" is an
-        // ordinary visible file here, which is the whole difference.
-        if ((attributes & FileAttributes.Hidden) != 0)
-            flags |= EntryFlags.Hidden;
-
-        if ((attributes & FileAttributes.System) != 0)
-            flags |= EntryFlags.System;
-
-        // Covers symbolic links, junctions and mount points alike. The UI only
-        // asks "is this an indirection", and telling them apart needs the
-        // reparse tag, which costs another call per entry.
-        if ((attributes & FileAttributes.ReparsePoint) != 0)
-            flags |= EntryFlags.Symlink;
-
-        if ((attributes & FileAttributes.ReadOnly) != 0)
-            flags |= EntryFlags.ReadOnly;
-
-        return flags;
-    }
-
     public ValueTask<FileEntry?> GetEntryAsync(string path, CancellationToken ct)
     {
         try
@@ -162,12 +134,12 @@ public sealed class WindowsFileSystemProvider : IFileSystemProvider
             // PathRules.LeafName applies, and the reason a C:\ tab is not blank.
             var name = PathRules.LeafName(path);
 
-            var flags = EntryFlags.None;
-            if (isDir) flags |= EntryFlags.Directory;
-            if ((attributes & FileAttributes.Hidden) != 0) flags |= EntryFlags.Hidden;
-            if ((attributes & FileAttributes.System) != 0) flags |= EntryFlags.System;
-            if ((attributes & FileAttributes.ReparsePoint) != 0) flags |= EntryFlags.Symlink;
-            if ((attributes & FileAttributes.ReadOnly) != 0) flags |= EntryFlags.ReadOnly;
+            // The listing's own answer rather than a second copy of it. These
+            // two agreed line for line, by hand — and a rule taught to one of
+            // them and not the other is a shortcut drawn with an arrow in the
+            // listing and handed back without one by the watcher a moment
+            // later, as a different value for the same file.
+            var flags = WindowsEntryFlags.For(name, attributes, isDir);
 
             return ValueTask.FromResult<FileEntry?>(new FileEntry(
                 name,
