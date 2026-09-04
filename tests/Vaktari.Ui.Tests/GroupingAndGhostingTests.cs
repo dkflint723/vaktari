@@ -260,6 +260,23 @@ public sealed class GroupingAndGhostingTests : OwnedViewModels
         Assert.Equal(0.55, Assert.IsType<double>(faded), 3);
     }
 
+    /// <summary>
+    /// **A drive that was not there was drawn like a live one.** This PC lists
+    /// an unmounted volume and a disconnected mapped drive in place, on purpose
+    /// — a row that vanishes is worse than a row you cannot open — and nothing
+    /// said which was which until you clicked it and waited out the timeout.
+    /// </summary>
+    [AvaloniaFact]
+    public void A_drive_that_cannot_be_reached_is_ghosted()
+    {
+        var faded = FileConverters.HiddenFade.Convert(
+            At("work (Z:)", DateTimeOffset.UnixEpoch,
+               EntryFlags.Directory | EntryFlags.Volume | EntryFlags.Unreadable),
+            typeof(double), null, System.Globalization.CultureInfo.InvariantCulture);
+
+        Assert.Equal(0.55, Assert.IsType<double>(faded), 3);
+    }
+
     [AvaloniaFact]
     public void An_ordinary_file_is_not()
     {

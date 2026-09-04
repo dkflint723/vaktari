@@ -27,6 +27,24 @@ public static class Failures
 
     private const int PathTooLong = unchecked((int)0x800700CE);
 
+    /// <summary>ERROR_NOT_READY: a drive letter with nothing behind it — an
+    /// empty optical drive, a card reader with no card.</summary>
+    private const int NotReady = unchecked((int)0x80070015);
+
+    /// <summary>ERROR_BAD_NETPATH and ERROR_BAD_NET_NAME: a mapped drive or a
+    /// UNC share whose server is not answering.</summary>
+    private const int BadNetPath = unchecked((int)0x80070035);
+    private const int BadNetName = unchecked((int)0x80070043);
+
+    /// <summary>ERROR_NETWORK_UNREACHABLE: the server behind the share is off,
+    /// or off the network — as opposed to a name that does not resolve
+    /// (BadNetPath) or a share that is not there on a server that is
+    /// (BadNetName). Measured on Windows 11: enumerating \\127.0.0.2\nosuchshare
+    /// raises IOException 0x800704CF, "The network location cannot be reached.
+    /// For information about network troubleshooting, see Windows Help. :
+    /// '\\127.0.0.2\nosuchshare'."</summary>
+    private const int NetworkUnreachable = unchecked((int)0x800704CF);
+
     /// <summary>
     /// What to tell somebody, given what they were trying to do.
     /// </summary>
@@ -50,6 +68,23 @@ public static class Failures
 
         IOException io when io.HResult == PathTooLong =>
             "that path is too long for this filesystem",
+
+        // **A drive that was not there answered in Win32's words.** A server
+        // that has gone away says "The network location cannot be reached", a
+        // name that does not resolve says "The network path was not found",
+        // and a share that is not there says "The network name cannot be
+        // found" — each with the path handed back after a colon dropped into
+        // the middle of it. An optical drive with no disc in it said "The
+        // device is not ready." All of them arrive as a plain IOException
+        // carrying the Win32 code in the HRESULT: the BCL promotes only a
+        // handful of codes to exception types of their own and none of these
+        // is one of them, so they fell straight through to the message below.
+        IOException io when io.HResult == NotReady =>
+            "that drive is not ready",
+
+        IOException io when io.HResult is BadNetPath or BadNetName
+                                        or NetworkUnreachable =>
+            "that network drive is not connected",
 
         // The rest of IOException is written for people and usually says
         // something useful — "already exists here", for one, which this

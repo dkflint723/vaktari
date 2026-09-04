@@ -100,6 +100,23 @@ public static class RowMetadata
         // replaced guarded the same case.
         if (entry.FullPath is null) return ("", false);
 
+        // **This PC's Size column reported how many things were at the top of
+        // each drive.** ComputerListing has carried the volume's capacity as
+        // the row's Length since This PC was built, and the only rule below for
+        // a directory is "em dash, then ask the provider" — and the provider
+        // says yes to every directory and counts it. So the column that should
+        // have read "931 GiB" read "184 items", and filling it enumerated the
+        // root of every drive on the machine, including a disconnected share
+        // that answers nothing until the network gives up.
+        //
+        // Zero is "not known" rather than an empty drive: a share whose server
+        // is unreachable and an optical drive with no disc in it both arrive
+        // with no capacity at all — WindowsPlacesProvider only reads TotalSize
+        // when the drive is ready — and "0 B" is a claim about a drive nobody
+        // has managed to measure.
+        if (entry.IsVolume)
+            return (entry.Length > 0 ? ByteSize.Format(entry.Length) : "\u2014", false);
+
         // The sixth and last copy of this. It was the only one already using
         // binary unit names, which is why the Size column and the status bar
         // beside it once disagreed about the same file.

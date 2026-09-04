@@ -1,7 +1,9 @@
 using Avalonia.Headless.XUnit;
 using Vaktari.Core.FileSystem;
 using Vaktari.Core.Places;
+using Vaktari.Core.Settings;
 using Vaktari.Ui;
+using Vaktari.Ui.Thumbnails;
 using Vaktari.Ui.ViewModels;
 using Xunit;
 
@@ -33,6 +35,78 @@ public sealed class ComputerListingTests : OwnedViewModels
 
     private static string P(string name)
         => OperatingSystem.IsWindows() ? $@"{name}:\" : $"/mnt/{name}";
+
+    /// <summary>A share whose server is not answering. No capacity either — the
+    /// provider only reads TotalSize from a drive that is ready.</summary>
+    private static Place Away(string path, string label)
+        => At(path, label, PlaceKind.Network) with { IsAvailable = false };
+
+    /// <summary>
+    /// **A mapped drive whose server had gone away drew like a working one.**
+    /// The sidebar has dimmed unreachable places since it was written; this
+    /// listing threw IsAvailable away, so This PC showed a dead Z: at full
+    /// strength beside C:.
+    /// </summary>
+    [AvaloniaFact]
+    public void A_drive_that_is_not_there_is_marked_unreadable()
+    {
+        var rows = ComputerListing.Build([Group("NETWORK", Away(P("Z"), "work (Z:)"))]);
+
+        Assert.True(rows[0].IsUnreadable, "This PC draws a dead drive like a live one");
+    }
+
+    /// <summary>
+    /// And the other direction, so "ghost everything" is not a passing answer.
+    /// </summary>
+    [AvaloniaFact]
+    public void A_drive_that_is_there_is_left_alone()
+    {
+        var rows = ComputerListing.Build(
+            [Group("DEVICES", At(P("C"), "Windows (C:)", PlaceKind.Device, capacity: 512))]);
+
+        Assert.True(rows[0].IsVolume, "a drive row is not marked a volume, so the size cell cannot tell");
+        Assert.False(rows[0].IsUnreadable, "every drive is ghosted, including the ones that work");
+    }
+
+    /// <summary>
+    /// **The capacity never reached the screen.** The row has carried it since
+    /// This PC was built; the size cell had one rule for a directory — an em
+    /// dash, and then go and count what is inside — so the column read "184
+    /// items" for C: while the metadata provider enumerated the root of every
+    /// drive on the machine to put it there.
+    /// </summary>
+    [AvaloniaFact]
+    public void The_size_cell_shows_a_drive_its_capacity()
+    {
+        var rows = ComputerListing.Build(
+        [
+            Group("DEVICES",
+                At(P("C"), "Windows (C:)", PlaceKind.Device, capacity: 3L * 1024 * 1024 * 1024)),
+        ]);
+
+        var (text, counting) = RowMetadata.SizeCell(rows[0], FolderSizeMode.ItemCount);
+
+        Assert.Equal("3 GiB", text);
+        Assert.False(counting, "This PC enumerates a drive root to fill a cell that already has its answer");
+
+        // "Show no size for folders" is about folders, whose size costs
+        // something to work out. A drive's capacity is already in the row.
+        Assert.Equal("3 GiB", RowMetadata.SizeCell(rows[0], FolderSizeMode.None).Text);
+    }
+
+    /// <summary>An unreachable share and an empty optical drive both arrive
+    /// with no capacity at all, and "0 B" is a claim about a drive nobody has
+    /// managed to measure.</summary>
+    [AvaloniaFact]
+    public void A_drive_nobody_could_measure_shows_no_size_rather_than_zero()
+    {
+        var rows = ComputerListing.Build([Group("NETWORK", Away(P("Z"), "work (Z:)"))]);
+
+        var (text, counting) = RowMetadata.SizeCell(rows[0], FolderSizeMode.ItemCount);
+
+        Assert.Equal("\u2014", text);
+        Assert.False(counting, "an unreachable share is dialled to fill its size cell");
+    }
 
     [AvaloniaFact]
     public void Every_drive_becomes_a_row()

@@ -90,6 +90,27 @@ public class FailureTests
             Failures.Describe(new IOException("'notes.txt' already exists here.")));
     }
 
+    /// <summary>
+    /// **A drive that was not there answered in Win32's words.** Opening a
+    /// disconnected Z: put "The network path was not found. : 'Z:\\'" in the
+    /// status bar — the path handed back with a colon dropped into the middle
+    /// of it — and an empty optical drive said "The device is not ready."
+    /// </summary>
+    [Theory]
+    [InlineData(0x80070015, "that drive is not ready")]
+    [InlineData(0x80070035, "that network drive is not connected")]
+    [InlineData(0x80070043, "that network drive is not connected")]
+    [InlineData(0x800704CF, "that network drive is not connected")]
+    public void A_drive_that_is_not_there_says_so_in_words(long hresult, string expected)
+    {
+        var failure = new IOException("The network path was not found. : 'Z:\\'")
+        {
+            HResult = unchecked((int)hresult),
+        };
+
+        Assert.Equal(expected, Failures.Describe(failure, "open that folder"));
+    }
+
     [Fact]
     public void Cancelling_is_not_a_failure_to_explain()
     {

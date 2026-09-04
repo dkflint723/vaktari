@@ -13,7 +13,30 @@ public enum EntryFlags
     Symlink    = 1 << 2,
     ReadOnly   = 1 << 3,
     System     = 1 << 4,
+
+    /// <summary>
+    /// What is behind this row cannot be read right now: an unmounted volume, a
+    /// share whose server is not answering.
+    ///
+    /// **Declared when this enum was written and set by nothing for as long.**
+    /// The one listing that knows about availability is This PC, which is built
+    /// from the same places the sidebar shows — and it dropped the place's
+    /// IsAvailable on the floor, so a mapped drive whose server had gone away
+    /// drew exactly like a drive you can open, while the sidebar three inches
+    /// away had been dimming that very place all along.
+    /// </summary>
     Unreadable = 1 << 5,
+
+    /// <summary>
+    /// A whole volume rather than a directory on one — a drive row in This PC.
+    ///
+    /// Nothing else can tell the two apart, and that is deliberate: a drive is
+    /// a directory to everything downstream, which is what makes sorting,
+    /// selection and the three layouts work on This PC unchanged. The one place
+    /// the difference is real is the size cell, where a drive has a capacity
+    /// and a folder has a count.
+    /// </summary>
+    Volume     = 1 << 6,
 }
 
 /// <summary>
@@ -36,6 +59,10 @@ public readonly record struct FileEntry(
     public bool IsDirectory => (Flags & EntryFlags.Directory) != 0;
     public bool IsHidden    => (Flags & EntryFlags.Hidden) != 0;
     public bool IsSymlink   => (Flags & EntryFlags.Symlink) != 0;
+    public bool IsVolume    => (Flags & EntryFlags.Volume) != 0;
+
+    /// <summary>Set only by This PC, for a drive that is not there.</summary>
+    public bool IsUnreadable => (Flags & EntryFlags.Unreadable) != 0;
 
     /// <summary>
     /// Concealed by the LISTING's rule rather than by the platform's: Windows

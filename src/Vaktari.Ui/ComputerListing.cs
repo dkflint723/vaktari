@@ -66,6 +66,23 @@ public static class ComputerListing
             // both and act on them.
             if (!seen.Add(place.Path)) continue;
 
+            // **A drive that had gone away looked exactly like one you can
+            // open.** The provider has answered IsAvailable per drive since the
+            // sidebar was written — it is why an unreachable share renders
+            // dimmed and in place there rather than disappearing — and this
+            // listing, built from those same places, threw the answer away. A
+            // mapped Z: whose server was off sat at full strength beside C:,
+            // and the only way to find out was to click it and wait out the
+            // timeout.
+            //
+            // Directory, because that is what opening one does: navigate into
+            // it, and everything downstream keys on that flag. Volume as well,
+            // because a drive must keep opening like a folder while the size
+            // cell needs to know that this row's Length is a capacity rather
+            // than something to go and count.
+            var flags = EntryFlags.Directory | EntryFlags.Volume;
+            if (!place.IsAvailable) flags |= EntryFlags.Unreadable;
+
             rows.Add(new FileEntry(
                 place.Label,
                 place.Path,
@@ -79,9 +96,7 @@ public static class ComputerListing
                 // would sort them by a lie. The epoch reads as "no date".
                 DateTimeOffset.UnixEpoch,
 
-                // A directory, because that is what opening one does: navigate
-                // into it. Everything downstream keys on this flag.
-                EntryFlags.Directory));
+                flags));
         }
 
         return rows;

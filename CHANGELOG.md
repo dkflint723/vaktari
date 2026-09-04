@@ -480,6 +480,18 @@ should not be trusted for compatibility yet.
 
 ### Fixed
 
+- **This PC says how big each drive is, and shows a drive that is not there as
+  not there.** The Size column reported how many things were at the top of the
+  drive — "184 items" where the capacity belonged — because a drive is a folder
+  to the listing and folders get counted; filling it enumerated the root of
+  every drive on the machine, including shares that answer nothing. The
+  capacity had been in the row all along. A drive with no capacity to report,
+  an empty optical drive or an unreachable share, says nothing rather than
+  "0 B". And a mapped drive whose server has gone away is ghosted the way the
+  sidebar has always ghosted it, instead of sitting at full strength beside the
+  drives that work; opening one now says "that network drive is not connected"
+  rather than repeating the path back inside a Win32 sentence.
+
 - **Windows search finds links by name.** A junction or symbolic link was the
   one name it could never return: the walk skipped reparse points, and that
   setting drops the entry from the results as well as stopping the recursion —

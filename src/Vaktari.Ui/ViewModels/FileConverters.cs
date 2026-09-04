@@ -165,11 +165,20 @@ public static class FileConverters
     /// it survives every theme, reads the same on a selected row as an
     /// unselected one, and does not have to be undone for the icon and each
     /// column separately.
+    ///
+    /// **And a drive that was not there was drawn like a live one.** This PC
+    /// lists an unmounted volume and a disconnected mapped drive in place, on
+    /// purpose — a row that vanishes is worse than a row you cannot open — but
+    /// nothing said which was which, so the only way to find out was to click
+    /// it and wait out the timeout. The same ghosting, because it means the
+    /// same thing: this row is here, and it is not ordinary content. The name
+    /// stays HiddenFade because it is the one Opacity all three layouts bind.
     /// </summary>
     public static readonly IValueConverter HiddenFade =
         new FuncValueConverter<FileEntry, double>(entry =>
             entry.FullPath is not null
-            && (entry.IsHidden || (entry.Flags & EntryFlags.System) != 0)
+            && (entry.IsHidden || (entry.Flags & EntryFlags.System) != 0
+                || entry.IsUnreadable)
                 ? 0.55
                 : 1.0);
 
