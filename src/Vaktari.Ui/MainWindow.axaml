@@ -84,6 +84,56 @@
       <Setter Property="Opacity" Value="0.38"/>
     </Style>
 
+    <!-- **Reveal by OPACITY, never by IsVisible, and that is the whole reason
+         these are styles rather than bindings in the row templates.**
+
+         A box that appears when a row becomes selected is exactly the fault
+         MarkupRulesTests.Selection_decoration_is_not_a_hit_target exists to
+         catch: the first click of a double-click selects the row, decoration
+         bound to IsSelected pops into being, the second click lands on a
+         different element, and Avalonia's double-tap gesture — which needs both
+         clicks on the same one — never forms.
+
+         The slot is therefore ALWAYS there while the setting is on. `Panel.pick`
+         is painted Transparent, so it is a hit target of constant size and
+         position from the moment the row is realized; only what is drawn inside
+         it fades in. Nothing the pointer can hit changes between two clicks.
+
+         Proven rather than assumed, twice, in the headless harness: a descendant
+         selector DOES reach into DataTemplate content (an opacity setter on
+         `ListBoxItem Border.box` read back 0.25 plain, 1 selected, 0.5 hovered),
+         and an Opacity="0" control IS still hit-tested (a press on one arrived
+         with that control as e.Source). The second is why the fade goes on the
+         glyph and the hit target is a separate, opaque, transparent-painted
+         parent: relying on an invisible control to take the press would work
+         today and be a mystery the day it stops.
+
+         Window-wide rather than three copies in three ListBox.Styles: the three
+         row templates draw the same box for the same reason, and the day one
+         of them drifted would be the day it stopped matching the others. -->
+    <Style Selector="ListBoxItem Panel.pick > Border">
+      <Setter Property="Opacity" Value="0"/>
+    </Style>
+    <Style Selector="ListBoxItem:pointerover Panel.pick > Border">
+      <Setter Property="Opacity" Value="1"/>
+    </Style>
+    <!-- Ticked, so the box stays legible with the pointer somewhere else
+         entirely — the filled state is the only thing that says which rows are
+         in the selection once you have moved on. The fill is the same
+         accent-on-ViewBackground pair the tile's look-alike badge already
+         uses. -->
+    <Style Selector="ListBoxItem:selected Panel.pick > Border">
+      <Setter Property="Opacity" Value="1"/>
+      <Setter Property="Background" Value="{DynamicResource AccentColour}"/>
+      <Setter Property="BorderBrush" Value="{DynamicResource AccentColour}"/>
+    </Style>
+    <Style Selector="ListBoxItem Panel.pick > Path">
+      <Setter Property="Opacity" Value="0"/>
+    </Style>
+    <Style Selector="ListBoxItem:selected Panel.pick > Path">
+      <Setter Property="Opacity" Value="1"/>
+    </Style>
+
   </Window.Styles>
 
   <Window.Resources>
@@ -1891,7 +1941,38 @@
                         <ColumnDefinition Width="Auto"/>
                         <ColumnDefinition Width="Auto"/>
                       </Grid.ColumnDefinitions>
-                  <Border Grid.Column="0" Width="{DynamicResource ThumbSize}" Margin="0,0,8,0"/>
+                  <!-- The icon slot, with the select-all box docked ahead of it
+                       when the boxes are on. A DockPanel rather than a seventh
+                       column: inserting one would renumber every element after
+                       it in BOTH grids, which is the edit the row template
+                       below warns goes wrong quietly.
+
+                       A real CheckBox here and drawn boxes on the rows, which
+                       looks inconsistent and is not. This one is the only
+                       selection control in the window that a keyboard can
+                       reach and a screen reader can name, and Fluent already
+                       draws all three of its states — ticked, cleared, and the
+                       dash that means "some of them". The row boxes cannot be
+                       CheckBoxes: their press has to be claimed on the window's
+                       tunnel before the ListBox collapses the selection, which
+                       stops a CheckBox from ever toggling itself.
+
+                       Width and Margin match the row box exactly, so the two
+                       slots line up; the two grids are kept in step by hand and
+                       a test reads both sites. -->
+                  <DockPanel Grid.Column="0">
+                    <CheckBox x:Name="SelectAllBox" DockPanel.Dock="Left"
+                              Width="20" Height="20" Margin="0,0,4,0"
+                              MinWidth="0" MinHeight="0" Padding="0"
+                              IsThreeState="True"
+                              IsChecked="{Binding AllChosen, Mode=OneWay}"
+                              IsVisible="{Binding ShowSelectionBoxes}"
+                              VerticalAlignment="Center"
+                              AutomationProperties.Name="Select every row"
+                              ToolTip.Tip="Tick every row, or clear the selection"
+                              Click="OnSelectAllBoxClicked"/>
+                    <Border Width="{DynamicResource ThumbSize}" Margin="0,0,8,0"/>
+                  </DockPanel>
                   <!-- **Inside a repository the heading stood 16px left of the
                        names it labels.** The name cell docks a fixed slot for
                        the version-control mark ahead of every filename, so
@@ -2112,7 +2193,40 @@
                         <ColumnDefinition Width="Auto"/>
                         <ColumnDefinition Width="Auto"/>
                       </Grid.ColumnDefinitions>
-                    <Panel Grid.Column="0" Width="{DynamicResource ThumbSize}"
+                    <DockPanel Grid.Column="0">
+                      <!-- **The selection box.** Docked ahead of the icon, the
+                           slot the heading reserves the same 20 and 4 for.
+
+                           A drawn box rather than a CheckBox, because its press
+                           is claimed on the WINDOW'S TUNNEL — see
+                           SelectionBoxAt in the code-behind — before the ListBox
+                           can collapse the selection to this one row. A
+                           CheckBox in that position could never toggle itself:
+                           handling the press stops the class handler that would
+                           have.
+
+                           Painted Transparent and never hidden by the pointer's
+                           coming and going, so the hit target is the same size
+                           in the same place from the moment the row is
+                           realized. The fade lives on the Border and the tick
+                           inside it, in Window.Styles, which says why. -->
+                      <Panel Classes="pick" DockPanel.Dock="Left"
+                             Width="20" Margin="0,0,4,0"
+                             Background="Transparent"
+                             IsVisible="{Binding $parent[ListBox].((vm:PaneViewModel)DataContext).ShowSelectionBoxes}">
+                        <Border Width="14" Height="14" CornerRadius="3"
+                                HorizontalAlignment="Center" VerticalAlignment="Center"
+                                BorderThickness="1.4"
+                                BorderBrush="{DynamicResource BorderColour}"
+                                Background="{DynamicResource ViewBackground}"/>
+                        <Path Data="M0,4.5 L3.5,8 L9,1"
+                              Width="9" Height="9" Stretch="Uniform"
+                              HorizontalAlignment="Center" VerticalAlignment="Center"
+                              Stroke="{DynamicResource ViewBackground}"
+                              StrokeThickness="1.8"
+                              StrokeLineCap="Round" StrokeJoin="Round"/>
+                      </Panel>
+                    <Panel Width="{DynamicResource ThumbSize}"
                            Height="{DynamicResource ThumbSize}" Margin="0,0,8,0"
                            VerticalAlignment="Center">
                       <!-- Two layers only: the icon (themed, or the drawn glyph
@@ -2142,6 +2256,7 @@
                         </Canvas>
                       </Viewbox>
                     </Panel>
+                    </DockPanel>
                         <!-- DockPanel, not StackPanel: a horizontal StackPanel gives
                              its children unlimited width, so TextTrimming can never
                              fire and a long name renders straight over the next
@@ -2349,6 +2464,24 @@
                                 Background="{DynamicResource AccentColour}"
                                 IsVisible="{Binding $parent[ListBoxItem].IsSelected}" IsHitTestVisible="False"/>
                         <DockPanel VerticalAlignment="Center" Margin="6,0,6,0">
+                          <!-- The same box as the details row, ahead of the same
+                               things and for the same reasons. See that one. -->
+                          <Panel Classes="pick" DockPanel.Dock="Left"
+                                 Width="20" Margin="0,0,4,0"
+                                 Background="Transparent"
+                                 IsVisible="{Binding $parent[ListBox].((vm:PaneViewModel)DataContext).ShowSelectionBoxes}">
+                            <Border Width="14" Height="14" CornerRadius="3"
+                                    HorizontalAlignment="Center" VerticalAlignment="Center"
+                                    BorderThickness="1.4"
+                                    BorderBrush="{DynamicResource BorderColour}"
+                                    Background="{DynamicResource ViewBackground}"/>
+                            <Path Data="M0,4.5 L3.5,8 L9,1"
+                                  Width="9" Height="9" Stretch="Uniform"
+                                  HorizontalAlignment="Center" VerticalAlignment="Center"
+                                  Stroke="{DynamicResource ViewBackground}"
+                                  StrokeThickness="1.8"
+                                  StrokeLineCap="Round" StrokeJoin="Round"/>
+                          </Panel>
                           <!-- Same slot and same rules as the details column:
                                fixed width so names stay aligned marked or not,
                                and the whole slot only exists in a repository. -->
@@ -2597,6 +2730,35 @@
                                    ToolTip.ShowDelay="1200"
                                    Opacity="{Binding Converter={x:Static vm:FileConverters.HiddenFade}}"/>
                       </StackPanel>
+                      <!-- **The selection box, tile edition.** A tile has no
+                           row to dock a slot onto, so it goes in the corner
+                           Explorer puts it in — top left, over the artwork,
+                           and clear of the look-alike badge, which sits at the
+                           top left of the ICON rather than of the tile and is
+                           therefore inset by the gap between them.
+
+                           Declared after the label so it draws over it, and
+                           before the drop ring, which must stay on top of
+                           everything. Same rules otherwise as the details
+                           row's; see that one. -->
+                      <Panel Classes="pick"
+                             Width="20" Height="20"
+                             HorizontalAlignment="Left" VerticalAlignment="Top"
+                             Margin="4,4,0,0"
+                             Background="Transparent"
+                             IsVisible="{Binding $parent[ListBox].((vm:PaneViewModel)DataContext).ShowSelectionBoxes}">
+                        <Border Width="14" Height="14" CornerRadius="3"
+                                HorizontalAlignment="Center" VerticalAlignment="Center"
+                                BorderThickness="1.4"
+                                BorderBrush="{DynamicResource BorderColour}"
+                                Background="{DynamicResource ViewBackground}"/>
+                        <Path Data="M0,4.5 L3.5,8 L9,1"
+                              Width="9" Height="9" Stretch="Uniform"
+                              HorizontalAlignment="Center" VerticalAlignment="Center"
+                              Stroke="{DynamicResource ViewBackground}"
+                              StrokeThickness="1.8"
+                              StrokeLineCap="Round" StrokeJoin="Round"/>
+                      </Panel>
                       <!-- **Where the drop lands.** The pane took an outline while a drag
                            was over it, and which pane the pointer is in was never the
                            question; what a drag could not tell you is whether releasing

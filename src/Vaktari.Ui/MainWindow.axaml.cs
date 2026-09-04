@@ -656,6 +656,82 @@ public partial class MainWindow : Window
         return null;
     }
 
+    /// <summary>
+    /// The class the three row templates put on a selection box, and the only
+    /// thing tying the markup to the handler that gives it meaning.
+    /// </summary>
+    internal const string SelectionBoxClass = "pick";
+
+    /// <summary>
+    /// The selection box a press landed on, or null for a press anywhere else.
+    ///
+    /// **The box cannot be a CheckBox, so nothing toggles unless this is
+    /// asked.** A press inside a row is claimed on the window's tunnel, which
+    /// runs before the ListBox does — and that is not an optimisation, it is
+    /// the only place the press can be taken: by the time the ListBox has seen
+    /// it, a five-file selection is already one file, which is measured and
+    /// exactly what the boxes exist to avoid. Handling it there also stops a
+    /// CheckBox's own class handler from ever running, which is why the box in
+    /// the markup is a drawn Border rather than a control.
+    ///
+    /// Stops at the ListBoxItem, so the walk ends inside the row it started in
+    /// and cannot wander up into some other list's box.
+    /// </summary>
+    internal static Control? SelectionBoxAt(object? source)
+    {
+        for (var visual = source as Visual; visual is not null;
+             visual = visual.GetVisualParent())
+        {
+            if (visual is ListBoxItem) return null;
+
+            if (visual is Control box && box.Classes.Contains(SelectionBoxClass)) return box;
+        }
+
+        return null;
+    }
+
+    /// <summary>The list a press landed in, row or background alike.</summary>
+    private static ListBox? ListingAt(object? source)
+    {
+        for (var visual = source as Visual; visual is not null;
+             visual = visual.GetVisualParent())
+        {
+            if (visual is ListBox list) return list;
+        }
+
+        return null;
+    }
+
+    /// <summary>
+    /// Adds one row to the selection, or takes it out, leaving every other row
+    /// exactly as it was.
+    ///
+    /// Through the bound collection rather than through <c>SelectedItem</c>:
+    /// assigning that REPLACES the selection, which is precisely what a tick
+    /// box must never do. One row at a time, so unlike SelectAll there is no
+    /// bulk path worth reaching for — a single change fires a single
+    /// notification.
+    /// </summary>
+    internal static void ToggleInSelection(ListBox list, object row)
+    {
+        if (list.SelectedItems is not { } chosen) return;
+
+        if (chosen.Contains(row)) chosen.Remove(row);
+        else chosen.Add(row);
+    }
+
+    /// <summary>
+    /// What clicking the heading's box means, given what is currently chosen.
+    ///
+    /// **A three-state CheckBox cycles unchecked, checked, indeterminate on
+    /// click**, so the box's own value after a click is not an answer anybody
+    /// meant to give — clicking a full listing would ask for "some". The
+    /// question is asked of the PANE instead: everything ticked means clear,
+    /// and anything else means tick the lot. That also makes a half-ticked
+    /// listing go to all rather than to none, which is what both references do.
+    /// </summary>
+    internal static bool SelectAllFrom(bool? chosen) => chosen != true;
+
     private static void FocusListIfEmptySpace(object? source, KeyModifiers modifiers)
     {
         if (ListForEmptySpace(source) is not { } list) return;
@@ -781,6 +857,41 @@ public partial class MainWindow : Window
             return;
         }
 
+        // **A press on a row's selection box is a tick, not a click on the
+        // row**, and the difference is everything the feature is for: the
+        // ListBox reads an unmodified press as "just this one" and collapses
+        // whatever was chosen down to the row under the pointer. Measured, in
+        // the headless harness: with two rows selected, a plain press on a
+        // third left one row selected. Taken here, on the tunnel, all three
+        // survive.
+        //
+        // Handled either way, so the press never reaches the ListBox, the
+        // rubber band or the drag arm below. That also means a double-click on
+        // a box never forms a gesture — two presses, two ticks, back where you
+        // started and the file does not open, which is the right answer for a
+        // control whose whole job is to not be an activation.
+        if (properties.IsLeftButtonPressed && SelectionBoxAt(e.Source) is not null)
+        {
+            ActivateGroupAt(e.Source);
+
+            if (ListingAt(e.Source) is { } picked && EntryAt(e.Source) is { } row)
+                ToggleInSelection(picked, row);
+
+            // **Returning early is not the same as arming nothing.** The fields
+            // below survive their press — the release handler clears the band
+            // and the tab drag but never _dragSource, and the move handler
+            // clears it only on a move with the button up — so a press that
+            // returns before the arming block leaves the PREVIOUS press's row
+            // and the PREVIOUS press's origin in place. A second press arriving
+            // without an intervening move therefore starts from an origin that
+            // belonged to a click somewhere else, and a drag from the box would
+            // carry the old row.
+            ArmNothing();
+
+            e.Handled = true;
+            return;
+        }
+
         // A click on empty listing space gives the LIST keyboard focus.
         //
         // Without this, pressing Home or End after clicking below the tiles did
@@ -857,18 +968,50 @@ public partial class MainWindow : Window
             && source.Selection.Any(x => PathRules.Same(x.FullPath, pressed.FullPath)))
             _dragSelection = source.Selection.Select(x => x.FullPath).ToList();
 
-        // Visual tree — same reason as EntryAt. A press that lands on
-        // templated content has no logical path back to the group, so clicking
-        // a filename would not activate its side.
-        for (var visual = e.Source as Visual; visual is not null;
+        ActivateGroupAt(e.Source);
+    }
+
+    /// <summary>
+    /// Makes the half of a split that was pressed the active one.
+    ///
+    /// Visual tree — same reason as EntryAt. A press that lands on templated
+    /// content has no logical path back to the group, so clicking a filename
+    /// would not activate its side.
+    ///
+    /// Its own method because the selection-box guard returns before the end of
+    /// the press handler and still has to do this: ticking a box in the
+    /// inactive half must make that half active, or the next Delete acts on the
+    /// other one.
+    /// </summary>
+    private void ActivateGroupAt(object? source)
+    {
+        for (var visual = source as Visual; visual is not null;
              visual = visual.GetVisualParent())
         {
             if (visual is Control { DataContext: PaneGroupViewModel group })
             {
                 _shell.ActivateGroup(group);
-                break;
+                return;
             }
         }
+    }
+
+    /// <summary>
+    /// Forgets everything a press would otherwise have armed.
+    ///
+    /// Only the selection-box guard needs it, and it needs it because the
+    /// arming block sits at the END of the press handler: anything that returns
+    /// before reaching it inherits the last press's state rather than a blank
+    /// one.
+    /// </summary>
+    private void ArmNothing()
+    {
+        _bandList = null;
+        _bandKept = null;
+        _dragSource = null;
+        _dragTrigger = null;
+        _dragSelection = null;
+        _dragRight = false;
     }
 
     private void CaptureSplitRatio()
@@ -2509,6 +2652,33 @@ public partial class MainWindow : Window
 
     private void OnSelectAllClicked(object? sender, RoutedEventArgs e)
         => ActiveListing()?.SelectAll();
+
+    /// <summary>
+    /// The heading's box. Asks the pane what is chosen rather than the box what
+    /// it has just become — see <see cref="SelectAllFrom"/> for why those are
+    /// different questions.
+    ///
+    /// Through the ListBox for the same reason the Select ▸ All menu row is:
+    /// filling the bound collection row by row fires a change per file, and
+    /// each one refreshes the details panel and recomputes the summary.
+    ///
+    /// **A three-state box keeps whatever the click cycled it to unless it is
+    /// told otherwise.** IsChecked is bound OneWay, so the click's own value
+    /// sits on the control until the pane raises AllChosen again — and a click
+    /// that changes nothing raises nothing. In an empty folder SelectAll had
+    /// nothing to select, so the box was left showing a tick over a listing
+    /// with no rows in it: the one thing AllChosen refuses to say anywhere
+    /// else. Asking the pane again puts the answer back.
+    /// </summary>
+    private void OnSelectAllBoxClicked(object? sender, RoutedEventArgs e)
+    {
+        if (_shell.ActiveTab is not { } pane) return;
+
+        if (SelectAllFrom(pane.AllChosen)) ActiveListing()?.SelectAll();
+        else SelectNone();
+
+        pane.RefreshSelectionBoxes();
+    }
 
     private void OnSelectNoneClicked(object? sender, RoutedEventArgs e) => SelectNone();
 

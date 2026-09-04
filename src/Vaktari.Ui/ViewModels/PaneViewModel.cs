@@ -709,6 +709,11 @@ public sealed partial class PaneViewModel : ObservableObject, IDisposable
         OnPropertyChanged(nameof(CanRunSelectionAsAdministrator));
         OnPropertyChanged(nameof(CanMountSelection));
         OnPropertyChanged(nameof(CanUnmountSelection));
+
+        // The heading's box is a function of the selection and nothing else, so
+        // it belongs on the one notification every route to a selection change
+        // already goes through.
+        OnPropertyChanged(nameof(AllChosen));
     }
 
     /// <summary>The collection belonging to the layout currently on screen.</summary>
@@ -771,6 +776,54 @@ public sealed partial class PaneViewModel : ObservableObject, IDisposable
     /// </summary>
     public bool HasAnyDirectorySelected
         => HasDirectorySelected || SelectedEntries.Any(e => e.IsDirectory);
+
+    /// <summary>
+    /// Whether the rows draw a tick box, and whether the column heading draws
+    /// the one that ticks them all.
+    ///
+    /// **The listing had no pointer-only route to a multi-selection.** Every
+    /// one of them went through a modifier — ctrl+click, shift+click — or
+    /// through a rubber band, which is a drag.
+    ///
+    /// Read from the live settings rather than stored on the pane, so a save
+    /// only has to raise the notification; see <see cref="RefreshSelectionBoxes"/>.
+    /// Off by default, which is Explorer's answer rather than Dolphin's, and
+    /// off means the boxes cost nothing at all: the markup collapses the slot
+    /// rather than drawing it empty.
+    /// </summary>
+    public bool ShowSelectionBoxes => Settings.AppSettings.Current.Views.ShowSelectionBoxes;
+
+    /// <summary>
+    /// What the heading's box shows: all of the rows ticked, some of them, or
+    /// none. Null is "some", which is the dash a three-state box draws.
+    ///
+    /// **An empty listing is NONE, not all.** "All of nothing" is true by
+    /// arithmetic and reads, in a folder with no files in it, as a listing that
+    /// has selected itself.
+    /// </summary>
+    public bool? AllChosen
+    {
+        get
+        {
+            if (SelectedEntries.Count == 0) return false;
+
+            return SelectedEntries.Count >= Entries.Count ? true : null;
+        }
+    }
+
+    /// <summary>
+    /// Re-asks both selection-box questions after settings have been saved.
+    ///
+    /// Neither is stored, so neither raises anything on its own — a pane
+    /// already on screen would keep the boxes it had until it was rebuilt.
+    /// That is the trap the font setting fell into for weeks: saved, recorded,
+    /// and invisible until the next launch.
+    /// </summary>
+    public void RefreshSelectionBoxes()
+    {
+        OnPropertyChanged(nameof(ShowSelectionBoxes));
+        OnPropertyChanged(nameof(AllChosen));
+    }
 
     /// <summary>
     /// Carries the selection to the layout being switched to, so changing view
@@ -1696,6 +1749,13 @@ public sealed partial class PaneViewModel : ObservableObject, IDisposable
         OnPropertyChanged(nameof(NoMatchesLine));
         OnPropertyChanged(nameof(Summary));
         OnPropertyChanged(nameof(ShareTargetLabel));
+
+        // **The heading's box depends on the listing as well as on the
+        // selection.** It hung off NotifySelectionChanged alone, so a file
+        // arriving in a folder where everything was ticked left the heading
+        // still saying "all" after it had become "some" — and the watcher
+        // adds rows without touching the selection.
+        OnPropertyChanged(nameof(AllChosen));
     }
 
     public bool IsDetailsView => View == ViewMode.Details;

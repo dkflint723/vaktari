@@ -322,6 +322,31 @@ public sealed record ViewSettings
     /// </summary>
     public ThemeMode ThemeMode { get; init; } = ThemeMode.FollowDesktop;
 
+    /// <summary>
+    /// A tick box ahead of every row, and one on the list heading that ticks
+    /// or clears the lot.
+    ///
+    /// **Every route to a multi-selection went through a modifier or a drag.**
+    /// Ctrl+click, shift+click and the rubber band were the whole of it, so
+    /// somebody on a trackpad, working one-handed, or simply unaware that ctrl
+    /// does anything could pick exactly one file at a time.
+    ///
+    /// **NAMED FOR ITS ZERO VALUE, like KeepWidthAfterPanelClose above and for
+    /// the same proven reason:** deserialization here does not run property
+    /// initializers, so a key absent from `settings.json` arrives as
+    /// `default(T)` rather than as the declared default. `false` therefore has
+    /// to BE the wanted behaviour — and it is. Explorer ships its boxes off
+    /// behind a View tick and Dolphin ships them on; this follows Explorer,
+    /// because the boxes take a slot out of the name column and a listing that
+    /// grows one uninvited is a worse first impression than a feature nobody
+    /// finds.
+    ///
+    /// Here rather than in <see cref="DetailsViewSettings"/>: all three
+    /// layouts draw them, so a per-layout home would have been three copies of
+    /// one answer.
+    /// </summary>
+    public bool ShowSelectionBoxes { get; init; }
+
     /// <summary>Null means follow the desktop font from kdeglobals.</summary>
     public string? CustomFontFamily { get; init; }
 

@@ -13,6 +13,20 @@ should not be trusted for compatibility yet.
 
 ### Added
 
+- **Rows can be ticked, if you ask for boxes.** Every way of picking more than
+  one file went through a modifier or a drag — ctrl+click, shift+click, or a
+  rectangle dragged round them — so on a trackpad, one-handed, or simply not
+  knowing that ctrl does anything, you could pick exactly one file at a time.
+  *View modes ▸ Selection ▸ Show selection check boxes* puts a box ahead of
+  every row in all three layouts and one on the list heading that ticks or
+  clears the lot, showing a dash while only some are ticked. The box appears
+  when you point at a row and stays while the row is ticked, so you can still
+  see what you picked once the pointer has moved on. Ticking one adds it and
+  leaves the rest alone; it starts neither a rubber band nor a drag, and
+  double-clicking a box opens nothing. Off by default, which is Explorer's
+  answer rather than Dolphin's — the boxes take a slot out of the name column,
+  and off costs nothing at all: no slot, no box, nothing drawn.
+
 - **On Linux, run a file as administrator and open an admin terminal.** Windows
   has had both since the administrator entries were added; Linux had the menu
   rows' code and two methods that did nothing, on the reasoning that pkexec and

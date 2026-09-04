@@ -141,6 +141,7 @@ public sealed partial class SettingsViewModel : ObservableObject
         // well as in the pane: the same dereference crashed the listing, I fixed
         // that one site, and left this one to crash the dialog instead.
         _showVcsDecorations = current.Vcs?.ShowDecorations ?? true;
+        _showSelectionBoxes = views.ShowSelectionBoxes;
         _growWindowForPanel = views.NarrowDetailsPanel == NarrowPanelBehaviour.GrowWindow;
         // The dialog asks the positive question; the record stores the negative
         // one so its zero value is the wanted behaviour.
@@ -893,6 +894,15 @@ public sealed partial class SettingsViewModel : ObservableObject
     [ObservableProperty] private bool _showVcsDecorations;
 
     /// <summary>
+    /// A tick box ahead of every row, and one on the list heading.
+    ///
+    /// Off by default and phrased positively here because the dialog asks the
+    /// positive question; the record stores the same sense, since off is what
+    /// its zero value has to mean.
+    /// </summary>
+    [ObservableProperty] private bool _showSelectionBoxes;
+
+    /// <summary>
     /// True: widen the window to fit the details panel. False: grey the toggle
     /// out. A bool rather than the enum because the dialog binds checkboxes, and
     /// two states do not need a picker.
@@ -1086,6 +1096,7 @@ public sealed partial class SettingsViewModel : ObservableObject
                     : SelectedFont.Name,
 
                 FollowDesktopColours = FollowDesktopColours,
+                ShowSelectionBoxes = ShowSelectionBoxes,
                 ThemeMode = ThemeModeFromIndex(),
 
                 Icons = _original.Views.Icons with { Spacing = Spacing(IconSpacing) },

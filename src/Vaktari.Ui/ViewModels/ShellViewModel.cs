@@ -1318,6 +1318,12 @@ public sealed partial class ShellViewModel : ObservableObject, IDisposable
                 {
                     tab.RefreshScale();
                     tab.RefreshDecorations();
+
+                    // Same shape as the two above and the same reason: the
+                    // selection boxes are read from the live settings on every
+                    // binding evaluation, and nothing re-evaluates a binding on
+                    // a row that is already realized unless it is told to.
+                    tab.RefreshSelectionBoxes();
                 }
 
         // The narrow-panel behaviour changes whether the toggle may be pressed,

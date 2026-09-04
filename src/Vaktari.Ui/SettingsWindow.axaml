@@ -768,6 +768,27 @@
 
           <Border Height="1" Background="{DynamicResource SeparatorColour}"/>
 
+          <TextBlock Text="Selection"
+                     FontSize="{DynamicResource FontSizeTiny}"
+                     Foreground="{DynamicResource ViewDimText}"/>
+
+          <!-- Off by default, which is Explorer's answer rather than Dolphin's:
+               the boxes take a slot out of the name column, and a listing that
+               grows one uninvited is a worse first impression than a feature
+               nobody finds. -->
+          <CheckBox FontSize="{DynamicResource FontSizeSmall}"
+                    IsChecked="{Binding ShowSelectionBoxes}">
+            <StackPanel>
+              <TextBlock Text="Show selection check boxes"/>
+              <TextBlock Text="A box ahead of every row in all three layouts, and one on the list heading that ticks or clears the lot. The box appears when you point at a row and stays while the row is ticked. Ctrl+click, shift+click and dragging a rectangle round the rows work the same either way."
+                         FontSize="{DynamicResource FontSizeTiny}"
+                         Foreground="{DynamicResource ViewDimText}"
+                         TextWrapping="Wrap"/>
+            </StackPanel>
+          </CheckBox>
+
+          <Border Height="1" Background="{DynamicResource SeparatorColour}"/>
+
           <TextBlock Text="Spacing"
                      FontSize="{DynamicResource FontSizeTiny}"
                      Foreground="{DynamicResource ViewDimText}"/>

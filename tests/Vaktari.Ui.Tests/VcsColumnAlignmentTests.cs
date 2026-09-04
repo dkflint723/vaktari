@@ -27,9 +27,14 @@ public sealed class VcsColumnAlignmentTests
     /// <summary>
     /// The details row's mark, told apart from the compact and tile ones by the
     /// cell it lives in rather than by an attribute the others merely happen to
-    /// omit. The compact mark docks left too — implicitly, by being its
-    /// DockPanel's first child — so selecting on DockPanel.Dock would make this
-    /// break the day somebody wrote that default out for clarity.
+    /// omit. The compact mark docks left too — implicitly, by not saying
+    /// otherwise — so selecting on DockPanel.Dock would make this break the day
+    /// somebody wrote that default out for clarity.
+    ///
+    /// It used to be described as the first child of its DockPanel, and it is
+    /// not any more: the selection box docks ahead of it when the boxes are
+    /// switched on. Position was never what identified it, which is why the
+    /// selector did not have to change.
     /// </summary>
     private static XElement Mark(XDocument doc)
         => doc.Descendants(Avalonia + "TextBlock")
