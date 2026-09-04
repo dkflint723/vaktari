@@ -2309,6 +2309,13 @@ public sealed partial class PaneViewModel : ObservableObject, IDisposable
     /// the mapping is looked up from the store rather than derived from the
     /// name — a deduplicated key like `notes.3.txt` cannot be reversed into
     /// `notes.txt` reliably, and guessing would restore the wrong file.
+    ///
+    /// **A restore onto an occupied name was completely silent.** Both bins
+    /// restore beside rather than over — <see cref="ITrashMaintenance.Restore"/>
+    /// returns the landing path for exactly that reason — and this loop threw
+    /// the answer away and reported "restored 1 item(s)". The listing on screen
+    /// is the bin, not the folder the file went to, so there was nothing
+    /// anywhere to say that the name had changed.
     /// </summary>
     [RelayCommand]
     private async Task RestoreFromTrashAsync()
@@ -2320,6 +2327,10 @@ public sealed partial class PaneViewModel : ObservableObject, IDisposable
 
         var restored = 0;
         var failed = 0;
+
+        // Where the items that could not have their own name back actually
+        // went. Empty is the ordinary case, and costs one allocation.
+        var renamed = new List<string>();
 
         // **One entry per selected row, not every entry that shares its path.**
         // The rows carry original paths, and two items in the bin can
@@ -2339,8 +2350,15 @@ public sealed partial class PaneViewModel : ObservableObject, IDisposable
         {
             try
             {
-                Trash.Restore(item.TrashName);
+                var landed = Trash.Restore(item.TrashName);
                 restored++;
+
+                // PathRules.Same rather than ==, because this decides whether
+                // to tell somebody their file came back under a different
+                // name: the platform rules for what counts as the same place
+                // are the ones that matter, and on Windows those ignore case
+                // and both separator spellings.
+                if (!PathRules.Same(landed, item.OriginalPath)) renamed.Add(landed);
             }
             catch (Exception ex)
             {
@@ -2362,9 +2380,24 @@ public sealed partial class PaneViewModel : ObservableObject, IDisposable
             _ => $"restored {restored:N0}, {failed:N0} failed",
         };
 
+        if (renamed.Count > 0) report += " — " + Landed(renamed);
+
         await RefreshAsync().ConfigureAwait(false);
         await SayAsync(report).ConfigureAwait(false);
     }
+
+    /// <summary>
+    /// What the report adds when the bin could not give an item its own name
+    /// back.
+    ///
+    /// The single case names the new leaf, because there is one thing to look
+    /// for and the person is standing in the bin rather than in the folder it
+    /// went to. Twenty of them would be a paragraph, so several are counted.
+    /// </summary>
+    private static string Landed(IReadOnlyList<string> renamed)
+        => renamed.Count == 1
+            ? $"the name was taken, so it is back as {PathRules.LeafName(renamed[0])}"
+            : $"{renamed.Count:N0} names were taken, so those are back under new ones";
 
     /// <summary>
     /// Permanently deletes everything in the trash. **Always confirmed by the

@@ -297,6 +297,13 @@ should not be trusted for compatibility yet.
 
 ### Changed
 
+- **Restoring from the bin says when your file came back under another name.**
+  Both bins restore beside an occupied name rather than over it — which is the
+  right call — and the report said only "restored 1 item(s)". The listing you
+  are looking at is the bin, not the folder the file went to, so nothing
+  anywhere told you the name had changed; you found out later, or not at all. It
+  now names the file it landed as, and counts them when several clashed at once.
+
 - **Every label reads the same way now: sentence case.** The list headings read
   "name", "type", "size" and "modified" while the menu you open on those
   headings to choose them read "Name", "Type", "Size" and "Modified" — the
