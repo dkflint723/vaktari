@@ -726,7 +726,7 @@ public partial class MainWindow : Window
             if (pane is not null)
             {
                 _ = side is Input.SideButtonAction.Back
-                    ? pane.GoBackAsync()
+                    ? pane.GoUpAsync()
                     : pane.GoForwardAsync();
             }
 
@@ -5083,9 +5083,29 @@ public partial class MainWindow : Window
                 _ = pane.OpenSelectedAsync();
                 break;
 
+            // **Backspace answered Explorer's habit and nobody else's.** It
+            // went Back through history, full stop — so somebody who learned
+            // the key in Dolphin, where it goes to the parent folder, pressed
+            // it at the bottom of a deep tree and was thrown to wherever they
+            // had been ten minutes ago. A key that does nothing is a puzzle; a
+            // key that confidently does the other thing is a wrong turn you
+            // then have to undo.
+            //
+            // A preference rather than a choice made for everybody, because
+            // both habits are real and neither is wrong. Back is the default:
+            // it is what shipped, and it is what the larger audience expects.
+            //
+            // Read at the keystroke rather than captured at startup, so the
+            // setting takes effect the moment Save is pressed. Alt+Left and
+            // Alt+Up are untouched by this and still do their own jobs either
+            // way, so flipping it costs no route.
             case Key.Back:
                 e.Handled = true;
-                _ = pane.GoBackAsync();
+
+                _ = AppSettings.Current.Navigation.BackspaceGoesUp
+                    ? pane.GoUpAsync()
+                    : pane.GoBackAsync();
+
                 break;
 
             // Rename, and rename in bulk.

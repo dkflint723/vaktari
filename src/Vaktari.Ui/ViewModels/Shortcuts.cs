@@ -20,10 +20,38 @@ public sealed record ShortcutGroup(string Name, IReadOnlyList<Shortcut> Keys);
 /// generator could describe those honestly. ShortcutListTests asserts that
 /// every gesture in MainWindow.axaml appears here, so the list cannot quietly
 /// fall behind the application.
+///
+/// **One line is not a constant, and this used to be described as though the
+/// whole sheet were.** Backspace is a preference — Back by default, up one
+/// folder when the Navigation page says so — so the sheet is built per read
+/// rather than once.
 /// </summary>
 public static class Shortcuts
 {
-    public static IReadOnlyList<ShortcutGroup> All { get; } =
+    /// <summary>
+    /// The sheet as it should read right now.
+    ///
+    /// **A property with an initializer would have printed one Backspace line
+    /// for everybody**, and Backspace is the one key here whose meaning is a
+    /// preference: it goes Back by default and up one folder when
+    /// <c>NavigationSettings.BackspaceGoesUp</c> is set. A sheet that
+    /// named the other behaviour would be teaching the wrong key at exactly
+    /// the moment somebody opened it to find out what a key does — which is
+    /// the failure this whole list exists to prevent.
+    ///
+    /// Rebuilt on each read rather than cached and invalidated: the reads are
+    /// one per F1 press and a handful in the tests, and a cache with a
+    /// subscription to <c>AppSettings.Changed</c> would be more machinery than
+    /// the thing it speeds up.
+    /// </summary>
+    public static IReadOnlyList<ShortcutGroup> All
+        => For(Settings.AppSettings.Current.Navigation.BackspaceGoesUp);
+
+    /// <summary>
+    /// The sheet under a stated setting, so a test can ask for both without
+    /// touching the process-wide settings.
+    /// </summary>
+    public static IReadOnlyList<ShortcutGroup> For(bool backspaceGoesUp) =>
     [
         new("Getting around",
         [
@@ -31,7 +59,13 @@ public static class Shortcuts
             new("Alt+→", "Forward"),
             new("Alt+↑", "Up one folder"),
             new("Alt+Home", "Home folder"),
-            new("Backspace", "Back"),
+            // Both halves named on one line, whichever way it is set: the
+            // reader is here because they pressed a key and want to know what
+            // it did, and the second clause is the only thing on the sheet
+            // that tells them the answer is theirs to change.
+            new("Backspace", backspaceGoesUp
+                ? "Up one folder — Settings, Navigation makes it Back"
+                : "Back — Settings, Navigation makes it up one folder"),
             new("F5", "Refresh"),
             new("Ctrl+L", "Type a path"),
             new("Alt+D", "Type a path"),

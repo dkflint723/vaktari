@@ -226,7 +226,7 @@ other.
 | | | | |
 |---|---|---|---|
 | `Enter` | open | `Ctrl+C` `Ctrl+X` `Ctrl+V` | copy, cut, paste |
-| `Backspace` | back | `Delete` | move to the bin |
+| `Backspace` | back, or up — a setting | `Delete` | move to the bin |
 | `Alt+←` `Alt+→` | back, forward | `Shift+Delete` | delete permanently |
 | `Alt+↑` | up one folder | `Ctrl+Z` | undo |
 | `Ctrl+A` | select everything | `F2` | rename |

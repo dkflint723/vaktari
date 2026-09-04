@@ -862,6 +862,32 @@
                      Foreground="{DynamicResource ViewDimText}"
                      TextWrapping="Wrap"/>
 
+          <TextBlock Text="Backspace"
+                     FontSize="{DynamicResource FontSizeTiny}"
+                     Foreground="{DynamicResource ViewDimText}"/>
+
+          <!-- **Backspace answered Explorer's habit and nobody else's.** It went
+               Back through history full stop, so somebody who learned the key in
+               Dolphin — where it goes to the parent folder — pressed it at the
+               bottom of a deep tree and was thrown to wherever they had been ten
+               minutes ago.
+
+               Asked as the Dolphin question so that unticked is what shipped, and
+               so that the stored value's zero is the shipped behaviour too: a key
+               absent from a settings.json written before this existed comes back
+               as false, and false has to mean Back. -->
+          <CheckBox x:Name="BackspaceChoice"
+                    FontSize="{DynamicResource FontSizeSmall}"
+                    IsChecked="{Binding BackspaceGoesUp}">
+            <StackPanel>
+              <TextBlock Text="Backspace goes up one folder"/>
+              <TextBlock Text="Off, Backspace goes back through the folders you visited, the way Explorer does. On, it goes up to the parent folder, the way Dolphin does. Alt+Left and Alt+Up keep doing those two jobs either way, and F1 says which one Backspace is currently doing. Where there is no parent — This PC, the bin, Recent, a search — it then does nothing."
+                         FontSize="{DynamicResource FontSizeTiny}"
+                         Foreground="{DynamicResource ViewDimText}"
+                         TextWrapping="Wrap"/>
+            </StackPanel>
+          </CheckBox>
+
         </StackPanel>
         </ScrollViewer>
       </TabItem>

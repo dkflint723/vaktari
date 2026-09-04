@@ -13,6 +13,19 @@ should not be trusted for compatibility yet.
 
 ### Added
 
+- **Backspace can be told to go up instead of back.** Explorer's Backspace goes
+  back through the folders you visited; Dolphin's goes up to the parent folder,
+  and Vaktari only ever did the first. So somebody who learned the key on the
+  other desktop pressed it at the bottom of a deep tree and was thrown to
+  wherever they had been ten minutes earlier — not a key that does nothing,
+  which you work out in a second, but a key that confidently does the other
+  thing. It is a preference now, on the Navigation page, and it still goes back
+  out of the box. Where there is no parent — This PC, the bin, Recent, a search
+  — turning it on makes the key do nothing at all, which is what Dolphin does
+  too. `Alt+←` and `Alt+↑` do those two jobs whichever way it is set, so
+  flipping it costs no route, and the `F1` sheet says which of the two Backspace
+  is doing at the moment you read it.
+
 - **The transfer bar can list everything a batch left behind.** It named the
   first one and counted the rest — "report.docx and 2 more were left behind" —
   which is the right length for a line sharing a bar with a progress fraction

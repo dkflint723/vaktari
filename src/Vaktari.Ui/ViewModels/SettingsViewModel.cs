@@ -163,6 +163,8 @@ public sealed partial class SettingsViewModel : ObservableObject
         _openWithSingle = current.Navigation.OpenItemsWith == ActivationClick.Single;
         _openWithDouble = current.Navigation.OpenItemsWith == ActivationClick.Double;
 
+        _backspaceGoesUp = current.Navigation.BackspaceGoesUp;
+
         var menu = current.ContextMenu;
 
         _menuCopyTo = menu.ShowCopyTo;
@@ -955,9 +957,12 @@ public sealed partial class SettingsViewModel : ObservableObject
 
     // ---- Navigation -------------------------------------------------------
     //
-    // One setting. Dolphin has no control of its own here at all — it points at
-    // System Settings — but Vaktari keeps an override because it also has to
-    // run on Windows, where there is nothing to defer to.
+    // **This said "one setting" and there are two.** Dolphin has no control of
+    // its own for the click one at all — it points at System Settings — but
+    // Vaktari keeps an override because it also has to run on Windows, where
+    // there is nothing to defer to. The second is Backspace, which is a
+    // preference for the same reason the first is: two desktops taught two
+    // different habits and neither of them is wrong.
     //
     // "Open folders during drag" (spring-loaded folders) is the other item on
     // Dolphin's page and is not built, so it is not offered.
@@ -965,6 +970,15 @@ public sealed partial class SettingsViewModel : ObservableObject
     [ObservableProperty] private bool _openWithSystem;
     [ObservableProperty] private bool _openWithSingle;
     [ObservableProperty] private bool _openWithDouble;
+
+    /// <summary>
+    /// **Backspace answered Explorer's habit and nobody else's**, and the two
+    /// habits disagree: Explorer's goes Back, Dolphin's goes up one folder.
+    /// The checkbox asks the Dolphin question so that OFF is the shipped
+    /// behaviour — the record stores the same polarity, for the reason spelled
+    /// out on the property itself.
+    /// </summary>
+    [ObservableProperty] private bool _backspaceGoesUp;
 
     // ---- Trash ------------------------------------------------------------
 
@@ -1119,6 +1133,8 @@ public sealed partial class SettingsViewModel : ObservableObject
                 OpenItemsWith = OpenWithSingle ? ActivationClick.Single
                     : OpenWithDouble ? ActivationClick.Double
                     : ActivationClick.System,
+
+                BackspaceGoesUp = BackspaceGoesUp,
             },
 
             ContextMenu = _original.ContextMenu with

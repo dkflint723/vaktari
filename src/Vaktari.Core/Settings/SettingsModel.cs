@@ -334,6 +334,28 @@ public sealed record NavigationSettings
 {
     public ActivationClick OpenItemsWith { get; init; } = ActivationClick.System;
 
+    /// <summary>
+    /// What Backspace does in a listing.
+    ///
+    /// **Two file managers taught two different habits, and Vaktari only
+    /// answered one of them.** Explorer's Backspace goes Back through history;
+    /// Dolphin's goes up to the parent folder. Vaktari hard-coded Back, so
+    /// somebody arriving from Dolphin pressed it at the bottom of a deep tree
+    /// and was thrown to wherever they had been ten minutes earlier — a
+    /// silent, confident wrong answer rather than a key that does nothing.
+    ///
+    /// Back stays the default: it is what shipped, and it is what the larger
+    /// of the two audiences expects. Alt+Left and Alt+Up keep doing their own
+    /// jobs whichever way this is set, so nobody loses a route by flipping it.
+    ///
+    /// **Named for its zero value on purpose**, like
+    /// <see cref="ViewSettings.KeepWidthAfterPanelClose"/> above: deserialization
+    /// does not run property initializers, so a key absent from a settings.json
+    /// written before this existed arrives as <c>default(bool)</c>. false is
+    /// therefore the value every upgrading install gets, and false has to mean
+    /// the shipped behaviour.
+    /// </summary>
+    public bool BackspaceGoesUp { get; init; }
 }
 
 /// <summary>
