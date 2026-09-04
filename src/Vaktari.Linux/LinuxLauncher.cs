@@ -597,6 +597,113 @@ public sealed class LinuxLauncher : IApplicationLauncher
             : [terminal.Command, .. terminal.RunArguments, pkexec, .. command];
 
     /// <summary>
+    /// The argv for doing a piece of OUR OWN work as root.
+    ///
+    /// **No terminal, which is the whole difference from
+    /// <see cref="OpenElevated"/>.** That one wraps pkexec in a terminal
+    /// because pkexec unsets DISPLAY and XAUTHORITY, so a program started
+    /// through it has no window and, without a console, nowhere to print why it
+    /// stopped. This program started with
+    /// <see cref="Core.FileSystem.ElevatedRequest.Flag"/> has nothing to show
+    /// and nothing to say: it copies or deletes what it was named and exits
+    /// with a number. Opening a terminal window over a file copy would be a
+    /// window nobody asked for, and closing it would look like cancelling.
+    ///
+    /// The authentication dialog is unaffected: polkit's agent is a session
+    /// service and puts its own prompt up wherever the session is, which is why
+    /// it never needed our terminal in the first place.
+    /// </summary>
+    internal static IReadOnlyList<string> ElevatedSelf(
+        string pkexec, string self, IReadOnlyList<string> arguments)
+        => [pkexec, self, .. arguments];
+
+    /// <summary>
+    /// pkexec dismissed is a person saying no.
+    ///
+    /// **126 and 127 are pkexec's own, not the program's**: it documents 126
+    /// for an authentication that was dismissed and 127 for being unable to run
+    /// the program at all. Only the first is an answer, so only the first
+    /// becomes null; 127 travels on as a number the caller will not recognise,
+    /// which is how "the elevated run never spoke" stays distinguishable from
+    /// "it did the work and left two behind".
+    /// </summary>
+    internal static int? Outcome(int exit) => exit == 126 ? null : exit;
+
+    /// <summary>
+    /// The start that argv is handed to.
+    ///
+    /// **UseShellExecute false, so this is an argument list and not a line
+    /// anything parses**: a file called <c>; rm -rf ~</c> is one argument here,
+    /// the same property the Windows twin gets from ArgumentList.
+    ///
+    /// Separate and internal for the same reason that twin is: starting it
+    /// raises polkit's prompt, and there is nobody at a test machine to answer
+    /// one. What can be pinned is the shape.
+    /// </summary>
+    internal static ProcessStartInfo ElevatedStart(IReadOnlyList<string> argv)
+    {
+        var info = new ProcessStartInfo(argv[0]) { UseShellExecute = false };
+
+        for (var i = 1; i < argv.Count; i++) info.ArgumentList.Add(argv[i]);
+
+        return info;
+    }
+
+    /// <summary>
+    /// Stands in for the elevated run, the way <see cref="SpawnOverride"/>
+    /// stands in for a spawn — and for the same reason twice over: this machine
+    /// has no pkexec, and even where there is one a test cannot answer a polkit
+    /// prompt.
+    /// </summary>
+    internal Func<IReadOnlyList<string>, CancellationToken, Task<int>>? ElevatedRunOverride
+    {
+        get; set;
+    }
+
+    /// <summary>
+    /// Runs this program again as root and waits for it. Null where there is no
+    /// pkexec, where the authentication was dismissed, or where it could not be
+    /// started at all.
+    /// </summary>
+    public async ValueTask<int?> RunSelfElevatedAsync(
+        IReadOnlyList<string> arguments, CancellationToken ct)
+    {
+        if (PkExec is not { } pkexec) return null;
+
+        // NOT PINNED, and it cannot be from here: Environment.ProcessPath is
+        // the running process's own path and nothing in a test can move it.
+        // It is documented as null for a process with no executable file
+        // behind it — a native host that loaded the runtime itself — and the
+        // whole of this method is about starting that file again, so there is
+        // nothing to do but decline.
+        if (Environment.ProcessPath is not { } self) return null;
+
+        var argv = ElevatedSelf(pkexec, self, arguments);
+
+        // Through Outcome, not around it. A seam that returned the finished
+        // answer left the 126-is-a-decline mapping pinned only as a pure
+        // function, with its single call site unreachable from any test.
+        if (ElevatedRunOverride is { } stand)
+            return Outcome(await stand(argv, ct).ConfigureAwait(false));
+
+        try
+        {
+            using var process = Process.Start(ElevatedStart(argv));
+
+            if (process is null) return null;
+
+            await process.WaitForExitAsync(ct).ConfigureAwait(false);
+
+            return Outcome(process.ExitCode);
+        }
+        catch (Exception e)
+        {
+            Vaktari.Core.Quiet.Swallowed("launcher", e);
+            return null;
+        }
+    }
+
+    /// <summary>
     /// The shell an elevated terminal opens: the person's own where $SHELL says
     /// so, and /bin/sh otherwise — the one path POSIX guarantees, where
     /// /bin/bash is missing on Alpine and on a good many containers.

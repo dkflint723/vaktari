@@ -1490,10 +1490,35 @@ public sealed partial class ShellViewModel : ObservableObject, IDisposable
     /// </summary>
     public string RetryLabel => Retryable is { } offer ? $"Retry {offer.Count}" : "Retry";
 
+    /// <summary>
+    /// Whether going again with administrator rights would mean anything.
+    ///
+    /// Both halves are needed and neither implies the other: the engine says
+    /// whether any of the failures were about permission at all, and the
+    /// launcher says whether this machine has a route to ask for rights — a
+    /// desktop with no pkexec has none, and a button offering one would be a
+    /// button that fails.
+    /// </summary>
+    public bool CanRetryAsAdministrator
+        => Retryable?.AsAdministrator is not null && _launcher is { CanElevate: true };
+
+    /// <summary>
+    /// Its own count, and it can be smaller than the plain retry's: a batch
+    /// that lost one file to a program holding it open and three to a protected
+    /// folder reads "Retry 4" beside "Retry 3 as administrator". Both numbers
+    /// are true, and the words are what tell them apart.
+    /// </summary>
+    public string RetryAsAdministratorLabel
+        => Retryable?.AsAdministrator is { } request
+            ? $"Retry {request.Sources.Count} as administrator"
+            : "Retry as administrator";
+
     partial void OnRetryableChanged(Core.FileSystem.RetryOffer? value)
     {
         OnPropertyChanged(nameof(CanRetryOperation));
         OnPropertyChanged(nameof(RetryLabel));
+        OnPropertyChanged(nameof(CanRetryAsAdministrator));
+        OnPropertyChanged(nameof(RetryAsAdministratorLabel));
     }
 
     /// <summary>
@@ -1532,6 +1557,39 @@ public sealed partial class ShellViewModel : ObservableObject, IDisposable
         OperationProblems = [];
 
         (_retryPane ?? ActiveTab)?.Adopt(offer.Again());
+    }
+
+    /// <summary>
+    /// The same failures, handed to a second copy of this program that the
+    /// SYSTEM has agreed to start with administrator rights.
+    ///
+    /// **Vaktari holds no rights of its own here either.** The consent dialog
+    /// is Windows' or polkit's, this process stays exactly as privileged as it
+    /// was, and a refusal ends with nothing having happened — the same
+    /// arrangement as "Run as administrator" on a file.
+    ///
+    /// The offer is taken first, as the plain retry does, so an offer still
+    /// standing cannot be pressed twice while the first run is being consented
+    /// to. The sentence is replaced rather than cleared: the consent dialog can
+    /// sit on screen for as long as somebody takes to read it, and an empty bar
+    /// underneath it says the retry did nothing.
+    /// </summary>
+    [RelayCommand]
+    private void RetryAsAdministrator()
+    {
+        if (Retryable?.AsAdministrator is not { } request
+            || _launcher is not { CanElevate: true } launcher) return;
+
+        Retryable = null;
+
+        // The list belongs to the sentence being replaced, exactly as it does
+        // for the plain retry.
+        OperationProblems = [];
+
+        OperationStatus = "waiting for administrator…";
+
+        (_retryPane ?? ActiveTab)?.Adopt(
+            Core.FileSystem.ElevatedRun.Start(launcher, request));
     }
 
     partial void OnActiveOperationChanged(IOperationHandle? value)

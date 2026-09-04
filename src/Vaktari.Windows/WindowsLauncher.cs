@@ -322,6 +322,81 @@ public sealed class WindowsLauncher : IApplicationLauncher
         }
     }
 
+    /// <summary>
+    /// How this program is started again with rights of its own: through the
+    /// same consent verb every other elevation here uses, and never through a
+    /// shell.
+    ///
+    /// **ArgumentList rather than a command string.** The runtime writes the
+    /// line with Windows' own quoting rules — including doubling the
+    /// backslashes before a closing quote, which is what a folder path ending
+    /// in a separator would otherwise break — and the process being started
+    /// reads it back with the same rules. Building the string by hand is how a
+    /// file called <c>a" b</c> becomes two arguments.
+    ///
+    /// **The running binary, by its own path**, so what the consent dialog is
+    /// about is this program and not a name resolved through PATH.
+    ///
+    /// Separate and internal because the interesting part cannot be run in a
+    /// test: <c>Process.Start</c> on this raises the consent dialog, and there
+    /// is nobody at a test machine to answer it. What CAN be pinned is the
+    /// shape — that consent is asked for, and that the arguments are an argv.
+    /// </summary>
+    internal static ProcessStartInfo ElevatedSelf(
+        string self, IReadOnlyList<string> arguments)
+    {
+        var info = new ProcessStartInfo(self)
+        {
+            UseShellExecute = true,
+            Verb = "runas",
+
+            // The executable's own folder, not the folder being looked at. The
+            // elevated side accepts only fully-qualified paths, so nothing it
+            // does depends on this — which is exactly why it should not be
+            // somewhere a caller might think it mattered.
+            WorkingDirectory = Path.GetDirectoryName(self) ?? "",
+        };
+
+        foreach (var argument in arguments) info.ArgumentList.Add(argument);
+
+        return info;
+    }
+
+    /// <summary>
+    /// Starts it, waits, and reports what it exited with.
+    ///
+    /// Declining the consent dialog raises ERROR_CANCELLED, which is a person
+    /// saying no rather than a fault — the same reading <see cref="OpenElevated"/>
+    /// already gives it — so it comes back as null and the bar clears.
+    /// </summary>
+    public async ValueTask<int?> RunSelfElevatedAsync(
+        IReadOnlyList<string> arguments, CancellationToken ct)
+    {
+        // NOT PINNED, and it cannot be from here: Environment.ProcessPath is
+        // the running process's own path and nothing in a test can move it.
+        // It is documented as null for a process with no executable file
+        // behind it — a native host that loaded the runtime itself — and the
+        // whole of this method is about starting that file again, so there is
+        // nothing to do but decline.
+        if (Environment.ProcessPath is not { } self) return null;
+
+        try
+        {
+            using var started = Process.Start(ElevatedSelf(self, arguments));
+
+            if (started is null) return null;
+
+            await started.WaitForExitAsync(ct).ConfigureAwait(false);
+
+            return started.ExitCode;
+        }
+        catch (Exception ex)
+        {
+            Quiet.Swallowed("launcher", ex);
+            return null;
+        }
+    }
+
     /// <summary>One named terminal, from the menu.</summary>
     public void OpenTerminal(string directory, TerminalOption terminal)
     {

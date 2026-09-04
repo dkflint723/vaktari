@@ -13,6 +13,46 @@ should not be trusted for compatibility yet.
 
 ### Added
 
+- **A copy or a delete refused for permission can go again as administrator.**
+  Elevation was launch-only: a file could be run as administrator and a
+  terminal opened as one, and that was all. When a copy or a delete came back
+  with *you do not have permission to copy that*, the *retry* button beside the
+  message went again as the same person who had just been refused, which fails
+  the same way every time — and the only way out was to close Vaktari and do
+  the job in an elevated Explorer or terminal. A second button now sits beside
+  that retry, carrying its own count: *Retry 3 as administrator*.
+
+  It appears only where administrator rights would actually change the answer,
+  which is not most failures. A file another program is holding open, a disk
+  with no room left, a path too long for the filesystem — none of those care
+  who you are, and a shielded button on them would only teach you to reach for
+  the consent prompt when the consent prompt is not the answer. It also appears
+  only where the machine has a way to ask: Windows always has, and a Linux
+  desktop has one where pkexec is installed, the same detection the two admin
+  entries already use.
+
+  Vaktari holds no rights of its own, here as everywhere else. It asks the
+  system to start a second copy of itself with rights, the system shows its own
+  consent dialog — Windows', or the one polkit puts up — and a refusal ends
+  with nothing having happened. That second copy is handed one verb from *copy*,
+  *move* and *delete*, one destination and a list of files, and it does that and
+  exits. There is no *run* among the verbs and nothing there reads a settings
+  file. What it will not do is overwrite: a name already taken is left alone and
+  counted as still-not-done, because "go again with rights" is not permission to
+  destroy something you never agreed to lose. It says how many it could not do,
+  though not which — a process started through Windows' consent verb has an exit
+  code and nothing else to speak with.
+
+  Two limits worth knowing. The offer reaches whole things you named, not what
+  is inside them: copy a folder that holds one file you may not read and the
+  ordinary *retry* is what you get, because the elevated side is told a
+  destination and a list of names and would work out the wrong place to put it.
+  And the flag that second copy is started with is a command line like any
+  other, so `vaktari --elevated-file-op delete <path>` permanently removes what
+  it names from any caller, elevated or not — no window, no confirmation, no
+  bin. That is not new power, since anybody who can start Vaktari can start a
+  delete, but it is a new way to spend it.
+
 - **A folder in the list can be opened where it stands.** Dolphin has had
   expandable folders for years and the list view here had no way to look inside
   anything without going into it — so comparing two files a directory apart, or

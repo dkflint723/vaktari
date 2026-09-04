@@ -365,6 +365,13 @@ public sealed class WindowsFileOperations : IFileOperations
                 // land in.
                 var failed = new List<RetryRoot>();
 
+                // Which of those were refused for want of permission, and so
+                // are the ones an administrator run could do anything about.
+                // Matched by the same string the root carries rather than by
+                // path arithmetic — both come from this loop, so there is
+                // nothing to normalise and nothing to get wrong.
+                var denied = new HashSet<string>();
+
                 foreach (var path in paths)
                 {
                     handle.Token.ThrowIfCancellationRequested();
@@ -413,6 +420,8 @@ public sealed class WindowsFileOperations : IFileOperations
                         handle.ItemFailed(path, ex);
 
                         failed.Add(new RetryRoot(path, path, Directory.Exists(path)));
+
+                        if (ex is UnauthorizedAccessException) denied.Add(path);
                     }
                 }
 
@@ -420,7 +429,9 @@ public sealed class WindowsFileOperations : IFileOperations
                 if (RetryRoots.Outermost(failed) is { Count: > 0 } worthRetrying)
                     handle.Retry = new RetryOffer(
                         worthRetrying.Count,
-                        () => Delete([.. worthRetrying.Select(r => r.Source)]));
+                        () => Delete([.. worthRetrying.Select(r => r.Source)]),
+                        RetryRoots.Administrator(
+                            ElevatedVerb.Delete, null, worthRetrying, denied));
 
                 handle.Complete();
             }
@@ -697,6 +708,13 @@ public sealed class WindowsFileOperations : IFileOperations
                 // least often fixes anyway.
                 var failed = new List<RetryRoot>();
 
+                // Which of those were refused for want of permission, and so
+                // are the ones an administrator run could do anything about.
+                // Matched by the same string the root carries rather than by
+                // path arithmetic — both come from the catch below, so there is
+                // nothing to normalise and nothing to get wrong.
+                var denied = new HashSet<string>();
+
                 // On the first pass a root goes to destination + its own name;
                 // on a retry it goes back to wherever the failed run decided.
                 var roots = retrying is { } again
@@ -929,6 +947,8 @@ public sealed class WindowsFileOperations : IFileOperations
                         // the recipe carries one.
                         failed.Add(new RetryRoot(
                             item.Source, target, item.Kind == ItemKind.Directory));
+
+                        if (ex is UnauthorizedAccessException) denied.Add(item.Source);
                     }
 
                     handle.ItemFinished();
@@ -978,7 +998,10 @@ public sealed class WindowsFileOperations : IFileOperations
                 if (RetryRoots.Outermost(failed) is { Count: > 0 } worthRetrying)
                     handle.Retry = new RetryOffer(
                         worthRetrying.Count,
-                        () => Run(sources, destination, onConflict, move, worthRetrying));
+                        () => Run(sources, destination, onConflict, move, worthRetrying),
+                        RetryRoots.Administrator(
+                            move ? ElevatedVerb.Move : ElevatedVerb.Copy,
+                            destination, worthRetrying, denied));
 
                 handle.Complete();
             }

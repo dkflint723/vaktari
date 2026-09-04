@@ -217,6 +217,11 @@ public sealed class OperationBarTests : OwnedViewModels
     /// throws the sentence away, and the rightmost slot is where a hand lands
     /// by habit. The two never coexist with pause and cancel — one pair is
     /// while it runs, the other after.
+    ///
+    /// And "retry as administrator" sits to the left of plain retry, by the
+    /// same argument one step on: of the two ways to go again, the one that
+    /// asks the system for rights is not the one a habitual hand should find
+    /// first.
     /// </summary>
     [AvaloniaFact]
     public void Pause_sits_to_the_left_of_cancel()
@@ -234,6 +239,7 @@ public sealed class OperationBarTests : OwnedViewModels
         Assert.Equal(
             ["{Binding DismissOperationStatusCommand}",
              "{Binding RetryOperationCommand}",
+             "{Binding RetryAsAdministratorCommand}",
              "{Binding CancelOperationCommand}",
              "{Binding PauseOperationCommand}"],
             commands);

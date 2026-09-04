@@ -145,6 +145,32 @@ public interface IApplicationLauncher
     void OpenElevatedTerminal(string directory, TerminalOption? terminal = null) { }
 
     /// <summary>
+    /// Starts THIS program again with these arguments, elevated, and waits for
+    /// it to finish.
+    ///
+    /// **This program and no other**, which is the whole reason it is not
+    /// <see cref="OpenElevated"/> with a path. That one hands the system a file
+    /// the person pointed at and forgets about it; this one is how the file
+    /// manager gets work done with rights it does not have, so what is started
+    /// has to be the binary already running and the arguments have to be an
+    /// argv rather than anything a shell would look at.
+    ///
+    /// Waits, unlike every other launch here, because the answer matters: the
+    /// exit code is the only thing an elevated file operation can say back
+    /// through Windows' consent verb, which forbids redirecting its output.
+    ///
+    /// Null means it never ran at all — declined at the system's prompt, or no
+    /// elevation route on this machine. A decline is an answer and not a
+    /// failure, which is why it is not an exception and not a code.
+    ///
+    /// False-by-default in step with <see cref="CanElevate"/>: a platform that
+    /// cannot elevate answers null and the offer is never made.
+    /// </summary>
+    ValueTask<int?> RunSelfElevatedAsync(
+        IReadOnlyList<string> arguments, CancellationToken ct)
+        => ValueTask.FromResult<int?>(null);
+
+    /// <summary>
     /// Whether starting THIS file elevated would do anything.
     ///
     /// **The question is the platform's, and it was being answered in the view

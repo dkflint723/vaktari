@@ -78,6 +78,70 @@ internal sealed class Program
     }
 
     /// <summary>
+    /// Null for an ordinary launch; the exit code when this command line was an
+    /// elevated file operation and it has now been done.
+    ///
+    /// Separate from <see cref="Main"/> so it can be run for real in a test —
+    /// unelevated, which is exactly as much of this route as a test can prove.
+    /// Everything after it, the consent dialog and the rights that follow, is
+    /// the system's and cannot be answered by anything automated.
+    /// </summary>
+    internal static int? ElevatedExitCode(string[] args)
+        => Vaktari.Core.FileSystem.ElevatedRequest.Parse(args) is { } request
+            ? RunElevatedFileOp(request)
+            : null;
+
+    /// <summary>
+    /// Does one file operation with the rights this process was started with,
+    /// and answers with a number.
+    ///
+    /// **The engine, not a second implementation.** Everything about how a copy
+    /// behaves — what it does about a collision, which paths it refuses, how it
+    /// counts what it could not do — lives in the platform's file operations,
+    /// and an elevated copy that answered any of those differently would be a
+    /// second file manager with the same name.
+    ///
+    /// **The engine and nothing else.** Not the platform: building one starts
+    /// the places watcher, probes for git and opens the state directory, all as
+    /// root, none of which a copy needs. The bin is left null on purpose too —
+    /// the elevated side never trashes, only deletes, so there is nothing to
+    /// read the Recycle Bin for.
+    ///
+    /// Never throws. This runs where nobody can see a stack trace, and an
+    /// unhandled exception here would exit with a number the caller reads as a
+    /// count of files.
+    /// </summary>
+    private static int RunElevatedFileOp(Vaktari.Core.FileSystem.ElevatedRequest request)
+    {
+        try
+        {
+#if VAKTARI_WINDOWS
+            if (!OperatingSystem.IsWindows())
+                return Vaktari.Core.FileSystem.ElevatedRequest.Refused;
+
+            Vaktari.Core.FileSystem.IFileOperations operations =
+                new Vaktari.Windows.WindowsFileOperations();
+#else
+            if (!OperatingSystem.IsLinux())
+                return Vaktari.Core.FileSystem.ElevatedRequest.Refused;
+
+            Vaktari.Core.FileSystem.IFileOperations operations =
+                new Vaktari.Linux.LinuxFileOperations();
+#endif
+
+            return Vaktari.Core.FileSystem.ElevatedFileOp
+                .RunAsync(operations, request)
+                .GetAwaiter().GetResult();
+        }
+        catch (Exception ex)
+        {
+            Console.Error.WriteLine($"[vaktari] elevated file operation: {ex.Message}");
+
+            return Vaktari.Core.FileSystem.ElevatedRequest.Refused;
+        }
+    }
+
+    /// <summary>
     /// The name the Windows installer watches for, so it can tell that Vaktari
     /// is running before it starts replacing a 28 MB executable underneath it.
     ///
@@ -164,6 +228,22 @@ internal sealed class Program
         if (args.Any(a => a == RestoreFileManagerFlag))
         {
             Console.WriteLine(RestoreFileManager());
+            return;
+        }
+
+        // **This is the elevated process.** Answered in the same place and for
+        // the same reasons as the flag above: it runs with no display attached
+        // — pkexec unsets DISPLAY outright — and it must depend on no window,
+        // no settings file and no theme. It also must not touch this
+        // program's own state directory, which as root would leave files in it
+        // that the person can no longer write.
+        //
+        // Before the instance mutex too: this copy is not a running file
+        // manager and has no business being one as far as the installer is
+        // concerned.
+        if (ElevatedExitCode(args) is { } code)
+        {
+            Environment.ExitCode = code;
             return;
         }
 
