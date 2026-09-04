@@ -1500,11 +1500,14 @@
                      draw the headings.** The RowGroup header is part of the
                      details row template; grid and compact lay out fixed-size
                      cells in a wrap panel, where a heading would sit inside a
-                     cell rather than break the run. Grouping there still
-                     reordered the tiles, silently and with nothing to say what
-                     the runs were — the menu looked like it had done nothing.
-                     Headings for the other two layouts are a real feature and a
-                     different panel, not a gate. -->
+                     cell rather than break the run. Hiding the entry was half
+                     the answer: the pane also IGNORES a grouping outside Details
+                     now — see EffectiveGroupBy — because hiding the menu only
+                     stopped it being CHANGED there, and left one chosen in
+                     Details reordering the tiles into invisible runs with
+                     nothing on screen left to clear it. Headings for the other
+                     two layouts are a real feature and a different panel, not a
+                     gate. -->
                 <MenuItem Header="Group by"
                                       IsVisible="{Binding ActiveTab.IsDetailsView}">
                                 <MenuItem Header="None" ToggleType="Radio"

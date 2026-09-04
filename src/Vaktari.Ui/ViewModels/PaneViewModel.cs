@@ -1731,6 +1731,35 @@ public sealed partial class PaneViewModel : ObservableObject, IDisposable
 
         CarrySelection(oldValue, newValue);
 
+        // **The band order survived the switch that hid the menu.** Ignoring the
+        // grouping is only half of it: the rows were already sorted into bands
+        // when the view changed and nothing re-sorted them, so the tiles came up
+        // in date order with no headings — exactly the state hiding the menu was
+        // meant to prevent — and the row that would have cleared it was not on
+        // screen to click.
+        //
+        // After CarrySelection rather than before: the resort below keeps the
+        // selection by reading the collection belonging to the layout on screen,
+        // which is now the INCOMING one, and that holds nothing until
+        // CarrySelection has filled it.
+        //
+        // Only when the switch crosses the details boundary, because that is the
+        // only move that changes what EffectiveGroupBy answers — grid to compact
+        // is ungrouped on both sides. Suppressed during a restore for the reason
+        // NavigateAsync gives where it sets the flag: ApplyFolderView assigns
+        // View, Sort and GroupBy against the PREVIOUS folder's rows, mid-load.
+        if (!_suppressReload
+            && GroupBy != GroupMode.None
+            && (oldValue == ViewMode.Details) != (newValue == ViewMode.Details))
+        {
+            // **Through the filter when there is one.** ResortInPlace rebuilds
+            // Entries from `_all`, which is the UNFILTERED master list, so a
+            // bare resort behind a filter puts every hidden row back —
+            // switching to tiles in a filtered, grouped folder showed the whole
+            // folder. The same pair the load path uses when a listing settles.
+            if (FilterText.Length > 0) ApplyFilter(); else ResortInPlace();
+        }
+
         OnPropertyChanged(nameof(IsDetailsView));
         OnPropertyChanged(nameof(IsGridView));
         OnPropertyChanged(nameof(IsCompactView));
@@ -3659,13 +3688,19 @@ public sealed partial class PaneViewModel : ObservableObject, IDisposable
     {
         _groupHeaders.Clear();
 
-        if (GroupBy != GroupMode.None)
+        // The LISTING's grouping rather than the pane's — see EffectiveGroupBy.
+        // A layout that cannot draw a heading must not be left holding a map of
+        // them either: the map is what a row asks, and a stale one is how a
+        // heading outlives the layout it belonged to.
+        var grouping = EffectiveGroupBy;
+
+        if (grouping != GroupMode.None)
         {
             string? previous = null;
 
             foreach (var entry in ordered)
             {
-                var label = Grouping.Label(entry, GroupBy, _groupNow);
+                var label = Grouping.Label(entry, grouping, _groupNow);
 
                 // Only the first row of a run carries the header; the rest are
                 // plain, which is what makes it read as a group rather than a

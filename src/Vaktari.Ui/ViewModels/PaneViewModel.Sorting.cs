@@ -122,9 +122,15 @@ public sealed partial class PaneViewModel
         // Grouping by Size or Kind is unaffected: both give folders a band of
         // their own ("Folders"), so they still sort ahead of everything else by
         // the group key itself rather than by the tie-break below.
-        if (GroupBy != GroupMode.None)
+        //
+        // The LISTING's grouping rather than the pane's: grid and compact cannot
+        // draw a heading, so they must not carry the band order either. See
+        // EffectiveGroupBy.
+        var grouping = EffectiveGroupBy;
+
+        if (grouping != GroupMode.None)
         {
-            var group = Grouping.CompareGroups(a, b, GroupBy, _groupNow);
+            var group = Grouping.CompareGroups(a, b, grouping, _groupNow);
 
             // **Descending flips the bands as well as the rows inside them.**
             // It reversed the rows and left the band order alone, so a

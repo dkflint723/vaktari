@@ -402,11 +402,15 @@ should not be trusted for compatibility yet.
   deleted lately. Each listing says its own line now: "the Recycle Bin is
   empty", "no drives found", "no files opened lately".
 
-- **Group by is offered only in the details view.** Choosing a grouping in the
-  icon or compact view reordered the tiles and drew no headings, so the runs it
-  made were invisible and the menu looked as though it had done nothing.
-  Headings for those two layouts are a feature in their own right rather than a
-  gate, so the entry is hidden there until they can draw them.
+- **Group by applies where it can be seen, and only there.** Choosing a
+  grouping in the icon or compact view reordered the tiles and drew no headings,
+  so the runs it made were invisible and the menu looked as though it had done
+  nothing. The entry is hidden in those two layouts now — and a grouping chosen
+  in the details view is ignored while you are in them, rather than going on
+  reordering the tiles behind a menu that is no longer there to clear it. It is
+  ignored, not forgotten: the bands and their headings come back the moment you
+  return to details. Headings for those two layouts are a feature in their own
+  right rather than a gate.
 
 - **The properties window is titled with what it describes.** Every one of them
   was called "properties", so opening three files side by side to compare them
