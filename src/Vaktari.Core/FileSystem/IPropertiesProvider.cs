@@ -55,4 +55,28 @@ public interface IPropertiesProvider
     /// properties there.
     /// </summary>
     bool ShowSystemDialog(string path) => false;
+
+    /// <summary>
+    /// What a platform can say about a WHOLE selection, for the window that
+    /// opens when more than one row is asked about.
+    ///
+    /// **A selection's window had nothing below the size line.** One item fills
+    /// that half from <see cref="FileDetails.Groups"/> — the attribute set on
+    /// Windows, the mode and the owner on Linux — and a selection asked for no
+    /// such thing, so a person who selected twenty files got a count, a total,
+    /// and then empty space. On Windows that is the whole of the answer: the
+    /// shell's own sheet is declined for more than one path.
+    ///
+    /// Deliberately not <see cref="GetAsync"/> in a loop, which is the obvious
+    /// way to fill this. That call is per-item expensive on purpose — the Linux
+    /// provider spawns `stat` for the owner on every path, and `xdg-mime` on
+    /// top of that for every file its in-process glob table cannot name — so a
+    /// selection of twenty is twenty processes at least and a thousand is a
+    /// thousand. A platform answers here only with what it can read cheaply
+    /// about every path, and one with nothing cheap to say stays silent and
+    /// leaves the window exactly as it was.
+    /// </summary>
+    ValueTask<IReadOnlyList<PropertyGroup>> GetSharedAsync(
+        IReadOnlyList<string> paths, CancellationToken ct)
+        => ValueTask.FromResult<IReadOnlyList<PropertyGroup>>([]);
 }

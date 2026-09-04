@@ -91,29 +91,106 @@ public sealed class WindowsPropertiesProvider : IPropertiesProvider
         return $"{extension.TrimStart('.').ToUpperInvariant()} file";
     }
 
+    /// <summary>
+    /// The flags both attribute panels list, in the order the single-item panel
+    /// has always listed them. One table rather than two: a single-item panel
+    /// and a selection's summary listing different flags is the same drift this
+    /// file already refuses where the Type column and the "kind" row share one
+    /// predicate.
+    /// </summary>
+    private static readonly (string Label, FileAttributes Flag)[] AlwaysListed =
+    [
+        ("Read-only", FileAttributes.ReadOnly),
+        ("Hidden", FileAttributes.Hidden),
+        ("System", FileAttributes.System),
+        ("Archive", FileAttributes.Archive),
+    ];
+
+    /// <summary>Listed only where something carries them. Both are unusual
+    /// enough that a "no" row for every ordinary file would be noise rather than
+    /// information.</summary>
+    private static readonly (string Label, FileAttributes Flag)[] ListedWhenSet =
+    [
+        ("Encrypted", FileAttributes.Encrypted),
+        ("Reparse point", FileAttributes.ReparsePoint),
+    ];
+
     private static IReadOnlyList<PropertyGroup> BuildGroups(FileAttributes attributes)
     {
         if (attributes == FileAttributes.None) return [];
 
-        var rows = new List<PropertyRow>(6);
+        var rows = new List<PropertyRow>(AlwaysListed.Length + ListedWhenSet.Length);
 
-        void Row(string label, FileAttributes flag) =>
+        foreach (var (label, flag) in AlwaysListed)
             rows.Add(new PropertyRow(label, (attributes & flag) != 0 ? "yes" : "no"));
 
-        Row("Read-only", FileAttributes.ReadOnly);
-        Row("Hidden", FileAttributes.Hidden);
-        Row("System", FileAttributes.System);
-        Row("Archive", FileAttributes.Archive);
-
-        // Only when set. Both are unusual enough that a "no" row for every
-        // ordinary file would be noise rather than information.
-        if ((attributes & FileAttributes.Encrypted) != 0)
-            rows.Add(new PropertyRow("Encrypted", "yes"));
-
-        if ((attributes & FileAttributes.ReparsePoint) != 0)
-            rows.Add(new PropertyRow("Reparse point", "yes"));
+        foreach (var (label, flag) in ListedWhenSet)
+            if ((attributes & flag) != 0) rows.Add(new PropertyRow(label, "yes"));
 
         return [new PropertyGroup("attributes", rows)];
+    }
+
+    /// <summary>
+    /// The attribute set across a whole selection: what the items say where they
+    /// agree, and "mixed" where they do not.
+    ///
+    /// **A selection's properties window stopped at the size line.** The shell's
+    /// own sheet is declined for more than one path — SHMultiFileProperties
+    /// wants an ITEMIDLIST array rather than paths and shows a reduced sheet —
+    /// so Vaktari's window is everything a Windows user gets for a selection,
+    /// and it showed a count and a total where the shell shows read-only and
+    /// hidden. "Which of these forty are read-only" is a question that cannot be
+    /// asked forty single-item sheets.
+    ///
+    /// One attribute read per path and nothing else: no link resolution, no
+    /// kind, no length. This runs while the window is opening, on the same
+    /// thread as the count beside it, and a selection can be a whole folder.
+    /// </summary>
+    public ValueTask<IReadOnlyList<PropertyGroup>> GetSharedAsync(
+        IReadOnlyList<string> paths, CancellationToken ct)
+    {
+        var read = new List<FileAttributes>(paths.Count);
+
+        foreach (var path in paths)
+        {
+            // A path that has gone, or will not answer, is left out rather than
+            // counted as a "no". GetAttributes rather than FileInfo.Attributes
+            // for exactly that reason: the property answers for a file that is
+            // not there with -1 — every flag set — and a row invented out of
+            // that is the fault the single-item sheet is already gated against.
+            // This call throws instead, which is the answer worth having.
+            try { read.Add(File.GetAttributes(path)); }
+            catch (Exception e) when (e is IOException or UnauthorizedAccessException)
+            {
+            }
+        }
+
+        if (read.Count == 0) return ValueTask.FromResult<IReadOnlyList<PropertyGroup>>([]);
+
+        int Carrying(FileAttributes flag) => read.Count(a => (a & flag) != 0);
+
+        var rows = new List<PropertyRow>(AlwaysListed.Length + ListedWhenSet.Length);
+
+        // "yes" where all of them carry it, "no" where none does, and "mixed" —
+        // the answer a single-item sheet never has to give.
+        foreach (var (label, flag) in AlwaysListed)
+        {
+            var carrying = Carrying(flag);
+
+            rows.Add(new PropertyRow(
+                label, carrying == 0 ? "no" : carrying == read.Count ? "yes" : "mixed"));
+        }
+
+        foreach (var (label, flag) in ListedWhenSet)
+        {
+            var carrying = Carrying(flag);
+
+            if (carrying > 0)
+                rows.Add(new PropertyRow(label, carrying == read.Count ? "yes" : "mixed"));
+        }
+
+        return ValueTask.FromResult<IReadOnlyList<PropertyGroup>>(
+            [new PropertyGroup("attributes", rows)]);
     }
 
     /// <summary>

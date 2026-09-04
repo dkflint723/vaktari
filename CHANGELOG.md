@@ -492,6 +492,15 @@ should not be trusted for compatibility yet.
   drives that work; opening one now says "that network drive is not connected"
   rather than repeating the path back inside a Win32 sentence.
 
+- **Properties for several files at once says what they have in common.** Only
+  one item at a time gets the shell's own sheet on Windows — the multi-file one
+  wants an item-ID list rather than paths, and shows less than Vaktari's window
+  does — so a selection has always been answered here, and here the panel that
+  every single file gets was missing: the window named a count and a total and
+  then stopped. It now lists the same attributes for a selection as for one
+  file, reading *mixed* where the items disagree, which is the thing a
+  selection is opened to find out.
+
 - **Windows search finds links by name.** A junction or symbolic link was the
   one name it could never return: the walk skipped reparse points, and that
   setting drops the entry from the results as well as stopping the recursion —

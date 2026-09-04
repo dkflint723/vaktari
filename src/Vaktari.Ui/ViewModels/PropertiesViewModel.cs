@@ -291,6 +291,19 @@ public sealed partial class PropertiesViewModel : ObservableObject
             else if (File.Exists(path)) { files++; total += new FileInfo(path).Length; }
         }
 
+        // **The lower half of this window was empty for a selection.** One item
+        // fills it from the platform's own groups and a selection asked for
+        // none — so the window that Windows falls back to for a multi-select,
+        // having declined the shell's sheet, showed a count and a total and
+        // then nothing where that sheet shows read-only and hidden.
+        //
+        // One call for the whole list rather than GetAsync per path: that call
+        // is per-item expensive by design, and looping it would spawn a `stat`
+        // per file on Linux — and an `xdg-mime` on top for every one the glob
+        // table cannot name — to fill one panel.
+        var shared = await _provider.GetSharedAsync(_paths, CancellationToken.None)
+                                    .ConfigureAwait(false);
+
         await Dispatcher.UIThread.InvokeAsync(() =>
         {
             Title = $"{_paths.Count} items";
@@ -303,6 +316,8 @@ public sealed partial class PropertiesViewModel : ObservableObject
                 : $"{ByteSize.Format(total)} in {files} file(s)";
 
             CanMeasure = folders > 0;
+
+            foreach (var group in shared) Groups.Add(group);
 
             if (ShouldMeasureNow) _ = MeasureAsync();
         });
