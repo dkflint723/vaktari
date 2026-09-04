@@ -2947,7 +2947,7 @@ public sealed partial class PaneViewModel : ObservableObject, IDisposable
     partial void OnIsActiveChanged(bool value)
     {
         if (value && !IsLoaded && !IsLoading && !string.IsNullOrEmpty(CurrentPath))
-            Detached(LoadAsync(CurrentPath), "load");
+            Detached(LoadRestoredAsync(CurrentPath), "load");
     }
 
     /// <summary>
@@ -3025,13 +3025,122 @@ public sealed partial class PaneViewModel : ObservableObject, IDisposable
 
     /// <summary>
     /// Load now if the pane was restored but never activated into a load.
-    /// Start() assigns ActiveTab while change notifications are suppressed, so
-    /// the usual activate-triggers-load path doesn't fire for it.
+    ///
+    /// **Assigning ActiveTab DOES reach the activate handler**, contrary to what
+    /// this said: PaneGroupViewModel.OnActiveTabChanged sets IsActive on the
+    /// incoming tab unconditionally, and ShellViewModel's _restoring flag guards
+    /// only MarkDirty. Measured on a real group — assigning ActiveTab to a
+    /// restored, unloaded pane starts exactly one load, and this call then finds
+    /// IsLoading already true and does nothing. It is kept as the guard for a
+    /// restored tab that reaches neither door, and the two are kept from both
+    /// running by LoadRestoredAsync claiming IsLoading before its first await.
     /// </summary>
     public void RefreshIfUnloaded()
     {
         if (!IsLoaded && !IsLoading && !string.IsNullOrEmpty(CurrentPath))
-            Detached(LoadAsync(CurrentPath), "load");
+            Detached(LoadRestoredAsync(CurrentPath), "load");
+    }
+
+    /// <summary>
+    /// How long a restored tab's folder has to say it is there before the tab
+    /// is called dead.
+    ///
+    /// Short, because it is not the listing — it is one existence check. Two
+    /// seconds is a judgement and not a measurement; the test pins only that the
+    /// probe is bounded and under ten, so the number can be retuned here. A
+    /// share that
+    /// needs longer than this loses nothing but the automatic load: the
+    /// sentence is on screen and any navigation to the path, including F5, goes
+    /// straight to the listing without a probe.
+    /// </summary>
+    private static readonly TimeSpan ReachabilityProbe = TimeSpan.FromSeconds(2);
+
+    /// <summary>
+    /// What a restored tab says when its folder does not answer.
+    ///
+    /// **Both what happened, not one of them.** The probe cannot tell a folder
+    /// that has been deleted from a server that is not answering — Directory
+    /// .Exists returns false for the first and the timeout returns false for
+    /// the second — so the sentence claims only what was measured: the path
+    /// could not be reached. Failures.Describe has separate sentences for
+    /// both, and it earns them from an exception this path never gets.
+    /// </summary>
+    private const string Unreachable = "that folder could not be reached";
+
+    /// <summary>
+    /// The first load of a tab that session restore left standing, which asks
+    /// whether the path answers at all before enumerating it.
+    ///
+    /// **IsReachableAsync was implemented on both providers and called from
+    /// nowhere**, and its own doc comment claimed this caller existed. Both
+    /// doors into a restored tab's first load — this and OnIsActiveChanged —
+    /// went straight to LoadAsync, so a restored tab whose folder had gone
+    /// entered the listing and stayed in it: IsLoading true, LoadError empty,
+    /// and nothing on screen separating "still reading" from "never going to
+    /// work" until the enumeration itself failed. How long that takes on a
+    /// share whose server has gone away is the providers' own comments to
+    /// state, and both of them do; what is measured here is that the pane had
+    /// no answer of its own in the meantime.
+    ///
+    /// Only on this path, not in LoadListingAsync. Every other navigation is
+    /// somebody asking for a specific folder right now, and a probe in front of
+    /// those would put an extra existence check on the front of every folder
+    /// open for a message the catch block already produces from the real error.
+    /// A restored tab is the opposite case: nobody asked for it just now, it
+    /// was simply where the window was last time.
+    /// </summary>
+    private async Task LoadRestoredAsync(string path)
+    {
+        // No empty-path guard: both callers already have one, and a second
+        // copy here would be a branch no test could ever reach.
+
+        // **Claimed before the first await.** Both callers can fire for one
+        // tab — ReopenClosedTab assigns ActiveTab, which reaches
+        // OnIsActiveChanged, and then calls RefreshIfUnloaded — and until this
+        // method existed the second one found IsLoading already true, because
+        // LoadListingAsync sets it before it yields. A probe in front of that
+        // moved the first await earlier, so without this both would run.
+        IsLoading = true;
+
+        // Read before the probe and again after it, the way every other
+        // resumption in this file checks it: a navigation while the probe is in
+        // flight has already taken the pane somewhere else, and this
+        // continuation must not drag it back to a path nobody is on any more.
+        var generation = _generation;
+
+        // Virtual listings are not folders, and the probe is Directory.Exists
+        // on both platforms. Measured: Directory.Exists answers false for
+        // "vaktari:trash", "vaktari:computer" and "vaktari:recent-files", so
+        // probing one would report the bin, This PC or either recent listing
+        // unreachable, so clicking a restored bin, This PC or recent tab would
+        // put that sentence up in place of the listing every single time. The
+        // sidebar row would still work, because it navigates and navigation
+        // never probes — which is a worse bug for being half-hidden.
+        if (!VirtualPaths.IsVirtual(path))
+        {
+            var reachable = await _fs
+                .IsReachableAsync(path, ReachabilityProbe, CancellationToken.None)
+                .ConfigureAwait(true);
+
+            if (generation != _generation) return;
+
+            if (!reachable)
+            {
+                // Said in the listing and in the status bar, exactly as the
+                // catch in LoadListingAsync says its sentence in both: the bar
+                // describes the ACTIVE pane, so the other half of a split would
+                // otherwise report nothing at all.
+                LoadError = Unreachable;
+                Status = Unreachable;
+
+                // IsLoaded stays false, so switching away and back probes
+                // again — which is the retry, and costs the same two seconds.
+                IsLoading = false;
+                return;
+            }
+        }
+
+        await LoadAsync(path).ConfigureAwait(true);
     }
 
     public TabState ToTabState() => new()

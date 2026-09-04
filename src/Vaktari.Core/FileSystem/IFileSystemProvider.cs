@@ -79,8 +79,18 @@ public interface IFileSystemProvider
 
     /// <summary>
     /// Whether the path is reachable, without throwing and without blocking
-    /// longer than <paramref name="timeout"/>. Used by lazy session restore to
-    /// mark a tab dead instead of hanging on it.
+    /// longer than <paramref name="timeout"/>.
+    ///
+    /// Called by <c>PaneViewModel.LoadRestoredAsync</c> — the first load of a
+    /// tab session restore left standing — to mark that tab dead instead of
+    /// leaving it in a listing that never finishes. Nothing else calls it, and
+    /// nothing else should: every other navigation is somebody asking for a
+    /// folder right now, and the error from the listing itself says more than a
+    /// bool can.
+    ///
+    /// **False means "not now", never "not ever".** A timeout and a folder that
+    /// has been deleted both answer false, so a caller cannot tell them apart
+    /// and must not word its message as though it could.
     /// </summary>
     ValueTask<bool> IsReachableAsync(string path, TimeSpan timeout, CancellationToken ct);
 

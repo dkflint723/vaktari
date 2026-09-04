@@ -600,6 +600,18 @@ should not be trusted for compatibility yet.
 
 ### Fixed
 
+- **A restored tab whose folder has gone says so instead of spinning.** Tabs
+  come back from the last session without being read, and the first one you
+  click is read then. If that folder was on a share whose server has gone away,
+  the tab entered the listing and stayed in it — no message, no error, nothing
+  separating "still reading" from "never going to work" until the read itself
+  gave up. It now asks the folder whether it is there at all, with two seconds
+  to answer, and puts "that folder could not be reached" in the tab and the
+  status bar if it is not. The sentence says only that, because an answer of no
+  cannot tell a deleted folder from a silent server. Switching away and back
+  asks again, and typing the path or pressing F5 goes straight to the folder
+  without asking.
+
 - **A drive a transfer is still writing to is not ejected.** Eject walked every
   tab off the drive and called the ejector regardless of what Vaktari itself had
   in flight — and the two platforms then fail differently, neither of them well:
