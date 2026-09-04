@@ -492,6 +492,15 @@ should not be trusted for compatibility yet.
   drives that work; opening one now says "that network drive is not connected"
   rather than repeating the path back inside a Win32 sentence.
 
+- **Listing rows say their own name to a screen reader.** Everything around
+  the listing was named — the breadcrumbs, the four sort headers, the sidebar
+  places and their group headings — and the rows, which are most of the window,
+  were not: a row with no name of its own and a template made of several pieces
+  falls back to the item, so every one of them read out ten fields of the entry
+  record with the filename second. All three layouts now hand over the name as
+  drawn, saying "folder" and "link" where a row carries those facts only in
+  artwork.
+
 - **Properties for several files at once says what they have in common.** Only
   one item at a time gets the shell's own sheet on Windows — the multi-file one
   wants an item-ID list rather than paths, and shows less than Vaktari's window

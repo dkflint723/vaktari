@@ -76,6 +76,51 @@ public static class FileConverters
                 ? entry.Name
                 : null);
 
+    /// <summary>
+    /// What one listing row is called, for anything reading the window rather
+    /// than looking at it.
+    ///
+    /// **A row read out as the record's ToString.** With no name of its own and
+    /// a template that is not one piece of text, a container falls back to the
+    /// item, so every row announced "FileEntry { Name = report.txt, FullPath =
+    /// /a/report.txt, Length = 1, LastWriteTime = ..., IsDirectory = False, ... }"
+    /// — ten fields, the filename second. Everything AROUND the listing was
+    /// named: the breadcrumbs, the four sort headers, the sidebar places and
+    /// their group headings. The rows, which are most of the window, were not.
+    ///
+    /// The DISPLAY name, so what is read matches what is drawn: a Windows
+    /// shortcut loses its .lnk in both places or in neither. Deliberately not
+    /// NameTip, which is a tooltip and is gated on the ShowTooltips setting —
+    /// switching tooltips off is a preference about the mouse and must not take
+    /// a row's name away with it.
+    ///
+    /// Folder and link are said because a row carries neither fact in text: the
+    /// folder icon and the corner link emblem are both artwork, and the type
+    /// column that would say "folder" is optional and exists in one layout of
+    /// the three.
+    ///
+    /// Null rather than "" when there is no name to give. Measured: a row whose
+    /// AutomationProperties.Name is "" reads as nothing at all, while a row with
+    /// no name at least falls back to the item. FileKind.DisplayName answers ""
+    /// for an entry with no name, so the guard keeps that from silencing a row
+    /// outright.
+    ///
+    /// Not about an unbound container: a null DataContext never reaches this
+    /// lambda at all, because FuncValueConverter answers UnsetValue for a null
+    /// against a value-type input. Measured too.
+    /// </summary>
+    public static readonly IValueConverter RowName =
+        new FuncValueConverter<FileEntry, string?>(entry =>
+        {
+            var name = FileKind.DisplayName(entry);
+
+            if (string.IsNullOrEmpty(name)) return null;
+
+            if (entry.IsDirectory) name += ", folder";
+
+            return entry.IsSymlink ? name + ", link" : name;
+        });
+
     public static readonly IValueConverter ParentPath =
         new FuncValueConverter<FileEntry, string>(entry =>
         {

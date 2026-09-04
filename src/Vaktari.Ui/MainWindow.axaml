@@ -1966,9 +1966,27 @@
                        Focusable="True"
                        IsVisible="{Binding IsDetailsView}" SelectionMode="Multiple" Background="Transparent" Padding="0">
                 <ListBox.Styles>
-                  <Style Selector="ListBoxItem">
+                  <!-- **A row read out as the record's ToString.** A container
+                       with no name of its own and a template that is not one
+                       piece of text falls back to the item, so every row
+                       announced "FileEntry { Name = report.txt, FullPath =
+                       /a/report.txt, ..., IsDirectory = False, ... }".
+                       Everything around the listing was named — the
+                       breadcrumbs, the four sort headers, the sidebar places
+                       and their group headings — and the rows were not.
+
+                       On the CONTAINER rather than on a cell inside the
+                       template: the container is what a reader lands on when
+                       the selection moves, and a row is several TextBlocks and
+                       some artwork rather than one piece of text.
+
+                       All three listings, because a fix in the default view
+                       only would have looked finished. -->
+                  <Style Selector="ListBoxItem" x:DataType="fs:FileEntry">
                     <Setter Property="Padding" Value="0"/>
                     <Setter Property="MinHeight" Value="0"/>
+                    <Setter Property="AutomationProperties.Name"
+                            Value="{Binding Converter={x:Static vm:FileConverters.RowName}}"/>
                   </Style>
                   <!-- Banding, from the desktop's own alternate-row colour. It was being
                        read out of kdeglobals and thrown away, which is much of why a long
@@ -2249,9 +2267,12 @@
                        ScrollViewer.HorizontalScrollBarVisibility="Auto"
                        ScrollViewer.VerticalScrollBarVisibility="Disabled">
                 <ListBox.Styles>
-                  <Style Selector="ListBoxItem">
+                  <!-- Named for a reader: see the details listing. -->
+                  <Style Selector="ListBoxItem" x:DataType="fs:FileEntry">
                     <Setter Property="Padding" Value="0"/>
                     <Setter Property="MinHeight" Value="0"/>
+                    <Setter Property="AutomationProperties.Name"
+                            Value="{Binding Converter={x:Static vm:FileConverters.RowName}}"/>
                   </Style>
                   <Style Selector="ListBoxItem:pointerover /template/ ContentPresenter">
                     <Setter Property="Background" Value="{DynamicResource HoverBackground}"/>
@@ -2426,9 +2447,12 @@
                        Focusable="True"
                        SelectionMode="Multiple" Background="Transparent" Padding="6">
                 <ListBox.Styles>
-                  <Style Selector="ListBoxItem">
+                  <!-- Named for a reader: see the details listing. -->
+                  <Style Selector="ListBoxItem" x:DataType="fs:FileEntry">
                     <Setter Property="Padding" Value="0"/>
                     <Setter Property="MinHeight" Value="0"/>
+                    <Setter Property="AutomationProperties.Name"
+                            Value="{Binding Converter={x:Static vm:FileConverters.RowName}}"/>
                   </Style>
                   <Style Selector="ListBoxItem:pointerover /template/ ContentPresenter">
                     <Setter Property="Background" Value="{DynamicResource HoverBackground}"/>
