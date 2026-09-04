@@ -498,6 +498,29 @@ public sealed partial class PaneViewModel
         // relabelled every row in the folder for each one file that moved.
         RecomputeGroups(Entries);
 
+        // And the splice, once for the whole burst. **This is a full rebuild,
+        // not the incremental insert above it**, and it was measured as one:
+        // with a folder open, one arriving file produces no Add notification
+        // and one Reset over every row on screen. Paid deliberately — the
+        // alternative is a top-level-index-to-projected-index walk per arriving
+        // path, which is O(n) per PATH where this is O(n) per BURST, and the
+        // burst is what this method exists for. Nothing is paid at all while
+        // nothing is open, which is the ordinary case and the reason for the
+        // guard below.
+        //
+        // A folder that has just left is taken out of the open set as well. Not
+        // for what is on screen — the splice is derived from the listing, so a
+        // row the listing no longer has cannot be drawn — but for what comes
+        // back: the set outlives the rows on purpose, and a folder re-created
+        // under the same name would otherwise return already open, holding the
+        // contents its namesake had before it went.
+        if (_open.Count > 0)
+        {
+            foreach (var path in departures) Forget(path);
+
+            Republish();
+        }
+
         // **Where the keyboard goes once the row it was on has gone.** Chosen
         // before the delete, applied here, when the rows it names are finally
         // on screen without the ones that went — so Delete, Delete, Delete

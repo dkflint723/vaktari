@@ -45,7 +45,13 @@ public sealed partial class PaneViewModel
     /// </summary>
     public void TypeAhead(string text)
     {
-        if (string.IsNullOrEmpty(text) || Entries.Count == 0) return;
+        // What is ON SCREEN, which is not Entries once a folder has been opened
+        // in place: typing jumps to a row, and a row you can see and cannot
+        // reach by typing its name is worse than one that is not there. The
+        // same object as Entries whenever nothing is expanded.
+        var rows = VisibleRows;
+
+        if (string.IsNullOrEmpty(text) || rows.Count == 0) return;
 
         var now = DateTime.UtcNow;
 
@@ -62,22 +68,38 @@ public sealed partial class PaneViewModel
         // Cycling continues past the current row; a new prefix re-anchors at the
         // top, so it always finds the FIRST match rather than the next one after
         // wherever the selection happened to be.
-        var current = SelectedEntry is { } selected ? Entries.IndexOf(selected) : -1;
+        var current = SelectedEntry is { } selected ? IndexIn(rows, selected) : -1;
         var start = repeat && current >= 0 ? current + 1 : 0;
 
-        for (var offset = 0; offset < Entries.Count; offset++)
+        for (var offset = 0; offset < rows.Count; offset++)
         {
-            var index = (start + offset) % Entries.Count;
+            var index = (start + offset) % rows.Count;
 
-            if (!Entries[index].Name.StartsWith(_typeAhead, StringComparison.OrdinalIgnoreCase))
+            if (!rows[index].Name.StartsWith(_typeAhead, StringComparison.OrdinalIgnoreCase))
                 continue;
 
-            SelectedEntry = Entries[index];
+            SelectedEntry = rows[index];
             return;
         }
 
         // No match. The prefix stays, so continuing to type does not suddenly
         // start matching against a shorter one — but a miss should not move the
         // selection somewhere arbitrary either.
+    }
+
+    /// <summary>
+    /// Where a row sits in the listing on screen.
+    ///
+    /// <c>IList.IndexOf</c> is not available on the read-only view the rows
+    /// arrive as, and FileEntry is a record struct carrying a length and a
+    /// timestamp — so this asks by path, which is the same question every other
+    /// "which row is this" in the pane asks.
+    /// </summary>
+    private static int IndexIn(IReadOnlyList<FileEntry> rows, FileEntry wanted)
+    {
+        for (var i = 0; i < rows.Count; i++)
+            if (rows[i].FullPath == wanted.FullPath) return i;
+
+        return -1;
     }
 }

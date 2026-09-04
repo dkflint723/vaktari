@@ -661,6 +661,69 @@ public partial class MainWindow : Window
         return null;
     }
 
+    /// <summary>
+    /// The class the details row template puts on its expand triangle, and the
+    /// only thing tying that markup to the handler that gives it meaning.
+    /// </summary>
+    internal const string ExpanderClass = "twist";
+
+    /// <summary>
+    /// The expand triangle a press landed on, or null for a press anywhere
+    /// else.
+    ///
+    /// Same walk and the same reason as <see cref="SelectionBoxAt"/>: the press
+    /// has to be claimed on the window's tunnel, before the ListBox reads it as
+    /// a click on the row and collapses a multiple selection down to the one
+    /// under the pointer. Stops at the ListBoxItem so the walk ends inside the
+    /// row it started in.
+    ///
+    /// That stop has NO KILLING MUTATION, and it was looked for: turning it
+    /// into a stop at the ListBox left the whole Vaktari.Ui.Tests project
+    /// green, because nothing above a row in this window carries the class and
+    /// the walk therefore runs out either way. It stays because the pane it
+    /// would otherwise walk out of is the one whose triangle the press belongs
+    /// to — the same bound SelectionBoxAt draws.
+    /// </summary>
+    internal static Control? ExpanderAt(object? source)
+    {
+        for (var visual = source as Visual; visual is not null;
+             visual = visual.GetVisualParent())
+        {
+            if (visual is ListBoxItem) return null;
+
+            if (visual is Control cell && cell.Classes.Contains(ExpanderClass)) return cell;
+        }
+
+        return null;
+    }
+
+    /// <summary>
+    /// Opens the folder the keyboard is on without leaving this one, or shuts
+    /// it again — and says whether it did anything.
+    ///
+    /// **False is the answer that gives the key back.** Left and Right already
+    /// mean something in the grid and compact layouts, where the wrap panel
+    /// moves the selection sideways with them, so a key claimed here whenever
+    /// it was pressed would take that away. It is claimed only for the press
+    /// that actually turns a triangle: the right key, on a folder, in the one
+    /// layout that draws them, in a state the press would change.
+    /// </summary>
+    internal static bool TurnExpansion(ViewModels.PaneViewModel pane, bool open)
+    {
+        if (!pane.IsDetailsView || !pane.CanExpandRows) return false;
+
+        if (pane.SelectedEntry is not { IsDirectory: true } row) return false;
+
+        // Already the way it was asked to be. Right on an open folder is a
+        // keystroke Dolphin spends moving into the first child; here it is left
+        // alone rather than given a second meaning nothing announces.
+        if (pane.IsExpanded(row.FullPath) == open) return false;
+
+        _ = pane.ToggleExpandAsync(row);
+
+        return true;
+    }
+
     /// <summary>The list a press landed in, row or background alike.</summary>
     private static ListBox? ListingAt(object? source)
     {
@@ -857,6 +920,32 @@ public partial class MainWindow : Window
             // without an intervening move therefore starts from an origin that
             // belonged to a click somewhere else, and a drag from the box would
             // carry the old row.
+            ArmNothing();
+
+            e.Handled = true;
+            return;
+        }
+
+        // **And a press on the expand triangle opens the folder in place**,
+        // which is not a click on the row either — for the same reason and with
+        // the same consequences as the box above: taken on the tunnel, a
+        // multiple selection survives it, and two quick presses are an open and
+        // a close rather than a double-click that opens the folder for real.
+        //
+        // Only on a folder. The slot is the same width on every row so that
+        // files and folders keep their icons in one column, and claiming a
+        // press over a file's empty slot would put a 16px dead strip down the
+        // left of every file in the listing. Unhandled, it falls through to the
+        // row underneath it, which is what the rest of the row background does.
+        if (properties.IsLeftButtonPressed
+            && ExpanderAt(e.Source) is not null
+            && PaneAt(e.Source) is { } expanding
+            && EntryAt(e.Source) is { IsDirectory: true } folder)
+        {
+            ActivateGroupAt(e.Source);
+
+            _ = expanding.ToggleExpandAsync(folder);
+
             ArmNothing();
 
             e.Handled = true;
@@ -2620,8 +2709,42 @@ public partial class MainWindow : Window
         }
     }
 
+    /// <summary>
+    /// Ticks the FOLDER's rows, not the screen's.
+    ///
+    /// **A folder opened in place put rows from two folders in one listing**,
+    /// and select-everything is the gesture that takes them both without being
+    /// asked. Everything downstream is written for a selection that lives in
+    /// ONE folder — read the three call sites: BatchRenameViewModel is handed
+    /// pane.Entries as "the whole folder, so the preview can see the files that
+    /// are already there", the rename run steps within one list, and the drop
+    /// refusals ask whether a target is inside the selection. A copy of a
+    /// folder together with a file inside it asks for that file at the
+    /// destination twice — once inside the copied folder and once beside it.
+    ///
+    /// Ctrl+clicking across the boundary is still allowed — somebody who does
+    /// that meant it — but the one keystroke that does it without being asked
+    /// no longer does.
+    ///
+    /// The whole listing IS the folder until somebody presses a triangle, so
+    /// the ordinary case still goes through the framework's bulk path: filling
+    /// the bound collection row by row fires a change per file, and each one
+    /// refreshes the details panel and recomputes the summary.
+    /// </summary>
+    internal static void SelectWholeFolder(ListBox list, ViewModels.PaneViewModel pane)
+    {
+        if (!pane.RowsAreSpliced) { list.SelectAll(); return; }
+
+        list.SelectedItems?.Clear();
+
+        foreach (var entry in pane.Entries) list.SelectedItems?.Add(entry);
+    }
+
     private void OnSelectAllClicked(object? sender, RoutedEventArgs e)
-        => ActiveListing()?.SelectAll();
+    {
+        if (ActiveListing() is { } list && _shell.ActiveTab is { } pane)
+            SelectWholeFolder(list, pane);
+    }
 
     /// <summary>
     /// The heading's box. Asks the pane what is chosen rather than the box what
@@ -2644,8 +2767,8 @@ public partial class MainWindow : Window
     {
         if (_shell.ActiveTab is not { } pane) return;
 
-        if (SelectAllFrom(pane.AllChosen)) ActiveListing()?.SelectAll();
-        else SelectNone();
+        if (!SelectAllFrom(pane.AllChosen)) SelectNone();
+        else if (ActiveListing() is { } list) SelectWholeFolder(list, pane);
 
         pane.RefreshSelectionBoxes();
     }
@@ -4715,7 +4838,11 @@ public partial class MainWindow : Window
         // re-lists the folder and can re-sort it, so asked afterwards "the next
         // one" means whichever file has closed the gap behind the row just
         // finished — which is not the row anybody was looking at.
-        var next = Input.RenameRun.Next(pane.Entries, _renameTarget.FullPath, step);
+        // The rows on SCREEN. A run that started on a row from inside a folder
+        // opened in place stopped dead against Entries: RenameRun.Next answers
+        // null for a path the list it was given does not hold, so Tab did
+        // nothing and said nothing.
+        var next = Input.RenameRun.Next(pane.Rows, _renameTarget.FullPath, step);
 
         ConfirmPrompt();
 
@@ -5281,6 +5408,26 @@ public partial class MainWindow : Window
                 _ = pane.OpenSelectedAsync();
                 break;
 
+            // Right opens the folder the keyboard is on without leaving this
+            // one; Left shuts it again. Dolphin's keys for the same feature,
+            // and the only route to it that is not a 16px triangle.
+            //
+            // **Handled only when it actually does something.** These two keys
+            // belong to the grid and compact layouts, where the wrap panel
+            // moves the selection sideways with them, and to any text box that
+            // has the keyboard — the guard above has already returned for that
+            // one. Left on a row that is not open, or either key in a layout
+            // that has no triangles, falls straight through.
+            //
+            // Modifiers spelled out rather than ignored: Alt+Left is Back.
+            case Key.Right when e.KeyModifiers == KeyModifiers.None:
+                e.Handled = TurnExpansion(pane, open: true);
+                break;
+
+            case Key.Left when e.KeyModifiers == KeyModifiers.None:
+                e.Handled = TurnExpansion(pane, open: false);
+                break;
+
             // **Backspace answered Explorer's habit and nobody else's.** It
             // went Back through history, full stop — so somebody who learned
             // the key in Dolphin, where it goes to the parent folder, pressed
@@ -5354,7 +5501,8 @@ public partial class MainWindow : Window
             case Key.A when e.KeyModifiers.HasFlag(KeyModifiers.Control):
                 if (FocusManager?.GetFocusedElement() is TextBox) break;
 
-                ActiveListing()?.SelectAll();
+                if (ActiveListing() is { } everything) SelectWholeFolder(everything, pane);
+
                 e.Handled = true;
                 break;
 

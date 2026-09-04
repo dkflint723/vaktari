@@ -45,6 +45,13 @@ public static class PaneScale
     private const double GridIcon = 72;
 
     /// <summary>
+    /// The 16px icon the sidebar and the row decorations draw at 100%, and the
+    /// base of every metric that has to keep its ratio to it — including the
+    /// step a folder opened in place indents its children by.
+    /// </summary>
+    public const double RowIcon = 16;
+
+    /// <summary>
     /// The icon a given layout draws at 100%: the base the flyout's typed size
     /// box multiplies and divides by. Read from here rather than restated in
     /// the view model, because restating it is how it drifted.
@@ -69,8 +76,14 @@ public static class PaneScale
         // eight more files on screen in a full-height window, and the icon still
         // reads at a glance because it is an icon rather than a thumbnail.
         ("ThumbSize", DetailsIcon),
-        ("IconSize", 16),
+        ("IconSize", RowIcon),
         ("TileSize", GridIcon),
+
+        // The expand triangle, inside a slot one IconSize wide. Derived here
+        // rather than written as 11 in the markup for the reason IconStroke
+        // below states: a glyph that kept its pixel size while the slot around
+        // it doubled would sit adrift in the middle of it.
+        ("TwistSize", 11),
 
         // **Stroke width is not a stretch-invariant in Avalonia, and it is in
         // SVG.** The design draws its glyphs on a 24-unit viewBox at 16px with

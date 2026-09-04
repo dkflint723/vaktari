@@ -96,6 +96,13 @@ public static class SidebarWalk
             // The properties of the selection.
             Key.Enter => modifiers.HasFlag(KeyModifiers.Alt),
 
+            // Open a folder in the listing where it stands, and shut it again.
+            // The listing the keyboard is not pointing at, exactly like the
+            // five above it: measured in the real window, Right on a place row
+            // opened a folder in the listing behind it, with nothing on screen
+            // saying which of the two the keystroke had gone to.
+            Key.Left or Key.Right => modifiers == KeyModifiers.None,
+
             _ => false,
         };
 }

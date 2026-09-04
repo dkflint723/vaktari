@@ -1987,6 +1987,20 @@
                               AutomationProperties.Name="Select every row"
                               ToolTip.Tip="Tick every row, or clear the selection"
                               Click="OnSelectAllBoxClicked"/>
+                    <!-- The slot every row keeps for its expand triangle, so
+                         the heading's own columns stay over the cells they
+                         label. Exactly the arrangement the version-control slot
+                         below uses, and for exactly the same reason: an empty
+                         Border of the same width, the same gap and the same
+                         condition as the row's, with no Background so it is
+                         spacing rather than a control.
+
+                         The two grids are kept in step by hand, so this is a
+                         pair of numbers that has to match the row's; the test
+                         that reads both sites is what keeps them matching. -->
+                    <Border x:Name="ExpandHeadingSlot" DockPanel.Dock="Left"
+                            Width="{DynamicResource IconSize}" Margin="0,0,2,0"
+                            IsVisible="{Binding CanExpandRows}"/>
                     <Border Width="{DynamicResource ThumbSize}" Margin="0,0,8,0"/>
                   </DockPanel>
                   <!-- **Inside a repository the heading stood 16px left of the
@@ -2241,6 +2255,63 @@
                               Stroke="{DynamicResource ViewBackground}"
                               StrokeThickness="1.8"
                               StrokeLineCap="Round" StrokeJoin="Round"/>
+                      </Panel>
+                      <!-- **How deep this row sits**, when a folder above it has
+                           been opened in place. A zero-width spacer for every
+                           row of the folder itself, which is every row until
+                           somebody opens one — so an ordinary listing measures
+                           the same as it always did.
+
+                           Docked AFTER the selection box and before everything
+                           else: the box is a fixed column that lines up with
+                           the heading's own, so it must not move, and
+                           everything the indent is meant to shift — the
+                           triangle, the icon, the name — comes after this. -->
+                      <!-- IsHitTestVisible has NO KILLING MUTATION, and it
+                           was looked for: a Border with no Background is
+                           already invisible to the pointer in Avalonia, so
+                           turning it True left the suite green. It stays as the
+                           statement of intent — this is spacing, and the width
+                           it takes grows with the nesting. -->
+                      <Border DockPanel.Dock="Left" IsHitTestVisible="False">
+                        <Border.Width>
+                          <MultiBinding Converter="{x:Static vm:FileConverters.Indent}">
+                            <Binding Path="FullPath"/>
+                            <Binding Path="$parent[ListBox].((vm:PaneViewModel)DataContext).Indents"/>
+                          </MultiBinding>
+                        </Border.Width>
+                      </Border>
+                      <!-- **The expand triangle**, drawn and hit-tested exactly
+                           like the selection box beside it: a Transparent Panel
+                           whose press is claimed on the WINDOW'S TUNNEL — see
+                           ExpanderAt in the code-behind — before the ListBox can
+                           read it as a click on the row and collapse the
+                           selection to it.
+
+                           The Panel is there for every row, folder or not, and
+                           the same width in the same place from the moment the
+                           row is realized: a slot that collapsed on files would
+                           put every file's icon 18px left of every folder's.
+                           What changes is the Path's Data, which is null for a
+                           file — see FileConverters.Twisty for why the shape
+                           moves rather than the element's visibility. -->
+                      <Panel Classes="twist" DockPanel.Dock="Left"
+                             Width="{DynamicResource IconSize}" Margin="0,0,2,0"
+                             Background="Transparent"
+                             IsVisible="{Binding $parent[ListBox].((vm:PaneViewModel)DataContext).CanExpandRows}">
+                        <Path Width="{DynamicResource TwistSize}"
+                              Height="{DynamicResource TwistSize}" Stretch="Uniform"
+                              HorizontalAlignment="Center" VerticalAlignment="Center"
+                              IsHitTestVisible="False"
+                              Fill="{DynamicResource ViewDimText}">
+                          <Path.Data>
+                            <MultiBinding Converter="{x:Static vm:FileConverters.Twisty}">
+                              <Binding Path="FullPath"/>
+                              <Binding Path="IsDirectory"/>
+                              <Binding Path="$parent[ListBox].((vm:PaneViewModel)DataContext).Expanded"/>
+                            </MultiBinding>
+                          </Path.Data>
+                        </Path>
                       </Panel>
                     <Panel Width="{DynamicResource ThumbSize}"
                            Height="{DynamicResource ThumbSize}" Margin="0,0,8,0"

@@ -123,8 +123,18 @@ public sealed partial class PaneViewModel : ObservableObject, IDisposable
     /// </summary>
     private static readonly FileEntry[] NoEntries = [];
 
+    /// <summary>
+    /// The details rows: the folder's own, unless a folder in it has been
+    /// opened in place.
+    ///
+    /// The second collection and the rule that chooses between them live in
+    /// PaneViewModel.Expansion.cs. With nothing expanded this is <c>Entries</c>
+    /// itself, so an ordinary listing keeps exactly the shape it had.
+    /// </summary>
     public IEnumerable<FileEntry> DetailsEntries
-        => View == ViewMode.Details ? Entries : NoEntries;
+        => View != ViewMode.Details ? NoEntries
+         : _projected ? _rows
+         : Entries;
 
     public IEnumerable<FileEntry> GridEntries
         => View == ViewMode.Grid ? Entries : NoEntries;
@@ -862,6 +872,11 @@ public sealed partial class PaneViewModel : ObservableObject, IDisposable
         {
             if (SelectedEntries.Count == 0) return false;
 
+            // **The FOLDER's rows, still, with a folder opened in place.**
+            // Every select-everything gesture takes exactly these — see
+            // MainWindow.SelectWholeFolder for why — so this is the count the
+            // box's own click produces, and a selection larger than it can only
+            // have been built by ctrl+clicking across the boundary on purpose.
             return SelectedEntries.Count >= Entries.Count ? true : null;
         }
     }
@@ -1142,6 +1157,14 @@ public sealed partial class PaneViewModel : ObservableObject, IDisposable
         if (!_swappingScales) _scales[View] = (FontScale, value);
 
         OnPropertyChanged(nameof(IconPixels));
+
+        // The nesting step a folder opened in place indents by is derived from
+        // the row icon, so it moves with this. Republished from the stored
+        // depths rather than re-spliced: a rebuild of the row collection is a
+        // Reset over every row on screen, and a Ctrl+scroll sends one of these
+        // per wheel tick.
+        if (_depths.Count > 0) PublishIndents();
+
         ScaleChanged?.Invoke(this, EventArgs.Empty);
     }
 
@@ -1907,6 +1930,18 @@ public sealed partial class PaneViewModel : ObservableObject, IDisposable
                     $"[vaktari] tiles: {newValue} with {Entries.Count:N0} items "
                     + $"realized in {realizeWatch.ElapsedMilliseconds} ms");
             }, DispatcherPriority.Background);
+
+        // **A folder opened in place is a details-only shape**, the way a
+        // grouping is: grid and compact lay out fixed-size cells with room for
+        // neither an indent nor a triangle. Ignored rather than cleared, so the
+        // tree is still there when you come back — and rebuilt here, because
+        // the sort and the watcher have gone on maintaining Entries while the
+        // details listing was not the one on screen.
+        //
+        // Ahead of NotifyLayoutEntries for the same reason that call is ahead
+        // of CarrySelection: the collection has to be right before the layout
+        // is told to read it.
+        if (_open.Count > 0) Reproject();
 
         // Populate the incoming layout FIRST. Its ListBox cannot hold a
         // selection for items it does not yet have, so carrying the selection
@@ -2996,6 +3031,12 @@ public sealed partial class PaneViewModel : ObservableObject, IDisposable
             OnPropertyChanged(nameof(SearchScopeLabel));
 
             OnPropertyChanged(nameof(IsRealFolder));
+
+            // Beside IsRealFolder because it IS IsRealFolder, and the row
+            // template and the column heading both reserve the triangle's slot
+            // from it: without this the slot would keep whatever width the
+            // previous listing left it with.
+            OnPropertyChanged(nameof(CanExpandRows));
             OnPropertyChanged(nameof(DisplayPath));
             OnPropertyChanged(nameof(EmptyText));
             OnPropertyChanged(nameof(Terminals));
@@ -3547,6 +3588,13 @@ public sealed partial class PaneViewModel : ObservableObject, IDisposable
 
         Entries.ReplaceAll(sorted);
 
+        // Between the rebuild and the reselect: the spliced listing is derived
+        // from Entries, and Reselect walks whatever ends up on screen. The rows
+        // inside an open folder are re-ordered here as well, because this is
+        // one of the two rebuilds that can change what the order is.
+        ReorderOpenFolders();
+        Reproject();
+
         Reselect(keep);
 
         // Only when filtering. The plain count lives in Summary, and setting
@@ -3670,6 +3718,13 @@ public sealed partial class PaneViewModel : ObservableObject, IDisposable
             // Same() rather than equality, so a refresh — which is what Keep
             // looking performs — keeps the budget it just raised.
             SearchLimit = SearchListing.Limit;
+
+            // And so does any folder opened in place. Under the same test as
+            // the two above and as the selection carry, for the reason
+            // ClearExpansion spells out: a refresh is the same folder and has
+            // to keep the tree, and a rename, a paste, a delete and an undo all
+            // end in one.
+            ClearExpansion();
         }
 
         CurrentPath = path;
@@ -3791,6 +3846,15 @@ public sealed partial class PaneViewModel : ObservableObject, IDisposable
                 // route it takes, and restores only what it was holding when
                 // it started — which, on a reload, is nothing.
                 Reselect(carry);
+
+                // A reload of the same folder keeps whatever was opened in
+                // place, and this is what re-reads it: the watcher watches
+                // CurrentPath and nothing below it, so a refresh is the only
+                // moment an open subfolder can learn that something inside it
+                // changed. Fire-and-forget with the generation captured, like
+                // the watcher's own stat pass; it does nothing at all when
+                // nothing is open, which is the ordinary case.
+                _ = ReloadExpandedAsync(generation);
 
                 // Nothing to watch: there is no directory behind a recent
                 // listing. Skipped explicitly rather than left to fail inside
@@ -3984,8 +4048,16 @@ public sealed partial class PaneViewModel : ObservableObject, IDisposable
         var items = _all.Count > 0 ? _all.ToList() : Entries.ToList();
         items.Sort(Compare);
 
+        // The TOP LEVEL's order, before the splice: a row inside a folder
+        // opened in place is not part of a band, so it must neither carry a
+        // heading nor break the run it sits in the middle of.
         RecomputeGroups(items);
         Entries.ReplaceAll(items);
+
+        // The other rebuild that changes the order, so the rows inside an open
+        // folder turn over with the listing around them.
+        ReorderOpenFolders();
+        Reproject();
 
         Reselect(keep);
         RefreshConfusable();
@@ -4033,7 +4105,11 @@ public sealed partial class PaneViewModel : ObservableObject, IDisposable
 
         selection.Clear();
 
-        foreach (var entry in Entries)
+        // The rows on SCREEN rather than the folder's own, or a selected row
+        // inside a folder opened in place would be dropped by every rebuild —
+        // and a rebuild is what a sort, a filter and a refresh all are. The
+        // same object as Entries whenever nothing is expanded.
+        foreach (var entry in VisibleRows)
             if (entry.FullPath is { } path && wanted.Contains(path))
                 selection.Add(entry);
 

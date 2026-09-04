@@ -179,6 +179,21 @@ public static class Shortcuts
             new("Ctrl+Shift+2", "Small grid"),
             new("Ctrl+Shift+3", "Large grid"),
             new("Ctrl+H", "Show hidden files"),
+            // The only route to expandable folders that is not a triangle the
+            // width of a row icon. In the list view alone, which is where the
+            // triangles are — the other two layouts keep these keys for moving
+            // sideways.
+            //
+            // **This line has no killing mutation in the direction that would
+            // catch its absence**, and it was measured: deleting it left the
+            // whole Vaktari.Ui.Tests project green, because
+            // ShortcutListTests.Every_bound_key_is_in_the_list draws its cases
+            // from `KeyBinding Gesture="..."` in the markup, and these two keys
+            // are answered by case labels in the code-behind switch instead.
+            // The other direction does hold: spell either arrow wrong here, or
+            // take the case labels out of the switch, and
+            // Every_listed_key_is_actually_bound goes red.
+            new("→ / ←", "In the list, open a folder where it is and close it again"),
             new("Ctrl+D", "Pin this folder to places"),
             new("Ctrl + scroll", "Resize the pane under the pointer"),
             new("Ctrl+Shift + scroll", "Resize its icons only"),

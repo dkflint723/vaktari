@@ -96,6 +96,9 @@ public sealed class SidebarWalkTests
     [InlineData(Key.A, KeyModifiers.Control)]
     [InlineData(Key.A, KeyModifiers.Control | KeyModifiers.Shift)]
     [InlineData(Key.Enter, KeyModifiers.Alt)]
+    // Open a folder in the listing where it stands, and shut it again.
+    [InlineData(Key.Right, KeyModifiers.None)]
+    [InlineData(Key.Left, KeyModifiers.None)]
     public void These_act_on_a_selection_the_keyboard_is_not_pointing_at(
         Key key, KeyModifiers modifiers)
         => Assert.True(SidebarWalk.ActsOnTheListing(key, modifiers));

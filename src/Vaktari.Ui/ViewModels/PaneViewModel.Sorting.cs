@@ -140,6 +140,23 @@ public sealed partial class PaneViewModel
             if (group != 0) return SortDescending ? -group : group;
         }
 
+        return CompareWithin(a, b);
+    }
+
+    /// <summary>
+    /// The same order without the band key: folders first, then the chosen
+    /// field, then the name.
+    ///
+    /// **Split out for the rows inside a folder opened in place.** A band is a
+    /// property of the LISTING — the header is drawn on the first row of each
+    /// run down the folder's own rows — and a subfolder's contents are not part
+    /// of one, so sorting them by the band key would order them by a grouping
+    /// that has no heading anywhere to explain it. Everything else about the
+    /// order is the same, including the direction, which is why this is the
+    /// tail of Compare rather than a second comparer beside it.
+    /// </summary>
+    private int CompareWithin(FileEntry a, FileEntry b)
+    {
         // Directories first, always — the convention every file manager follows
         // and users notice immediately when it's missing. Inside a band when
         // there is one, which is where it belongs.

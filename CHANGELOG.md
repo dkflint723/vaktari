@@ -13,6 +13,38 @@ should not be trusted for compatibility yet.
 
 ### Added
 
+- **A folder in the list can be opened where it stands.** Dolphin has had
+  expandable folders for years and the list view here had no way to look inside
+  anything without going into it — so comparing two files a directory apart, or
+  dragging one out of a subfolder, meant navigating in, navigating out, and
+  losing your place both times. Every folder row now carries a triangle: press
+  it, or press → with the row selected, and that folder's contents appear
+  underneath it, indented, without the listing moving anywhere. ← closes it
+  again, and so does the triangle. Folders inside folders open the same way, as
+  deep as you care to go.
+
+  What is opened stays opened through a sort, a refresh, a rename, a paste and
+  anything a folder watcher notices, and a refresh re-reads the opened folders
+  along with the one you are in. It is ignored — not thrown away — while a
+  filter is up and in the two grid layouts, which have nowhere to draw an
+  indent: clear the filter, or come back to the list, and the shape you opened
+  is still there. Leaving the folder forgets it, because none of those paths
+  mean anything in the next one — and that includes coming back, so going into
+  a folder and pressing Back gives you the listing without the shape you had
+  opened in it.
+
+  Closing a folder closes what you opened inside it, and puts the keyboard on
+  the folder rather than leaving it on a row that has gone. Select all takes
+  the folder's own rows rather than everything on screen: copying a folder and
+  something inside it at once would put the file at the destination twice, and
+  a keystroke should not be able to ask for that without being told to.
+
+  The status bar still counts the folder you are in rather than everything on
+  screen, so opening a subfolder does not make the folder above it look bigger.
+  The bin, Recent, This PC and search results have no triangles: every one of
+  them holds rows that name somewhere other than where the row sits, so opening
+  one in place would list something the row does not stand for.
+
 - **A second window.** Ctrl+N opens one on the folder you are already in, and
   "Open in new window" sits beside "Open in new tab" in the listing menu, on
   every sidebar row, and in the view options flyout — with a toggle of its own

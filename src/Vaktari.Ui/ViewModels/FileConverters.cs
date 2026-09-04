@@ -288,6 +288,74 @@ public static class FileConverters
         });
 
     /// <summary>
+    /// How far in a row sits, for a folder opened in place.
+    ///
+    /// Same shape as CutFade and Confusable: the row supplies its path, the
+    /// pane supplies the map, and binding the MAP is what makes every realized
+    /// row re-measure the moment a folder is opened or closed.
+    ///
+    /// Zero for every row of the folder itself — the map holds only the rows
+    /// that came from inside something — so an ordinary listing draws a
+    /// zero-width spacer and looks exactly as it did.
+    ///
+    /// The map already holds PIXELS. The step scales with the pane's icon zoom,
+    /// and the pane is the only thing that knows its own zoom, so multiplying
+    /// here would need that scale bound in as a third value for no gain.
+    /// </summary>
+    public static readonly Avalonia.Data.Converters.IMultiValueConverter Indent =
+        new Avalonia.Data.Converters.FuncMultiValueConverter<object?, double>(values =>
+        {
+            var pair = values.ToList();
+
+            return pair.Count == 2
+                   && pair[0] is string path
+                   && pair[1] is IReadOnlyDictionary<string, double> indents
+                   && indents.TryGetValue(path, out var width)
+                ? width
+                : 0;
+        });
+
+    /// <summary>The triangle a shut folder shows: pointing along the row, at
+    /// what opening it would reveal.</summary>
+    private static readonly Avalonia.Media.Geometry Shut =
+        Avalonia.Media.Geometry.Parse("M 3,1 L 8,5.5 L 3,10 Z");
+
+    /// <summary>And the one an open folder shows, turned a quarter to point at
+    /// the rows it has put underneath itself.</summary>
+    private static readonly Avalonia.Media.Geometry Open =
+        Avalonia.Media.Geometry.Parse("M 1,3 L 10,3 L 5.5,8 Z");
+
+    /// <summary>
+    /// Which way a row's triangle points, or nothing at all for a row that is
+    /// not a folder.
+    ///
+    /// **One Path with two shapes rather than two Paths that appear and
+    /// disappear.** Decoration that comes and goes under the pointer changes
+    /// what the second click of a double-click lands on, and Avalonia's
+    /// double-tap gesture requires both clicks on the same element — the rule
+    /// MarkupRulesTests states in general. A Path whose Data is null draws
+    /// nothing and stays exactly where it was.
+    ///
+    /// Three values rather than two: the pane's set says which folders are
+    /// open, and the row's own flag is what separates "shut" from "not a
+    /// folder", which the set alone cannot.
+    /// </summary>
+    public static readonly Avalonia.Data.Converters.IMultiValueConverter Twisty =
+        new Avalonia.Data.Converters.FuncMultiValueConverter<object?, Avalonia.Media.Geometry?>(
+            values =>
+            {
+                var parts = values.ToList();
+
+                if (parts.Count != 3 || parts[1] is not true) return null;
+
+                return parts[0] is string path
+                       && parts[2] is IReadOnlySet<string> open
+                       && open.Contains(path)
+                    ? Open
+                    : Shut;
+            });
+
+    /// <summary>
     /// Whether this row is the folder a drop would land in.
     ///
     /// **Nothing said where a drop was going.** The whole pane took an outline
