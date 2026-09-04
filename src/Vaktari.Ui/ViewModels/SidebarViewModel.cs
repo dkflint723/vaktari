@@ -198,14 +198,46 @@ public sealed partial class SidebarViewModel : ObservableObject
     /// `C:\Users\flint` and the `c:\users\flint` a user may well have typed
     /// into the location bar. A place list that quietly fails to highlight Home
     /// over any of those would be baffling.
+    ///
+    /// **A subfolder lit nothing at all.** Same is an exact match, and it was
+    /// the only comparison here, so opening Documents lit Documents and opening
+    /// anything inside it lit no row in the whole sidebar — the list went blank
+    /// the moment you went one folder deep, which is where people spend their
+    /// time. The nearest place that HOLDS the folder takes a lighter mark now.
     /// </summary>
     public void SetCurrentPath(string? path)
     {
         var wanted = Normalise(path);
 
-        foreach (var group in Groups)
-        foreach (var item in group.Places)
+        var rows = Groups.SelectMany(group => group.Places).ToList();
+
+        // The deepest row that contains the current folder, which may be the
+        // row that IS it — the guard below decides whether that counts.
+        // ~/Documents/Work is inside Home AND inside Documents, and marking
+        // both says less than marking the nearer one, so a candidate takes over
+        // when it is itself inside the one standing: the same containment rule
+        // twice, rather than arithmetic on path lengths.
+        PlaceItemViewModel? holder = null;
+
+        foreach (var item in rows)
+        {
             item.IsCurrent = PathRules.Same(item.Path, path);
+            item.HoldsCurrent = false;
+
+            if (!PathRules.Contains(item.Path, path)) continue;
+
+            if (holder is null || PathRules.Contains(holder.Path, item.Path))
+                holder = item;
+        }
+
+        // Only when no row is exactly here. Standing IN Documents makes
+        // Documents both the current row and the deepest row containing the
+        // folder, so without this the holding wash would land under its own
+        // accent bar: two marks on one row for one location. Measured — take
+        // this guard away and Standing_in_the_place_itself_marks_nothing_above_it
+        // fails on the Documents row, not on Home.
+        if (holder is not null && !rows.Any(row => row.IsCurrent))
+            holder.HoldsCurrent = true;
 
         CurrentPath = wanted;
         OnPropertyChanged(nameof(IsRecentFilesCurrent));
@@ -768,6 +800,22 @@ public sealed partial class PlaceItemViewModel(Place place) : ObservableObject
     /// changes it long after the list was built.
     /// </summary>
     [ObservableProperty] private bool _isCurrent;
+
+    /// <summary>
+    /// True when the pane is somewhere INSIDE this place rather than at it —
+    /// and only on the nearest such row, and only while no row is exactly here.
+    ///
+    /// **One folder down from a place, the sidebar went blank.** The row mark
+    /// was an exact path match and nothing else, so Documents lit while you
+    /// were in Documents and stopped the instant you opened a folder in it —
+    /// and the only other state a row could draw was the drop target, so there
+    /// was nothing else on the list to say where you were. A flat list cannot
+    /// expand the branch you are in, so a wash on the one row is what is left.
+    ///
+    /// Separate from <see cref="IsCurrent"/> rather than folded into it: they
+    /// draw differently, and the accent bar belongs to being HERE.
+    /// </summary>
+    [ObservableProperty] private bool _holdsCurrent;
 
     /// <summary>
     /// True while a drag is over this row and would land here.

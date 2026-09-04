@@ -3342,14 +3342,18 @@
                                     HorizontalAlignment="Stretch"
                                     HorizontalContentAlignment="Left"
                                     Padding="12,6" Opacity="{Binding Opacity}">
-                              <!-- The wash says both "you are here" and "the drop
-                                   lands here", at two strengths of the one accent.
-                                   A fill rather than a ring, because a border would
-                                   move every row below it as it appeared. -->
+                              <!-- The wash says "you are here", "the drop lands
+                                   here" and "you are somewhere inside here", at
+                                   three strengths of the one accent. A fill
+                                   rather than a ring, because a border would
+                                   move every row below it as it appeared.
+                                   ORDER MATTERS: the converter reads these by
+                                   position, here then drop then holder. -->
                               <Button.Background>
                                 <MultiBinding Converter="{x:Static vm:FileConverters.PlaceRowFill}">
                                   <Binding Path="IsCurrent"/>
                                   <Binding Path="IsDropTarget"/>
+                                  <Binding Path="HoldsCurrent"/>
                                 </MultiBinding>
                               </Button.Background>
                               <!-- **Places could be added from two places and

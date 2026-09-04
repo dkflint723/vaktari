@@ -583,6 +583,15 @@ should not be trusted for compatibility yet.
 
 ### Fixed
 
+- **Browsing inside a sidebar place lights that place, faintly.** The sidebar
+  marked a row only when you were standing exactly on it, so opening any folder
+  inside Documents left the whole sidebar dark — the one panel whose job is to
+  say where you are said nothing for most of the folders you actually visit. The
+  place that holds the folder is now washed, more faintly than the row you are
+  on, and only the nearest one: inside Documents, Documents is marked and Home
+  above it is not. Standing on the place itself is unchanged, so there is never
+  more than one mark for one location.
+
 - **Double-clicking a file the desktop will not open now says so.** It did
   nothing at all: the launcher returned nothing, so both platforms caught
   whatever went wrong and dropped it — Windows into a debug-only log, Linux into

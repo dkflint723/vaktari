@@ -313,14 +313,26 @@ public static class FileConverters
         });
 
     /// <summary>
-    /// The sidebar row's fill: the place you are in, or the place a drop would
-    /// land in, which is a stronger wash of the same accent.
+    /// The sidebar row's fill, at three strengths of one accent: the place a
+    /// drop would land in, the place you are in, and the place you are
+    /// somewhere inside.
     ///
     /// **A place gave no sign whatever that it was a target.** Dragging onto
     /// "Downloads" looked exactly like dragging past it, so the only way to
     /// learn where the files went was to release and go and look. The rows are
     /// one line tall and stacked, which is precisely where a target has to say
     /// which one it is.
+    ///
+    /// **And one folder down, no row was marked at all** — the mark was an
+    /// exact path match, so the sidebar went blank the moment you opened a
+    /// folder inside Documents. The holding row takes the faintest of the
+    /// three; it is a hint about where you came from, not a claim to be the
+    /// place, and it must not compete with the row that IS one.
+    ///
+    /// Read positionally rather than by name because a MultiBinding hands over
+    /// an ordered list: index 0 is here, 1 is the drop, 2 is the holder. Each
+    /// is read with a bounds check, so the two-value calls that predate the
+    /// third still answer.
     ///
     /// A fill rather than a ring: a border appearing on one row would move
     /// every row below it, and the row you are aiming at is the one that must
@@ -329,18 +341,22 @@ public static class FileConverters
     public static readonly Avalonia.Data.Converters.IMultiValueConverter PlaceRowFill =
         new Avalonia.Data.Converters.FuncMultiValueConverter<object?, object?>(values =>
         {
-            var pair = values.ToList();
+            var flags = values.ToList();
 
             var accent = Avalonia.Application.Current?.Resources["AccentDim"]
                 as Avalonia.Media.ISolidColorBrush;
 
             if (accent is null) return Avalonia.Media.Brushes.Transparent;
 
-            // 28% for a drop target against the current row's 7%: it has to
-            // read at a glance from the corner of the eye, while a pointer
-            // carrying files is somewhere else.
-            byte alpha = pair.Count == 2 && pair[1] is true ? (byte)72
-                       : pair.Count == 2 && pair[0] is true ? (byte)18
+            bool Set(int slot) => flags.Count > slot && flags[slot] is true;
+
+            // 28% for a drop target against the current row's 7% and the
+            // holder's 3.5%: the target has to read at a glance from the corner
+            // of the eye while a pointer carrying files is somewhere else, and
+            // the holder must stay quieter than the row it stands in for.
+            byte alpha = Set(1) ? (byte)72
+                       : Set(0) ? (byte)18
+                       : Set(2) ? (byte)9
                        : (byte)0;
 
             return alpha == 0
