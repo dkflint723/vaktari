@@ -2878,6 +2878,70 @@
                 FontSize="{DynamicResource FontSizeSmall}" Padding="8,2"
                 IsVisible="{Binding CanRetryOperation}"
                 Command="{Binding RetryOperationCommand}"/>
+        <!-- **The sentence names one file and counts the rest**, which is the
+             right length for a line sharing a bar with a progress fraction and
+             was the whole of what anybody was ever told. Everything after the
+             first name could be found only by comparing the two folders by
+             hand — which is the work that carrying on past a locked file was
+             supposed to save.
+
+             A flyout rather than a window, and no Command: this is the button's
+             own popup, so it takes no verb. That also keeps the bar's asserted
+             button order — dismiss, retry, cancel, pause — reading off the
+             commands exactly as it did. -->
+        <Button DockPanel.Dock="Right" Content="details" Margin="6,0,0,0"
+                FontSize="{DynamicResource FontSizeSmall}" Padding="8,2"
+                IsVisible="{Binding CanShowProblems}"
+                AutomationProperties.Name="what was left behind"
+                ToolTip.Tip="what was left behind">
+          <Button.Flyout>
+            <!-- Stated rather than left to the positioner. A Flyout's default
+                 Placement is Bottom and this bar is docked to the BOTTOM of the
+                 window, so the default would always be constrained — and
+                 Avalonia's default PlacementConstraintAdjustment is All, so it
+                 would be flipped, slid or RESIZED back into view. The list would
+                 arrive somewhere the constraint solver chose and move when the
+                 window did. Opening upward is the decision, not the rescue. -->
+            <Flyout Placement="TopEdgeAlignedRight">
+              <!-- A ListBox rather than an ItemsControl because it virtualises.
+                   A folder that could not be created reports every one of its
+                   planned descendants, so this is occasionally thousands of
+                   rows, and an ItemsControl realises all of them at once. -->
+              <ListBox ItemsSource="{Binding OperationProblems}"
+                       Width="420" MaxHeight="260"
+                       Background="Transparent" BorderThickness="0">
+                <ListBox.Styles>
+                  <Style Selector="ListBoxItem">
+                    <Setter Property="Padding" Value="4,2"/>
+                    <Setter Property="MinHeight" Value="0"/>
+                  </Style>
+                </ListBox.Styles>
+                <ListBox.ItemTemplate>
+                  <DataTemplate x:DataType="vm:ProblemRow">
+                    <!-- Background so the row is hit-testable at all: Avalonia
+                         hit tests against a brush and null is not one, so the
+                         tip would otherwise appear only over the letters. -->
+                    <Grid ColumnDefinitions="*,Auto" Background="Transparent"
+                          ToolTip.Tip="{Binding Path}" ToolTip.ShowDelay="600">
+                      <TextBlock Grid.Column="0" Text="{Binding Name}"
+                                 FontFamily="{DynamicResource AppMonoFamily}"
+                                 FontSize="{DynamicResource FontSizeSmall}"
+                                 TextTrimming="CharacterEllipsis"/>
+                      <!-- Capped width. An Auto column measures against
+                           infinity, so one long IOException message would take
+                           the whole row and leave the name nothing. -->
+                      <TextBlock Grid.Column="1" Text="{Binding Reason}"
+                                 Margin="10,0,0,0" MaxWidth="170"
+                                 FontSize="{DynamicResource FontSizeSmall}"
+                                 Foreground="{DynamicResource ViewDimText}"
+                                 TextTrimming="CharacterEllipsis"/>
+                    </Grid>
+                  </DataTemplate>
+                </ListBox.ItemTemplate>
+              </ListBox>
+            </Flyout>
+          </Button.Flyout>
+        </Button>
         <Button DockPanel.Dock="Right" Content="cancel" Margin="6,0,0,0"
                 FontSize="{DynamicResource FontSizeSmall}" Padding="8,2"
                 IsVisible="{Binding ActiveOperation, Converter={x:Static ObjectConverters.IsNotNull}}"

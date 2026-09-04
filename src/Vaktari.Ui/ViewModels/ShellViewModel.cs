@@ -14,6 +14,22 @@ using Vaktari.Core.Session;
 namespace Vaktari.Ui.ViewModels;
 
 /// <summary>
+/// One item a batch could not do, as the details list shows it.
+///
+/// **The bar named one of them and counted the rest.** "report.docx and 2 more
+/// were left behind" is the right length for a line that has to share a bar
+/// with a progress fraction, and it was the whole of what anybody was ever
+/// told — the other two could be found only by comparing the source folder
+/// against the destination by hand, which is the work that carrying on past a
+/// locked file is supposed to save.
+///
+/// The full path travels with the row because the leaf name stops being an
+/// answer the moment a copy has subfolders in it: three "index.html" left
+/// behind name none of the three.
+/// </summary>
+public sealed record ProblemRow(string Name, string Path, string Reason);
+
+/// <summary>
 /// Owns one or two pane groups. Deliberately thin — it decides which side is
 /// active and nothing else; all the behaviour lives in PaneViewModel, which is
 /// what made split view an addition rather than a rewrite.
@@ -1441,6 +1457,21 @@ public sealed partial class ShellViewModel : ObservableObject, IDisposable
     }
 
     /// <summary>
+    /// Everything the last finished operation left behind, or empty.
+    ///
+    /// **Set and cleared in the same three places the bar's message is**, for
+    /// exactly the reason the retry offer is: a list that outlived its sentence
+    /// would still be one click away underneath the NEXT operation's message,
+    /// listing files nobody is looking at any more.
+    /// </summary>
+    [ObservableProperty] private IReadOnlyList<ProblemRow> _operationProblems = [];
+
+    public bool CanShowProblems => OperationProblems.Count > 0;
+
+    partial void OnOperationProblemsChanged(IReadOnlyList<ProblemRow> value)
+        => OnPropertyChanged(nameof(CanShowProblems));
+
+    /// <summary>
     /// Goes again on the failures, as an ordinary operation: it gets the bar,
     /// the progress, the pause and the cancel that any other one does, and it
     /// can itself leave something behind and offer another retry.
@@ -1455,6 +1486,10 @@ public sealed partial class ShellViewModel : ObservableObject, IDisposable
         // being redone.
         Retryable = null;
         OperationStatus = "";
+
+        // The list belongs to the sentence being replaced. The new operation
+        // writes its own, including its own list if it leaves anything behind.
+        OperationProblems = [];
 
         (_retryPane ?? ActiveTab)?.Adopt(offer.Again());
     }
@@ -1489,6 +1524,9 @@ public sealed partial class ShellViewModel : ObservableObject, IDisposable
 
         // Dismissing the sentence dismisses the offer attached to it.
         Retryable = null;
+
+        // And the list of what it was about.
+        OperationProblems = [];
     }
 
     // ---- construction --------------------------------------------------
@@ -2436,14 +2474,60 @@ public sealed partial class ShellViewModel : ObservableObject, IDisposable
     /// </summary>
     internal static string DescribeProblems(IReadOnlyList<Core.FileSystem.ItemProblem> problems)
     {
-        var first = problems[0];
-        var name = Path.GetFileName(first.Path.TrimEnd(Path.DirectorySeparatorChar));
-        var why = Core.FileSystem.Failures.Describe(first.Error, "copy that");
+        // Through the same row the details list is built from, so the sentence
+        // and the list can never disagree about a name or a reason. Read one
+        // row rather than the whole list: a folder that could not be created
+        // reports every one of its planned descendants, and building thousands
+        // of rows to print one of them is work nobody asked for.
+        var first = Row(problems[0]);
 
         return problems.Count == 1
-            ? $"{name} was left behind — {why}"
-            : $"{name} and {problems.Count - 1} more were left behind — {why}";
+            ? $"{first.Name} was left behind — {first.Reason}"
+            : $"{first.Name} and {problems.Count - 1} more were left behind — {first.Reason}";
     }
+
+    /// <summary>
+    /// One problem as a row: the leaf name, the whole path, and why in the same
+    /// words the rest of this window uses.
+    ///
+    /// "copy that" completes "could not …" for the handful of errors whose own
+    /// message says nothing useful. It is the verb the sentence on the bar has
+    /// always used, and the two sit next to each other now, so they use one.
+    /// </summary>
+    private static ProblemRow Row(Core.FileSystem.ItemProblem problem)
+        => new(Path.GetFileName(problem.Path.TrimEnd(Path.DirectorySeparatorChar)),
+               problem.Path,
+               Core.FileSystem.Failures.Describe(problem.Error, "copy that"));
+
+    /// <summary>
+    /// Everything a batch left behind, one row each — the list the "details"
+    /// button on the transfer bar shows.
+    ///
+    /// **Only the first one ever reached the screen.** The sentence beside this
+    /// button abridges by design; this is the same information without the
+    /// abridgement, and it is the first route in the application to the second
+    /// item and the fiftieth.
+    ///
+    /// **A folder drags its contents down with it**, though, and the engines
+    /// record every planned descendant of a folder they could not create —
+    /// "noisy, but honest", as the copy loop puts it. Raw, that is 431 rows
+    /// about one unreadable folder: the same number
+    /// <see cref="Core.FileSystem.RetryRoots.Outermost"/> exists to refuse for
+    /// the retry button, and refused here for the same reason. Deliberately the
+    /// same shape as that method, down to Same-and-Contains rather than an
+    /// ordinal compare: Same is why a folder does not exclude itself, and
+    /// Contains is why "/media/one" does not claim "/media/onetwo". The one
+    /// difference is that this reads which rows are folders off the paths,
+    /// because an ItemProblem carries no such flag — and only a folder can have
+    /// another failure underneath it.
+    /// </summary>
+    internal static IReadOnlyList<ProblemRow> ListProblems(
+        IReadOnlyList<Core.FileSystem.ItemProblem> problems)
+        => [.. problems
+            .Where(p => !problems.Any(other =>
+                !Core.FileSystem.PathRules.Same(other.Path, p.Path)
+                && Core.FileSystem.PathRules.Contains(other.Path, p.Path)))
+            .Select(Row)];
 
     /// <summary>
     /// The folder currently selected in a pane, when one is — which is what a
@@ -2597,6 +2681,14 @@ public sealed partial class ShellViewModel : ObservableObject, IDisposable
                 // operation's failure.
                 Retryable = handle.Retry;
                 _retryPane = ActiveTab;
+
+                // Taken alongside the offer rather than inside the branch that
+                // writes the sentence, and for the same reason: a clean run has
+                // to CLEAR this, or the previous failure's list stays reachable
+                // under the next operation's message. A failed operation that
+                // also recorded item problems still gets its list — the two are
+                // not exclusive, and "failed: …" says nothing about which files.
+                OperationProblems = ListProblems(handle.Problems);
 
                 if (handle.State == OperationState.Failed && handle.Error is { } error)
                 {

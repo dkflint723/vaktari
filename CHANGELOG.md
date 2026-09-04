@@ -13,6 +13,16 @@ should not be trusted for compatibility yet.
 
 ### Added
 
+- **The transfer bar can list everything a batch left behind.** It named the
+  first one and counted the rest — "report.docx and 2 more were left behind" —
+  which is the right length for a line sharing a bar with a progress fraction
+  and was the whole of what anybody was ever told: the other two could be found
+  only by comparing the two folders by hand, which is the work that carrying on
+  past a locked file is supposed to save. A *details* button beside the message
+  now lists every one of them, with the reason and the full path, and a folder
+  that failed stands for its contents rather than dragging four hundred rows in
+  with it.
+
 - **A volume that is there but not mounted can be mounted by clicking it.** The
   sidebar has listed them for a while — a partition nobody automounts, a stick
   just plugged into a desktop that leaves that to you — dimmed, with no folder
