@@ -29,12 +29,22 @@ public sealed partial class SidebarViewModel : ObservableObject
     /// </summary>
     private readonly Func<Vaktari.Core.FileSystem.ITrashMaintenance?>? _trash;
 
+    /// <summary>
+    /// How a volume's free space is measured, so that
+    /// <see cref="RefreshCapacityAsync"/> can be driven over a drive filling up
+    /// without a test owning one. Defaulted to the real read, the way the trash
+    /// source beside it is optional.
+    /// </summary>
+    private readonly Func<string, long?> _freeSpace;
+
     public SidebarViewModel(
         IPlacesProvider? places,
-        Func<Vaktari.Core.FileSystem.ITrashMaintenance?>? trash = null)
+        Func<Vaktari.Core.FileSystem.ITrashMaintenance?>? trash = null,
+        Func<string, long?>? freeSpace = null)
     {
         _places = places;
         _trash = trash;
+        _freeSpace = freeSpace ?? FreeSpaceOn;
 
         if (places is not null)
             places.PlacesChanged += (_, _) => Dispatcher.UIThread.Post(() => _ = ReloadAsync());
@@ -460,6 +470,81 @@ public sealed partial class SidebarViewModel : ObservableObject
         foreach (var group in Groups)
             foreach (var place in group.Places)
                 if (place.IsBin) place.BinHasItems = holding;
+    }
+
+    /// <summary>
+    /// Re-measures free space on the drives already listed, leaving the rows
+    /// themselves alone.
+    ///
+    /// **Public and separate from <see cref="ReloadAsync"/>, for the reason
+    /// <see cref="RefreshBinState"/> is.** Copying a file changes this number
+    /// and changes nothing about which places exist, so a rebuild would
+    /// re-enumerate every drive and re-read every volume label — the work that
+    /// blocks for the whole SMB timeout on a mapped drive whose server has gone
+    /// — to move one figure per row. It would also throw every row object away,
+    /// which the eject and current-path marks then have to be re-applied over.
+    ///
+    /// **Asked for on an event rather than on a timer.** DriveSet keeps free
+    /// space out of the device watcher's key precisely because it changes
+    /// constantly, and a poll would be that watcher wearing a different hat:
+    /// one stat per drive per tick, forever, including the dead mounts. This is
+    /// asked once, when something we did has just finished moving bytes.
+    ///
+    /// Off the UI thread, because the measurement is a stat of the filesystem
+    /// and on an unreachable mount it does not return — the same reason the
+    /// pane's own status-bar figure is read on a pool thread.
+    /// </summary>
+    public async Task RefreshCapacityAsync()
+    {
+        // On the UI thread, where the rows live, and materialised before the
+        // hop: a rebuild landing while the measurement runs replaces this
+        // collection, and the rows captured here are then simply the old ones —
+        // written to and dropped, rather than enumerated mid-change.
+        var rows = Groups
+            .SelectMany(group => group.Places)
+            // ShowCapacity rather than HasCapacity: those are exactly the
+            // conditions under which the markup draws the number and the bar,
+            // so a drive being dismounted is not stat'ed on its way out, and a
+            // machine where the figure has been turned off measures nothing at
+            // all.
+            .Where(row => row.ShowCapacity && row.IsAvailable && row.HasRealPath)
+            .ToList();
+
+        if (rows.Count == 0) return;
+
+        var read = _freeSpace;
+        var paths = rows.Select(row => row.Path).ToList();
+
+        var measured = await Task.Run(() => paths.Select(read).ToList())
+                                 .ConfigureAwait(false);
+
+        await Dispatcher.UIThread.InvokeAsync(() =>
+        {
+            for (var i = 0; i < rows.Count; i++) rows[i].SetFree(measured[i]);
+        });
+    }
+
+    /// <summary>
+    /// What is left on the volume at this path, or null when it will not say.
+    ///
+    /// The same <see cref="DriveInfo.AvailableFreeSpace"/> both providers read
+    /// when they build the drive row in the first place, so a refreshed figure
+    /// and a rebuilt one come from one source rather than two that could drift.
+    /// </summary>
+    private static long? FreeSpaceOn(string path)
+    {
+        try
+        {
+            return new DriveInfo(path).AvailableFreeSpace;
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException
+                                      or ArgumentException or NotSupportedException)
+        {
+            // A drive that will not answer keeps the figure it had; the caller
+            // treats null as "no new measurement" rather than as zero.
+            Quiet.Swallowed("places-capacity", ex);
+            return null;
+        }
     }
 
     /// <summary>
@@ -961,12 +1046,62 @@ public sealed partial class PlaceItemViewModel(Place place) : ObservableObject
 
     public bool HasCapacity => place.CapacityBytes is > 0;
 
-    public double UsedFraction => place.CapacityBytes is > 0 && place.FreeBytes is { } free
+    /// <summary>
+    /// What is left on this volume, held here rather than read off the record
+    /// on every get.
+    ///
+    /// **The figure was measured once and never again.** A Place is built by
+    /// the provider, and the sidebar rebuilds only when the PLACES change — a
+    /// device arriving or leaving, a pin, a mount, an eject. Copying forty
+    /// gibibytes onto a drive changes none of those, so the row and its tooltip
+    /// went on reporting the space that was free before the copy started, until
+    /// something unrelated happened to plug in.
+    ///
+    /// Only this number is re-measured. A copy moves what is FREE and leaves
+    /// the size of the volume where it was, so the capacity beside it is still
+    /// read from the record.
+    /// </summary>
+    private long? _free = place.FreeBytes;
+
+    /// <summary>
+    /// Takes a freshly measured free figure.
+    ///
+    /// Null is "the volume would not say", and leaves the last known figure
+    /// standing rather than blanking the row — the same choice both providers
+    /// make when the read throws while they are building the place.
+    /// </summary>
+    public void SetFree(long? free)
+    {
+        if (free is not { } bytes || bytes == _free) return;
+
+        _free = bytes;
+
+        OnPropertyChanged(nameof(CapacityText));
+        OnPropertyChanged(nameof(CapacityShort));
+        OnPropertyChanged(nameof(UsedFraction));
+    }
+
+    public double UsedFraction => place.CapacityBytes is > 0 && _free is { } free
         ? 1.0 - (double)free / place.CapacityBytes.Value
         : 0;
 
-    public string CapacityText => place.CapacityBytes is > 0 && place.FreeBytes is { } free
-        ? $"{ByteSize.Format(free)} free"
+    /// <summary>
+    /// The row's tooltip: what is left, and of how much.
+    ///
+    /// **It said only "154 GiB free".** A free figure with nothing behind it
+    /// cannot be read as a proportion — 154 GiB is roomy on a laptop disk and
+    /// nearly full on a sixteen-tebibyte array — and the bar drawn under the
+    /// row shows exactly that proportion, with no number anywhere saying what
+    /// it is a proportion OF.
+    ///
+    /// The total is the same number This PC's Size column prints for the same
+    /// drive: ComputerListing.Build puts Place.CapacityBytes into the row's
+    /// Length, and RowMetadata.SizeCell renders a volume's Length through this
+    /// same ByteSize.Format — so the two agree digit for digit rather than
+    /// nearly.
+    /// </summary>
+    public string CapacityText => place.CapacityBytes is > 0 && _free is { } free
+        ? $"{ByteSize.Format(free)} free of {ByteSize.Format(place.CapacityBytes.Value)}"
         : "";
 
     /// <summary>
@@ -975,7 +1110,7 @@ public sealed partial class PlaceItemViewModel(Place place) : ObservableObject
     /// carrying no information at exactly the width where it cost the most.
     /// <see cref="CapacityText"/> stays, as the row's tooltip.
     /// </summary>
-    public string CapacityShort => place.CapacityBytes is > 0 && place.FreeBytes is { } free
+    public string CapacityShort => place.CapacityBytes is > 0 && _free is { } free
         ? ByteSize.Format(free)
         : "";
 

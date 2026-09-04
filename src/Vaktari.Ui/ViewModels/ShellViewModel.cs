@@ -1515,7 +1515,23 @@ public sealed partial class ShellViewModel : ObservableObject, IDisposable
         // this is the single point every file operation passes through — the
         // alternative is remembering to call it at each of the four sites that
         // change the bin, which is the kind of list that grows a fifth.
-        if (value is null) Sidebar.RefreshBinState();
+        if (value is null)
+        {
+            Sidebar.RefreshBinState();
+
+            // **And the drives' free space, which that operation has just
+            // moved.** The sidebar rebuilds on device arrivals and pins, none
+            // of which a copy is, so a drive row and its tooltip reported the
+            // space free before the copy started until something unrelated
+            // happened to plug in. Same funnel and the same argument as the bin
+            // above it: a copy, a move, a delete and a restore all change this
+            // and all pass through here.
+            //
+            // Not awaited: this is a property-changed hook, and the figure
+            // arriving a stat later is the point — nothing downstream of the
+            // operation bar is waiting on it.
+            _ = Sidebar.RefreshCapacityAsync();
+        }
     }
     partial void OnOperationStatusChanged(string value) => NotifyOperationBar();
 

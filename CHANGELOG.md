@@ -609,6 +609,17 @@ should not be trusted for compatibility yet.
 
 ### Fixed
 
+- **Drive free space keeps up with what you just copied, and says what it is
+  free of.** The sidebar read a drive's size once when it built the list and
+  never again, so copying twenty gigabytes onto a stick left the figure beside
+  it exactly where it had been — the bar under the row was measuring something
+  that was no longer true. It is re-measured whenever a transfer finishes, which
+  is where the bin's icon is already brought up to date; a drive the last
+  rebuild found unreachable is left alone rather than asked, and the measurement
+  is taken off the UI thread, so a share that has gone quiet since cannot freeze
+  the window. The tooltip reads "1 TiB free of 4 TiB" now: the bar had always
+  drawn a proportion with no number anywhere saying what it was a proportion of.
+
 - **A restored tab whose folder has gone says so instead of spinning.** Tabs
   come back from the last session without being read, and the first one you
   click is read then. If that folder was on a share whose server has gone away,
