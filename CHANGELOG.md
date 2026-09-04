@@ -297,6 +297,16 @@ should not be trusted for compatibility yet.
 
 ### Changed
 
+- **A folder dropped onto a folder says *Merge*, and how much of it collides.**
+  The button said *Overwrite* while the engine merged: it keeps everything the
+  destination already had and asks again for each file whose name is taken. The
+  word was wrong about what would happen, which is the one thing that button has
+  to be right about. It reads *Merge* for a folder arriving on a folder now, with
+  a line saying what merging keeps and how many of the arriving items have a name
+  already in there — the two folders were one line each, "12 items · 3 Feb"
+  against "40 items · 9 Aug", and nothing said how much of the two actually
+  collided, which is the whole of what makes the answer matter.
+
 - **Restoring from the bin says when your file came back under another name.**
   Both bins restore beside an occupied name rather than over it — which is the
   right call — and the report said only "restored 1 item(s)". The listing you

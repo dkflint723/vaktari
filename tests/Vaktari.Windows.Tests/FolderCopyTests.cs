@@ -270,4 +270,62 @@ public sealed class FolderCopyTests : IDisposable
         Assert.True(Directory.Exists(Path.Combine(_root, "Alpha - Copy")));
     }
 
+    // ---- overwriting a folder is a merge -------------------------------------
+
+    /// <summary>
+    /// **What Overwrite does to a folder, measured rather than assumed.** The
+    /// prompt offered the word "Overwrite" for a folder as well as for a file,
+    /// and no test anywhere said what the engine does with it — the arm is a
+    /// bare break into CreateDirectory on a directory that already exists.
+    ///
+    /// So: nothing already inside is removed, everything arriving is added, and
+    /// every colliding name comes back as its own conflict. That is a merge,
+    /// which is now the word on the button, and this is the measurement the
+    /// word rests on.
+    ///
+    /// The prompt count is checked against FolderMerge.Between — the same
+    /// number the dialog states — so the sentence and the engine cannot drift
+    /// apart without one of them failing here.
+    /// </summary>
+    [Fact]
+    public async Task Overwriting_a_folder_merges_it_and_asks_about_each_clash()
+    {
+        var arriving = Dir("source", "photos");
+        File_(@"source\photos\notes.txt", "new");
+        File_(@"source\photos\holiday.jpg", "new");
+        File_(@"source\photos\raw\one.cr2", "new");
+
+        var destination = Dir("destination");
+        var there = Dir("destination", "photos");
+        File_(@"destination\photos\notes.txt", "old");
+        File_(@"destination\photos\already-here.jpg", "old");
+        File_(@"destination\photos\raw\one.cr2", "old");
+
+        // Read before the copy: afterwards the two trees are one.
+        var predicted = FolderMerge.Between(arriving, there);
+
+        var asked = new List<string>();
+
+        var ops = new WindowsFileOperations();
+
+        await Done(ops.Copy([arriving], destination, conflict =>
+        {
+            asked.Add(conflict.Target);
+
+            return ValueTask.FromResult(ConflictResolution.Overwrite);
+        }));
+
+        // A merge: what was already in there is still in there.
+        Assert.Equal(["already-here.jpg", "holiday.jpg", "notes.txt", "raw"], NamesIn(there));
+        Assert.Equal("old", System.IO.File.ReadAllText(Path.Combine(there, "already-here.jpg")));
+
+        // And only the colliding names were actually replaced.
+        Assert.Equal("new", System.IO.File.ReadAllText(Path.Combine(there, "notes.txt")));
+
+        // notes.txt, the raw folder, raw\one.cr2 — plus the folder itself.
+        Assert.Equal(3, predicted.Clashes);
+        Assert.Equal(1 + predicted.Clashes, asked.Count);
+        Assert.Equal(there, asked[0]);
+    }
+
 }

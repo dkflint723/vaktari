@@ -105,4 +105,62 @@ public sealed class SettingsWindowRendersTests
             try { Directory.Delete(root, recursive: true); } catch { /* temp */ }
         }
     }
+
+    /// <summary>
+    /// **The middle button's word comes from the view model now**, because the
+    /// markup hard-coded "Overwrite" while the engine merged two folders. The
+    /// view model is asserted directly in ConflictPromptTests; what this adds is
+    /// that the binding actually reaches the button — a Content the markup no
+    /// longer writes is exactly the kind of thing that compiles, renders blank,
+    /// and is found by somebody mid-copy.
+    /// </summary>
+    [AvaloniaFact]
+    public void The_conflict_prompt_says_merge_when_a_folder_is_already_there()
+    {
+        var root = Path.Combine(Path.GetTempPath(), "vaktari-merge-" + Guid.NewGuid().ToString("N")[..8]);
+
+        Directory.CreateDirectory(root);
+
+        try
+        {
+            var target = Path.Combine(root, "photos");
+            var source = Path.Combine(root, "incoming", "photos");
+
+            Directory.CreateDirectory(target);
+            Directory.CreateDirectory(source);
+
+            File.WriteAllText(Path.Combine(target, "one.jpg"), "old");
+            File.WriteAllText(Path.Combine(source, "one.jpg"), "new");
+
+            var model = new ConflictViewModel(new Vaktari.Core.FileSystem.FileConflict(source, target));
+            var window = new Vaktari.Ui.ConflictWindow(model);
+
+            window.Show();
+            window.Measure(new Avalonia.Size(520, 400));
+            window.Arrange(new Avalonia.Rect(0, 0, 520, 400));
+
+            var labels = window.GetVisualDescendants()
+                .OfType<Button>()
+                .Select(b => b.Content as string)
+                .OfType<string>()
+                .ToList();
+
+            Assert.Contains("Merge", labels);
+            Assert.DoesNotContain("Overwrite", labels);
+
+            // And the sentence that says why the word changed is on screen with
+            // it, rather than only on the view model.
+            Assert.Contains(
+                window.GetVisualDescendants().OfType<TextBlock>(),
+                block => block.Text is { } text
+                         && text.Contains("Merging keeps", StringComparison.Ordinal)
+                         && text.Contains("1 item arriving", StringComparison.Ordinal));
+
+            window.Close();
+        }
+        finally
+        {
+            try { Directory.Delete(root, recursive: true); } catch { /* temp */ }
+        }
+    }
 }

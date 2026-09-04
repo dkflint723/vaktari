@@ -56,11 +56,17 @@
 
     <!-- Overwrite is the destructive one, so it does not sit where a reflex
          click lands. Keep both is what the application did unasked until now,
-         and stays the default. -->
+         and stays the default.
+
+         Its word comes from the view model because it is not always the same
+         word: the engine merges two folders rather than replacing one, so a
+         folder gets "Merge". Bound rather than swapped by a style, so the one
+         place that decides it is the one place that also writes the sentence
+         above about what merging keeps. -->
     <StackPanel Orientation="Horizontal" Spacing="8" HorizontalAlignment="Right">
       <Button Content="Cancel" Padding="14,5" IsCancel="True"
               Command="{Binding CancelCommand}"/>
-      <Button Content="Overwrite" Padding="14,5"
+      <Button Content="{Binding OverwriteLabel}" Padding="14,5"
               Command="{Binding OverwriteCommand}"/>
       <Button Content="Skip" Padding="14,5"
               Command="{Binding SkipCommand}"/>
