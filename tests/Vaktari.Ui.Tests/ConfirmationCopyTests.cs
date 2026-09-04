@@ -85,7 +85,7 @@ public sealed class ConfirmationCopyTests
 
     /// <summary>
     /// The prompt bar is one horizontal row with the confirm button to the
-    /// right of this text, so a very long name would push "delete permanently"
+    /// right of this text, so a very long name would push "Delete permanently"
     /// off the window — leaving a question with no way to answer it but the
     /// keyboard.
     /// </summary>

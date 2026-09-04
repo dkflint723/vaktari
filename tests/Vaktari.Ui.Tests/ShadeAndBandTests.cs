@@ -240,7 +240,7 @@ public sealed class ShadeAndBandTests
 
         var hints = markup.Descendants(avalonia + "TextBlock")
             .Where(t => (string?)t.Attribute(x + "Name") == "PromptHint"
-                        || (string?)t.Attribute("Text") == "ctrl+f")
+                        || (string?)t.Attribute("Text") == "Ctrl+F")
             .ToList();
 
         Assert.Equal(2, hints.Count);

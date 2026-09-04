@@ -226,7 +226,7 @@ public sealed class ProblemDetailsTests : OwnedViewModels
 
         Assert.Equal("TopEdgeAlignedRight", (string?)flyout.Attribute("Placement"));
 
-        Assert.Equal("what was left behind",
+        Assert.Equal("What was left behind",
                      (string?)button.Attribute("AutomationProperties.Name"));
     }
 

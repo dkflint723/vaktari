@@ -323,7 +323,7 @@
                 <ToggleButton Classes="seg"
                               IsChecked="{Binding ActiveTab.IsDetailsView, Mode=OneWay}"
                               Command="{Binding ActiveTab.ShowAsDetailsCommand}"
-                              AutomationProperties.Name="list" ToolTip.Tip="list">
+                              AutomationProperties.Name="List" ToolTip.Tip="List">
                   <Path Data="M0,0 H12 V2 H0 Z M0,5 H12 V7 H0 Z M0,10 H12 V12 H0 Z"
                         Width="12" Height="12" Stretch="Uniform"/>
                 </ToggleButton>
@@ -331,7 +331,7 @@
                               IsChecked="{Binding ActiveTab.IsCompactView, Mode=OneWay}"
                               IsEnabled="{Binding ActiveTab.CanUseCompact}"
                               Command="{Binding ActiveTab.ShowAsCompactCommand}"
-                              AutomationProperties.Name="small grid" ToolTip.Tip="small grid">
+                              AutomationProperties.Name="Small grid" ToolTip.Tip="Small grid">
                   <!-- Two short columns: the shape of the layout itself. -->
                   <Path Data="M0,0 H5 V2 H0 Z M0,4 H5 V6 H0 Z M0,8 H5 V10 H0 Z M7,0 H12 V2 H7 Z M7,4 H12 V6 H7 Z M7,8 H12 V10 H7 Z"
                         Width="12" Height="12" Stretch="Uniform"/>
@@ -339,7 +339,7 @@
                 <ToggleButton Classes="seg"
                               IsChecked="{Binding ActiveTab.IsGridView, Mode=OneWay}"
                               Command="{Binding ActiveTab.ShowAsGridCommand}"
-                              AutomationProperties.Name="large grid" ToolTip.Tip="large grid">
+                              AutomationProperties.Name="Large grid" ToolTip.Tip="Large grid">
                   <Path Data="M0,0 H5 V5 H0 Z M7,0 H12 V5 H7 Z M0,7 H5 V12 H0 Z M7,7 H12 V12 H7 Z"
                         Width="12" Height="12" Stretch="Uniform"/>
                 </ToggleButton>
@@ -363,8 +363,8 @@
             <ToggleButton Classes="seg"
                           IsVisible="{Binding ShowsWindowControls}"
                           IsChecked="{Binding IsInfoVisible}" IsEnabled="{Binding IsInfoToggleEnabled}"
-                          AutomationProperties.Name="details panel for this side  (f11)"
-                          ToolTip.Tip="details panel for this side  (f11)">
+                          AutomationProperties.Name="Details panel for this side  (f11)"
+                          ToolTip.Tip="Details panel for this side  (f11)">
               <!-- Inset by half the stroke. Drawn on the 0..12 edges the outline
                    is clipped to half its width on all four sides, which is why
                    the design's own geometry starts at 0.7. -->
@@ -380,7 +380,7 @@
                           IsVisible="{Binding ShowsWindowControls}"
                           IsChecked="{Binding $parent[Window].((vm:ShellViewModel)DataContext).IsSplit, Mode=OneWay}"
                           Command="{Binding $parent[Window].((vm:ShellViewModel)DataContext).ToggleSplitCommand}"
-                          AutomationProperties.Name="split view  (f3)" ToolTip.Tip="split view  (f3)">
+                          AutomationProperties.Name="Split view  (f3)" ToolTip.Tip="Split view  (f3)">
               <!-- A 24-unit box at 13px with a 1.8 stroke, where the panel
                    toggle is a 12-unit box at 12px with 1.4. The design draws
                    these two at different weights on purpose: the split is the
@@ -405,7 +405,7 @@
                     Foreground="{DynamicResource ViewDimText}"
                     Background="Transparent" BorderThickness="0"
                     IsVisible="{Binding ShowsWindowControls}"
-                    AutomationProperties.Name="view options" ToolTip.Tip="view options">
+                    AutomationProperties.Name="View options" ToolTip.Tip="View options">
             <Button.Flyout>
               <Flyout Placement="BottomEdgeAlignedRight">
                 <StackPanel Width="230" Spacing="10" Margin="4">
@@ -467,7 +467,7 @@
                               Margin="0,0,0,6" MinHeight="26" Padding="8,0"
                               FontSize="{DynamicResource FontSizeSmall}"
                               IsVisible="{Binding $parent[Window].((vm:ShellViewModel)DataContext).IsSplit}"
-                              AutomationProperties.Name="which pane the size controls change"
+                              AutomationProperties.Name="Which pane the size controls change"
                               SelectedIndex="{Binding $parent[Window].((vm:ShellViewModel)DataContext).ScaleTargetIndex}">
                       <ComboBoxItem Content="Left pane"/>
                       <ComboBoxItem Content="Right pane"/>
@@ -488,7 +488,7 @@
                                 FontSize="{DynamicResource FontSizeBase}"
                                 HorizontalContentAlignment="Center"
                                 VerticalContentAlignment="Center"
-                                AutomationProperties.Name="smaller text in this pane" ToolTip.Tip="smaller text in this pane"
+                                AutomationProperties.Name="Smaller text in this pane" ToolTip.Tip="Smaller text in this pane"
                                 Command="{Binding $parent[Window].((vm:ShellViewModel)DataContext).FontSmallerCommand}"/>
                         <!-- LostFocus, not per keystroke: committing mid-type
                              would apply "1" on the way to "14". -->
@@ -497,14 +497,14 @@
                                  Width="48" Height="26" Padding="0" MinHeight="0"
                                  Background="Transparent" BorderThickness="0"
                                  FontSize="{DynamicResource FontSizeSmall}"
-                                 AutomationProperties.Name="text size in this pane"
+                                 AutomationProperties.Name="Text size in this pane"
                                  TextAlignment="Center" VerticalContentAlignment="Center"/>
                         <Button Content="+" Width="30" Height="26" Padding="0"
                                 Background="Transparent" BorderThickness="0"
                                 FontSize="{DynamicResource FontSizeBase}"
                                 HorizontalContentAlignment="Center"
                                 VerticalContentAlignment="Center"
-                                AutomationProperties.Name="larger text in this pane" ToolTip.Tip="larger text in this pane"
+                                AutomationProperties.Name="Larger text in this pane" ToolTip.Tip="Larger text in this pane"
                                 Command="{Binding $parent[Window].((vm:ShellViewModel)DataContext).FontLargerCommand}"/>
                       </StackPanel>
                     </Border>
@@ -523,28 +523,28 @@
                                 FontSize="{DynamicResource FontSizeBase}"
                                 HorizontalContentAlignment="Center"
                                 VerticalContentAlignment="Center"
-                                AutomationProperties.Name="smaller icons in this pane" ToolTip.Tip="smaller icons in this pane"
+                                AutomationProperties.Name="Smaller icons in this pane" ToolTip.Tip="Smaller icons in this pane"
                                 Command="{Binding $parent[Window].((vm:ShellViewModel)DataContext).IconsSmallerCommand}"/>
                         <TextBox local:FocusBehavior.CommitOnEnter="True"
                                  Text="{Binding $parent[Window].((vm:ShellViewModel)DataContext).TargetIconPixels, Mode=TwoWay, UpdateSourceTrigger=LostFocus}"
                                  Width="48" Height="26" Padding="0" MinHeight="0"
                                  Background="Transparent" BorderThickness="0"
                                  FontSize="{DynamicResource FontSizeSmall}"
-                                 AutomationProperties.Name="icon size in this pane"
+                                 AutomationProperties.Name="Icon size in this pane"
                                  TextAlignment="Center" VerticalContentAlignment="Center"/>
                         <Button Content="+" Width="30" Height="26" Padding="0"
                                 Background="Transparent" BorderThickness="0"
                                 FontSize="{DynamicResource FontSizeBase}"
                                 HorizontalContentAlignment="Center"
                                 VerticalContentAlignment="Center"
-                                AutomationProperties.Name="larger icons in this pane" ToolTip.Tip="larger icons in this pane"
+                                AutomationProperties.Name="Larger icons in this pane" ToolTip.Tip="Larger icons in this pane"
                                 Command="{Binding $parent[Window].((vm:ShellViewModel)DataContext).IconsLargerCommand}"/>
                       </StackPanel>
                     </Border>
 
                   </Grid>
 
-                  <TextBlock Text="ctrl+wheel to scale, ctrl+wheel click to reset · add shift for icons only"
+                  <TextBlock Text="Ctrl+wheel to scale, Ctrl+wheel click to reset · add Shift for icons only"
                              FontSize="{DynamicResource FontSizeTiny}"
                              Foreground="{DynamicResource ViewDimText}"
                              TextWrapping="Wrap" Margin="0,2,0,4"/>
@@ -561,7 +561,7 @@
                        can change back, the other is a preference that persists. -->
                   <Button Content="Settings…" HorizontalAlignment="Stretch"
                           FontSize="{DynamicResource FontSizeSmall}"
-                          AutomationProperties.Name="application settings  (ctrl+shift+,)" ToolTip.Tip="application settings  (ctrl+shift+,)"
+                          AutomationProperties.Name="Application settings  (ctrl+shift+,)" ToolTip.Tip="Application settings  (ctrl+shift+,)"
                           Command="{Binding $parent[Window].((vm:ShellViewModel)DataContext).OpenSettingsCommand}"/>
                 </StackPanel>
               </Flyout>
@@ -583,11 +583,11 @@
           <RepeatButton DockPanel.Dock="Left" Classes="tab-nudge tab-nudge-left"
                         Content="&#x2039;" IsVisible="False"
                         Click="OnScrollTabsLeft"
-                        AutomationProperties.Name="scroll tabs left" ToolTip.Tip="scroll tabs left"/>
+                        AutomationProperties.Name="Scroll tabs left" ToolTip.Tip="Scroll tabs left"/>
           <RepeatButton DockPanel.Dock="Right" Classes="tab-nudge tab-nudge-right"
                         Content="&#x203A;" IsVisible="False"
                         Click="OnScrollTabsRight"
-                        AutomationProperties.Name="scroll tabs right" ToolTip.Tip="scroll tabs right"/>
+                        AutomationProperties.Name="Scroll tabs right" ToolTip.Tip="Scroll tabs right"/>
 
           <!-- Scrolled, and that is the fix rather than a nicety.
                A horizontal StackPanel measures its children with INFINITE width
@@ -742,7 +742,7 @@
                           Foreground="{DynamicResource ViewDimText}"
                           Background="Transparent" BorderThickness="0"
                           Padding="6,3" Margin="11,0,0,0" VerticalAlignment="Center"
-                          AutomationProperties.Name="close tab  (ctrl+w)" ToolTip.Tip="close tab  (ctrl+w)"
+                          AutomationProperties.Name="Close tab  (ctrl+w)" ToolTip.Tip="Close tab  (ctrl+w)"
                           Command="{Binding $parent[Window].((vm:ShellViewModel)DataContext).CloseTabCommand}"
                           CommandParameter="{Binding}"/>
 
@@ -794,7 +794,7 @@
                   Background="Transparent" BorderThickness="0"
                   Padding="10,2" Margin="6,0,0,4" VerticalAlignment="Center"
                   Command="{Binding NewTabHereCommand}"
-                  AutomationProperties.Name="new tab in this pane  (ctrl+t)" ToolTip.Tip="new tab in this pane  (ctrl+t)"/>
+                  AutomationProperties.Name="New tab in this pane  (ctrl+t)" ToolTip.Tip="New tab in this pane  (ctrl+t)"/>
           </StackPanel>
           </ScrollViewer>
          </DockPanel>
@@ -818,7 +818,7 @@
                  opacity. -->
             <Button DockPanel.Dock="Left" Width="30"
                     Background="Transparent" BorderThickness="0"
-                    AutomationProperties.Name="back  (alt+left)" ToolTip.Tip="back  (alt+left)"
+                    AutomationProperties.Name="Back  (alt+left)" ToolTip.Tip="Back  (alt+left)"
                     Command="{Binding ActiveTab.GoBackCommand}"
                     IsEnabled="{Binding ActiveTab.CanGoBack}">
               <!-- **Back and Forward exposed one step each**, out of a
@@ -849,7 +849,7 @@
             </Button>
             <Button DockPanel.Dock="Left" Width="30"
                     Background="Transparent" BorderThickness="0"
-                    AutomationProperties.Name="forward  (alt+right)" ToolTip.Tip="forward  (alt+right)"
+                    AutomationProperties.Name="Forward  (alt+right)" ToolTip.Tip="Forward  (alt+right)"
                     Command="{Binding ActiveTab.GoForwardCommand}"
                     IsEnabled="{Binding ActiveTab.CanGoForward}">
               <!-- **Back and Forward exposed one step each**, out of a
@@ -880,7 +880,7 @@
             </Button>
             <Button DockPanel.Dock="Left" Width="30" Margin="0,0,6,0"
                     Background="Transparent" BorderThickness="0"
-                    AutomationProperties.Name="up one folder  (alt+up)" ToolTip.Tip="up one folder  (alt+up)"
+                    AutomationProperties.Name="Up one folder  (alt+up)" ToolTip.Tip="Up one folder  (alt+up)"
                     Command="{Binding ActiveTab.GoUpCommand}"
                     IsEnabled="{Binding ActiveTab.CanGoUp}">
               <Path Data="M5 15 L12 8 L19 15" Stroke="{DynamicResource ViewText}"
@@ -911,8 +911,8 @@
                         Command="{Binding ActiveTab.BeginSearchCommand}"
                         Width="30" Height="26" Padding="0"
                         Background="Transparent" BorderThickness="0"
-                        AutomationProperties.Name="search files  (ctrl+f)"
-                        ToolTip.Tip="search files  (ctrl+f)">
+                        AutomationProperties.Name="Search files  (ctrl+f)"
+                        ToolTip.Tip="Search files  (ctrl+f)">
                   <Path Width="13" Height="13" Stretch="Uniform"
                         Data="M10.5 4 a6.5 6.5 0 1 0 0 13 a6.5 6.5 0 1 0 0 -13 M15.5 15.5 L20 20"
                         Stroke="{DynamicResource ViewDimText}" StrokeThickness="1.03"
@@ -932,7 +932,13 @@
                          the hint below the placeholder rather than level with
                          it, so the field reads as one thing with a note on it
                          rather than two labels competing. -->
-                    <TextBlock DockPanel.Dock="Right" Text="ctrl+f" Margin="6,0,8,0"
+                    <!-- "Ctrl+F", the way the F1 sheet spells it. This chip is
+                         a key name standing on its own rather than a sentence,
+                         so both halves take the capital the sheet gives them;
+                         a gesture written INSIDE a label — "Search files
+                         (ctrl+f)" — stays lower case, because there the words
+                         are the label and the gesture is an aside. -->
+                    <TextBlock DockPanel.Dock="Right" Text="Ctrl+F" Margin="6,0,8,0"
                                VerticalAlignment="Center"
                                FontSize="{DynamicResource FontSizeTiny}"
                                Foreground="{DynamicResource ViewDimText}"
@@ -940,7 +946,7 @@
                     <TextBox Text="{Binding ActiveTab.SearchDraft}"
                              local:FocusBehavior.FocusWhen="{Binding ActiveTab.IsSearchFocused}"
                              local:FocusBehavior.LostFocusCommand="{Binding ActiveTab.CloseSearchIfEmptyCommand}"
-                             PlaceholderText="search files"
+                             PlaceholderText="Search files"
                              Classes="flat"
                              Background="Transparent" BorderThickness="0"
                              MinHeight="0" Padding="0,3" VerticalContentAlignment="Center"
@@ -979,8 +985,8 @@
                             IsChecked="{Binding ActiveTab.IsFilterVisible, Mode=OneWay}"
                             Command="{Binding ActiveTab.ToggleFilterCommand}"
                             IsVisible="{Binding !ActiveTab.IsFilterVisible}"
-                            AutomationProperties.Name="filter the listing  (ctrl+i)"
-                            ToolTip.Tip="filter the listing  (ctrl+i)">
+                            AutomationProperties.Name="Filter the listing  (ctrl+i)"
+                            ToolTip.Tip="Filter the listing  (ctrl+i)">
                 <StackPanel Orientation="Horizontal" Spacing="7">
                   <Path Data="M3 6 H21 M6.5 12 H17.5 M10 18 H14"
                         Stroke="{DynamicResource ViewDimText}" StrokeThickness="1.03"
@@ -996,8 +1002,8 @@
                        IsVisible="{Binding ActiveTab.IsFilterVisible}"
                        Text="{Binding ActiveTab.FilterText}"
                        local:FocusBehavior.FocusWhen="{Binding ActiveTab.FocusFilter}"
-                       PlaceholderText="filter — esc to clear"
-                       ToolTip.Tip="enter or ↓ goes to the rows · esc clears"
+                       PlaceholderText="Filter — esc to clear"
+                       ToolTip.Tip="Enter or ↓ goes to the rows · Esc clears"
                        FontFamily="{DynamicResource AppMonoFamily}" FontSize="{DynamicResource FontSizeSmall}">
                 <TextBox.KeyBindings>
                   <KeyBinding Gesture="Escape" Command="{Binding ActiveTab.ClearFilterCommand}"/>
@@ -1030,7 +1036,7 @@
               <Border Background="Transparent"
                       IsVisible="{Binding !ActiveTab.IsPathEditing}"
                       local:DoubleClick.Command="{Binding ActiveTab.BeginEditPathCommand}"
-                      ToolTip.Tip="double-click to edit the path  (ctrl+l)"/>
+                      ToolTip.Tip="Double-click to edit the path  (ctrl+l)"/>
 
               <DockPanel IsVisible="{Binding !ActiveTab.IsPathEditing}">
                 <!-- The tooltip carries the path in full, because the bar
@@ -1097,7 +1103,7 @@
               <TextBox x:Name="PathBox"
                        Text="{Binding ActiveTab.PathText}"
                        IsVisible="{Binding ActiveTab.IsPathEditing}"
-                       ToolTip.Tip="tab completes · enter goes · esc or click away cancels&#10;%ProgramFiles%, %SystemDrive% and ~ are understood"
+                       ToolTip.Tip="Tab completes · Enter goes · Esc or click away cancels&#10;%ProgramFiles%, %SystemDrive% and ~ are understood"
                        local:FocusBehavior.LostFocusCommand="{Binding ActiveTab.RevertPathTextCommand}"
                        local:FocusBehavior.FocusOnVisible="True"
                        local:FocusBehavior.FocusWhen="{Binding ActiveTab.FocusPathBox}"
@@ -1729,7 +1735,7 @@
                   <Button Content="Restore"
                           Command="{Binding RestoreFromTrashCommand}"
                           FontSize="{DynamicResource FontSizeSmall}" Padding="10,3"
-                          AutomationProperties.Name="put the selected items back where they came from" ToolTip.Tip="put the selected items back where they came from"/>
+                          AutomationProperties.Name="Put the selected items back where they came from" ToolTip.Tip="Put the selected items back where they came from"/>
                   <!-- The ellipsis is a promise: this one asks first. It is the
                        only action in the application with neither an undo nor a
                        per-item review, so it never fires straight from a click. -->
@@ -1795,8 +1801,8 @@
                           Command="{Binding StopSearchCommand}"
                           Content="Stop" Padding="10,3" MinWidth="0" Margin="8,0,0,0"
                           FontSize="{DynamicResource FontSizeSmall}"
-                          AutomationProperties.Name="stop searching and keep what was found"
-                          ToolTip.Tip="stop searching and keep what was found"/>
+                          AutomationProperties.Name="Stop searching and keep what was found"
+                          ToolTip.Tip="Stop searching and keep what was found"/>
                   <CheckBox x:Name="SearchScope" DockPanel.Dock="Right" Margin="12,0,0,0"
                             Content="{Binding SearchScopeLabel}"
                             IsEnabled="{Binding CanScopeSearch}"
@@ -1864,6 +1870,18 @@
                 </Border.ContextMenu>
                 <!-- Headings sort. The sort state existed, was persisted per
                      tab, and had no control anywhere that could set it. -->
+
+                <!-- **These read "name", "type", "size" and "modified" while
+                     the column chooser — the context menu declared just
+                     above, which opens ON these headings — read "Name",
+                     "Type", "Size" and "Modified".** The same four words,
+                     two spellings, in the one control you open to decide
+                     which of these headings you see, so they are read
+                     together by the only person who compares them. The
+                     lower-case chrome voice was deliberate once and is
+                     abandoned: sentence case is the one rule for every
+                     label in the application, and LabelCasingTests holds
+                     it — both the casing and these four words. -->
                 <Grid Margin="12,0,18,0">
                       <Grid.ColumnDefinitions>
                         <ColumnDefinition Width="Auto"/>
@@ -1900,19 +1918,19 @@
                             Width="11" Margin="0,0,5,0"
                             IsVisible="{Binding IsRepository}"/>
                     <Button Command="{Binding SortByCommand}" CommandParameter="name"
-                            AutomationProperties.Name="sort by name"
+                            AutomationProperties.Name="Sort by name"
                             Background="Transparent" BorderThickness="0" Padding="0"
                             HorizontalAlignment="Stretch" HorizontalContentAlignment="Left">
                       <TextBlock FontSize="{DynamicResource FontSizeSmall}"
                                  Foreground="{DynamicResource ViewDimText}">
-                        <Run Text="name"/><Run Text="{Binding NameSortGlyph}"/>
+                        <Run Text="Name"/><Run Text="{Binding NameSortGlyph}"/>
                       </TextBlock>
                     </Button>
                   </DockPanel>
-                  <!-- Column 2 is the recent listing's "path" only. It used to
+                  <!-- Column 2 is the recent listing's "Path" only. It used to
                        share the slot with an "info" column carrying a
                        type-specific fact; that one is gone. -->
-                  <TextBlock Grid.Column="2" Width="{DynamicResource ColPathWide}" Margin="8,0,0,0" Text="path"
+                  <TextBlock Grid.Column="2" Width="{DynamicResource ColPathWide}" Margin="8,0,0,0" Text="Path"
                              IsVisible="{Binding ShowParentPath}"
                              FontSize="{DynamicResource FontSizeSmall}"
                              Foreground="{DynamicResource ViewDimText}"/>
@@ -1922,33 +1940,33 @@
                        the row template warns goes wrong quietly. -->
                   <Button Grid.Column="3" Width="{DynamicResource ColType}" Margin="8,0,0,0"
                           Command="{Binding SortByCommand}" CommandParameter="kind"
-                          AutomationProperties.Name="sort by type"
+                          AutomationProperties.Name="Sort by type"
                           IsVisible="{Binding ShowType}"
                           Background="Transparent" BorderThickness="0" Padding="0"
                           HorizontalContentAlignment="Left">
                     <TextBlock FontSize="{DynamicResource FontSizeSmall}"
                                Foreground="{DynamicResource ViewDimText}">
-                      <Run Text="type"/><Run Text="{Binding KindSortGlyph}"/>
+                      <Run Text="Type"/><Run Text="{Binding KindSortGlyph}"/>
                     </TextBlock>
                   </Button>
                   <Button Grid.Column="4" Width="{DynamicResource ColSize}" Command="{Binding SortByCommand}" CommandParameter="size"
-                          AutomationProperties.Name="sort by size"
+                          AutomationProperties.Name="Sort by size"
                           IsVisible="{Binding ShowSize}"
                           Background="Transparent" BorderThickness="0" Padding="0"
                           HorizontalContentAlignment="Right">
                     <TextBlock FontSize="{DynamicResource FontSizeSmall}"
                                Foreground="{DynamicResource ViewDimText}">
-                      <Run Text="size"/><Run Text="{Binding SizeSortGlyph}"/>
+                      <Run Text="Size"/><Run Text="{Binding SizeSortGlyph}"/>
                     </TextBlock>
                   </Button>
                   <Button Grid.Column="5" Width="{DynamicResource ColModified}" Command="{Binding SortByCommand}" CommandParameter="modified"
-                          AutomationProperties.Name="sort by date modified"
+                          AutomationProperties.Name="Sort by date modified"
                           IsVisible="{Binding ShowModified}"
                           Background="Transparent" BorderThickness="0" Padding="0"
                           HorizontalContentAlignment="Right">
                     <TextBlock FontSize="{DynamicResource FontSizeSmall}"
                                Foreground="{DynamicResource ViewDimText}">
-                      <Run Text="modified"/><Run Text="{Binding ModifiedSortGlyph}"/>
+                      <Run Text="Modified"/><Run Text="{Binding ModifiedSortGlyph}"/>
                     </TextBlock>
                   </Button>
                 </Grid>
@@ -2180,7 +2198,7 @@
 
                                Docked after the name, so it sits beside a short
                                one rather than at the far edge of the column. -->
-                          <TextBlock Text="look-alike"
+                          <TextBlock Text="Look-alike"
                                      Margin="8,0,0,0" VerticalAlignment="Center"
                                      FontSize="{DynamicResource FontSizeTiny}"
                                      Foreground="{DynamicResource AccentText}"
@@ -2378,7 +2396,7 @@
                                hid the one warning about two names that read
                                identically. Right-docked so it survives a long
                                name; the name ellipsizes, the warning does not. -->
-                          <TextBlock DockPanel.Dock="Right" Text="look-alike"
+                          <TextBlock DockPanel.Dock="Right" Text="Look-alike"
                                      Margin="6,0,2,0" VerticalAlignment="Center"
                                      FontSize="{DynamicResource FontSizeTiny}"
                                      Foreground="{DynamicResource AccentText}"
@@ -2856,10 +2874,18 @@
            child what is left, so the buttons are always reachable and the text
            ellipsizes instead. Declared right-to-left: a DockPanel hands
            Right-docked children the rightmost slot in DECLARATION order, so
-           this reads "pause cancel" on screen. Dismiss never coexists with the
+           this reads "Pause Cancel" on screen. Dismiss never coexists with the
            other two, and a collapsed child takes no space. -->
+
+      <!-- **This bar said "dismiss" and "cancel" while every window with a
+           Cancel button — Batch rename, Conflict, Settings and Share — said
+           "Cancel".** Four windows agreed with each other and disagreed with
+           the one bar you see most often, which is the bar that appears while
+           something irreversible is running. Sentence case is the one rule
+           now — LabelCasingTests holds it for every label in every markup
+           file, and for the labels the code-behind builds. -->
       <DockPanel LastChildFill="True">
-        <Button DockPanel.Dock="Right" Content="dismiss" Margin="6,0,0,0"
+        <Button DockPanel.Dock="Right" Content="Dismiss" Margin="6,0,0,0"
                 FontSize="{DynamicResource FontSizeSmall}" Padding="8,2"
                 IsVisible="{Binding OperationFinished}"
                 Command="{Binding DismissOperationStatusCommand}"/>
@@ -2889,11 +2915,11 @@
              own popup, so it takes no verb. That also keeps the bar's asserted
              button order — dismiss, retry, cancel, pause — reading off the
              commands exactly as it did. -->
-        <Button DockPanel.Dock="Right" Content="details" Margin="6,0,0,0"
+        <Button DockPanel.Dock="Right" Content="Details" Margin="6,0,0,0"
                 FontSize="{DynamicResource FontSizeSmall}" Padding="8,2"
                 IsVisible="{Binding CanShowProblems}"
-                AutomationProperties.Name="what was left behind"
-                ToolTip.Tip="what was left behind">
+                AutomationProperties.Name="What was left behind"
+                ToolTip.Tip="What was left behind">
           <Button.Flyout>
             <!-- Stated rather than left to the positioner. A Flyout's default
                  Placement is Bottom and this bar is docked to the BOTTOM of the
@@ -2942,7 +2968,7 @@
             </Flyout>
           </Button.Flyout>
         </Button>
-        <Button DockPanel.Dock="Right" Content="cancel" Margin="6,0,0,0"
+        <Button DockPanel.Dock="Right" Content="Cancel" Margin="6,0,0,0"
                 FontSize="{DynamicResource FontSizeSmall}" Padding="8,2"
                 IsVisible="{Binding ActiveOperation, Converter={x:Static ObjectConverters.IsNotNull}}"
                 Command="{Binding CancelOperationCommand}"/>
@@ -2997,7 +3023,7 @@
              handler that can be intercepted anywhere along the route. -->
         <Button x:Name="PromptConfirm" IsVisible="False" Padding="12,3"
                 FontSize="{DynamicResource FontSizeSmall}"/>
-        <Button x:Name="PromptCancel" Content="cancel" IsVisible="False" Padding="12,3"
+        <Button x:Name="PromptCancel" Content="Cancel" IsVisible="False" Padding="12,3"
                 FontSize="{DynamicResource FontSizeSmall}"/>
         <!-- **Dimmed with Opacity, which took it under AA.** These are the
              instructions for the box beside them — "enter to confirm, esc to
@@ -3114,7 +3140,7 @@
                       <ToggleButton Classes="section" Margin="12,0,12,6" Padding="0,1"
                                     IsChecked="{Binding IsCollapsed, Mode=TwoWay}"
                                     AutomationProperties.Name="{Binding Label, Converter={x:Static vm:FileConverters.Upper}}"
-                                    ToolTip.Tip="fold this section away">
+                                    ToolTip.Tip="Fold this section away">
                         <StackPanel Orientation="Horizontal">
                           <Path Classes="chevron"/>
                           <TextBlock Text="{Binding Label, Converter={x:Static vm:FileConverters.Upper}}"
@@ -3311,9 +3337,9 @@
                                   <!-- In the free-space slot rather than the
                                        label: with two sticks plugged in, a row
                                        that stops saying which drive it is is a
-                                       row nobody can check. "offline" already
+                                       row nobody can check. "Offline" already
                                        reports a dead mount the same way. -->
-                                  <TextBlock DockPanel.Dock="Right" Text="ejecting…"
+                                  <TextBlock DockPanel.Dock="Right" Text="Ejecting…"
                                              VerticalAlignment="Center" Margin="8,0,0,0"
                                              FontSize="{DynamicResource FontSizeTiny}"
                                              Foreground="{DynamicResource ViewDimText}"
@@ -3391,16 +3417,16 @@
                   <DockPanel Margin="12,0,8,2">
                     <!-- Both directions of "network" in one header: what is
                          out there, and what this machine offers. -->
-                    <Button DockPanel.Dock="Right" Content="scan" Padding="4,0"
+                    <Button DockPanel.Dock="Right" Content="Scan" Padding="4,0"
                             Background="Transparent" BorderThickness="0"
                             FontSize="{DynamicResource FontSizeTiny}"
-                            AutomationProperties.Name="look for servers on the network" ToolTip.Tip="look for servers on the network"
+                            AutomationProperties.Name="Look for servers on the network" ToolTip.Tip="Look for servers on the network"
                             IsEnabled="{Binding CanBrowseNetwork}"
                             Command="{Binding BrowseNetworkCommand}"/>
-                    <Button DockPanel.Dock="Right" Content="share" Padding="4,0" Margin="0,0,6,0"
+                    <Button DockPanel.Dock="Right" Content="Share" Padding="4,0" Margin="0,0,6,0"
                             Background="Transparent" BorderThickness="0"
                             FontSize="{DynamicResource FontSizeTiny}"
-                            AutomationProperties.Name="share a folder from this machine" ToolTip.Tip="share a folder from this machine"
+                            AutomationProperties.Name="Share a folder from this machine" ToolTip.Tip="Share a folder from this machine"
                             IsVisible="{Binding CanShare}"
                             Command="{Binding RequestShareCommand}"/>
                     <!-- Written upper-case rather than run through the Upper
@@ -3410,12 +3436,22 @@
                          Scan and share stay docked to the right, outside the
                          toggle. The toggle is the DockPanel's fill child and
                          takes every pixel they leave — which is what a heading
-                         should do — but a click on "scan" did not ask for the
-                         section to fold as well. -->
+                         should do — but a click on "Scan" did not ask for the
+                         section to fold as well.
+
+                         Upper case here is a typographic device, not a casing
+                         choice: tiny, medium weight, 1.1 of letter spacing, and
+                         no rule above it — the tracking is what separates the
+                         heading from its rows. Sentence case governs the words
+                         inside a label; it does not govern a heading set in
+                         caps the way a small-caps heading is, and
+                         LabelCasingTests reads these as compliant because the
+                         first letter is a capital. WindowFloorTests counts this
+                         literal, so it is pinned in both directions. -->
                     <ToggleButton Classes="section"
                                   IsChecked="{Binding Sidebar.IsNetworkCollapsed, Mode=TwoWay}"
                                   AutomationProperties.Name="NETWORK"
-                                  ToolTip.Tip="fold this section away">
+                                  ToolTip.Tip="Fold this section away">
                       <StackPanel Orientation="Horizontal">
                         <Path Classes="chevron"/>
                         <TextBlock Text="NETWORK" FontSize="{DynamicResource FontSizeTiny}"
@@ -3487,13 +3523,13 @@
                     <Button DockPanel.Dock="Right" Content="+" Padding="4,0"
                             Background="Transparent" BorderThickness="0"
                             FontSize="{DynamicResource FontSizeTiny}"
-                            AutomationProperties.Name="connect to a server…" ToolTip.Tip="connect to a server…"
+                            AutomationProperties.Name="Connect to a server…" ToolTip.Tip="Connect to a server…"
                             IsEnabled="{Binding CanConnect}"
                             Command="{Binding ConnectCommand}"/>
                     <ToggleButton Classes="section"
                                   IsChecked="{Binding Sidebar.IsRemoteCollapsed, Mode=TwoWay}"
                                   AutomationProperties.Name="REMOTE"
-                                  ToolTip.Tip="fold this section away">
+                                  ToolTip.Tip="Fold this section away">
                       <StackPanel Orientation="Horizontal">
                         <Path Classes="chevron"/>
                         <TextBlock Text="REMOTE" FontSize="{DynamicResource FontSizeTiny}"
@@ -3510,7 +3546,7 @@
                              label is deliberately allowed to be shorter than
                              the truth, and a tooltip on the TextBlock only
                              fires over the text — never over the icon, the
-                             "offline" tag or the padded remainder of the row.
+                             "Offline" tag or the padded remainder of the row.
                              The discovered-service row above already does it
                              this way, and the row had no accessible name at
                              all. -->
@@ -3560,10 +3596,10 @@
                                off the edge, cut mid-character with no ellipsis
                                to say it had.
 
-                               Docking "offline" right and letting the label
+                               Docking "Offline" right and letting the label
                                take what remains gives it a real width, which is
                                all trimming ever needed. -->
-                          <TextBlock Text="offline" DockPanel.Dock="Right"
+                          <TextBlock Text="Offline" DockPanel.Dock="Right"
                                      IsVisible="{Binding !Reachable}"
                                      Margin="6,0,0,0"
                                      FontSize="{DynamicResource FontSizeTiny}"
@@ -3590,7 +3626,7 @@
                         Background="Transparent" BorderThickness="0" Padding="12,7"
                         Margin="0,8,0,12"
                         FontSize="{DynamicResource FontSizeBase}"
-                        AutomationProperties.Name="connect to a server…" ToolTip.Tip="connect to a server…"
+                        AutomationProperties.Name="Connect to a server…" ToolTip.Tip="Connect to a server…"
                         IsEnabled="{Binding CanConnect}"
                         Command="{Binding ConnectCommand}">
                   <DockPanel>
@@ -3601,7 +3637,7 @@
                           StrokeThickness="{DynamicResource IconStroke}"
                           StrokeLineCap="Round" StrokeJoin="Round"
                           th:SidebarIcon.Token="server"/>
-                    <TextBlock Text="connect to a server…"
+                    <TextBlock Text="Connect to a server…"
                                FontSize="{DynamicResource FontSizeBase}"
                                VerticalAlignment="Center"/>
                   </DockPanel>
@@ -3614,7 +3650,7 @@
                   <ToggleButton Classes="section" Margin="12,0,12,6" Padding="0,1"
                                 IsChecked="{Binding Sidebar.IsSharingCollapsed, Mode=TwoWay}"
                                 AutomationProperties.Name="SHARING"
-                                ToolTip.Tip="fold this section away">
+                                ToolTip.Tip="Fold this section away">
                     <StackPanel Orientation="Horizontal">
                       <Path Classes="chevron"/>
                       <TextBlock Text="SHARING"
@@ -3633,13 +3669,13 @@
                             <Button DockPanel.Dock="Right" Content="&#x2715;" Padding="4,0"
                                     Background="Transparent" BorderThickness="0"
                                     FontSize="{DynamicResource FontSizeTiny}"
-                                    AutomationProperties.Name="stop sharing" ToolTip.Tip="stop sharing"
+                                    AutomationProperties.Name="Stop sharing" ToolTip.Tip="Stop sharing"
                                     Command="{Binding $parent[Window].((vm:ShellViewModel)DataContext).StopShareCommand}"
                                     CommandParameter="{Binding}"/>
-                            <Button DockPanel.Dock="Right" Content="copy" Padding="6,0"
+                            <Button DockPanel.Dock="Right" Content="Copy" Padding="6,0"
                                     Background="Transparent" BorderThickness="0"
                                     FontSize="{DynamicResource FontSizeTiny}"
-                                    AutomationProperties.Name="copy the address" ToolTip.Tip="copy the address"
+                                    AutomationProperties.Name="Copy the address" ToolTip.Tip="Copy the address"
                                     Command="{Binding $parent[Window].((vm:ShellViewModel)DataContext).CopyShareUrlCommand}"
                                     CommandParameter="{Binding}"/>
                             <StackPanel>
@@ -3670,13 +3706,13 @@
                             <Button DockPanel.Dock="Right" Content="&#x2715;" Padding="4,0"
                                     Background="Transparent" BorderThickness="0"
                                     FontSize="{DynamicResource FontSizeTiny}"
-                                    AutomationProperties.Name="stop sharing this link" ToolTip.Tip="stop sharing this link"
+                                    AutomationProperties.Name="Stop sharing this link" ToolTip.Tip="Stop sharing this link"
                                     Command="{Binding $parent[Window].((vm:ShellViewModel)DataContext).StopDriveLinkCommand}"
                                     CommandParameter="{Binding}"/>
-                            <Button DockPanel.Dock="Right" Content="copy" Padding="6,0"
+                            <Button DockPanel.Dock="Right" Content="Copy" Padding="6,0"
                                     Background="Transparent" BorderThickness="0"
                                     FontSize="{DynamicResource FontSizeTiny}"
-                                    AutomationProperties.Name="copy the link" ToolTip.Tip="copy the link"
+                                    AutomationProperties.Name="Copy the link" ToolTip.Tip="Copy the link"
                                     Command="{Binding $parent[Window].((vm:ShellViewModel)DataContext).CopyDriveLinkCommand}"
                                     CommandParameter="{Binding}"/>
                             <StackPanel>
@@ -3703,7 +3739,7 @@
                   <ToggleButton Classes="section" Margin="12,0,12,6" Padding="0,1"
                                 IsChecked="{Binding Sidebar.IsRecentCollapsed, Mode=TwoWay}"
                                 AutomationProperties.Name="RECENT"
-                                ToolTip.Tip="fold this section away">
+                                ToolTip.Tip="Fold this section away">
                     <StackPanel Orientation="Horizontal">
                       <Path Classes="chevron"/>
                       <TextBlock Text="RECENT"

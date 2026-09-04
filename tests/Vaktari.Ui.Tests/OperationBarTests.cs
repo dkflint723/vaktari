@@ -210,8 +210,8 @@ public sealed class OperationBarTests : OwnedViewModels
 
     /// <summary>
     /// Declaration order decides which is rightmost, so this reads
-    /// "pause cancel" rather than "cancel pause" while an operation runs, and
-    /// "retry 3   dismiss" once one has finished leaving something behind.
+    /// "Pause Cancel" rather than "Cancel Pause" while an operation runs, and
+    /// "Retry 3   Dismiss" once one has finished leaving something behind.
     ///
     /// Retry sits to the LEFT of dismiss deliberately: dismiss is the one that
     /// throws the sentence away, and the rightmost slot is where a hand lands
@@ -237,5 +237,32 @@ public sealed class OperationBarTests : OwnedViewModels
              "{Binding CancelOperationCommand}",
              "{Binding PauseOperationCommand}"],
             commands);
+    }
+
+    /// <summary>
+    /// One button, two words. **Both were lower case while every dialog button
+    /// beside them was not**, and the bar is the control a person sees most
+    /// often.
+    ///
+    /// The handle is Begun first on purpose: OperationHandle.Pause() returns
+    /// early unless the state is Running, so without it the label would still
+    /// read "Pause" and this test would pass without the button ever having
+    /// worked.
+    /// </summary>
+    [AvaloniaFact]
+    public void The_pause_button_reads_Pause_and_then_Resume()
+    {
+        var shell = Shell();
+
+        Assert.Equal("Pause", shell.PauseLabel);
+
+        var handle = new OperationHandle();
+        handle.Begin(itemsTotal: 1, totalBytes: 1);
+        shell.ActiveOperation = handle;
+
+        shell.PauseOperationCommand.Execute(null);
+
+        Assert.Equal(OperationState.Paused, handle.State);
+        Assert.Equal("Resume", shell.PauseLabel);
     }
 }

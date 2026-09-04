@@ -1,3 +1,4 @@
+using System.Globalization;
 using Avalonia.Headless.XUnit;
 using Vaktari.Core.FileSystem;
 using Vaktari.Ui.ViewModels;
@@ -22,7 +23,7 @@ namespace Vaktari.Ui.Tests;
 /// **And the stop button was disabled while measuring.** One command both
 /// starts and stops, and an async RelayCommand refuses a second execution while
 /// the first runs — so CanExecute went false the moment the walk began, the
-/// button that then reads "stop" greyed out, and a measurement of a home
+/// button that then reads "Stop" greyed out, and a measurement of a home
 /// directory ran to the end whatever anybody pressed.
 /// </summary>
 public sealed class FolderSizeTests : IDisposable
@@ -37,6 +38,31 @@ public sealed class FolderSizeTests : IDisposable
         if (Directory.Exists(_root)) Directory.Delete(_root, recursive: true);
 
         GC.SuppressFinalize(this);
+    }
+
+    /// <summary>
+    /// The two buttons on this window that build their own words.
+    ///
+    /// **Both pairs were lower case, on a window whose Apply button was not.**
+    /// MeasureLabel is a converter and ChecksumButtonText a view-model
+    /// property, so the markup carries only the binding and no markup scan
+    /// reaches either word.
+    /// </summary>
+    [AvaloniaFact]
+    public void The_windows_own_labels_are_sentence_case()
+    {
+        var model = new PropertiesViewModel(new Measures(4096), [Folder("here")], access: null);
+
+        Assert.Equal("Compute", model.ChecksumButtonText);
+
+        model.IsHashing = true;
+
+        Assert.Equal("Stop", model.ChecksumButtonText);
+
+        Assert.Equal("Measure", PropertiesConverters.MeasureLabel.Convert(
+            false, typeof(string), null, CultureInfo.InvariantCulture));
+        Assert.Equal("Stop", PropertiesConverters.MeasureLabel.Convert(
+            true, typeof(string), null, CultureInfo.InvariantCulture));
     }
 
     /// <summary>Reports a fixed size for any folder and never touches a disk,

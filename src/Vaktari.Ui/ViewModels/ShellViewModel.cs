@@ -1445,10 +1445,16 @@ public sealed partial class ShellViewModel : ObservableObject, IDisposable
     /// <summary>
     /// The count is what the button will ATTEMPT, which is not the number of
     /// problems: a folder that could not be created reports every one of its
-    /// planned descendants, and "retry 431" for one unreadable folder says
+    /// planned descendants, and "Retry 431" for one unreadable folder says
     /// nothing about what pressing it does.
+    ///
+    /// **This read "retry 431", and the dialogs beside it read "Cancel".** The
+    /// transfer bar was written in the lower-case chrome voice the column
+    /// headings used, so one row of the window disagreed with every other about
+    /// how a button is spelled. Sentence case is the rule now, everywhere;
+    /// LabelCasingTests holds it.
     /// </summary>
-    public string RetryLabel => Retryable is { } offer ? $"retry {offer.Count}" : "retry";
+    public string RetryLabel => Retryable is { } offer ? $"Retry {offer.Count}" : "Retry";
 
     partial void OnRetryableChanged(Core.FileSystem.RetryOffer? value)
     {
@@ -2147,9 +2153,14 @@ public sealed partial class ShellViewModel : ObservableObject, IDisposable
         OnPropertyChanged(nameof(PauseLabel));
     }
 
-    /// <summary>One button, two words — the state it is in decides which.</summary>
+    /// <summary>
+    /// One button, two words — the state it is in decides which.
+    ///
+    /// **Both were lower case while every dialog button was not.** Sentence
+    /// case is the one rule now; LabelCasingTests holds it.
+    /// </summary>
     public string PauseLabel
-        => ActiveOperation?.State == OperationState.Paused ? "resume" : "pause";
+        => ActiveOperation?.State == OperationState.Paused ? "Resume" : "Pause";
 
     public void SelectTabByIndex(int index) => ActiveGroup.SelectTabByIndex(index);
 

@@ -1235,7 +1235,7 @@ public sealed partial class PaneViewModel : ObservableObject, IDisposable
     [ObservableProperty] private string _searchDraft = "";
 
     /// <summary>Whether the field has anything in it, which is what hides the
-    /// "ctrl+f" hint sitting at its right-hand end.</summary>
+    /// "Ctrl+F" hint sitting at its right-hand end.</summary>
     public bool HasSearchDraft => SearchDraft.Length > 0;
 
     partial void OnSearchDraftChanged(string value) => OnPropertyChanged(nameof(HasSearchDraft));

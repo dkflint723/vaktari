@@ -14,7 +14,7 @@ namespace Vaktari.Ui.Tests;
 /// backups — and every other file manager runs it.
 ///
 /// **The preview limit boxes showed a literal "0"** beside help text promising
-/// that blank or 0 means no limit, which is also what hid the "no limit"
+/// that blank or 0 means no limit, which is also what hid the "No limit"
 /// placeholder written for exactly that case. On screen it read as "skip files
 /// larger than nothing".
 ///
@@ -106,7 +106,7 @@ public sealed class SmallRefusalsTests : OwnedViewModels
         Assert.Equal(2, boxes.Count);
 
         foreach (var box in boxes)
-            Assert.Equal("no limit", (string?)box.Attribute("PlaceholderText"));
+            Assert.Equal("No limit", (string?)box.Attribute("PlaceholderText"));
     }
 
     // ---- in bulk means more than one ---------------------------------------

@@ -34,6 +34,7 @@ public sealed class RetryOfferTests
 
         Assert.Null(shell.Retryable);
         Assert.False(shell.CanRetryOperation);
+        Assert.Equal("Retry", shell.RetryLabel);
     }
 
     /// <summary>
@@ -47,7 +48,7 @@ public sealed class RetryOfferTests
         var shell = new ShellViewModel(new Nothing()) { Retryable = Offer(3) };
 
         Assert.True(shell.CanRetryOperation);
-        Assert.Equal("retry 3", shell.RetryLabel);
+        Assert.Equal("Retry 3", shell.RetryLabel);
     }
 
     /// <summary>

@@ -18,7 +18,7 @@
                Foreground="{DynamicResource ViewDimText}"/>
 
     <DockPanel>
-      <Button DockPanel.Dock="Right" Content="up" Padding="12,4" Margin="8,0,0,0"
+      <Button DockPanel.Dock="Right" Content="Up" Padding="12,4" Margin="8,0,0,0"
               IsEnabled="{Binding CanGoUp}" Command="{Binding GoUpCommand}"/>
       <TextBox Text="{Binding Path}" FontFamily="{DynamicResource AppMonoFamily}"
                FontSize="{DynamicResource FontSizeSmall}"/>
@@ -49,7 +49,7 @@
       </ListBox>
     </Border>
 
-    <TextBlock Text="double-click a folder to go into it · the box above is what gets shared"
+    <TextBlock Text="Double-click a folder to go into it · the box above is what gets shared"
                FontSize="{DynamicResource FontSizeTiny}"
                Foreground="{DynamicResource ViewDimText}"/>
 

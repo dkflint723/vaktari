@@ -7,7 +7,7 @@ namespace Vaktari.Ui.Tests;
 /// The version-control slot in the details name column, and the empty one the
 /// heading has to reserve to match it.
 ///
-/// **Inside a repository the "name" heading sat 16px left of the names.** The
+/// **Inside a repository the "Name" heading sat 16px left of the names.** The
 /// name cell docks a fixed slot for the mark ahead of every filename, so names
 /// stay aligned marked or not — and every name therefore starts 16px further
 /// right. The heading has no mark and so never moved.

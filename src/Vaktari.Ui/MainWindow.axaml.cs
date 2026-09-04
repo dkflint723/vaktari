@@ -3784,8 +3784,12 @@ public partial class MainWindow : Window
 
         var result = false;
 
-        var close = new Button { Content = "close anyway", Padding = new Thickness(14, 4) };
-        var cancel = new Button { Content = "cancel", Padding = new Thickness(14, 4) };
+        // **These two said "close anyway" and "cancel" while the four
+        // dialogs beside them said "Cancel".** A window built in code is
+        // still a window; sentence case is the one rule, and
+        // LabelCasingTests reads this file for exactly that reason.
+        var close = new Button { Content = "Close anyway", Padding = new Thickness(14, 4) };
+        var cancel = new Button { Content = "Cancel", Padding = new Thickness(14, 4) };
 
         close.Click += (_, _) => { result = true; dialog.Close(); };
         cancel.Click += (_, _) => dialog.Close();
@@ -4051,10 +4055,10 @@ public partial class MainWindow : Window
         _prompt = PromptMode.RenamePlace;
         _renamePlace = place;
 
-        PromptLabel.Text = "call it";
+        PromptLabel.Text = "Call it";
         PromptInput.Text = place.Label;
         PromptInput.IsVisible = true;
-        PromptConfirm.Content = "rename";
+        PromptConfirm.Content = "Rename";
         PromptConfirm.IsVisible = true;
         PromptCancel.IsVisible = true;
         PromptHint.Text = "enter to confirm · esc to cancel";
@@ -4079,10 +4083,10 @@ public partial class MainWindow : Window
         _prompt = PromptMode.Rename;
         _renameTarget = entry;
 
-        PromptLabel.Text = "rename to";
+        PromptLabel.Text = "Rename to";
         PromptInput.Text = entry.Name;
         PromptInput.IsVisible = true;
-        PromptConfirm.Content = "rename";
+        PromptConfirm.Content = "Rename";
         PromptConfirm.IsVisible = true;
         PromptCancel.IsVisible = true;
         PromptHint.Text = "enter to confirm · esc to cancel";
@@ -4214,14 +4218,14 @@ public partial class MainWindow : Window
 
         _prompt = PromptMode.Connect;
 
-        PromptLabel.Text = "connect to";
+        PromptLabel.Text = "Connect to";
 
         // From the mounter, not from here: gio takes smb:// and the Windows
         // redirector takes \\server\share, and offering the wrong one is worse
         // than offering nothing.
         PromptInput.Text = _shell.ConnectPrefill;
         PromptInput.IsVisible = true;
-        PromptConfirm.Content = "connect";
+        PromptConfirm.Content = "Connect";
         PromptConfirm.IsVisible = true;
         PromptCancel.IsVisible = true;
         PromptHint.Text = $"{_shell.ConnectHint} — esc to cancel";
@@ -4355,7 +4359,7 @@ public partial class MainWindow : Window
 
         PromptLabel.Text = ViewModels.Confirmations.EmptyBin(held);
         PromptInput.IsVisible = false;
-        PromptConfirm.Content = $"empty {Naming.BinName}";
+        PromptConfirm.Content = $"Empty {Naming.BinName}";
         PromptConfirm.IsVisible = true;
         PromptCancel.IsVisible = true;
         PromptHint.Text = "esc to cancel";
@@ -4400,7 +4404,7 @@ public partial class MainWindow : Window
 
         PromptLabel.Text = ViewModels.Confirmations.Delete(chosen);
         PromptInput.IsVisible = false;
-        PromptConfirm.Content = "delete permanently";
+        PromptConfirm.Content = "Delete permanently";
         PromptConfirm.IsVisible = true;
         PromptCancel.IsVisible = true;
         PromptHint.Text = "esc to cancel";
@@ -4429,7 +4433,7 @@ public partial class MainWindow : Window
 
         PromptLabel.Text = ViewModels.Confirmations.MoveToBin(chosen);
         PromptInput.IsVisible = false;
-        PromptConfirm.Content = $"move to {Naming.TheBin}";
+        PromptConfirm.Content = $"Move to {Naming.TheBin}";
         PromptConfirm.IsVisible = true;
         PromptCancel.IsVisible = true;
         PromptHint.Text = "esc to cancel";

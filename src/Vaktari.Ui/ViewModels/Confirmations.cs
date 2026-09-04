@@ -25,7 +25,7 @@ internal static class Confirmations
     /// <summary>
     /// **The prompt bar is one horizontal row, and the confirm button sits to
     /// the right of this text.** An unnamed count was always short; a name is
-    /// not, and a very long one pushes "delete permanently" off the window,
+    /// not, and a very long one pushes "Delete permanently" off the window,
     /// leaving a question with no way to answer it but the keyboard.
     /// </summary>
     internal const int NameRoom = 48;

@@ -298,7 +298,7 @@ public sealed class SearchKeyboardTests : OwnedViewModels
     {
         var box = XDocument.Parse(RepoSource.Ui("MainWindow.axaml"))
             .Descendants(Avalonia + "TextBox")
-            .Single(t => (string?)t.Attribute("PlaceholderText") == "search files");
+            .Single(t => (string?)t.Attribute("PlaceholderText") == "Search files");
 
         var bound = box.Descendants(Avalonia + "KeyBinding")
             .ToDictionary(k => (string?)k.Attribute("Gesture") ?? "",

@@ -13,8 +13,8 @@ namespace Vaktari.Ui.Tests;
 /// marker, where contrast is a matter of taste — and colouring text, where
 /// 4.5:1 is a requirement at the 11 to 12.5px these are actually set in.
 /// #6d6df0 measures 3.41:1 on the chrome and 3.78:1 on the listing: the
-/// settings status lines, the three link-style buttons, the "look-alike" chip,
-/// the tile badge and "offline" were all under it.
+/// settings status lines, the three link-style buttons, the "Look-alike" chip,
+/// the tile badge and "Offline" were all under it.
 ///
 /// AccentText is derived from whatever AccentColour turns out to be, because
 /// the accent has three sources — the design scheme, the fallback scheme, and

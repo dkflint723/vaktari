@@ -31,7 +31,7 @@
         <DockPanel>
           <StackPanel DockPanel.Dock="Right" Orientation="Horizontal" Spacing="6"
                       Margin="10,0,0,0">
-            <TextBlock Text="start at" VerticalAlignment="Center"
+            <TextBlock Text="Start at" VerticalAlignment="Center"
                        FontSize="{DynamicResource FontSizeSmall}"
                        Foreground="{DynamicResource ViewDimText}"/>
             <NumericUpDown Value="{Binding StartAt}" Minimum="0" Maximum="99999"
@@ -75,7 +75,7 @@
                the pointer, and stays: Avalonia's default button ignores Enter
                while it is disabled, so a plan with a problem in it — or one
                that would rename nothing — cannot be committed by a stray Enter
-               any more than it can be clicked. The "start at" spinner is no
+               any more than it can be clicked. The "Start at" spinner is no
                trap either; it writes StartAt as the digits are typed, so a
                rename started from it uses the number on screen. -->
           <Button Content="Rename" Padding="14,4" IsDefault="True"

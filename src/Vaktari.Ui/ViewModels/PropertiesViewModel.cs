@@ -170,8 +170,14 @@ public sealed partial class PropertiesViewModel : ObservableObject
 
     partial void OnHashStatusChanged(string value) => OnPropertyChanged(nameof(HasHashStatus));
 
-    /// <summary>Label doubles as the cancel affordance, as Measure does.</summary>
-    public string ChecksumButtonText => IsHashing ? "stop" : "compute";
+    /// <summary>
+    /// Label doubles as the cancel affordance, as Measure does.
+    ///
+    /// **Both words were lower case, on a window whose Apply button was
+    /// not.** Sentence case is the one rule now; FolderSizeTests holds
+    /// both branches of this and both of MeasureLabel.
+    /// </summary>
+    public string ChecksumButtonText => IsHashing ? "Stop" : "Compute";
 
     partial void OnIsHashingChanged(bool value)
         => OnPropertyChanged(nameof(ChecksumButtonText));
@@ -346,7 +352,7 @@ public sealed partial class PropertiesViewModel : ObservableObject
     /// **The stop button was disabled while measuring.** This is one command
     /// that both starts and stops, and an async RelayCommand refuses a second
     /// execution while the first is running — so CanExecute went false the
-    /// instant the walk began, the button that then reads "stop" greyed out,
+    /// instant the walk began, the button that then reads "Stop" greyed out,
     /// and the cancel branch below could not be reached from the interface at
     /// all. A measurement of a home directory ran to the end whatever anybody
     /// pressed.

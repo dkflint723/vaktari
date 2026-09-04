@@ -283,6 +283,21 @@ should not be trusted for compatibility yet.
 
 ### Changed
 
+- **Every label reads the same way now: sentence case.** The list headings read
+  "name", "type", "size" and "modified" while the menu you open on those
+  headings to choose them read "Name", "Type", "Size" and "Modified" — the
+  same four words, twice, in the one control where you compare them. The
+  transfer bar said "cancel" and "dismiss" while every window with a Cancel
+  button — Batch rename, Conflict, Settings and Share — said "Cancel". The
+  window that asks whether to close while a transfer is running said "close
+  anyway" and "cancel", and it is built in code, so no markup rule was ever
+  going to reach it. Tooltips and placeholders were lower case throughout. The
+  lower-case chrome voice is abandoned: the first word of a label is
+  capitalised and no later one is, unless it is a name — "Open in new tab",
+  never "Open In New Tab". The sidebar's PLACES and NETWORK headings keep their
+  capitals, because that is a typeface decision, the same one small caps makes,
+  rather than a spelling.
+
 - **A file path typed into the address bar opens the file.** It used to open
   the folder the file lives in and highlight the row, and stop there — which is
   half of what both Explorer and Dolphin do, and the wrong half on its own.

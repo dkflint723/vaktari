@@ -8,7 +8,7 @@
         xmlns:vm="clr-namespace:Vaktari.Ui.ViewModels"
         x:Class="Vaktari.Ui.PropertiesWindow"
         x:DataType="vm:PropertiesViewModel"
-        Title="{Binding Title, FallbackValue=properties}"
+        Title="{Binding Title, FallbackValue=Properties}"
         Background="{DynamicResource AppBackground}"
         Foreground="{DynamicResource ViewText}"
         FontFamily="{DynamicResource AppFontFamily}"
@@ -37,7 +37,7 @@
                 IsVisible="{Binding CanMeasure}"
                 Command="{Binding MeasureCommand}"/>
         <StackPanel Spacing="2">
-          <TextBlock Text="size" FontSize="{DynamicResource FontSizeSmall}" Opacity="0.45"/>
+          <TextBlock Text="Size" FontSize="{DynamicResource FontSizeSmall}" Opacity="0.45"/>
           <TextBlock Text="{Binding SizeText}" FontFamily="{DynamicResource AppMonoFamily}"
                      FontSize="{DynamicResource FontSizeSmall}" TextWrapping="Wrap"/>
         </StackPanel>
@@ -52,7 +52,7 @@
           <TextBlock DockPanel.Dock="Right" Text="{Binding AccessSummary}"
                      FontFamily="{DynamicResource AppMonoFamily}" Opacity="0.5"
                      FontSize="{DynamicResource FontSizeSmall}"/>
-          <TextBlock Text="permissions" FontSize="{DynamicResource FontSizeSmall}" Opacity="0.45"/>
+          <TextBlock Text="Permissions" FontSize="{DynamicResource FontSizeSmall}" Opacity="0.45"/>
         </DockPanel>
 
         <ItemsControl ItemsSource="{Binding Access}">
@@ -78,9 +78,9 @@
         </ItemsControl>
 
         <DockPanel>
-          <Button DockPanel.Dock="Right" Content="apply" Padding="12,3"
+          <Button DockPanel.Dock="Right" Content="Apply" Padding="12,3"
                   Command="{Binding ApplyAccessCommand}"/>
-          <CheckBox Content="apply to contents" IsChecked="{Binding ApplyRecursively}"
+          <CheckBox Content="Apply to contents" IsChecked="{Binding ApplyRecursively}"
                     IsVisible="{Binding CanRecurse}"
                     FontSize="{DynamicResource FontSizeSmall}"
                     VerticalAlignment="Center"/>

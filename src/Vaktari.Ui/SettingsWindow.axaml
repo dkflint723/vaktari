@@ -467,7 +467,7 @@
 
           <StackPanel Spacing="6">
             <TextBox Text="{Binding ProtonDriveFolder}"
-                     Watermark="the folder the Proton Drive app syncs, e.g. D:\Proton-Drive"
+                     Watermark="The folder the Proton Drive app syncs, e.g. D:\Proton-Drive"
                      FontSize="{DynamicResource FontSizeSmall}"/>
             <TextBlock Text="With this set — and the Proton Drive CLI installed and signed in — right-clicking anything inside it offers a public share link, and active links appear under SHARING in the sidebar."
                        FontSize="{DynamicResource FontSizeTiny}"
@@ -511,7 +511,7 @@
                          VerticalAlignment="Center"
                          FontSize="{DynamicResource FontSizeSmall}"/>
               <TextBox Grid.Column="1" Text="{Binding MaxLocalPreviewMegabytes}"
-                       PlaceholderText="no limit"
+                       PlaceholderText="No limit"
                        FontSize="{DynamicResource FontSizeSmall}"/>
             </Grid>
 
@@ -521,7 +521,7 @@
                          VerticalAlignment="Center"
                          FontSize="{DynamicResource FontSizeSmall}"/>
               <TextBox Grid.Column="1" Text="{Binding MaxRemotePreviewMegabytes}"
-                       PlaceholderText="no limit"
+                       PlaceholderText="No limit"
                        FontSize="{DynamicResource FontSizeSmall}"/>
             </Grid>
 
@@ -777,7 +777,7 @@
                        VerticalAlignment="Center"
                        FontSize="{DynamicResource FontSizeSmall}"/>
             <TextBox Grid.Column="1" Text="{Binding IconSpacing}"
-                     PlaceholderText="none"
+                     PlaceholderText="None"
                      FontSize="{DynamicResource FontSizeSmall}"/>
           </Grid>
 
@@ -786,7 +786,7 @@
                        VerticalAlignment="Center"
                        FontSize="{DynamicResource FontSizeSmall}"/>
             <TextBox Grid.Column="1" Text="{Binding CompactSpacing}"
-                     PlaceholderText="none"
+                     PlaceholderText="None"
                      FontSize="{DynamicResource FontSizeSmall}"/>
           </Grid>
 
@@ -797,7 +797,7 @@
 
           <Border Height="1" Background="{DynamicResource SeparatorColour}"/>
 
-          <!-- The layout is "list" on the toolbar button and in the README; this
+          <!-- The layout is "List" on the toolbar button and in the README; this
                heading was the only place calling it the details view, three
                sections under a "Details panel" heading that means something else
                again. The panel keeps its name — it really is the details — and
