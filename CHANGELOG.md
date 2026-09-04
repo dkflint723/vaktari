@@ -609,6 +609,17 @@ should not be trusted for compatibility yet.
 
 ### Fixed
 
+- **A name too long for its column keeps its extension.** The rows cut a name
+  at the end, and the end is where the extension is — so
+  "quarterly-forecast-final-revision.xlsx" in a narrow Name column drew
+  "quarterly-fore…" and every long name in the folder looked like every other,
+  with nothing to say which was the spreadsheet. The Type column that could have
+  answered is off by default and exists in one layout of the three. The cut is
+  in the middle now: "quarterly….xlsx". Names with nothing worth saving at the
+  end — folders, ".gitignore" — are cut at the end as before, and so is a cell
+  too narrow to hold a beginning, an ellipsis and an extension at once, because
+  an ellipsis with nothing in front of it says less than three letters do.
+
 - **Drive free space keeps up with what you just copied, and says what it is
   free of.** The sidebar read a drive's size once when it built the list and
   never again, so copying twenty gigabytes onto a stick left the figure beside

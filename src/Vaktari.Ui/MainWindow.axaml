@@ -2297,9 +2297,21 @@
                                On the TextBlock and not the row: over blank row
                                space, or over the size and modified cells, a
                                different tip is the right answer. -->
+                          <!-- **And what it trimmed was always the extension.**
+                               CharacterEllipsis fills from the left and stops,
+                               so a 160px name cell drew
+                               "quarterly-forecast-final-revision.xlsx" as
+                               "quarterly-…" — measured on this row — and the
+                               fact a row is a spreadsheet rather than an
+                               installer went first.
+                               The Type column that would have said so is off
+                               until asked for and exists in this layout alone.
+                               NameEllipsis moves the cut into the middle; see
+                               that file for why it is a trimming rather than
+                               two docked cells. -->
                           <TextBlock Text="{Binding Converter={x:Static vm:FileConverters.DisplayName}}" HorizontalAlignment="Left"
                                      FontSize="{DynamicResource FontSizeBase}" VerticalAlignment="Center"
-                                     TextTrimming="CharacterEllipsis"
+                                     TextTrimming="{x:Static local:NameEllipsis.KeepingTheExtension}"
                                      ToolTip.Tip="{Binding Converter={x:Static vm:FileConverters.NameTip}}"
                                      ToolTip.ShowDelay="1200"
                                      Opacity="{Binding Converter={x:Static vm:FileConverters.HiddenFade}}"/>
@@ -2558,9 +2570,14 @@
                                fades — the look-alike chip just above went
                                details-only in exactly this way and was fixed in
                                exactly this way. -->
+                          <!-- Cut in the middle so the extension survives, and
+                               more sharply needed here than in a details row:
+                               a compact column is narrower and there is no Type
+                               column in this layout at all. See the details
+                               row. -->
                           <TextBlock Text="{Binding Converter={x:Static vm:FileConverters.DisplayName}}" VerticalAlignment="Center"
                                      FontSize="{DynamicResource FontSizeBase}"
-                                     TextTrimming="CharacterEllipsis"
+                                     TextTrimming="{x:Static local:NameEllipsis.KeepingTheExtension}"
                                      ToolTip.Tip="{Binding Converter={x:Static vm:FileConverters.NameTip}}"
                                      ToolTip.ShowDelay="1200"
                                      Opacity="{Binding Converter={x:Static vm:FileConverters.HiddenFade}}"/>
@@ -2713,8 +2730,27 @@
                                        Foreground="{DynamicResource ViewBackground}"/>
                           </Border>
                         </Panel>
-                        <!-- Two lines and then an ellipsis, so this one hides the
-                             most of all. See the details row. -->
+                        <!-- **The one name cell that keeps the trailing ellipsis,
+                             and it is a deliberate exception.** The rows cut a
+                             name in the middle so its extension survives — see
+                             the details row — and this one must not.
+
+                             Measured on this template in a real window: the
+                             only line a tile ever collapses is a WRAPPED
+                             FRAGMENT, not the end of the name. MaxLines
+                             truncation fires exactly when there is more text
+                             below, so the collapsed line carries no
+                             TextEndOfParagraph run and the extension is on a
+                             line nobody can see. Middle elision there elides
+                             around whatever dot happens to fall inside the
+                             fragment: "holiday photo.of.the.year and more
+                             words.jpeg" drew "holiday photo.o…" and would draw
+                             "holiday pho…o.of", which saves ".of" — not an
+                             extension — and spends two more characters of the
+                             start to do it.
+
+                             So the tile hides the most, and the tooltip below
+                             is what a long tile name is read with. -->
                         <!-- **Hidden files were ghosted in the details rows and
                              nowhere else**, so a hidden file went from background to
                              foreground by switching to tiles. Same converter on the
