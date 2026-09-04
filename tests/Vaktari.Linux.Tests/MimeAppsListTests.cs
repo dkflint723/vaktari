@@ -153,8 +153,8 @@ public sealed class MimeAppsListTests : IDisposable
     // ---- folding the files together ------------------------------------------
 
     private static List<string> Resolved(params (string[] Preferred, string[] Removed)[] files)
-        => [.. DesktopEntries.Resolve(
-            files.Select(f => (f.Preferred.ToList(), f.Removed.ToList())))];
+        => DesktopEntries.Resolve(
+            files.Select(f => (f.Preferred.ToList(), f.Removed.ToList()))).Preferred;
 
     /// <summary>Nearest file first, and each application named once.</summary>
     [Fact]

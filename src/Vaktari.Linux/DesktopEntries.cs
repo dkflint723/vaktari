@@ -208,8 +208,21 @@ public static class DesktopEntries
             if (id.Length > 0 && seen.Add(id)) ids.Add(id);
         }
 
-        foreach (var id in DefaultsFor(mime)) Add(id);
-        foreach (var id in AssociationsFor(mime)) Add(id);
+        var (preferred, removed) = Resolve(
+            MimeAppsLists().Select(path => ReadMimeApps(path, mime)));
+
+        foreach (var id in preferred) Add(id);
+
+        // **mimeinfo.cache went in unfiltered**, so an application taken away
+        // under [Removed Associations] came straight back in as an ordinary
+        // association — un-choosing it in the desktop's settings moved it down
+        // the menu instead of off it. The cache is generated from the .desktop
+        // files themselves and knows nothing about anybody's choices, which is
+        // why it sits below every mimeapps.list in the spec's order and why
+        // every removal any of those files made applies to it.
+        foreach (var id in AssociationsFor(mime))
+            if (!removed.Contains(id))
+                Add(id);
 
         var options = new List<LaunchOption>();
 
@@ -443,11 +456,9 @@ public static class DesktopEntries
         return (preferred, removed);
     }
 
-    private static IEnumerable<string> DefaultsFor(string mime)
-        => Resolve(MimeAppsLists().Select(path => ReadMimeApps(path, mime)));
-
     /// <summary>
-    /// Folds the files' answers into one list, nearest first.
+    /// Folds the files' answers into one list, nearest first, and keeps the
+    /// removals it gathered on the way.
     ///
     /// **A removal in a nearer file beats a preference in a further one.** That
     /// is the whole point of [Removed Associations]: the distribution offers
@@ -456,10 +467,17 @@ public static class DesktopEntries
     /// written by a system file cannot veto a choice the person made above it,
     /// which is the same rule read the other way round and the one that would
     /// be silently wrong if the sets were gathered up front.
+    ///
+    /// The gathered set is handed back rather than dropped because there is
+    /// one more source BELOW every file walked here — mimeinfo.cache — and the
+    /// same removals have to reach it. Eager rather than an iterator for that
+    /// reason: the removals are only complete once the last file has been read,
+    /// so there is nothing to hand back until the walk has finished anyway.
     /// </summary>
-    internal static IEnumerable<string> Resolve(
+    internal static (List<string> Preferred, HashSet<string> Removed) Resolve(
         IEnumerable<(List<string> Preferred, List<string> Removed)> files)
     {
+        var chosen = new List<string>();
         var seen = new HashSet<string>(StringComparer.Ordinal);
         var removed = new HashSet<string>(StringComparer.Ordinal);
 
@@ -467,10 +485,12 @@ public static class DesktopEntries
         {
             foreach (var id in preferred)
                 if (!removed.Contains(id) && seen.Add(id))
-                    yield return id;
+                    chosen.Add(id);
 
             foreach (var id in taken) removed.Add(id);
         }
+
+        return (chosen, removed);
     }
 
     private static IEnumerable<string> AssociationsFor(string mime)

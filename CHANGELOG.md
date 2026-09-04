@@ -742,6 +742,15 @@ should not be trusted for compatibility yet.
 
 ### Fixed
 
+- **On Linux, an application you have un-chosen for a file type stops being
+  offered for it.** Turning an application off in the desktop's own settings
+  writes it into a *Removed Associations* list, and Vaktari read that list —
+  but then went on to append everything the desktop's association cache claims
+  can open the type, without checking it against the removals. The application
+  you had just taken away came straight back into *Open with*, one row further
+  down than before. It is gone now, and the applications beside it are
+  unaffected.
+
 - **A slow machine gets the Windows menu it waited for, instead of being told
   there is nothing there.** Reading the desktop's own menu runs every shell
   extension installed, and a cold machine — first right-click after boot, a
