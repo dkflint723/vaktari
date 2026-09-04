@@ -13,6 +13,33 @@ should not be trusted for compatibility yet.
 
 ### Added
 
+- **On Windows, videos, PDFs and photos Vaktari cannot decode now show a
+  picture.** Thumbnails there covered six formats — PNG, JPEG, GIF, BMP, WebP —
+  because those are the ones the toolkit's own decoder understands, and
+  everything else fell back to a drawn glyph. A folder of holiday videos was a
+  wall of identical icons; so was a folder of scanned TIFFs, a folder of PDFs,
+  and a phone's camera roll full of HEICs. Windows has had the pictures the
+  whole time, in the same thumbnail cache Explorer draws from, and Vaktari now
+  asks for them: the video frame, the first page, the raw photo. A shortcut
+  shows the picture of the thing it points at, with its link arrow unchanged.
+
+  What appears depends on your machine rather than on a list we wrote down,
+  because that is how Windows decides too — each file type's thumbnail is made
+  by a handler something installed, so a PDF shows a page if you have a PDF
+  reader and a HEIC shows a photo if you have the HEIF codec. Windows ships no
+  SVG thumbnail handler, so an SVG gets nothing unless something you installed
+  registered one. A file whose handler has nothing to offer — a Word document
+  saved without a preview, an MP3 with no album art — keeps its icon, exactly as
+  it does in Explorer, and so does one whose handler takes longer than two
+  seconds to answer, so a badly behaved extension cannot stall the window.
+
+  Images are unchanged, deliberately: Vaktari still decodes those itself from
+  the original file, so a photo is drawn at full quality. The rule that a
+  picture too small to enlarge shows its icon instead now covers the new route
+  as well — a 32-pixel favicon asked of the shell comes back 32 pixels, and
+  stretching that eightfold over the crisp icon underneath would have been worse
+  than the icon alone.
+
 - **A copy or a delete refused for permission can go again as administrator.**
   Elevation was launch-only: a file could be run as administrator and a
   terminal opened as one, and that was all. When a copy or a delete came back

@@ -165,7 +165,37 @@ public static class ThumbnailLoader
                 return null;
 
             var source = await provider.GetThumbnailPathAsync(path, size, ct).ConfigureAwait(false);
-            if (source is null || ct.IsCancellationRequested) return null;
+            if (ct.IsCancellationRequested) return null;
+
+            // **No file to point at is not the same as no picture.** A
+            // freedesktop thumbnail is a PNG in a shared cache, so the path
+            // above is the whole answer on Linux; the Windows shell composes
+            // one on demand from a registered handler and hands back pixels,
+            // which is the only form video, PDF, HEIC and TIFF thumbnails come
+            // in there. Second, never first: a path costs no decode at all
+            // until something asks to see it.
+            if (source is null)
+            {
+                var pixels = await provider
+                    .GetThumbnailPixelsAsync(path, size, ct).ConfigureAwait(false);
+
+                if (pixels is null || ct.IsCancellationRequested) return null;
+
+                // The same rule the header read at the top of this method
+                // applies, measured on the RESULT because nothing else can
+                // measure these formats — an unmeasurable header is the reason
+                // they went to the platform at all. Measured: a 32 pixel
+                // favicon.ico asked of the Windows shell at 256 comes back
+                // 32x32, and drawing it would stretch it eightfold over the
+                // crisp 256x256 icon it hides.
+                if (Math.Max(pixels.Width, pixels.Height) < size / 2) return null;
+
+                // Off the UI thread, like the decode below it: a WriteableBitmap
+                // is a plain object in the same way Bitmap is. It is
+                // IconLoader's DRAWABLES — the DrawingImage and its brushes —
+                // that may only be built on the UI thread.
+                return IconLoader.ToBitmap(pixels);
+            }
 
             try
             {

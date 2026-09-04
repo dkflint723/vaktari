@@ -176,8 +176,15 @@ public static class IconLoader
     /// padded to an alignment that is usually but not always width × 4, and a
     /// single block copy against a padded buffer produces an image that shears
     /// diagonally — which reads as a corrupt icon rather than as a stride bug.
+    ///
+    /// **Internal, and a WriteableBitmap rather than an IImage, because
+    /// thumbnails need it too.** The Windows shell hands back a thumbnail the
+    /// same way it hands back an icon — pixels, no file — so
+    /// <see cref="ThumbnailLoader"/> has the identical conversion to do and the
+    /// stride lesson above is not worth learning twice. It wants a Bitmap
+    /// specifically, which is what this builds.
     /// </summary>
-    private static IImage ToBitmap(IconPixels pixels)
+    internal static WriteableBitmap ToBitmap(IconPixels pixels)
     {
         var bitmap = new WriteableBitmap(
             new PixelSize(pixels.Width, pixels.Height),

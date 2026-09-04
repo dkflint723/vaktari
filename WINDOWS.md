@@ -145,6 +145,20 @@ are path assumptions, not APIs — see §5.
   cheaper first pass: decode images directly with `ImageSize` + Avalonia, and
   return null for everything else. **The freedesktop thumbnail cache does not
   exist on Windows, so `XdgThumbnailProvider`'s whole caching strategy is moot.**
+  **DONE, and the first pass was half of it.** Images are still decoded
+  directly — the original file beats the shell's cached copy, and the "too small
+  to enlarge" rule lives on that path. Everything else now goes to the shell
+  with `SIIGBF_THUMBNAILONLY`, which is what makes video, PDF, HEIC and TIFF
+  previews appear. Two things were needed beyond the call itself. *Which* types
+  can have one is read from the registry per extension
+  (`ShellEx\{E357FCCD-…}` under the extension, its ProgID, or its perceived
+  type) rather than hardcoded, because the answer is per machine — this one has
+  handlers for .pdf, .docx, .mp4 and .heic and none at all for .svg. And the
+  call is time-bounded, because a thumbnail handler is somebody else's code:
+  see `WindowsShellThumbnails`. The pixels come back as `IconPixels` through
+  `GetThumbnailPixelsAsync`, which is the "per-file and bitmap-returning" seam
+  this document asks for below rather than a PNG cached to disk for the sake of
+  having a path.
 
 ### Hard — expect these to dominate the schedule
 - **Trash / Recycle Bin.** There is **no BCL API.** The options are
