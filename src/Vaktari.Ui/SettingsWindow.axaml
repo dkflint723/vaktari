@@ -52,7 +52,27 @@
         <StackPanel DockPanel.Dock="Right"
                     Orientation="Horizontal" Spacing="8">
           <Button Content="Cancel" Padding="14,4" IsCancel="True" Command="{Binding CancelCommand}"/>
-          <Button Content="Save" Padding="14,4" Command="{Binding SaveCommand}"/>
+
+          <!-- **Escape left this window and Enter did not.** Cancel took
+               IsCancel when the dialogs learnt Escape, and Save was left
+               behind — so the key that throws the page away worked from the
+               keyboard while the key that keeps it did nothing at all. Six
+               pages of boxes and check boxes, and the only way to commit them
+               was to find the mouse.
+
+               Safe from the rest of the page because Avalonia hands its
+               default button an UNHANDLED Enter only, and every control on
+               these six pages that wants the key takes it first: a focused
+               button, a check box, a combo box and a radio button all mark it
+               handled and never reach this. What is left is the single-line
+               boxes, where Enter has nothing else to mean; the tab headers,
+               where it means what it means in any property sheet; the version
+               line, which is selectable and so takes focus without wanting the
+               key; and a window nobody has tabbed into yet, which has no focus
+               at all. Each of those four saves what is already on screen,
+               which is what the button says. Counted and pressed on every
+               tab, not reasoned about. -->
+          <Button Content="Save" Padding="14,4" IsDefault="True" Command="{Binding SaveCommand}"/>
         </StackPanel>
 
         <!-- Selectable, because the reason anyone reads a version is to quote

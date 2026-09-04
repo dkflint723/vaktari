@@ -72,7 +72,16 @@
     <DockPanel>
       <StackPanel DockPanel.Dock="Right" Orientation="Horizontal" Spacing="8">
         <Button Content="Cancel" Padding="14,4" IsCancel="True" Command="{Binding CancelCommand}"/>
-        <Button Content="Share" Padding="14,4"
+
+        <!-- **And Enter did nothing here.** The path box IS this dialog — type
+             a folder and you are done — and the key that says so was
+             discarded, leaving Escape as the only half of the pair that
+             worked.
+
+             The folder list above is untouched by this: a focused list item
+             consumes Enter before it can reach a default button, so walking
+             the list with the keyboard cannot start a share by accident. -->
+        <Button Content="Share" Padding="14,4" IsDefault="True"
                 IsEnabled="{Binding CanShare}" Command="{Binding ShareCommand}"/>
       </StackPanel>
       <TextBlock Text="{Binding Status}" VerticalAlignment="Center" TextWrapping="Wrap"

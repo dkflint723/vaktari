@@ -65,7 +65,20 @@
       <DockPanel>
         <StackPanel DockPanel.Dock="Right" Orientation="Horizontal" Spacing="8">
           <Button Content="Cancel" Padding="14,4" IsCancel="True" Command="{Binding CancelCommand}"/>
-          <Button Content="Rename" Padding="14,4"
+
+          <!-- **Enter did nothing, in a dialog whose entire input is a line of
+               text.** You type a pattern, read the preview and press Enter,
+               and the keystroke went nowhere: Escape got you out, and the only
+               way to go ahead was the mouse.
+
+               IsEnabled is load bearing for the keyboard now as well as for
+               the pointer, and stays: Avalonia's default button ignores Enter
+               while it is disabled, so a plan with a problem in it — or one
+               that would rename nothing — cannot be committed by a stray Enter
+               any more than it can be clicked. The "start at" spinner is no
+               trap either; it writes StartAt as the digits are typed, so a
+               rename started from it uses the number on screen. -->
+          <Button Content="Rename" Padding="14,4" IsDefault="True"
                   IsEnabled="{Binding CanApply}" Command="{Binding ApplyCommand}"/>
         </StackPanel>
         <TextBlock Text="{Binding Summary}" VerticalAlignment="Center"

@@ -220,6 +220,18 @@ should not be trusted for compatibility yet.
 
 ### Changed
 
+- **Enter finishes a dialog, the way Escape leaves one.** Escape was given to
+  all six windows and Enter to none of them: Settings, Batch rename and Share
+  each had a Cancel that answered the keyboard and a Save, Rename or Share that
+  did not, so the key that throws work away worked and the key that keeps it did
+  nothing — in three dialogs whose whole input is a line of text you type. Enter
+  now presses each one's own confirming button. It takes the key from nothing
+  that already had it: a folder in Share's list, a check box, a combo box or
+  another button all keep Enter for themselves, and a batch rename with a
+  problem in it cannot be started by Enter any more than it can be clicked. The
+  main window is deliberately left out — Enter there belongs to the filter, the
+  address bar and the rename box.
+
 - **A second "New folder" is called "New folder (2)".** It was "New folder 2" —
   a space and a bare digit — which is neither what Explorer does nor what the
   rest of Vaktari does: a copy that keeps both is already parenthesised on both
