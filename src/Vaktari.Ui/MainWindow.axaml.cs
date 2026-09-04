@@ -28,226 +28,92 @@ namespace Vaktari.Ui;
 public partial class MainWindow : Window
 {
     private readonly ShellViewModel _shell;
+
+    /// <summary>
+    /// Everything this window shares with every other one — the platform, the
+    /// four stores and the trash sweep. Built by the FIRST window and lent to
+    /// every window it opens; <see cref="WindowServices"/> records why it is
+    /// lent rather than reached for.
+    /// </summary>
+    private readonly WindowServices _services;
+
+    /// <summary>The shell, for the family: <see cref="WindowServices.Compose"/>
+    /// asks every live window for its own entry in the session.</summary>
+    internal ShellViewModel Shell => _shell;
+
+    internal WindowServices Services => _services;
+
     private readonly Vaktari.Core.FileSystem.IApplicationLauncher? _launcher;
     private readonly IPlatform _platform;
 
-    /// <summary>
-    /// Chooses which icon set the listings use.
-    ///
-    /// **An imported theme outranks the platform own set**: it is the most
-    /// deliberate of the three sources — somebody found a theme, downloaded it
-    /// and pointed at it. A folder that has since been moved or deleted is
-    /// ignored rather than honoured into a listing with no icons at all.
-    ///
-    /// Called after the settings are applied, and again when they are saved.
-    /// </summary>
-    /// <summary>
-    /// The chosen theme, applied when it is ready rather than before the window
-    /// is allowed to open. <see cref="Thumbnails.IconThemeInstall"/> carries the
-    /// measurements and what changes on screen as a result.
-    /// </summary>
-    private static void InstallIconTheme(IPlatform platform)
-    {
-        // Before anything reads a theme. A null folder disables caching, which
-        // means paying the build on every launch rather than only the first.
-        Vaktari.Core.FileSystem.FreedesktopIconTheme.IndexCacheFolder =
-            Path.Combine(JsonSessionStore.DefaultDirectory(), "icon-index");
-
-        Thumbnails.IconThemeInstall.Begin(
-            AppSettings.Current.General.IconThemeFolder,
-            platform.Icons,
-            folder => Vaktari.Core.FileSystem.FreedesktopIconTheme.FromCache(folder),
-            folder => Vaktari.Core.FileSystem.FreedesktopIconTheme.FromFolder(folder),
-            UseIconProvider);
-
-        // Housekeeping, once per launch, off the thread. An index is sixteen
-        // megabytes for a big theme and nothing else ever removes one whose
-        // theme was deleted; the active theme's entry records a directory that
-        // exists, so the prune never touches it.
-        _ = Task.Run(Vaktari.Core.FileSystem.FreedesktopIconTheme.PruneIndexCache);
-    }
-
-    /// <summary>
-    /// Marshals to the UI thread itself rather than asking the caller to. The
-    /// first call arrives on it and the second does not, and a Post from the UI
-    /// thread would defer the platform's icons past first paint for no reason.
-    /// </summary>
-    private static void UseIconProvider(Vaktari.Core.FileSystem.IIconThemeProvider? provider)
-    {
-        if (!Dispatcher.UIThread.CheckAccess())
-        {
-            Dispatcher.UIThread.Post(() => UseIconProvider(provider));
-            return;
-        }
-
-        Thumbnails.IconLoader.Provider = provider;
-
-        // Resolved paths and drawables belong to whatever was in place before.
-        // On the first call there are none; on the swap they are the shell's,
-        // and every one of them is now the wrong picture.
-        Thumbnails.IconLoader.Invalidate();
-    }
-    private readonly JsonSessionStore _store;
-
     // Preferences, as distinct from the session. Read before it, because the
     // startup setting decides whether the session is consulted at all.
-    private readonly JsonSettingsStore _settingsStore;
     private readonly SettingsState _settings;
 
-    private JsonFolderViewStore? _folderViews;
-    private Vaktari.Core.Sharing.ProtonDriveLinks? _driveLinks;
-    private JsonDriveLinkStore? _driveLinkStore;
-    private JsonRecentStore? _recents;
-    private ITrashMaintenance? _trashMaintenance;
-    private DispatcherTimer? _trashTimer;
     private readonly IDefaultFileManager? _defaultFileManager;
     private readonly IFileManagerService? _fileManager;
     private readonly IPropertiesProvider _properties;
     private readonly IThemeProvider? _theme;
     private readonly IAccessEditor? _accessEditor;
+
+    /// <summary>
+    /// Held so it can be let go again. The theme provider belongs to the
+    /// SHARED platform and outlives this window, so a closed window that stayed
+    /// subscribed went on re-running ThemeApplier against itself and calling
+    /// the global Thumbnails.IconLoader.Invalidate() — once per dead window, on
+    /// every desktop scheme change.
+    /// </summary>
+    private readonly EventHandler? _onThemeChanged;
+
     private bool _closeApproved;
 
-    public MainWindow()
+    /// <summary>
+    /// The founder. Kept parameterless and delegating so App.axaml.cs, and the
+    /// tests that build a window, read exactly as they did — and so
+    /// TabReorderTests, which scans the body of `public MainWindow()`, still
+    /// finds the pointer-release wiring in the constructor immediately below.
+    /// That test's anchor should be updated if these two are ever separated,
+    /// rather than the constructors rearranged to keep it happy.
+    /// </summary>
+    public MainWindow() : this(shared: null, restoreIndex: 0, openAt: null, seed: null, like: null) { }
+
+    /// <summary>
+    /// One window.
+    ///
+    /// <paramref name="shared"/> null means "you are the first" — build the
+    /// application's shared half and own it. Every other window is handed the
+    /// founder's, because two of any of those objects on one state directory is
+    /// two writers of the same files.
+    ///
+    /// <paramref name="restoreIndex"/> is which saved window this one is, or
+    /// negative for a window that is not being restored from the session at
+    /// all. <paramref name="openAt"/> is the folder it was ASKED for, and
+    /// <paramref name="seed"/> the view it should arrive in.
+    /// </summary>
+    private MainWindow(
+        WindowServices? shared, int restoreIndex, string? openAt,
+        WindowSession? seed, PaneViewModel? like)
     {
         InitializeComponent();
         AppIcon.Apply(this);
 
-        // The one and only place a platform type is named, and the one guard
-        // the analyser needs — each platform assembly is annotated for a single
-        // OS, so everything inside them is free of per-call checks.
-        //
-        // The #if is not belt-and-braces around the runtime check. Only one
-        // platform assembly is referenced per build (see Vaktari.Ui.csproj), so
-        // the branch for the other OS would not compile at all. The runtime
-        // check still earns its place: it is what the analyser reads to allow
-        // the constructor call.
-        const string Unsupported =
-            "No platform implementation for this operating system yet.";
+        var founder = shared is null;
 
-        IPlatform platform;
+        _services = shared ?? WindowServices.Create();
 
-        // Each branch carries its own else rather than sharing one after the
-        // #endif. Sharing it compiled, but left the #else arm as a dangling
-        // `else` — so a build with neither symbol reported five cascading syntax
-        // errors and buried the #error that explains what actually went wrong.
-#if VAKTARI_LINUX
-        if (OperatingSystem.IsLinux())
-            platform = new LinuxPlatform(JsonSessionStore.DefaultDirectory());
-        else
-            throw new PlatformNotSupportedException(Unsupported);
-#elif VAKTARI_WINDOWS
-        if (OperatingSystem.IsWindows())
-            platform = new WindowsPlatform(JsonSessionStore.DefaultDirectory());
-        else
-            throw new PlatformNotSupportedException(Unsupported);
-#else
-#error Vaktari.Ui references no platform assembly. One is selected from the build machine's OS, or by -p:VaktariPlatform=Linux|Windows; see Vaktari.Ui.csproj and WINDOWS.md §2.
-        platform = null!;
-#endif
+        var platform = _services.Platform;
 
-        // Before anything builds a label. The view models below read these, and
-        // so does every prompt sentence — adopting it here, beside the one place
-        // a platform is chosen, is what keeps the window from naming the bin
-        // two different ways.
-        Naming.Adopt(platform);
+        // Per-window handles onto shared objects. These were assigned from the
+        // block that has moved to WindowServices.Create; they stay here because
+        // they are fields of a window, not things an application owns one of.
         _defaultFileManager = platform.DefaultFileManager;
-
-        // Clears a folder-handler registration left by a previous name of this
-        // application pointing at a binary that no longer exists. Upgrading
-        // from Heimdall removes that install and leaves its verb behind, after
-        // which every double-clicked folder fails — the same wound the
-        // uninstaller avoids, reached by a different route. Acts only when the
-        // command is genuinely dead, so a Heimdall someone still runs is left
-        // alone.
-        platform.DefaultFileManager?.HealPreviousName();
-
         _properties = platform.Properties;
         _accessEditor = platform.AccessEditor;
-
-        Thumbnails.ThumbnailLoader.Provider = platform.Thumbnails;
-        Thumbnails.RowMetadata.Provider = platform.Metadata;
-        // The desktop's own per-file icons, used only if the setting asks for
-        // them. Installed regardless so the choice can be changed without a
-        // restart.
-        Thumbnails.IconLoader.Files = platform.FileIcons;
-
-        // Held for the settings dialog, which opens a browser at the icon
-        // catalogue. The launcher is how this application opens anything.
         _launcher = platform.Launcher;
         _platform = platform;
-
-        if (platform.Icons is { } icons)
-        {
-            var probe = icons.Resolve(["inode-directory", "folder"], 32);
-            Console.Error.WriteLine($"[vaktari] folder icon resolved to: {probe ?? "NOTHING"}");
-        }
-
-        // Settings BEFORE the theme, and this ordering is load-bearing rather
-        // than tidy. ThemeApplier reads AppSettings.Current to decide whether a
-        // configured font beats Plasma's — so loading settings afterwards meant
-        // it read empty defaults and the font setting did nothing at all, even
-        // across a restart. Settings are the first thing this constructor does
-        // for the same reason they precede the session load below.
-        _settingsStore = new JsonSettingsStore(JsonSessionStore.DefaultDirectory());
-        _settings = _settingsStore.Load();
-        _settingsStore.EnsureFileExists(_settings);
-
-        AppSettings.Apply(_settings);
-
-        // **After Apply, and that ordering is the whole of it.** This was
-        // written thirty lines above, where AppSettings.Current is still the
-        // default record and the chosen folder is therefore always empty — so
-        // FromFolder returned null on every launch and the imported theme was
-        // never used by anybody, on either platform, while settings.json
-        // faithfully recorded the choice and the dialog showed it as set. The
-        // comment below about settings preceding the theme is about this exact
-        // hazard; the font setting was caught by it once already.
-        InstallIconTheme(platform);
-
-        // Per-folder view overrides. A static for the same reason AppSettings is
-        // one: panes are created by the shell, not injected here.
-        _folderViews = new JsonFolderViewStore(JsonSessionStore.DefaultDirectory());
-        ViewModels.PaneViewModel.FolderViews = _folderViews;
-
-        _recents = new JsonRecentStore(JsonSessionStore.DefaultDirectory());
-        ViewModels.PaneViewModel.Recents = _recents;
-
-        // Platform-neutral: it drives the `git` binary, which behaves the same
-        // on both targets, so it is constructed here rather than coming from
-        // IPlatform like the trash and the icon theme do.
-        ViewModels.PaneViewModel.Vcs = new Vaktari.Core.Vcs.GitVersionControl();
-
-        // Same reasoning, different binary: Proton's own CLI, which behaves the
-        // same on both targets and carries the encryption itself.
-        // The setting always wins; the guess covers the machine where the
-        // Proton Drive app is installed and nobody has told Vaktari where —
-        // which should cost a click, not a treasure hunt through settings.
-        _driveLinks = new Vaktari.Core.Sharing.ProtonDriveLinks
-        {
-            LocalRoot = AppSettings.Current.General.ProtonDriveFolder is { Length: > 0 } chosen
-                ? chosen
-                : Vaktari.Core.Sharing.ProtonDriveLinks.GuessLocalRoot() ?? "",
-        };
-        _driveLinkStore = new JsonDriveLinkStore(JsonSessionStore.DefaultDirectory());
-
-        // From the platform, unlike the one above: what a desktop puts on a
-        // context menu is entirely a platform fact, and on Linux the answer is
-        // that there is no such thing.
-        ViewModels.PaneViewModel.ShellMenu = platform.ShellMenu;
-        ViewModels.PaneViewModel.DiskImages = platform.DiskImages;
-        ViewModels.PaneViewModel.Shortcuts = platform.Shortcuts;
-        ViewModels.PaneViewModel.Places = platform.Places;
-        ViewModels.PaneViewModel.Search = platform.Search;
         _virtualDrop = platform.VirtualFileDrop;
         _shortcuts = platform.Shortcuts;
-
-        // Logged at startup, not when the settings dialog opens. The count only
-        // appeared on opening the dialog, which made "no line printed" mean two
-        // different things and cost a diagnostic round trip. Compare with:
-        //   fc-list : family | tr ',' '\n' | sort -u | wc -l
-        Console.Error.WriteLine(
-            $"[vaktari] fontlist: {Avalonia.Media.FontManager.Current.SystemFonts.Count} "
-            + "families visible to Avalonia");
+        _settings = _services.Settings;
 
         // Applied before anything else paints, and re-applied whenever Plasma's
         // scheme changes, so the window follows the desktop live.
@@ -257,7 +123,12 @@ public partial class MainWindow : Window
 
         if (_theme is not null)
         {
-            _theme.Changed += (_, _) => Dispatcher.UIThread.Post(() =>
+            // **Named rather than anonymous, and that is the whole of the
+            // difference.** Until windows could close, a subscription for the
+            // life of the process was the life of the window. Now a closed
+            // window that is still subscribed keeps its visual tree alive AND
+            // goes on reacting, so OnClosed needs something to hand back.
+            _onThemeChanged = (_, _) => Dispatcher.UIThread.Post(() =>
             {
                 // Plasma rewrites kdeglobals in pieces; a short settle avoids
                 // reading it mid-write and picking up half a scheme.
@@ -274,26 +145,52 @@ public partial class MainWindow : Window
                     Thumbnails.IconLoader.Invalidate();
                 }));
             });
+
+            _theme.Changed += _onThemeChanged;
         }
 
         // Not platform-specific: the clipboard comes from the toolkit.
         IClipboardService clipboard = ClipboardService.ForWindow(this);
 
-        _store = new JsonSessionStore(JsonSessionStore.DefaultDirectory());
-
         // Loaded synchronously so geometry is applied before first paint. An
         // async load would restore size and position after the window is
         // already on screen — a visible jump on every launch.
-        var state = _store.Load();
-        ApplyGeometry(state);
+        //
+        // Read ONCE, by the founder, and kept: a window restored out of it a
+        // moment later must see the same state rather than re-read a file the
+        // founder may already have written over.
+        if (founder) _services.Restored = _services.Session.Load();
+
+        var state = _services.Restored;
+
+        ApplyGeometry(state, restoreIndex);
 
         _shell = new ShellViewModel(
-            platform.FileSystem, platform.Operations, _store,
+            platform.FileSystem, platform.Operations, _services.Session,
             platform.Places, platform.Launcher, clipboard,
             platform.Scripts, platform.Templates, platform.Sharing)
         {
             GeometryProvider = CaptureGeometry,
+
+            // What gets WRITTEN is the whole family, not this window: a shell
+            // on its own still answers with its own single entry, so every
+            // view-model test is unchanged and the two paths cannot drift.
+            WholeSession = _services.Compose,
+
+            // And the eject veto asks every window, because a per-window answer
+            // would let this one "safely remove" a stick another is filling.
+            AllRunning = () => _services.Running,
+
+            // The tab this window was opened FROM, so it arrives in the view it
+            // was opened from rather than resetting five settings.
+            LikeTab = like,
         };
+
+        // After the shell exists, deliberately: Compose() and Running both ask
+        // every adopted window for its shell, and a window in the list before
+        // it has one would be a null nobody can guard against without lying to
+        // the compiler about the field's type.
+        _services.Adopt(this);
         _shell.PaneCreated += (_, pane) => WirePane(pane);
         _shell.PropertiesRequested += (_, _) => ShowProperties();
 
@@ -317,10 +214,10 @@ public partial class MainWindow : Window
         _shell.BatchRenameRequested += (_, _) => ShowBatchRename();
         _shell.UseRemotes(platform.Remotes);
 
-        if (_driveLinks is not null && _driveLinkStore is not null)
-            _shell.UseDriveLinks(
-                _driveLinks, _driveLinkStore.Load(), links => _driveLinkStore.Save(links),
-                url => _launcher?.Open(url));
+        _shell.UseDriveLinks(
+            _services.DriveLinks, _services.DriveLinkStore.Load(),
+            links => _services.DriveLinkStore.Save(links),
+            url => _launcher?.Open(url));
         _shell.UseDiscovery(platform.Discovery);
         _shell.UseProperties(platform.Properties);
 
@@ -337,6 +234,10 @@ public partial class MainWindow : Window
         // button.
         _shell.CloseRequested += (_, _) => Close();
 
+        // A PEER, not a child. The shell names the folder; the window builds
+        // the thing, because a view model has no business constructing one.
+        _shell.NewWindowRequested += (_, folder) => OpenNewWindow(folder);
+
         // **The question that was never asked.** Copy and move have understood
         // Overwrite, Skip and Cancel since they were written, and every caller
         // passed KeepBoth outright — so a newer file dropped over an older one
@@ -351,10 +252,17 @@ public partial class MainWindow : Window
             {
                 var model = new ViewModels.ConflictViewModel(conflict);
 
+                // **A process-wide static that every window assigns.** It
+                // captured `this`, so with two windows the prompt belonged to
+                // whichever was constructed LAST — and after that one closed,
+                // to a window that is gone. Resolved when the question is
+                // asked instead, falling back to the window that assigned it.
+                var owner = _services.Active ?? this;
+
                 // ShowDialog returns when the window closes; the window closes
                 // when the model answers, and closing it any other way answers
                 // Cancel. So this cannot wait forever on a dismissed dialog.
-                await new ConflictWindow(model).ShowDialog(this);
+                await new ConflictWindow(model).ShowDialog(owner);
 
                 return await model.Answer;
             });
@@ -470,42 +378,72 @@ public partial class MainWindow : Window
         SidebarHandle.DragDelta += (_, e) =>
             _shell.Sidebar.Width = Math.Clamp(_shell.Sidebar.Width + e.Vector.X, 150, 520);
 
-        // A folder named on the command line, and any handed over by a later
-        // launch. Without this the window ignored the path it was asked for,
-        // which as a default file manager is the whole job.
-        if (Program.Instance is { } instance)
-            instance.PathsReceived += (_, paths) => OpenPaths(paths, activate: true);
-
-        // The same request as a handed-over launch, arriving by the other route
-        // the desktop has for it — and the one a browser's "show in folder"
-        // actually uses, because a launch cannot express "and select this file".
-        //
-        // **Only the instance that owns the single-instance lock answers.** A
-        // window opened by an instance that LOST the lock is a temporary second
-        // copy, and a second copy claiming a desktop-wide role would take "show
-        // in folder" with it and hold it for as long as it lived.
-        if (Program.Instance is not null && platform.FileManagerService is { } fileManager)
+        // **The founder subscribes, and no handler captures it.** These three
+        // are the desktop's roles and they belong to the APPLICATION: closing
+        // the window that happened to start it must not take "open folder" off
+        // the desktop for the rest of the session, so each one resolves the
+        // window when the request lands rather than when it is wired.
+        if (founder)
         {
-            _fileManager = fileManager;
+            var services = _services;
 
-            // Posted, not called: this is raised from the bus's own read loop,
-            // which reads no further messages until the handler returns, and
-            // everything it leads to opens tabs and touches the window.
-            fileManager.Requested += (_, request) =>
-                Dispatcher.UIThread.Post(() => OnShowRequested(request));
+            // A folder named on the command line, and any handed over by a
+            // later launch. Without this the window ignored the path it was
+            // asked for, which as a default file manager is the whole job.
+            if (Program.Instance is { } instance)
+                instance.PathsReceived += (_, paths) =>
+                    services.ForDesktopRequest?.OpenPaths(paths, activate: true);
 
-            Dispatcher.UIThread.Post(() => AnnounceFileManagerService(fileManager));
+            // The same request as a handed-over launch, arriving by the other
+            // route the desktop has for it — and the one a browser's "show in
+            // folder" actually uses, because a launch cannot express "and
+            // select this file".
+            //
+            // **Only the instance that owns the single-instance lock answers.**
+            // A window opened by an instance that LOST the lock is a temporary
+            // second copy, and a second copy claiming a desktop-wide role would
+            // take "show in folder" with it and hold it for as long as it
+            // lived.
+            if (Program.Instance is not null && platform.FileManagerService is { } fileManager)
+            {
+                services.FileManager = fileManager;
+
+                // Posted, not called: this is raised from the bus's own read
+                // loop, which reads no further messages until the handler
+                // returns, and everything it leads to opens tabs and touches
+                // the window.
+                fileManager.Requested += (_, request) =>
+                    Dispatcher.UIThread.Post(() => services.ForDesktopRequest?.OnShowRequested(request));
+
+                Dispatcher.UIThread.Post(() => AnnounceFileManagerService(fileManager));
+            }
+
+            if (Program.StartupPaths.Length > 0)
+                Dispatcher.UIThread.Post(
+                    () => services.ForDesktopRequest?.OpenPaths(Program.StartupPaths, activate: false));
         }
 
-        if (Program.StartupPaths.Length > 0)
-            Dispatcher.UIThread.Post(() => OpenPaths(Program.StartupPaths, activate: false));
+        // Held for the settings dialog, which is per window and would otherwise
+        // hand a secondary window a null and show something different from the
+        // founder's.
+        _fileManager = _services.FileManager;
 
         Closing += OnClosing;
+
+        // Teardown is a real event now that a window is not the process. What
+        // OnClosed lets go of is measured in its own comment.
+        Closed += OnClosed;
+
+        // Which window a desktop request and a conflict prompt belong to. A
+        // focus event, so it may never have fired — every reader falls back.
+        Activated += (_, _) => _services.Active = this;
         Resized += (_, _) => _shell.NotifyWindowChanged();
         PositionChanged += (_, _) => _shell.NotifyWindowChanged();
 
         // Applied before Start so the first paint is already at the right size.
-        var geometry = state?.Windows.FirstOrDefault();
+        // A window opened from another reads its OPENER's scales, not the
+        // session's — it is not being restored from anything.
+        var geometry = seed ?? state?.Windows.ElementAtOrDefault(restoreIndex);
         ApplyScales(
             geometry?.FontScale is > 0 and var f ? f : 1.0,
             geometry?.IconScale is > 0 and var i ? i : 1.0);
@@ -518,7 +456,7 @@ public partial class MainWindow : Window
 
         var restore = startup.ShowOnStartup == StartupLocation.RestoreSession;
 
-        var openFolder = startup.ShowOnStartup switch
+        var openFolder = openAt ?? startup.ShowOnStartup switch
         {
             StartupLocation.SpecificFolder when
                 !string.IsNullOrWhiteSpace(startup.StartupFolder)
@@ -530,11 +468,44 @@ public partial class MainWindow : Window
             _ => null,
         };
 
-        _shell.Start(restore ? state : null, openFolder);
+        // **A window opened from another one is not a launch.** The startup
+        // preference answers "where does a LAUNCH begin"; this one was asked
+        // for a folder and handed the view to arrive in, so the seed is dressed
+        // up as a one-window session and Start's existing restore path applies
+        // it — the sidebar width and rail, the folded sections, the split ratio
+        // and the two scales. Its Panes list is empty, so the tab comes from
+        // openFolder rather than from anything the opener had open.
+        var from = seed is not null
+            ? new SessionState { Windows = [seed] }
+            : restore ? state : null;
+
+        _shell.Start(from, openFolder, seed is not null ? 0 : restoreIndex);
 
         ApplyStartupPreferences(startup);
 
-        StartTrashMaintenance(platform.TrashMaintenance);
+        _services.StartTrashMaintenance(platform.TrashMaintenance);
+
+        // The sidebar was built before the bin was installed and asked an
+        // absent one, so the row starts on the empty glyph however full the bin
+        // is. Per window, because a sidebar is.
+        _shell.Sidebar.RefreshBinState();
+
+        // **Gated on `restore`, not only on `founder`.** Without that gate,
+        // Home and SpecificFolder opened window 0 correctly — ignoring the
+        // session, as the preference asks — and then opened N-1 more windows
+        // restored out of the very session the preference had just said not to
+        // consult.
+        //
+        // Posted rather than called: constructing a window inside a window's
+        // constructor is a re-entrancy nobody wants to reason about.
+        if (founder && restore && state is { } saved)
+        {
+            for (var next = 1; next < saved.Windows.Count; next++)
+            {
+                var index = next;
+                Dispatcher.UIThread.Post(() => RestoreWindow(index));
+            }
+        }
 
         // Build stamp AND the binary it came from. When a symptom and the code
         // disagree, these two lines say whether the running program contains the
@@ -1224,18 +1195,17 @@ public partial class MainWindow : Window
             // The mapping follows the setting immediately, or a corrected
             // folder would need a restart to matter. Clearing it falls back
             // to the guess, the same as startup.
-            if (_driveLinks is not null)
-                _driveLinks.LocalRoot =
-                    model.Result.General.ProtonDriveFolder is { Length: > 0 } chosen
-                        ? chosen
-                        : Vaktari.Core.Sharing.ProtonDriveLinks.GuessLocalRoot() ?? "";
+            _services.DriveLinks.LocalRoot =
+                model.Result.General.ProtonDriveFolder is { Length: > 0 } chosen
+                    ? chosen
+                    : Vaktari.Core.Sharing.ProtonDriveLinks.GuessLocalRoot() ?? "";
 
             // Rebuilt on save, or choosing a theme would need a restart — and
             // the resolved-path cache has no theme in its key, so it has to be
             // dropped or it keeps serving files from the theme just abandoned.
-            InstallIconTheme(_platform);
+            WindowServices.InstallIconTheme(_platform);
             Thumbnails.IconLoader.Invalidate();
-            _settingsStore.Save(model.Result);
+            _services.SettingsStore.Save(model.Result);
 
             // The font lives in the theme resources, and ThemeApplier is the
             // only thing that writes them — so a saved font does nothing until
@@ -3685,10 +3655,16 @@ public partial class MainWindow : Window
     /// Internal rather than private so WindowFloorTests can hand it a session
     /// directly. The store this is otherwise fed from is the real one on the
     /// machine running the suite.
+    ///
+    /// <paramref name="index"/> is which saved window this one is. It defaults
+    /// to the first so the tests that hand a session straight in are unchanged,
+    /// and ElementAtOrDefault answers null for the negative index a window
+    /// opened from another one carries — such a window has no saved geometry
+    /// and is placed beside its opener instead.
     /// </summary>
-    internal void ApplyGeometry(SessionState? state)
+    internal void ApplyGeometry(SessionState? state, int index = 0)
     {
-        if (state?.Windows.FirstOrDefault() is not { } w) return;
+        if (state?.Windows.ElementAtOrDefault(index) is not { } w) return;
 
         if (w.Width > 0) Width = Math.Max(w.Width, MinWidth);
         if (w.Height > 0) Height = Math.Max(w.Height, MinHeight);
@@ -3698,6 +3674,69 @@ public partial class MainWindow : Window
 
         if (w.IsMaximized)
             WindowState = Avalonia.Controls.WindowState.Maximized;
+    }
+
+    /// <summary>
+    /// A peer, on the folder it was asked for, carrying the view it was opened
+    /// from.
+    ///
+    /// **The same principle NewTab states five lines above the command that
+    /// leads here**: "A new tab that resets all five is a new tab you have to
+    /// set up." A window is the heavier version of that tab, so it carries the
+    /// same things — the sidebar width and rail, the folded sections, the split
+    /// ratio, the zoom, and the tab's own layout, sort and hidden files through
+    /// <c>like</c>. Font scale in particular is an accessibility setting rather
+    /// than a preference: a window that arrives at 1.0 for somebody who works
+    /// at 1.4 is a window they have to fix before they can read it.
+    ///
+    /// Geometry is deliberately NOT carried. The new window is offset beside
+    /// the opener rather than stacked exactly on top of it, which is what makes
+    /// it visible that a second one opened at all.
+    /// </summary>
+    private void OpenNewWindow(string? folder)
+    {
+        var seed = _shell.ToWindowSession() with
+        {
+            // The view, not the contents and not the frame. An empty pane list
+            // is what leaves the tab to the folder that was asked for.
+            Panes = [],
+            RememberedRightPane = null,
+            X = 0,
+            Y = 0,
+            Width = 0,
+            Height = 0,
+            IsMaximized = false,
+        };
+
+        var window = new MainWindow(
+            _services,
+            restoreIndex: -1,
+            openAt: string.IsNullOrWhiteSpace(folder) ? null : folder,
+            seed: seed,
+            like: _shell.ActiveTab);
+
+        window.Show();
+
+        // Offset only from a normal window: a maximized or minimized opener has
+        // no useful position to step away from, and Position on a maximized
+        // window is the screen corner.
+        if (WindowState == WindowState.Normal)
+            window.Position = new PixelPoint(Position.X + 32, Position.Y + 32);
+
+        window.Raise();
+    }
+
+    /// <summary>
+    /// Window <paramref name="index"/> of the saved session, opened by the
+    /// founder after its own constructor has finished. Only the founder does
+    /// this, so a restored window cannot recurse into opening more.
+    /// </summary>
+    private void RestoreWindow(int index)
+    {
+        var window = new MainWindow(
+            _services, restoreIndex: index, openAt: null, seed: null, like: null);
+
+        window.Show();
     }
 
     private WindowSession CaptureGeometry()
@@ -3774,7 +3813,7 @@ public partial class MainWindow : Window
     /// Downloads folder of four hundred files that does not answer "which one
     /// did I just save".
     /// </summary>
-    private async void OnShowRequested(ShowRequest request)
+    internal async void OnShowRequested(ShowRequest request)
     {
         try
         {
@@ -3821,7 +3860,7 @@ public partial class MainWindow : Window
     /// Opens folders in tabs. Files resolve to the folder holding them, because
     /// "open containing folder" is the request the desktop actually sends.
     /// </summary>
-    private void OpenPaths(IReadOnlyList<string> paths, bool activate)
+    internal void OpenPaths(IReadOnlyList<string> paths, bool activate)
     {
         foreach (var raw in paths)
         {
@@ -3853,15 +3892,41 @@ public partial class MainWindow : Window
     {
         if (_closeApproved) return;
 
+        // **The transfer question comes first, and it is not behind a
+        // preference.** Closing a window used to kill its transfer and the
+        // process was ending, so nothing survived to notice. With a second
+        // window the process carries on: the handle would go on writing with no
+        // bar showing it, no Cancel reaching it and nobody told when it failed.
+        // The tabs question below is gated on a preference that is off by
+        // default, and a question about losing work must not be.
+        if (_shell.RunningDescription() is { } running)
+        {
+            e.Cancel = true;
+
+            if (!await ConfirmCloseAsync(running)) return;
+
+            // Said yes. The transfer belongs to this window's bar, and leaving
+            // it running is the silent loss the question exists to prevent.
+            _shell.CancelAllOperations();
+        }
+
+        // **One question, not two.** `else if` rather than a second `if`: a
+        // window with a transfer running and six tabs open must not ask twice
+        // in a row, and the transfer question is the one that costs something.
+        // RunningDescription carries the tab count when both apply, so nothing
+        // is hidden by the branch that did not run.
+        //
         // Asked before anything is torn down, and only when there is something
         // to lose. Off by default: the session is restored on next launch, so
         // closing a window full of tabs is not actually destructive here — which
         // is exactly why this is a preference rather than the behaviour.
-        if (AppSettings.Current.General.ConfirmClosingMultipleTabs && CountOpenTabs() > 1)
+        else if (AppSettings.Current.General.ConfirmClosingMultipleTabs && CountOpenTabs() > 1)
         {
             e.Cancel = true;
 
-            var confirmed = await ConfirmCloseAsync();
+            var confirmed = await ConfirmCloseAsync(
+                $"{CountOpenTabs()} tabs are open. Close anyway?");
+
             if (!confirmed) return;
         }
 
@@ -3870,38 +3935,62 @@ public partial class MainWindow : Window
         // exit with the write still in flight.
         e.Cancel = true;
 
-        // Two independent concerns, so two try blocks. They were one, sequenced
-        // shares-first: a throw from StopAllSharesAsync then skipped the flush
-        // AND the dispose, and the single catch still printed "session flush
-        // failed" for a flush that had never been attempted.
-        //
-        // Session goes first now. It is the one whose loss the user would
-        // actually notice, and it cannot fail because of a subprocess.
-        try
-        {
-            _folderViews?.Flush();
-            _recents?.Flush();
-            await _store.FlushAsync(CancellationToken.None);
-            await _store.DisposeAsync();
-        }
-        catch (Exception ex)
-        {
-            Console.Error.WriteLine($"[vaktari] session flush failed: {ex.Message}");
-        }
+        // Asked BEFORE the release below, which takes this window out of the
+        // list — after it, a second-to-last window would look like the last.
+        var last = _services.IsLastWindow;
 
-        try
+        // The session goes first. It is the one whose loss the user would
+        // actually notice, and it cannot fail because of a subprocess. What is
+        // written, what is flushed and what is only released on the way out of
+        // the PROCESS all live on the services, because they are the
+        // application's and not this window's.
+        await _services.ReleaseAsync(this);
+
+        // **Only the last window out.** IFileSharing.StopAllAsync is documented
+        // "called on shutdown so nothing outlives the app", and platform.Sharing
+        // is ONE CopypartyShare for every window — its running dictionary holds
+        // every server in the process and StopAllAsync kills the lot. Measured:
+        // two shells built over one provider, a share started through the
+        // first, and the second shell's StopAllSharesAsync emptied Active. So
+        // closing one of two windows was killing the other's server while its
+        // Sharing section went on listing the folder as served.
+        //
+        // A window is not the process. Stopping only on the way out of the
+        // process is what the interface's own contract asks for; per-window
+        // ownership of individual shares is a second stage, and until it exists
+        // a share started anywhere outlives every window but the last.
+        if (last)
         {
-            // Servers we started are ours to stop; a share outliving the window
-            // would keep a folder on the network with nothing showing it.
-            await _shell.StopAllSharesAsync();
-        }
-        catch (Exception ex)
-        {
-            Console.Error.WriteLine($"[vaktari] stopping shares failed: {ex.Message}");
+            try
+            {
+                await _shell.StopAllSharesAsync();
+            }
+            catch (Exception ex)
+            {
+                Console.Error.WriteLine($"[vaktari] stopping shares failed: {ex.Message}");
+            }
         }
 
         _closeApproved = true;
         Close();
+    }
+
+    /// <summary>
+    /// What a closed window lets go of.
+    ///
+    /// **`_shell.Dispose()` on its own is not teardown, and that is measured**:
+    /// after Dispose, CutMarks.Mark still set the shell's CutPaths, because
+    /// Dispose only stopped the rate timer and tore down the panes. Nothing in
+    /// this application unsubscribed from anything, which was harmless for as
+    /// long as a window lived exactly as long as the process — and stops being
+    /// harmless the moment one can close while the others carry on.
+    /// </summary>
+    private void OnClosed(object? sender, EventArgs e)
+    {
+        if (_theme is not null && _onThemeChanged is not null)
+            _theme.Changed -= _onThemeChanged;
+
+        _shell.Dispose();
     }
 
     /// <summary>
@@ -3940,7 +4029,7 @@ public partial class MainWindow : Window
     /// that is about to be destroyed is the shape of bug this project has
     /// already paid for once with Shift+Delete.
     /// </summary>
-    private async Task<bool> ConfirmCloseAsync()
+    private async Task<bool> ConfirmCloseAsync(string question)
     {
         var dialog = new Window
         {
@@ -3972,7 +4061,7 @@ public partial class MainWindow : Window
             {
                 new TextBlock
                 {
-                    Text = $"{CountOpenTabs()} tabs are open. Close anyway?",
+                    Text = question,
                     TextWrapping = Avalonia.Media.TextWrapping.Wrap,
                 },
                 new StackPanel
@@ -3995,85 +4084,6 @@ public partial class MainWindow : Window
         // OnClosing with _closeApproved still false and confirm forever; the
         // caller falls through to the existing flush-then-close path instead.
         return result;
-    }
-
-    /// <summary>
-    /// Trash expiry, at startup and then hourly.
-    ///
-    /// Hourly rather than on a shorter tick because nothing here is urgent —
-    /// a trash that is one hour over its age limit is not a problem — and
-    /// because each sweep walks the trash to size it, which is real work to be
-    /// doing behind someone's back.
-    /// </summary>
-    private void StartTrashMaintenance(ITrashMaintenance? maintenance)
-    {
-        if (maintenance is null) return;
-
-        _trashMaintenance = maintenance;
-
-        // Assigned HERE, not beside the other providers in the constructor:
-        // this field is null until this method runs, so the earlier assignment
-        // handed the pane a null and the Trash listing would have been silently
-        // empty forever. Same shape as the font setting, which read its value
-        // before the settings load and so never applied one.
-        ViewModels.PaneViewModel.Trash = maintenance;
-
-        // The sidebar was built before this was installed and asked an absent
-        // bin, so the row starts on the empty glyph however full the bin is.
-        _shell.Sidebar.RefreshBinState();
-
-        _ = SweepTrashAsync();
-
-        _trashTimer = new DispatcherTimer { Interval = TimeSpan.FromHours(1) };
-        _trashTimer.Tick += (_, _) => _ = SweepTrashAsync();
-        _trashTimer.Start();
-    }
-
-    private async Task SweepTrashAsync()
-    {
-        if (_trashMaintenance is not { } maintenance) return;
-
-        try
-        {
-            var policy = AppSettings.Current.Trash;
-
-            var result = await maintenance.SweepAsync(policy, CancellationToken.None);
-
-            // ALWAYS logged, including when it did nothing.
-            //
-            // It used to speak only when it removed something, so silence meant
-            // three different things — the feature is off, it ran and matched
-            // nothing, or it never ran at all. For the one feature that deletes
-            // files unattended, "I ran and did nothing" is exactly as important
-            // as "I removed four", and being unable to tell them apart cost a
-            // test round trip.
-            var state = !policy.DeleteOldFiles && !policy.LimitSize
-                ? "disabled"
-                : $"age={(policy.DeleteOldFiles ? $"{policy.DeleteAfterDays}d" : "off")} "
-                  + $"size={(policy.LimitSize ? $"{policy.MaximumPercentOfDisk}%" : "off")} "
-                  // The field that decides whether it DELETES. Leaving it out
-                  // made "removed 0 · OVER LIMIT" ambiguous between "set to warn"
-                  // and "set to delete and failing to", which is the whole
-                  // question this line exists to answer.
-                  + $"when={policy.WhenLimitReached}";
-
-            var freed = ByteSize.Format(result.BytesFreed);
-
-            Console.Error.WriteLine(
-                $"[vaktari] trash: {state} · removed {result.Removed} · "
-                + $"freed {freed} · skipped {result.Skipped} undated"
-                + (result.OverLimit ? " · OVER LIMIT" : ""));
-
-            if (result.Removed > 0)
-                _shell.OperationStatus = $"{Naming.BinName}: removed {result.Removed} item(s), freed {freed}";
-            else if (result.OverLimit)
-                _shell.OperationStatus = $"{Naming.BinTitle} is over its size limit";
-        }
-        catch (Exception ex)
-        {
-            // A failed sweep must never take the window with it.
-            Console.Error.WriteLine($"[vaktari] trash sweep failed: {ex.Message}");
-        }
     }
 
     // ---- per-pane wiring -----------------------------------------------

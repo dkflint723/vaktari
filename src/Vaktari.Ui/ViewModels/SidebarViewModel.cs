@@ -18,14 +18,15 @@ namespace Vaktari.Ui.ViewModels;
 /// A panel earns a rail slot only if it is a place you navigate *from* or a
 /// result set that should survive navigation. Everything else is a command.
 /// </summary>
-public sealed partial class SidebarViewModel : ObservableObject
+public sealed partial class SidebarViewModel : ObservableObject, IDisposable
 {
     private readonly IPlacesProvider? _places;
     /// <summary>
     /// A SOURCE rather than the thing itself. The trash is installed well after
-    /// the shell is built — the window sets it while wiring up the hourly sweep
-    /// — so a constructor that captured the value would capture null and the
-    /// bin would never fill.
+    /// the shell is built — WindowServices sets it while wiring up the hourly
+    /// sweep, which is once per application rather than once per window — so a
+    /// constructor that captured the value would capture null and the bin would
+    /// never fill.
     /// </summary>
     private readonly Func<Vaktari.Core.FileSystem.ITrashMaintenance?>? _trash;
 
@@ -46,8 +47,27 @@ public sealed partial class SidebarViewModel : ObservableObject
         _trash = trash;
         _freeSpace = freeSpace ?? FreeSpaceOn;
 
+        // Named and kept: the provider is ONE object shared by every window's
+        // sidebar, so a closed window's sidebar would go on reloading itself
+        // out of it for the life of the process — rebuilding rows for a visual
+        // tree that has gone.
         if (places is not null)
-            places.PlacesChanged += (_, _) => Dispatcher.UIThread.Post(() => _ = ReloadAsync());
+        {
+            _onPlacesChanged = (_, _) => Dispatcher.UIThread.Post(() => _ = ReloadAsync());
+            places.PlacesChanged += _onPlacesChanged;
+        }
+    }
+
+    private readonly EventHandler? _onPlacesChanged;
+
+    /// <summary>
+    /// Lets go of the shared places provider. Called by the shell, which is
+    /// called by the window on Closed.
+    /// </summary>
+    public void Dispose()
+    {
+        if (_places is not null && _onPlacesChanged is not null)
+            _places.PlacesChanged -= _onPlacesChanged;
     }
 
     public ObservableCollection<PlaceGroupViewModel> Groups { get; } = new();

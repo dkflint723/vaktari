@@ -47,6 +47,11 @@ public sealed partial class ShellViewModel : ObservableObject, IDisposable
     private bool _restoring;
     private bool _started;
 
+    /// <summary>The two subscriptions to sources that outlive this shell, kept
+    /// so <see cref="Dispose"/> has something to hand back.</summary>
+    private readonly EventHandler _onCutMarks;
+    private readonly EventHandler? _onSharingChanged;
+
     /// <summary>
     /// The right side as it was when last closed. Reopening restores it, so
     /// toggling the split off is not a way to silently lose where you were.
@@ -66,14 +71,24 @@ public sealed partial class ShellViewModel : ObservableObject, IDisposable
     {
         _sharing = sharing;
 
+        // **Held so they can be let go.** Both sources outlive this shell:
+        // CutMarks is static and IFileSharing is one object shared by every
+        // window. Until windows could close, a subscription for the life of the
+        // process was the life of the window; now a closed window that is still
+        // subscribed keeps its whole visual tree alive AND goes on reacting —
+        // measured: after Dispose(), CutMarks.Mark still set this shell's
+        // CutPaths, because Dispose only stopped the rate timer and the panes.
+        //
         // Marks are raised by a pane and shown by every listing, so the shell
         // mirrors them rather than owning them.
-        CutMarks.Changed += (_, _) =>
+        _onCutMarks = (_, _) =>
             Dispatcher.UIThread.Post(() => CutPaths = CutMarks.Paths);
+
+        CutMarks.Changed += _onCutMarks;
 
         if (sharing is not null)
         {
-            sharing.Changed += (_, _) => Dispatcher.UIThread.Post(() =>
+            _onSharingChanged = (_, _) => Dispatcher.UIThread.Post(() =>
             {
                 RefreshShares();
 
@@ -82,6 +97,8 @@ public sealed partial class ShellViewModel : ObservableObject, IDisposable
                 OnPropertyChanged(nameof(CanShare));
                 OnPropertyChanged(nameof(CanInstallSharing));
             });
+
+            sharing.Changed += _onSharingChanged;
         }
 
         _scripts = scripts;
@@ -1196,6 +1213,16 @@ public sealed partial class ShellViewModel : ObservableObject, IDisposable
     public bool ShowOpenInNewTabInMenu =>
         Menu.ShowOpenInNewTab
         && ActiveTab is { HasAnyDirectorySelected: true, IsTrashListing: false };
+
+    /// <summary>
+    /// The same question of the same rows, asked of its OWN preference: the
+    /// context-menu page carries one flag per entry, and one checkbox that
+    /// silently removed two entries would be a page that no longer does what it
+    /// says.
+    /// </summary>
+    public bool ShowOpenInNewWindowInMenu =>
+        Menu.ShowOpenInNewWindow
+        && ActiveTab is { HasAnyDirectorySelected: true, IsTrashListing: false };
     /// <summary>
     /// The files waiting to be moved by a paste, which every row binds to so a
     /// cut one can be greyed the way Explorer greys it.
@@ -1348,6 +1375,7 @@ public sealed partial class ShellViewModel : ObservableObject, IDisposable
         OnPropertyChanged(nameof(ShowSortByInMenu));
         OnPropertyChanged(nameof(ShowDuplicateInMenu));
         OnPropertyChanged(nameof(ShowOpenInNewTabInMenu));
+        OnPropertyChanged(nameof(ShowOpenInNewWindowInMenu));
         OnPropertyChanged(nameof(ShowAddToPlacesInMenu));
         OnPropertyChanged(nameof(ShowAddSelectionToPlaces));
         OnPropertyChanged(nameof(ShowAddCurrentToPlaces));
@@ -1826,6 +1854,7 @@ public sealed partial class ShellViewModel : ObservableObject, IDisposable
         OnPropertyChanged(nameof(ShowMoveToInMenu));
         OnPropertyChanged(nameof(ShowDuplicateInMenu));
         OnPropertyChanged(nameof(ShowOpenInNewTabInMenu));
+        OnPropertyChanged(nameof(ShowOpenInNewWindowInMenu));
         OnPropertyChanged(nameof(ShowAddSelectionToPlaces));
         OnPropertyChanged(nameof(ShowAddCurrentToPlaces));
         OnPropertyChanged(nameof(CanTransferToOtherPane));
@@ -1952,6 +1981,75 @@ public sealed partial class ShellViewModel : ObservableObject, IDisposable
         // where you are. It used to jump to the new one.
         foreach (var folder in folders)
             ActiveGroup.AddTab(folder.FullPath, like: ActiveTab, activate: false);
+    }
+
+    // ---- windows -----------------------------------------------------------
+
+    /// <summary>Raised so the window can build a peer; a view model has no
+    /// business constructing one. The folder is where it should open.</summary>
+    public event EventHandler<string?>? NewWindowRequested;
+
+    /// <summary>
+    /// Ctrl+N: a second window on the folder you are already in.
+    ///
+    /// Not home, and not the Startup preference's folder. That preference
+    /// answers "where does a LAUNCH begin", and a window opened from another
+    /// one is not a launch — the reason to want a second window is almost
+    /// always to keep two views of work you are in the middle of, so a window
+    /// that arrives elsewhere has to be navigated before it is any use. It is
+    /// also what Explorer's Ctrl+N does.
+    /// </summary>
+    [RelayCommand]
+    private void NewWindow() => NewWindowRequested?.Invoke(this, ActiveTab?.CurrentPath);
+
+    /// <summary>
+    /// "Open in new window", on the whole selection.
+    ///
+    /// Five folders selected opens FIVE windows, not one. Acting on the single
+    /// row a context menu hands over is the documented fault in OpenInNewTab's
+    /// own comment — "Five folders selected opened one tab… quietly dropped
+    /// every folder but that one" — and it is not being reintroduced one entry
+    /// below it. A window is heavier than a tab, so the limit that already
+    /// exists matters more here rather than less, and it is reused rather than
+    /// re-invented.
+    /// </summary>
+    [RelayCommand]
+    private void OpenInNewWindow(FileEntry? entry)
+    {
+        IReadOnlyList<FileEntry> chosen = ActiveTab?.EntriesToActOn() ?? [];
+
+        if (chosen.Count == 0 && entry is { } handed) chosen = [handed];
+
+        // Folders only, as this verb has always been in its tab form — the
+        // mirror of OpenSelectedAsync, which launches the files and leaves the
+        // folders alone because there is no navigating into five at once.
+        var folders = chosen.Where(e => e.IsDirectory).ToList();
+
+        if (folders.Count == 0) return;
+
+        if (folders.Count > PaneViewModel.OpenLimit)
+        {
+            if (ActiveTab is { } pane)
+                pane.Status = $"that would open {folders.Count} windows at once — select fewer";
+
+            return;
+        }
+
+        foreach (var folder in folders) NewWindowRequested?.Invoke(this, folder.FullPath);
+    }
+
+    /// <summary>
+    /// The sidebar's twin of the row above it.
+    ///
+    /// The same guard as OpenPlaceInNewTab, and deliberately not HasRealPath:
+    /// the tab row carries no IsVisible at all, because both references put
+    /// "open in new tab" on every node of the navigation pane — and a bin you
+    /// can open in a tab is a bin you can open in a window.
+    /// </summary>
+    [RelayCommand]
+    private void OpenPlaceInNewWindow(PlaceItemViewModel? place)
+    {
+        if (place is { Path.Length: > 0 }) NewWindowRequested?.Invoke(this, place.Path);
     }
 
     // ---- the tab strip's own menu ------------------------------------------
@@ -2389,7 +2487,14 @@ public sealed partial class ShellViewModel : ObservableObject, IDisposable
     /// </summary>
     private bool SomethingIsStillUsing(PlaceItemViewModel place, PaneViewModel? pane)
     {
-        if (Core.FileSystem.InFlight.On(_running, place.Path) is not { Count: > 0 }) return false;
+        // **Every window, not this one.** A per-window answer would let this
+        // window "safely remove" a stick another window was still filling,
+        // which is the one failure in this area that costs files rather than a
+        // confusing sentence. A shell on its own — every view-model test — has
+        // no family and answers with its own list.
+        var running = AllRunning?.Invoke() ?? _running;
+
+        if (Core.FileSystem.InFlight.On(running, place.Path) is not { Count: > 0 }) return false;
 
         if (pane is not null)
             pane.Status =
@@ -2641,6 +2746,60 @@ public sealed partial class ShellViewModel : ObservableObject, IDisposable
     /// </summary>
     private readonly List<IOperationHandle> _running = [];
 
+    /// <summary>This window's own transfers, for the family: the eject veto
+    /// asks every window rather than only the one being clicked in.</summary>
+    internal IReadOnlyList<IOperationHandle> Running => _running;
+
+    /// <summary>
+    /// Everything running anywhere, when this shell belongs to a window that
+    /// has a family. Null for a shell on its own, which then answers with its
+    /// own list — so every existing view-model test is unchanged.
+    /// </summary>
+    internal Func<IEnumerable<IOperationHandle>>? AllRunning { get; set; }
+
+    /// <summary>
+    /// What this window would take with it if it closed now, or null when it
+    /// would take nothing.
+    ///
+    /// **Closing a window used to kill its transfer and nobody noticed**,
+    /// because the process was ending too. With a second window the process
+    /// carries on and the handle goes on writing with no bar showing it, no
+    /// Cancel reaching it and nobody told when it fails.
+    ///
+    /// Reuses InFlight.Unfinished rather than testing state a second way: its
+    /// own comment records that a finished handle lingers in this list for a
+    /// moment, and two spellings of "still owes something" is one too many.
+    ///
+    /// The tab count travels in the same sentence when the tabs question would
+    /// also have applied, because only one of the two is ever asked.
+    /// </summary>
+    internal string? RunningDescription()
+    {
+        var live = _running.Count(h => Core.FileSystem.InFlight.Unfinished(h.State));
+
+        if (live == 0) return null;
+
+        var tabs = Left.Tabs.Count + (Right?.Tabs.Count ?? 0);
+
+        var transfers = live == 1 ? "A transfer is" : $"{live} transfers are";
+
+        return tabs > 1
+            ? $"{transfers} still running, and {tabs} tabs are open. Close anyway?"
+            : $"{transfers} still running. Close anyway?";
+    }
+
+    /// <summary>
+    /// Cancels everything this window started. Called when the question above
+    /// is answered yes: leaving them running is the silent loss it exists to
+    /// prevent.
+    /// </summary>
+    internal void CancelAllOperations()
+    {
+        // Over a copy, because Cancel drives a continuation that removes the
+        // handle from this very list.
+        foreach (var handle in _running.ToList()) handle.Cancel();
+    }
+
     private Avalonia.Threading.DispatcherTimer? _rateTimer;
 
     /// <summary>
@@ -2806,6 +2965,11 @@ public sealed partial class ShellViewModel : ObservableObject, IDisposable
     /// per-group in two places and a test could not do it at all. A pane left
     /// running after its owner has gone still ticks, and the tick lands on a
     /// dispatcher that has moved on.
+    ///
+    /// And, since windows started closing while the application carries on, the
+    /// subscriptions to the two sources that OUTLIVE a window. That half was
+    /// missing and it was measured: after Dispose(), CutMarks.Mark still set
+    /// this shell's CutPaths.
     /// </summary>
     public void Dispose()
     {
@@ -2813,6 +2977,18 @@ public sealed partial class ShellViewModel : ObservableObject, IDisposable
         // firing into a window that has closed.
         _rateTimer?.Stop();
         _rateTimer = null;
+
+        // **The two process-wide sources, and this is the half that was
+        // missing.** CutMarks is static and the sharing provider is one object
+        // for every window, so a shell that never unsubscribes stays reachable
+        // from them for the life of the process — and its handlers went on
+        // running after the panes below had been torn down.
+        CutMarks.Changed -= _onCutMarks;
+
+        if (_onSharingChanged is not null && _sharing is not null)
+            _sharing.Changed -= _onSharingChanged;
+
+        Sidebar.Dispose();
 
         Left?.DisposeAll();
         Right?.DisposeAll();
@@ -2831,7 +3007,7 @@ public sealed partial class ShellViewModel : ObservableObject, IDisposable
     /// reaches for preferences to decide whether to use its own argument is
     /// harder to reason about than one that is simply told.
     /// </summary>
-    public void Start(SessionState? state, string? openFolder = null)
+    public void Start(SessionState? state, string? openFolder = null, int windowIndex = 0)
     {
         if (_started) return;
         _started = true;
@@ -2839,7 +3015,7 @@ public sealed partial class ShellViewModel : ObservableObject, IDisposable
         var home = string.IsNullOrWhiteSpace(openFolder)
             ? Environment.GetFolderPath(Environment.SpecialFolder.UserProfile)
             : openFolder;
-        var window = state?.Windows.FirstOrDefault();
+        var window = state?.Windows.ElementAtOrDefault(windowIndex);
 
         if (window is not null)
         {
@@ -2870,7 +3046,7 @@ public sealed partial class ShellViewModel : ObservableObject, IDisposable
         {
             if (panes is null || panes.Count == 0 || panes[0].Tabs.Count == 0)
             {
-                Left.AddTab(home);
+                Left.AddTab(home, like: LikeTab);
             }
             else
             {
@@ -2902,6 +3078,15 @@ public sealed partial class ShellViewModel : ObservableObject, IDisposable
         ActiveGroup.ActiveTab?.RefreshIfUnloaded();
     }
 
+    /// <summary>
+    /// The tab a window was opened FROM, when this shell belongs to one.
+    ///
+    /// The same thing Ctrl+T already carries between tabs: hidden files, the
+    /// layout, the sort, the grouping and the zoom. Null for a shell that was
+    /// not opened from anywhere, which is every launch and every test.
+    /// </summary>
+    internal PaneViewModel? LikeTab { get; set; }
+
     private static void Restore(PaneGroupViewModel group, PaneState state)
     {
         group.RestoreFrom(state);
@@ -2910,7 +3095,14 @@ public sealed partial class ShellViewModel : ObservableObject, IDisposable
         group.ActiveTab = group.Tabs[Math.Clamp(state.ActiveTabIndex, 0, group.Tabs.Count - 1)];
     }
 
-    public SessionState ToSessionState()
+    /// <summary>
+    /// This window's entry, on its own.
+    ///
+    /// Split out of ToSessionState so the family can compose one session out of
+    /// several windows, and so both routes funnel through the same body — a
+    /// field added to one and not the other is how the two would drift.
+    /// </summary>
+    public WindowSession ToWindowSession()
     {
         var geometry = GeometryProvider?.Invoke() ?? new WindowSession();
 
@@ -2918,26 +3110,34 @@ public sealed partial class ShellViewModel : ObservableObject, IDisposable
             ? new List<PaneState> { Left.ToPaneState() }
             : [Left.ToPaneState(), Right.ToPaneState()];
 
-        return new SessionState
+        return geometry with
         {
-            Version = SessionState.CurrentVersion,
-            Windows =
-            [
-                geometry with
-                {
-                    SidebarWidth = Sidebar.Width,
-                    Rail = Sidebar.Rail,
-                    CollapsedSections = Sidebar.CollapsedSections,
-                    SplitRatio = SplitRatio,
-                    FontScale = FontScale,
-                    IconScale = IconScale,
-                    RememberedRightPane = Right is null ? _rememberedRight : null,
-                    Panes = panes,
-                    ActivePaneIndex = ReferenceEquals(ActiveGroup, Right) ? 1 : 0,
-                }
-            ],
+            SidebarWidth = Sidebar.Width,
+            Rail = Sidebar.Rail,
+            CollapsedSections = Sidebar.CollapsedSections,
+            SplitRatio = SplitRatio,
+            FontScale = FontScale,
+            IconScale = IconScale,
+            RememberedRightPane = Right is null ? _rememberedRight : null,
+            Panes = panes,
+            ActivePaneIndex = ReferenceEquals(ActiveGroup, Right) ? 1 : 0,
         };
     }
+
+    /// <summary>A session holding this window alone — which is what a shell
+    /// with no family around it honestly is.</summary>
+    public SessionState ToSessionState() => new()
+    {
+        Version = SessionState.CurrentVersion,
+        Windows = [ToWindowSession()],
+    };
+
+    /// <summary>
+    /// The whole application's session, when this shell belongs to a window
+    /// that has a family. Null for a shell on its own, which then writes only
+    /// itself — so every existing view-model test is unchanged.
+    /// </summary>
+    internal Func<SessionState>? WholeSession { get; set; }
 
     public void NotifyWindowChanged() => MarkDirty();
 
@@ -2946,7 +3146,11 @@ public sealed partial class ShellViewModel : ObservableObject, IDisposable
         // Nothing before Start() is worth saving, and property setters fire
         // during construction while Sidebar and the groups are still null.
         if (!_started || _restoring || _store is null) return;
-        _store.NotifyChanged(ToSessionState());
+
+        // **The whole family, not this window.** One window writing only itself
+        // over a session that holds three is how the other two would be lost on
+        // the next launch.
+        _store.NotifyChanged(WholeSession?.Invoke() ?? ToSessionState());
     }
 
     private void OnPaneChanged(object? sender, PropertyChangedEventArgs e)

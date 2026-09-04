@@ -13,6 +13,21 @@ should not be trusted for compatibility yet.
 
 ### Added
 
+- **A second window.** Ctrl+N opens one on the folder you are already in, and
+  "Open in new window" sits beside "Open in new tab" in the listing menu, on
+  every sidebar row, and in the view options flyout — with a toggle of its own
+  on *Settings ▸ Context menu*. Five folders selected opens five windows, the
+  way five folders opens five tabs. A new window carries the view you opened it
+  from: the zoom, the sidebar width, the folded sections, hidden files, the
+  layout and the sort, because a window that resets all six is a window you
+  have to set up. Every window is a peer, so closing the first one does not
+  take the others with it, and Vaktari quits when the last one goes. All of
+  them are saved and restored: reopen and your windows come back where they
+  were, each on its own folders. A window will not go quietly while it is still
+  copying — it says what is running and cancels it only if you say so — a drive
+  cannot be ejected while ANY window is writing to it, and a folder you are
+  sharing on the network stays shared until the last window closes.
+
 - **On Linux, "Open with" now has a way out.** The launcher interface offered a
   chooser only as "the platform shows its own dialog" — which Windows does,
   through SHOpenWithDialog, and a desktop does not: xdg-open launches the

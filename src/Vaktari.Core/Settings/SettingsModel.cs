@@ -396,6 +396,10 @@ public sealed record ContextMenuSettings
     public bool ShowAddToPlaces { get; init; } = true;
     public bool ShowSortBy { get; init; } = true;
     public bool ShowOpenInNewTab { get; init; } = true;
+
+    /// <summary>Its own flag, not a share of the one above: this page exists to
+    /// answer one question per entry.</summary>
+    public bool ShowOpenInNewWindow { get; init; } = true;
     public bool ShowCopyLocation { get; init; } = true;
     public bool ShowDuplicate { get; init; } = true;
 }

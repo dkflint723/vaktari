@@ -928,6 +928,8 @@
                       IsChecked="{Binding MenuMoveTo}"/>
             <CheckBox Content="Open in new tab" FontSize="{DynamicResource FontSizeSmall}"
                       IsChecked="{Binding MenuOpenInNewTab}"/>
+            <CheckBox Content="Open in new window" FontSize="{DynamicResource FontSizeSmall}"
+                      IsChecked="{Binding MenuOpenInNewWindow}"/>
             <CheckBox Content="Add to places" FontSize="{DynamicResource FontSizeSmall}"
                       IsChecked="{Binding MenuAddToPlaces}"/>
             <CheckBox Content="Copy as path" FontSize="{DynamicResource FontSizeSmall}"

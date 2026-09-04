@@ -181,7 +181,7 @@ public sealed class ShowInFolderTests : OwnedViewModels
     {
         var body = RepoSource.Body(
             RepoSource.Ui("MainWindow.axaml.cs"),
-            "private async void OnShowRequested(ShowRequest request)");
+            "internal async void OnShowRequested(ShowRequest request)");
 
         var items = body.IndexOf("case ShowKind.Items:", StringComparison.Ordinal);
         var folders = body.IndexOf("case ShowKind.Folders:", StringComparison.Ordinal);

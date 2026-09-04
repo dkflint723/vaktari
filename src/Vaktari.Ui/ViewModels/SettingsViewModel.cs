@@ -173,6 +173,7 @@ public sealed partial class SettingsViewModel : ObservableObject
         _menuSortBy = menu.ShowSortBy;
         _menuDuplicate = menu.ShowDuplicate;
         _menuOpenInNewTab = menu.ShowOpenInNewTab;
+        _menuOpenInNewWindow = menu.ShowOpenInNewWindow;
         _menuAddToPlaces = menu.ShowAddToPlaces;
         _menuCopyLocation = menu.ShowCopyLocation;
 
@@ -259,16 +260,21 @@ public sealed partial class SettingsViewModel : ObservableObject
 
     // ---- Context menu -----------------------------------------------------
     //
-    // Seven of Dolphin's nine. "Open in new window" needs multi-window support,
-    // which this application does not have — App.axaml.cs creates exactly one
-    // MainWindow. "View mode" lives in the toolbar and the view flyout rather
-    // than the context menu, so there is nothing for a toggle to hide.
+    // Eight of Dolphin's nine. "Open in new window" was the missing one, and it
+    // was missing for exactly one reason: App.axaml.cs created a single
+    // MainWindow. It now opens the founder and Ctrl+N opens peers beside it, so
+    // the entry exists and gets a toggle of its own like every other row —
+    // sharing "Open in new tab"'s switch would make one checkbox answer two
+    // questions on a page that exists to answer them one at a time. "View mode"
+    // lives in the toolbar and the view flyout rather than the context menu, so
+    // there is still nothing for a toggle to hide.
 
     [ObservableProperty] private bool _menuCopyTo;
     [ObservableProperty] private bool _menuMoveTo;
     [ObservableProperty] private bool _menuSortBy;
     [ObservableProperty] private bool _menuDuplicate;
     [ObservableProperty] private bool _menuOpenInNewTab;
+    [ObservableProperty] private bool _menuOpenInNewWindow;
     [ObservableProperty] private bool _menuAddToPlaces;
     [ObservableProperty] private bool _menuCopyLocation;
 
@@ -1155,6 +1161,7 @@ public sealed partial class SettingsViewModel : ObservableObject
                 ShowSortBy = MenuSortBy,
                 ShowDuplicate = MenuDuplicate,
                 ShowOpenInNewTab = MenuOpenInNewTab,
+                ShowOpenInNewWindow = MenuOpenInNewWindow,
                 ShowAddToPlaces = MenuAddToPlaces,
                 ShowCopyLocation = MenuCopyLocation,
             },

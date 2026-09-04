@@ -53,7 +53,7 @@
     <VaktariPlatform Condition="'$(VaktariPlatform)' == '' AND '$([System.OperatingSystem]::IsWindows())' == 'true'">Windows</VaktariPlatform>
   </PropertyGroup>
 
-  <!-- The VAKTARI_* symbol fences the single line in MainWindow.axaml.cs that
+  <!-- The VAKTARI_* symbol fences the single line in WindowServices.cs that
        names a platform type, so it is set here beside the reference it belongs
        to. The two must agree: a reference without its symbol compiles to an
        unreachable platform, and a symbol without its reference does not compile

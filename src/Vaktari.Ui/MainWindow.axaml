@@ -486,6 +486,15 @@
                           FontSize="{DynamicResource FontSizeSmall}"
                           Command="{Binding $parent[Window].((vm:ShellViewModel)DataContext).ShowShortcutsCommand}"/>
 
+                  <!-- Ctrl+N was reachable only by already knowing it, which is
+                       the same circularity the shortcut sheet above was added
+                       to break. -->
+                  <Button Content="New window  (ctrl+n)" Padding="0" MinHeight="0"
+                          Background="Transparent" BorderThickness="0"
+                          HorizontalAlignment="Left"
+                          FontSize="{DynamicResource FontSizeSmall}"
+                          Command="{Binding $parent[Window].((vm:ShellViewModel)DataContext).NewWindowCommand}"/>
+
                                     <CheckBox Content="Sidebar  (ctrl+b or f9)"
                             FontSize="{DynamicResource FontSizeSmall}"
                             IsChecked="{Binding $parent[Window].((vm:ShellViewModel)DataContext).Sidebar.IsPanelVisible, Mode=OneWay}"
@@ -1279,6 +1288,13 @@
                                       Command="{Binding $parent[Window].((vm:ShellViewModel)DataContext).OpenInNewTabCommand}"
                                       CommandParameter="{Binding ActiveTab.SelectedEntry}"
                                       IsVisible="{Binding $parent[Window].((vm:ShellViewModel)DataContext).ShowOpenInNewTabInMenu}"/>
+              <!-- Its own gate, not the row above's: the context-menu settings
+                   page carries one flag per entry, and turning off "Open in new
+                   tab" must not silently take this away too. -->
+              <MenuItem Header="Open in new window"
+                                      Command="{Binding $parent[Window].((vm:ShellViewModel)DataContext).OpenInNewWindowCommand}"
+                                      CommandParameter="{Binding ActiveTab.SelectedEntry}"
+                                      IsVisible="{Binding $parent[Window].((vm:ShellViewModel)DataContext).ShowOpenInNewWindowInMenu}"/>
               <!-- One home for both ways of sharing, instead of Proton entries
                    at the top level and copyparty three layers under "More".
                    Which rows show is decided in OnListingMenuOpening, because
@@ -2893,6 +2909,12 @@
 
   <Window.KeyBindings>
     <KeyBinding Gesture="Ctrl+T"         Command="{Binding NewTabCommand}"/>
+    <!-- In markup rather than OnWindowKeyDown because it acts on the window as
+         a whole and needs no focus test: Ctrl+N means "another window on this
+         folder" wherever the caret happens to be, which is exactly what a
+         KeyBinding expresses. It is also what ShortcutListTests reads, in both
+         directions. -->
+    <KeyBinding Gesture="Ctrl+N"         Command="{Binding NewWindowCommand}"/>
     <KeyBinding Gesture="Ctrl+W"         Command="{Binding CloseTabCommand}"/>
     <!-- What every browser answers, and both references. Closing a tab used to
          throw its state away, so there was nothing to put back. -->
@@ -3418,6 +3440,14 @@
                                        of the navigation pane. -->
                                   <MenuItem Header="Open in new tab"
                                             Command="{Binding $parent[Window].((vm:ShellViewModel)DataContext).OpenPlaceInNewTabCommand}"
+                                            CommandParameter="{Binding}"/>
+                                  <!-- Gated exactly like the row above it,
+                                       which is to say not at all: a bin you can
+                                       open in a tab is a bin you can open in a
+                                       window, and the command guards the empty
+                                       path itself. -->
+                                  <MenuItem Header="Open in new window"
+                                            Command="{Binding $parent[Window].((vm:ShellViewModel)DataContext).OpenPlaceInNewWindowCommand}"
                                             CommandParameter="{Binding}"/>
                                   <MenuItem Header="Copy path"
                                             IsVisible="{Binding HasRealPath}"

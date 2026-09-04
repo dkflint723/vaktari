@@ -60,8 +60,14 @@ public static class InFlight
     /// Paused counts. The bytes not yet written are still owed, and resuming
     /// after the volume has gone writes them nowhere — a pause is a reason to
     /// wait, not a reason to consider the transfer over.
+    ///
+    /// Public because a CLOSING WINDOW asks the same question of the same list:
+    /// whether anything it is holding still owes work, before it takes the lot
+    /// away with it. Two spellings of that would be one too many, and the note
+    /// above about a finished handle lingering in the shell's list applies
+    /// exactly as much there.
     /// </summary>
-    private static bool Unfinished(OperationState state)
+    public static bool Unfinished(OperationState state)
         => state is OperationState.Queued
                  or OperationState.Running
                  or OperationState.Paused;
