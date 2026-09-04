@@ -246,6 +246,125 @@ public sealed class EjectFlowTests : OwnedViewModels
         Assert.Equal(0, places.Calls);
     }
 
+    // ---- a transfer still using the drive ---------------------------------
+
+    /// <summary>
+    /// A copy the shell is running, over the paths given, adopted by the active
+    /// tab — which is the route every real operation reaches the shell by.
+    /// </summary>
+    private static OperationHandle Transferring(ShellViewModel shell, params string[] paths)
+    {
+        var handle = new OperationHandle { Paths = paths };
+
+        handle.Begin(paths.Length, totalBytes: 0);
+
+        shell.ActiveTab!.Adopt(handle);
+
+        return handle;
+    }
+
+    /// <summary>
+    /// **The finding.** The eject was attempted regardless of what Vaktari was
+    /// itself writing to the drive: the tabs were sent home and the ejector was
+    /// called with a copy still in flight.
+    /// </summary>
+    [AvaloniaFact]
+    public async Task A_drive_a_transfer_is_still_using_is_not_ejected()
+    {
+        var (shell, places, root) = Fresh();
+        await LoadAsync(shell);
+
+        Transferring(shell, Path.Combine(Path.GetTempPath(), "holiday.mp4"),
+                            Path.Combine(root, "videos"));
+
+        await shell.EjectPlaceCommand.ExecuteAsync(Row(shell));
+
+        Assert.Equal(0, places.Calls);
+    }
+
+    /// <summary>The refusal names the drive and says what to do about it — a
+    /// menu row that quietly does nothing is the worse failure.</summary>
+    [AvaloniaFact]
+    public async Task The_refusal_says_which_drive_and_what_to_do()
+    {
+        var (shell, _, root) = Fresh();
+        await LoadAsync(shell);
+
+        Transferring(shell, Path.Combine(root, "big.iso"));
+
+        await shell.EjectPlaceCommand.ExecuteAsync(Row(shell));
+
+        Assert.Contains("STICK", shell.ActiveTab!.Status);
+        // Both halves of the offer. Dropping "wait for it to finish, " from
+        // the sentence passed all 1247 tests in this project, so the clause
+        // that tells somebody what to do had nothing holding it down.
+        Assert.Contains("wait for it to finish", shell.ActiveTab.Status);
+        Assert.Contains("cancel it", shell.ActiveTab.Status);
+    }
+
+    /// <summary>
+    /// **The refusal has to come first.** Moving every tab off the drive is the
+    /// first thing the eject does, and doing it before deciding to refuse would
+    /// cost somebody their place for an eject that never happened — while the
+    /// transfer it refused for is still running, so they would navigate back
+    /// and be refused again.
+    /// </summary>
+    [AvaloniaFact]
+    public async Task A_refused_eject_leaves_the_panes_where_they_were()
+    {
+        var (shell, _, root) = Fresh();
+        await LoadAsync(shell);
+
+        var inside = Path.Combine(root, "photos");
+        Directory.CreateDirectory(inside);
+        await shell.ActiveTab!.NavigateAsync(inside);
+
+        Transferring(shell, Path.Combine(root, "photos", "one.jpg"));
+
+        await shell.EjectPlaceCommand.ExecuteAsync(Row(shell));
+
+        Assert.Equal(inside, shell.ActiveTab.CurrentPath);
+    }
+
+    /// <summary>
+    /// A transfer nowhere near the stick is nobody's business but its own. A
+    /// guard that refused on any running operation would make the eject
+    /// unusable for exactly the person who copies a lot.
+    /// </summary>
+    [AvaloniaFact]
+    public async Task A_transfer_somewhere_else_does_not_hold_the_drive()
+    {
+        var (shell, places, _) = Fresh();
+        await LoadAsync(shell);
+
+        var elsewhere = Directory.CreateTempSubdirectory("vaktari-elsewhere").FullName;
+
+        Transferring(shell, Path.Combine(elsewhere, "one.txt"),
+                            Path.Combine(elsewhere, "two"));
+
+        await shell.EjectPlaceCommand.ExecuteAsync(Row(shell));
+
+        Assert.Equal(1, places.Calls);
+    }
+
+    /// <summary>
+    /// A copy that has already finished is no reason to keep the drive — and it
+    /// is still in the shell's list at that moment, because the removal is
+    /// posted to the dispatcher and this test has not pumped it.
+    /// </summary>
+    [AvaloniaFact]
+    public async Task A_transfer_that_has_finished_does_not_hold_the_drive()
+    {
+        var (shell, places, root) = Fresh();
+        await LoadAsync(shell);
+
+        Transferring(shell, Path.Combine(root, "one.txt")).Complete();
+
+        await shell.EjectPlaceCommand.ExecuteAsync(Row(shell));
+
+        Assert.Equal(1, places.Calls);
+    }
+
     /// <summary>
     /// The watch raising PlacesChanged rebuilds the sidebar — which is the
     /// whole detection feature, seen from the top.

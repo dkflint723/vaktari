@@ -31,7 +31,7 @@ public sealed class LinuxFileOperations : IFileOperations
 
     public IOperationHandle Trash(IReadOnlyList<string> paths)
     {
-        var handle = new OperationHandle();
+        var handle = new OperationHandle { Paths = paths };
 
         _ = Task.Run(async () =>
         {
@@ -88,7 +88,7 @@ public sealed class LinuxFileOperations : IFileOperations
     /// </summary>
     public IOperationHandle Delete(IReadOnlyList<string> paths)
     {
-        var handle = new OperationHandle();
+        var handle = new OperationHandle { Paths = paths };
 
         _ = Task.Run(async () =>
         {
@@ -207,7 +207,10 @@ public sealed class LinuxFileOperations : IFileOperations
         Func<FileConflict, ValueTask<ConflictResolution>> onConflict, bool move,
         IReadOnlyList<RetryRoot>? retrying = null)
     {
-        var handle = new OperationHandle();
+        // Sources and destination together: a copy ONTO a stick claims it
+        // through the destination, a move OFF one claims it through the
+        // sources, and the eject guard has to see both.
+        var handle = new OperationHandle { Paths = [.. sources, destination] };
 
         _ = Task.Run(async () =>
         {

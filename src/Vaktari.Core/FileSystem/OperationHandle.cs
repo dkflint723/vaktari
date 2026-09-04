@@ -40,6 +40,18 @@ public sealed class OperationHandle : IOperationHandle
     /// </summary>
     public RetryOffer? Retry { get; set; }
 
+    /// <summary>
+    /// Filled in by the engine at construction: the sources and destination are
+    /// arguments to the call that makes the handle, and are not recoverable
+    /// from it afterwards.
+    ///
+    /// Init-only with an empty default, so the handles that tests and the retry
+    /// offer build without an operation behind them still construct — an empty
+    /// list means "claims no drive", which is the safe answer for a handle that
+    /// is not moving files.
+    /// </summary>
+    public IReadOnlyList<string> Paths { get; init; } = [];
+
     private readonly List<ItemProblem> _problems = [];
 
     /// <summary>

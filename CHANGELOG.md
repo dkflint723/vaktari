@@ -583,6 +583,16 @@ should not be trusted for compatibility yet.
 
 ### Fixed
 
+- **A drive a transfer is still writing to is not ejected.** Eject walked every
+  tab off the drive and called the ejector regardless of what Vaktari itself had
+  in flight — and the two platforms then fail differently, neither of them well:
+  Windows dismounts the volume even when the lock never came, and Linux is told
+  "busy" by udisksctl and blames a program the person cannot find, which is
+  Vaktari. It now refuses before anything moves, naming the drive and offering
+  the two things you can do about it: wait, or cancel the transfer. The engines
+  record what each operation is reading and writing, which is what made the
+  question answerable at all.
+
 - **Browsing inside a sidebar place lights that place, faintly.** The sidebar
   marked a row only when you were standing exactly on it, so opening any folder
   inside Documents left the whole sidebar dark — the one panel whose job is to

@@ -41,6 +41,26 @@ public interface IOperationHandle
     IProgress<OperationProgress> Progress { get; }
 
     /// <summary>
+    /// Everywhere this operation reads or writes: the sources, and the
+    /// destination when there is one.
+    ///
+    /// **Nothing could ask a running operation where its bytes were going.** A
+    /// handle carried an id, a state, a progress count and a problem list, so
+    /// the eject command had no way to tell a copy onto the stick from a copy
+    /// on the other side of the machine — and it went ahead with both. Only the
+    /// engine that started the work knows the paths, which is why they are
+    /// recorded here rather than worked out later.
+    ///
+    /// Whole paths, not the volume they sit on: deciding what a drive owns is
+    /// <see cref="PathRules.Contains"/>'s job, and a handle that pre-computed a
+    /// mount point would have to be right about it on two platforms.
+    ///
+    /// Empty is legal and means "nowhere in particular" — a handle built by
+    /// something that is not one of the file engines.
+    /// </summary>
+    IReadOnlyList<string> Paths { get; }
+
+    /// <summary>
     /// Items that failed while the rest of the batch went through. Empty on a
     /// clean run. A non-empty list on a COMPLETED operation is the normal way
     /// to report "eleven of twelve" — it is not a failure of the operation.

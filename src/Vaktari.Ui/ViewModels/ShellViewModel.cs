@@ -2363,6 +2363,27 @@ public sealed partial class ShellViewModel : ObservableObject, IDisposable
     public event EventHandler<string>? ShowPropertiesRequested;
 
     /// <summary>
+    /// Whether one of our own transfers is still working on the drive, and says
+    /// so on the status line when it is.
+    ///
+    /// **A veto has to name itself.** A menu row that quietly does nothing
+    /// reads as a broken menu row, and the person cannot act on a reason they
+    /// were never given — the transfer bar is showing a percentage, not the
+    /// drive it is filling.
+    /// </summary>
+    private bool SomethingIsStillUsing(PlaceItemViewModel place, PaneViewModel? pane)
+    {
+        if (Core.FileSystem.InFlight.On(_running, place.Path) is not { Count: > 0 }) return false;
+
+        if (pane is not null)
+            pane.Status =
+                $"a transfer is still using {place.Label} — wait for it to finish, "
+                + "or cancel it";
+
+        return true;
+    }
+
+    /// <summary>
     /// Safely removes a drive, after getting out of its way.
     ///
     /// **Step one is the difference between this working and never working.**
@@ -2372,6 +2393,15 @@ public sealed partial class ShellViewModel : ObservableObject, IDisposable
     /// the common case, since looking at it is why they want it back — would
     /// fail every single time, and the veto would blame a program the user
     /// cannot find, because the program is us.
+    ///
+    /// **Step zero is refusing outright while a transfer is still using it.**
+    /// Moving the panes off the drive is the right answer to a watch, which
+    /// holds no data; it is the wrong answer to a transfer, which does. This
+    /// used to run the whole sequence regardless: the tabs were sent home and
+    /// the ejector was called with a copy still in flight — and what that costs
+    /// is platform-shaped. On Windows Quiesce dismounts the volume even when
+    /// the lock never came; on Linux udisksctl answers "busy", so the eject
+    /// fails and blames a program the person cannot find, which is us again.
     /// </summary>
     [RelayCommand]
     private async Task EjectPlaceAsync(PlaceItemViewModel? place)
@@ -2382,6 +2412,13 @@ public sealed partial class ShellViewModel : ObservableObject, IDisposable
         // switched inside them, and the answer must land where it was asked for
         // — the same reason DisconnectRemoteAsync captures it.
         var pane = ActiveTab;
+
+        // **Before the panes are moved, not after.** A refusal that had already
+        // sent every tab on the drive back to the home folder would cost
+        // somebody their place for an eject that never happened — and the
+        // transfer it refused on behalf of is still running, so they would
+        // navigate straight back and try again.
+        if (SomethingIsStillUsing(place, pane)) return;
 
         // Every tab in both panes, not just the active one: a background tab
         // holds its directory watch open exactly like a visible one does, and
