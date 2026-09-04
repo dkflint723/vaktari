@@ -13,6 +13,25 @@ should not be trusted for compatibility yet.
 
 ### Added
 
+- **On Linux, "Open with" now has a way out.** The launcher interface offered a
+  chooser only as "the platform shows its own dialog" — which Windows does,
+  through SHOpenWithDialog, and a desktop does not: xdg-open launches the
+  default and has no ask. So the *Choose another app…* row was appended on
+  Windows and nowhere else, and a file whose type no application claims drew an
+  "Open with" submenu with nothing in it and no way out of it. Vaktari now reads
+  the desktop-entry database it already parses for the per-type list and offers
+  everything installed in a window of its own: type a few letters of the name or
+  of the command to narrow several hundred rows, then Enter or a double-click to
+  open. Entries the database hides, entries with no command, and console entries
+  on a machine with no terminal emulator are left out, because each of those is a
+  row that would either do nothing or silently open the default application
+  instead — which reads as the chooser having ignored what you picked. Nothing
+  here is remembered: this opens the file once, and the window says so. Which
+  application owns a type stays the desktop's own settings page to decide, and
+  Vaktari reads what it writes. Windows is untouched — its dialog browses for an
+  executable and registers the choice, so it is asked first and nothing
+  home-made is offered in its place.
+
 - **Rows can be ticked, if you ask for boxes.** Every way of picking more than
   one file went through a modifier or a drag — ctrl+click, shift+click, or a
   rectangle dragged round them — so on a trackpad, one-handed, or simply not

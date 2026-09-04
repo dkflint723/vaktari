@@ -4083,9 +4083,23 @@ public partial class MainWindow : Window
         pane.RenameRequested -= OnRenameRequested;
         pane.RenameRequested += OnRenameRequested;
 
+        pane.ChooseApplicationRequested -= OnChooseApplicationRequested;
+        pane.ChooseApplicationRequested += OnChooseApplicationRequested;
+
         pane.PropertyChanged -= OnPaneEditorClosed;
         pane.PropertyChanged += OnPaneEditorClosed;
     }
+
+    /// <summary>
+    /// Draws the chooser the desktop does not have one of.
+    ///
+    /// Modal, because picking an application is the only thing to do while it
+    /// is up and the file opens the moment one is picked. Windows never reaches
+    /// here: its launcher shows the shell's own dialog and the pane stops
+    /// there.
+    /// </summary>
+    private void OnChooseApplicationRequested(object? sender, ChooseApplicationViewModel model)
+        => new ChooseApplicationWindow(model).ShowDialog(this);
 
     /// <summary>Focus now happens through FocusBehavior.FocusOnVisible in the
     /// markup, since there is no field to focus from here.</summary>

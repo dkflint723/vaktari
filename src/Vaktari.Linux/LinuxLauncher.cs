@@ -43,6 +43,90 @@ public sealed class LinuxLauncher : IApplicationLauncher
     public IReadOnlyList<LaunchOption> GetOpenWithOptions(string path)
         => DesktopEntries.ForFile(path);
 
+    /// <summary>
+    /// **The desktop has no chooser dialog to hand this to, so Vaktari draws
+    /// one, and this is what goes in it.**
+    ///
+    /// The interface used to say a chooser was Windows' own dialog or nothing,
+    /// and this platform got the nothing: a file whose type no application
+    /// claims produced an "Open with" submenu with no rows in it and no way
+    /// out of it. There is no command that shows a chooser here — xdg-open
+    /// only ever launches the default — which is the same reason
+    /// <see cref="DesktopEntries"/> assembles the per-type list by hand.
+    ///
+    /// Not the freedesktop portal's chooser. xdg-desktop-portal's OpenURI has
+    /// an "ask" option that shows the desktop's own, which would be the closer
+    /// parallel to Windows — but it is a D-Bus call taking the file as a Unix
+    /// file descriptor, it answers only where a portal is running, and nothing
+    /// in this suite can stand in for one. Every line of it would ship
+    /// unmeasured, on the platform where an unclaimed file type is most likely
+    /// to be found: a session put together by hand.
+    ///
+    /// **Scanned once per launcher.** This reads every .desktop file the
+    /// machine has, and the answer is asked for while a context menu is being
+    /// built. Per instance rather than per process, in the same shape as
+    /// <see cref="Terminals"/>, so a stand-in installed by one test cannot
+    /// reach another.
+    /// </summary>
+    public IReadOnlyList<LaunchOption> AllApplications
+    {
+        get
+        {
+            // **Locked, because the first askers arrive together.** This is
+            // read from a Task.Run started per selection change, so arrowing
+            // down a listing asks again before the first answer exists — and a
+            // bare ??= is a cache only for whoever comes after it is filled.
+            // Measured with a counter inside Scan: sixteen simultaneous readers
+            // of a fresh launcher ran sixteen full walks of the applications
+            // directories, not one.
+            lock (_scanning)
+                return _applications ??= _scan is { } stand
+                    ? stand()
+                    : DesktopEntries.Scan(DesktopEntries.ApplicationDirs(), Terminals);
+        }
+    }
+
+    private readonly Lock _scanning = new();
+
+    private IReadOnlyList<LaunchOption>? _applications;
+
+    private Func<IReadOnlyList<LaunchOption>>? _scan;
+
+    /// <summary>
+    /// Stands in for that scan, in the same shape as <see cref="UseTerminals"/>.
+    ///
+    /// Both answers have to be pinned — the chooser row appears on a machine
+    /// with applications and must vanish on one with none — and neither can be
+    /// arranged by asking a machine politely, least of all the Windows one this
+    /// was written on, where the scan finds nothing whatever is installed.
+    /// </summary>
+    internal void UseApplications(IReadOnlyList<LaunchOption> applications)
+        => UseApplications(() => applications);
+
+    /// <summary>
+    /// The same seam, as the WORK rather than its answer, so that how often the
+    /// work happens is a thing a test can count. Nothing else can see it: the
+    /// scan is static and the launcher is what a pane holds.
+    /// </summary>
+    internal void UseApplications(Func<IReadOnlyList<LaunchOption>> scan)
+    {
+        lock (_scanning)
+        {
+            _scan = scan;
+            _applications = null;
+        }
+    }
+
+    /// <summary>
+    /// True when there is something to choose FROM.
+    ///
+    /// The interface's rule, unchanged: a platform with no chooser shows no
+    /// entry, rather than an entry that does nothing. Here that means a machine
+    /// whose desktop database is empty or unreadable — a bare container — where
+    /// a row promising a list would open an empty window.
+    /// </summary>
+    public bool CanChooseApplication => AllApplications.Count > 0;
+
     public void OpenWith(string path, LaunchOption option)
     {
         // Fall back to the default handler rather than doing nothing if the

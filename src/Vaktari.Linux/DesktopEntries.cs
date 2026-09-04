@@ -14,7 +14,13 @@ namespace Vaktari.Linux;
 /// </summary>
 public static class DesktopEntries
 {
-    private static IEnumerable<string> ApplicationDirs()
+    /// <summary>
+    /// Every directory the spec says a .desktop file may live in, nearest
+    /// first. Internal because the chooser scans the same set the lookup
+    /// walks — a scan over a different list would offer applications
+    /// <see cref="FindDesktopFile"/> then cannot find again.
+    /// </summary>
+    internal static IEnumerable<string> ApplicationDirs()
     {
         var home = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
 
@@ -223,6 +229,112 @@ public static class DesktopEntries
 
         return options;
     }
+
+    /// <summary>
+    /// Everything installed, whatever it claims to open.
+    ///
+    /// This is the list behind "Choose another app…", and it is deliberately
+    /// NOT narrowed by the file: <see cref="ForFile"/> already answers "what
+    /// claims this type", and the case the chooser exists for is the type
+    /// nothing claims — where a list narrowed by the same rule offers the same
+    /// nothing.
+    ///
+    /// Pure, and given its directories rather than reading them, because the
+    /// states worth pinning are all states of the DATABASE — a hidden entry, a
+    /// console entry on a machine with no terminal, the same id in two
+    /// directories — and none of them can be arranged by asking a real machine
+    /// politely. It also makes the scan testable on an agent that has no
+    /// desktop at all, which is where this was written.
+    /// </summary>
+    internal static List<LaunchOption> Scan(
+        IEnumerable<string> directories,
+        IReadOnlyList<Vaktari.Core.FileSystem.TerminalOption> terminals)
+    {
+        var found = new Dictionary<string, LaunchOption>(StringComparer.Ordinal);
+
+        foreach (var directory in directories)
+        {
+            // SafeWalk rather than EnumerateFiles(AllDirectories), which throws
+            // from the middle of the sequence on the first unreadable folder
+            // and takes every entry after it with it.
+            foreach (var entry in Vaktari.Core.FileSystem.SafeWalk.Descend(directory))
+            {
+                if (!entry.Path.EndsWith(".desktop", StringComparison.Ordinal)) continue;
+
+                var id = IdFor(directory, entry.Path);
+
+                // **The id does not always survive the trip back.**
+                // FindDesktopFile looks for a nested entry by turning EVERY
+                // dash into a separator, so an entry whose own file name has
+                // one is looked for somewhere that does not exist — measured:
+                // applications/kde/google-chrome.desktop scans as
+                // kde-google-chrome.desktop and resolves to kde/google/chrome.
+                // Launch then refuses, and OpenWith answers a refusal by
+                // opening the DEFAULT application, which is the same silent
+                // wrong answer an Exec-less entry gives. Dropped rather than
+                // offered, for that reason.
+                var relative = Path.GetRelativePath(directory, entry.Path);
+
+                if (!string.Equals(id, relative, StringComparison.Ordinal)
+                    && !string.Equals(id.Replace('-', Path.DirectorySeparatorChar), relative,
+                                      StringComparison.Ordinal))
+                    continue;
+
+                // **The nearer directory wins, and ApplicationDirs yields the
+                // user's own first.** A ~/.local/share/applications entry with
+                // the same id as a /usr/share one is an override of it, and
+                // taking the system copy would show the name the person
+                // replaced.
+                if (found.ContainsKey(id)) continue;
+
+                var (name, exec, noDisplay, terminal) = ReadEntry(entry.Path);
+
+                if (noDisplay || name.Length == 0) continue;
+
+                // An entry with no Exec= is one Launch already refuses, and a
+                // refused launch falls back to the DEFAULT application — so
+                // offering it would open the wrong thing rather than nothing,
+                // which is worse.
+                if (exec.Length == 0) continue;
+
+                // The same rule ForFile applies, for the same reason: an entry
+                // that needs a console, on a machine with no terminal
+                // emulator, is a row that can only do nothing.
+                if (terminal && terminals.Count == 0) continue;
+
+                found[id] = new LaunchOption(name, id);
+            }
+        }
+
+        // By name, because that is the only thing the list shows and a person
+        // scanning it reads it alphabetically. The id breaks ties so that two
+        // applications called "Text editor" are ordered by the database rather
+        // than by the walk: found is insert-only, so its values come out in
+        // walk order, and OrderBy is stable and keeps that order for ties. The
+        // walk yields a directory's own files before it descends, so without
+        // the tie-break the pair's order would depend on how deep each one sat.
+        return [.. found.Values
+            .OrderBy(o => o.Name, StringComparer.OrdinalIgnoreCase)
+            .ThenBy(o => o.Id, StringComparer.Ordinal)];
+    }
+
+    /// <summary>
+    /// The desktop file id for a file found under one of the application
+    /// directories: its path relative to that directory, with the separators
+    /// turned into dashes.
+    ///
+    /// **Not the file name.** An entry at applications/kde/konsole.desktop is
+    /// "kde-konsole.desktop" to everything that reads the database, and it is
+    /// the spelling <see cref="FindDesktopFile"/> undoes to find the file
+    /// again — so a scan that reported "konsole.desktop" would produce a row
+    /// that could never be launched.
+    ///
+    /// It does not round-trip in every case — see the guard in
+    /// <see cref="Scan"/>.
+    /// </summary>
+    internal static string IdFor(string directory, string file)
+        => Path.GetRelativePath(directory, file)
+               .Replace(Path.DirectorySeparatorChar, '-');
 
     /// <summary>
     /// Every mimeapps.list the spec says to consult, in its precedence order.

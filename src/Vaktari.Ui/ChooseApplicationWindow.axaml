@@ -1,0 +1,90 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:fs="clr-namespace:Vaktari.Core.FileSystem;assembly=Vaktari.Core"
+        xmlns:vm="clr-namespace:Vaktari.Ui.ViewModels"
+        xmlns:local="clr-namespace:Vaktari.Ui"
+        x:Class="Vaktari.Ui.ChooseApplicationWindow"
+        x:DataType="vm:ChooseApplicationViewModel"
+        Title="Open with"
+        Background="{DynamicResource AppBackground}"
+        Foreground="{DynamicResource ViewText}"
+        FontFamily="{DynamicResource AppFontFamily}"
+        Width="440" Height="520"
+        MinWidth="320" MinHeight="300"
+        WindowStartupLocation="CenterOwner">
+
+  <DockPanel Margin="16" LastChildFill="True">
+
+    <TextBlock DockPanel.Dock="Top" Text="{Binding Question}"
+               FontSize="{DynamicResource FontSizeBase}"
+               TextTrimming="CharacterEllipsis"
+               Margin="0,0,0,10"/>
+
+    <!-- The list is everything installed, which is several hundred rows on an
+         ordinary desktop. Somebody who has come this far past the registered
+         applications knows the name of what they want. -->
+    <TextBox DockPanel.Dock="Top" x:Name="FilterBox"
+             Text="{Binding Filter}"
+             PlaceholderText="Type to narrow the list"
+             FontSize="{DynamicResource FontSizeSmall}"
+             Margin="0,0,0,10"/>
+
+    <DockPanel DockPanel.Dock="Bottom" Margin="0,12,0,0">
+      <StackPanel DockPanel.Dock="Right" Orientation="Horizontal" Spacing="8">
+        <Button Content="Cancel" Padding="14,4" IsCancel="True"
+                Command="{Binding CancelCommand}"/>
+        <Button Content="Open" Padding="14,4" IsDefault="True"
+                IsEnabled="{Binding CanOpen}" Command="{Binding OpenCommand}"/>
+      </StackPanel>
+      <TextBlock Text="Nothing here is remembered — this opens the file once"
+                 VerticalAlignment="Center" TextWrapping="Wrap"
+                 FontSize="{DynamicResource FontSizeTiny}"
+                 Foreground="{DynamicResource ViewDimText}"/>
+    </DockPanel>
+
+    <Border BorderThickness="1"
+            BorderBrush="{DynamicResource SeparatorColour}"
+            Background="{DynamicResource ViewBackground}">
+      <ListBox x:Name="Applications"
+               ItemsSource="{Binding Shown}"
+               SelectedItem="{Binding Selected}"
+               Background="Transparent">
+        <ListBox.ItemTemplate>
+          <DataTemplate x:DataType="fs:LaunchOption">
+            <!-- Background, because Avalonia hit tests against a brush and null
+                 is not one: without it a double-click only counts where the
+                 text is, which is a fraction of the row. The same rule
+                 MarkupRulesTests holds the listing rows to. -->
+            <StackPanel Background="Transparent"
+                        local:DoubleClick.Command="{Binding $parent[Window].((vm:ChooseApplicationViewModel)DataContext).OpenCommand}">
+              <TextBlock Text="{Binding Name}"
+                         FontSize="{DynamicResource FontSizeSmall}"
+                         TextTrimming="CharacterEllipsis"/>
+              <!-- The desktop file id underneath, because two applications can
+                   both be called "Text Editor" and the name alone gives a
+                   person no way to tell which row is which. -->
+              <TextBlock Text="{Binding Id}"
+                         FontFamily="{DynamicResource AppMonoFamily}"
+                         FontSize="{DynamicResource FontSizeTiny}"
+                         Foreground="{DynamicResource ViewDimText}"
+                         TextTrimming="CharacterEllipsis"/>
+            </StackPanel>
+          </DataTemplate>
+        </ListBox.ItemTemplate>
+        <ListBox.Styles>
+          <Style Selector="ListBoxItem" x:DataType="fs:LaunchOption">
+            <Setter Property="Padding" Value="8,4"/>
+          </Style>
+        </ListBox.Styles>
+        <ListBox.KeyBindings>
+          <!-- **A focused list item eats Enter before a default button sees
+               it.** The same reason the share dialog binds the key on its
+               folder list: without this, arrowing to a row and pressing Enter
+               did nothing at all. -->
+          <KeyBinding Gesture="Enter" Command="{Binding OpenCommand}"/>
+        </ListBox.KeyBindings>
+      </ListBox>
+    </Border>
+
+  </DockPanel>
+</Window>

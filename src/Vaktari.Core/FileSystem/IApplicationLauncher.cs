@@ -181,15 +181,49 @@ public interface IApplicationLauncher
     void OpenWith(string path, LaunchOption option);
 
     /// <summary>
-    /// Whether this desktop can offer to pick an application that is not in the
-    /// list — Windows has its own "How do you want to open this file?" dialog,
-    /// which includes browsing for an executable and remembering the choice.
+    /// Whether the menu should offer a way to pick an application that is not
+    /// in the list.
     ///
-    /// Defaulted off so a platform without one shows no entry, rather than an
-    /// entry that does nothing.
+    /// **This described one of the two ways there are, and so answered for one
+    /// platform.** It said "Windows has its own dialog", which is true, and
+    /// defaulted off for everyone else — so Linux, which has no such dialog to
+    /// hand off to, could never say yes however many applications it could
+    /// enumerate. A file whose type nothing claims got an "Open with" submenu
+    /// with nothing in it and no way out of it.
+    ///
+    /// Either route counts: the system's own chooser, shown by
+    /// <see cref="ChooseApplication"/>, or a list of everything installed in
+    /// <see cref="AllApplications"/> for a chooser Vaktari draws itself.
+    ///
+    /// Still defaulted off, and still for the original reason: a platform with
+    /// neither shows no entry, rather than an entry that does nothing.
     /// </summary>
     bool CanChooseApplication => false;
 
-    /// <summary>Shows that chooser. False when it could not be shown.</summary>
+    /// <summary>
+    /// Shows the SYSTEM'S chooser. False when there is none to show, which is
+    /// the answer a platform gives when <see cref="AllApplications"/> is how it
+    /// means to be asked instead.
+    /// </summary>
     bool ChooseApplication(string path) => false;
+
+    /// <summary>
+    /// Every application installed, for a chooser Vaktari draws ITSELF.
+    ///
+    /// Empty where <see cref="ChooseApplication"/> shows the platform's own,
+    /// which is the better answer wherever there is one: Windows' dialog
+    /// browses for an executable and writes the association the rest of the
+    /// system reads, and neither is reproducible from here.
+    ///
+    /// Not filtered by what the file is. That is what
+    /// <see cref="GetOpenWithOptions"/> already answers, and this is the way
+    /// out of it — a list narrowed by the same rule would offer the same
+    /// nothing on the type that has nobody registered against it.
+    ///
+    /// **Detected once and cached by the implementation**, for the same reason
+    /// <see cref="Terminals"/> is: on a desktop this means reading every
+    /// .desktop file the machine has, and doing that per right-click is what
+    /// makes a menu feel slow to open.
+    /// </summary>
+    IReadOnlyList<LaunchOption> AllApplications => [];
 }

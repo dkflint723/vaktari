@@ -931,6 +931,18 @@ public sealed partial class PaneViewModel : ObservableObject, IDisposable
     /// <summary>Raised when a rename is requested, so the view can prompt.</summary>
     public event EventHandler<FileEntry>? RenameRequested;
 
+    /// <summary>
+    /// Raised when somebody asks for an application that is not in the list and
+    /// the platform has no chooser dialog of its own, so the view has to draw
+    /// one.
+    ///
+    /// An event rather than a window opened from here, like every other dialog
+    /// this view model asks for: a view model that constructs a Window cannot
+    /// be tested without one, and the pane is built headless in several dozen
+    /// tests that have no owner to be modal to.
+    /// </summary>
+    public event EventHandler<ChooseApplicationViewModel>? ChooseApplicationRequested;
+
     [ObservableProperty] private string _currentPath = "";
     [ObservableProperty] private string _pathText = "";
     [ObservableProperty] private string _title = "…";
@@ -2689,15 +2701,24 @@ public sealed partial class PaneViewModel : ObservableObject, IDisposable
         _ = Task.Run(() =>
         {
             var options = _launcher.GetOpenWithOptions(path);
+
+            // **Asked out here, beside the enumeration it belongs with.** It
+            // was read inside the Post, on the UI thread, which cost nothing
+            // while the only platform that answered yes returned a constant.
+            // A desktop answers it by scanning every .desktop file the machine
+            // has, and the first right-click would have paid for that scan on
+            // the thread that draws the menu.
+            var chooser = _launcher.CanChooseApplication;
+
             Dispatcher.UIThread.Post(() =>
             {
                 var wanted = new List<LaunchOption>(options);
 
-                // Last, and only where the desktop has a chooser to show. The
+                // Last, and only where there is a chooser to show. The
                 // installed applications are the answer most of the time; this
                 // is the way out when none of them is, and it belongs at the
                 // bottom of the list it escapes from.
-                if (_launcher.CanChooseApplication)
+                if (chooser)
                 {
                     wanted.Add(
                         new LaunchOption("Choose another app…", "", null) { IsChooser = true });
@@ -2744,8 +2765,37 @@ public sealed partial class PaneViewModel : ObservableObject, IDisposable
         // it five times would stack five dialogs.
         if (option.IsChooser)
         {
-            if (_launcher?.ChooseApplication(entry.FullPath) is true)
+            if (_launcher is not { } launcher) return;
+
+            // **The platform's own dialog first, and ours only where there is
+            // none.** Windows' browses for an executable and registers the
+            // choice, which is what SHOpenWithDialog's ALLOW_REGISTRATION is
+            // for; nothing drawn here does either, so nothing drawn here is
+            // offered in its place. A desktop, which has no such dialog to
+            // show, answers false and hands over its list instead.
+            if (launcher.ChooseApplication(entry.FullPath))
+            {
                 Recents?.Record(entry.FullPath, RecentKind.File);
+                return;
+            }
+
+            // Empty is the answer of a platform whose chooser was the dialog
+            // above, and of a machine whose desktop database is unreadable.
+            // Neither has anything to put in a window.
+            if (launcher.AllApplications is not { Count: > 0 } installed) return;
+
+            ChooseApplicationRequested?.Invoke(this, new ChooseApplicationViewModel(
+                entry.Name,
+                installed,
+                chosen =>
+                {
+                    // Recorded when something is picked, not when the window
+                    // opens — the same rule the branch above keeps by asking
+                    // first and recording after. A chooser that was dismissed
+                    // opened nothing and must not claim to.
+                    Recents?.Record(entry.FullPath, RecentKind.File);
+                    launcher.OpenWith(entry.FullPath, chosen);
+                }));
 
             return;
         }
