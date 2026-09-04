@@ -297,6 +297,15 @@ should not be trusted for compatibility yet.
 
 ### Changed
 
+- **Deleting on Windows no longer reads the whole Recycle Bin twice.** Working
+  out what a delete actually put in the bin means comparing it before and after,
+  and both ends were doing it by listing every item on every drive — opening and
+  parsing the metadata sidecar of each one, then measuring the file beside it —
+  when all either end used was the name. Measured against a real bin of 107
+  items across two volumes: 19-24 ms of bookkeeping per Delete key press, now
+  0.4-0.8 ms. On a bin holding thousands the difference is the order of a
+  hundred milliseconds a keystroke.
+
 - **A folder dropped onto a folder says *Merge*, and how much of it collides.**
   The button said *Overwrite* while the engine merged: it keeps everything the
   destination already had and asks again for each file whose name is taken. The

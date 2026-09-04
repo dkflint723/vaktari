@@ -119,21 +119,63 @@ internal static class RecycleBin
     {
         var entries = new List<RecycleEntry>();
 
-        foreach (var directory in Directories())
+        // Over the same walk Names makes, so a volume one of them reaches is a
+        // volume the other reaches. The reading is the only difference between
+        // them, and it is all of the cost — see Names.
+        foreach (var info in Names())
         {
-            string[] infos;
-            try { infos = Directory.GetFiles(directory, "$I*"); }
-            catch (Exception e) when (e is IOException or UnauthorizedAccessException) { continue; }
-
-            foreach (var info in infos)
-            {
-                if (Read(info) is { } entry) entries.Add(entry);
-            }
+            if (Read(info) is { } entry) entries.Add(entry);
         }
 
         entries.Sort((a, b) => b.Deleted.CompareTo(a.Deleted));
 
         return entries;
+    }
+
+    /// <summary>
+    /// Every metadata path in every bin, without opening one of them.
+    ///
+    /// **The undo after a recycle wants nothing but these names.** It takes the
+    /// difference between the bin before the call and the bin after, and a
+    /// trash key IS the <c>$I</c> path — which the directory entry already
+    /// carries. Going through <see cref="List"/> for it opened, parsed and
+    /// payload-checked every entry in the bin, twice, on every Delete key press,
+    /// to hand back a field that cost nothing.
+    ///
+    /// Measured against a real bin holding 107 entries across two volumes,
+    /// warm cache, repeated because the spread is wide: List 9-19 ms a call,
+    /// this walk 0.17-0.33 ms. On a synthetic bin the per-entry read costs
+    /// 62-81 us warm, so 2000 items are of the order of 150 ms a listing
+    /// against a couple of ms a walk.
+    ///
+    /// **A wider answer than List's, deliberately.** An <c>$I</c> whose payload
+    /// is gone, or whose bytes name a format version this does not know, has no
+    /// entry — but it still holds its name. That same bin answered 114 names to
+    /// 107 entries, so this is not a hypothetical: seven files there are one and
+    /// not the other. It is right for a difference, where such a file is in the
+    /// before set and the after set alike and cancels, and wrong for a listing,
+    /// which is why List still reads every one.
+    /// </summary>
+    internal static IEnumerable<string> Names()
+    {
+        foreach (var directory in Directories())
+            foreach (var info in InfoFiles(directory))
+                yield return info;
+    }
+
+    /// <summary>
+    /// The metadata files in one volume's bin, and nothing else in there: the
+    /// payloads share the folder, and so does the <c>desktop.ini</c> that gives
+    /// the bin its name in Explorer.
+    ///
+    /// A volume that will not answer contributes nothing rather than stopping
+    /// the walk, which is the rule <see cref="HasAny"/> follows too — one
+    /// unreadable drive must not hide the bins on the others.
+    /// </summary>
+    internal static string[] InfoFiles(string directory)
+    {
+        try { return Directory.GetFiles(directory, "$I*"); }
+        catch (Exception e) when (e is IOException or UnauthorizedAccessException) { return []; }
     }
 
     /// <summary>One entry, or null if its metadata cannot be trusted.</summary>

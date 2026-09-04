@@ -24,6 +24,16 @@ public sealed class WindowsTrashMaintenance : ITrashMaintenance
 {
     public bool HasAny() => RecycleBin.HasAny();
 
+    /// <summary>
+    /// The <c>$I</c> paths, straight off the directory entries. A trash key here
+    /// IS the metadata path, so no part of a key is guessed at to make this
+    /// fast — but the answer is a SUPERSET of the keys <see cref="List"/>
+    /// reports, because an <c>$I</c> whose payload has gone still has a name.
+    /// See <see cref="RecycleBin.Names"/> for the measurement, and for why a
+    /// difference across a recycle wants the wider answer.
+    /// </summary>
+    public IEnumerable<string> Keys() => RecycleBin.Names();
+
     public IReadOnlyList<TrashedItem> List()
         => RecycleBin.List()
             .Select(e => new TrashedItem(

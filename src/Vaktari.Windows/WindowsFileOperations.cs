@@ -254,6 +254,15 @@ public sealed class WindowsFileOperations : IFileOperations
     /// <summary>
     /// The trash names currently in the bin, or null when there is no bin to
     /// ask — which is how the undo stays absent rather than wrong.
+    ///
+    /// **Keys rather than a listing**, here and in <see cref="Arrivals"/>. Both
+    /// ends of the difference used to call List, which on Windows opens and
+    /// parses a sidecar per item and stats the payload beside it — twice per
+    /// Delete key press, to produce a set of names the directory entries
+    /// already held. Timed over a whole <see cref="Trash"/> call against a real
+    /// bin holding 107 entries on two volumes, with the recycle itself stubbed
+    /// out so only the bookkeeping is counted: 19-24 ms through List against
+    /// 0.4-0.8 ms through Keys.
     /// </summary>
     private static HashSet<string>? Snapshot(ITrashMaintenance? bin)
     {
@@ -261,7 +270,7 @@ public sealed class WindowsFileOperations : IFileOperations
 
         try
         {
-            return bin.List().Select(item => item.TrashName).ToHashSet(StringComparer.Ordinal);
+            return bin.Keys().ToHashSet(StringComparer.Ordinal);
         }
         catch (Exception ex)
         {
@@ -287,10 +296,7 @@ public sealed class WindowsFileOperations : IFileOperations
 
         try
         {
-            return bin.List()
-                .Select(item => item.TrashName)
-                .Where(name => !before.Contains(name))
-                .ToList();
+            return bin.Keys().Where(name => !before.Contains(name)).ToList();
         }
         catch (Exception ex)
         {

@@ -69,6 +69,33 @@ public interface ITrashMaintenance
     bool HasAny() => List().Count > 0;
 
     /// <summary>
+    /// Just the keys, in no particular order.
+    ///
+    /// Separate from <see cref="List"/> for the reason <see cref="HasAny"/> is.
+    /// Undoing a delete needs the difference between the keys before the trash
+    /// call and the keys after it, and nothing else about any item — but List
+    /// opens a sidecar per item to recover an original path, a size and a date,
+    /// and the difference then throws all three away. On Windows that read is
+    /// the whole cost of a listing: 107 entries measured at 13.9 ms through
+    /// List and 0.27 ms through this.
+    ///
+    /// Defaulted to the expensive answer, so an implementation with no cheaper
+    /// route is correct rather than absent.
+    ///
+    /// **An implementation may answer MORE keys than <see cref="List"/> has
+    /// items, and the Windows one does.** A metadata file whose payload has
+    /// gone holds a key but lists as nothing; the bin this was measured against
+    /// answered 114 keys to 107 items. So this is for taking a DIFFERENCE
+    /// across a call, where such a key stands on both sides and cancels. It is
+    /// not a cheap spelling of List, and a caller that takes one end from each
+    /// reads every one of those leftovers as something that just arrived.
+    ///
+    /// The answer is also lazy on both routes and walks again on every
+    /// enumeration, unlike List — materialise it once.
+    /// </summary>
+    IEnumerable<string> Keys() => List().Select(item => item.TrashName);
+
+    /// <summary>
     /// Puts one item back where it came from, returning the path it landed at —
     /// which is NOT always the original: if something has since taken that name
     /// it restores alongside rather than clobbering.

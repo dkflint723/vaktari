@@ -167,4 +167,113 @@ public class RecycleBinTests
             Assert.True(Path.IsPathFullyQualified(directory));
         }
     }
+
+    /// <summary>
+    /// The cheap walk behind the undo after a recycle: the metadata files, and
+    /// nothing else sharing the folder. The payloads sit right beside them and
+    /// so does the desktop.ini that names the bin in Explorer, and a walk that
+    /// swept those up would hand the undo keys that restore nothing.
+    ///
+    /// A made-up folder under the temp directory, as
+    /// <see cref="RecycleDeleteOneTests"/> does — the walk does not care that it
+    /// is not called $Recycle.Bin, and nothing here touches the bin of whoever
+    /// is running it.
+    /// </summary>
+    [WindowsFact]
+    public void Only_the_metadata_files_in_a_bin_are_walked()
+    {
+        using var tree = new TempTree();
+        var bin = tree.Dir("bin");
+
+        File.WriteAllText(Path.Combine(bin, "$IAAA111.txt"), "metadata");
+        File.WriteAllText(Path.Combine(bin, "$RAAA111.txt"), "payload");
+        File.WriteAllText(Path.Combine(bin, "$IBBB222"), "metadata");
+        File.WriteAllText(Path.Combine(bin, "$RBBB222"), "payload");
+        File.WriteAllText(Path.Combine(bin, "desktop.ini"), "[.ShellClassInfo]");
+
+        Assert.Equal(
+            ["$IAAA111.txt", "$IBBB222"],
+            RecycleBin.InfoFiles(bin)
+                .Select(path => Path.GetFileName(path))
+                .OrderBy(name => name, StringComparer.Ordinal));
+    }
+
+    /// <summary>
+    /// **The walk answers wider than the listing does, on purpose.** A metadata
+    /// file whose payload has gone is not an entry — <see cref="RecycleBin.Read"/>
+    /// refuses it, so it lists as nothing — but it is still a name in the bin,
+    /// and the undo's difference needs it on both sides to cancel. The bin this
+    /// was measured against held 114 such names to 107 entries.
+    /// </summary>
+    [WindowsFact]
+    public void A_metadata_file_whose_payload_has_gone_is_still_a_name()
+    {
+        using var tree = new TempTree();
+        var bin = tree.Dir("bin");
+
+        var orphan = Path.Combine(bin, "$ICCC333.txt");
+        File.WriteAllBytes(orphan, Version2(@"C:\Users\someone\notes.txt", 12, DateTimeOffset.Now));
+
+        Assert.Null(RecycleBin.Read(orphan));
+        Assert.Equal([orphan], RecycleBin.InfoFiles(bin));
+    }
+
+    /// <summary>
+    /// **A guard, and one whose teeth depend on the machine**: it says nothing
+    /// at all on a runner whose Recycle Bin is empty. What it pins where the bin
+    /// does hold something is that <see cref="WindowsTrashMaintenance.Keys"/>
+    /// reaches the bin at all — replacing it with an empty answer was measured
+    /// to redden this test and nothing else in the suite.
+    ///
+    /// **It does NOT pin that the walk reaches every volume, and cannot.**
+    /// <see cref="RecycleBin.List"/> is built on the same
+    /// <see cref="RecycleBin.Names"/> walk, so a walk narrowed to one drive
+    /// narrows both sides of this comparison together. Measured: with Names
+    /// taking one directory of the two on this machine, and again with it
+    /// taking none — the whole bin reported empty — every test still passed.
+    /// The test below covers that, by recomputing the answer independently.
+    ///
+    /// Keys on both sides of the listing narrows the window the shared bin
+    /// opens: something recycled after the first walk is caught by the second,
+    /// and something purged before the second was caught by the first. It does
+    /// not close it — something both recycled and purged between the two walks
+    /// is in neither, and could still be in the listing taken between them.
+    /// </summary>
+    [WindowsFact]
+    public void Every_listed_entry_is_one_of_the_keys()
+    {
+        var bin = new WindowsTrashMaintenance();
+
+        var keys = bin.Keys().ToHashSet(StringComparer.Ordinal);
+        var listed = bin.List();
+        keys.UnionWith(bin.Keys());
+
+        foreach (var item in listed) Assert.Contains(item.TrashName, keys);
+    }
+
+    /// <summary>
+    /// **The cheap walk reaches every volume's bin, not just the first one.**
+    /// The test above cannot see this: <see cref="RecycleBin.List"/> is built on
+    /// the same walk, so a narrowed walk narrows both sides of it at once and it
+    /// stays green. This one rebuilds the answer from
+    /// <see cref="RecycleBin.Directories"/> instead, so there is nothing for a
+    /// narrowed <see cref="RecycleBin.Names"/> to hide behind.
+    ///
+    /// Machine-dependent in the same way, and for the same reason: it says
+    /// nothing on a runner whose bins are all empty. It has teeth wherever more
+    /// than one volume is holding something, which is where a walk that stopped
+    /// at C: would cost somebody the undo of a delete on D:.
+    ///
+    /// Names on both sides of the per-volume read, so a recycle by another
+    /// program between the two cannot flake it.
+    /// </summary>
+    [WindowsFact]
+    public void The_walk_reaches_every_volume_that_has_a_bin()
+    {
+        var names = RecycleBin.Names().ToHashSet(StringComparer.Ordinal);
+        var perVolume = RecycleBin.Directories().SelectMany(RecycleBin.InfoFiles).ToList();
+        names.UnionWith(RecycleBin.Names());
+
+        foreach (var info in perVolume) Assert.Contains(info, names);
+    }
 }
