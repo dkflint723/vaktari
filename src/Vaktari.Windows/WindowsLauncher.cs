@@ -165,6 +165,25 @@ public sealed class WindowsLauncher : IApplicationLauncher
     public bool CanElevate => true;
 
     /// <summary>
+    /// **Only for things Windows can actually start elevated.** The runas verb
+    /// on a .txt does nothing at all — no error, no elevation, no editor — so
+    /// offering it for every file would be an entry that silently fails on most
+    /// of them. This is the set Explorer itself offers it for.
+    ///
+    /// **Moved here from PaneViewModel**, where a list of Windows extensions
+    /// was deciding this for every platform — and so deciding "no" for Linux,
+    /// which has pkexec and, once it had it, still had nothing to offer it for.
+    /// </summary>
+    public bool CanElevateFile(string path)
+        => Startable.Contains(Path.GetExtension(path));
+
+    private static readonly HashSet<string> Startable =
+        new(StringComparer.OrdinalIgnoreCase)
+        {
+            ".exe", ".msi", ".bat", ".cmd", ".ps1", ".com", ".lnk", ".msc", ".vbs", ".reg",
+        };
+
+    /// <summary>
     /// Runs a file as administrator, through the shell's own "runas" verb.
     ///
     /// **Vaktari never acquires rights of its own.** The verb asks the SYSTEM

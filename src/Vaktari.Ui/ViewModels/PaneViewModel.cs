@@ -403,12 +403,14 @@ public sealed partial class PaneViewModel : ObservableObject, IDisposable
     /// <summary>
     /// Whether "run as administrator" would mean anything for what is selected.
     ///
-    /// **Only for things Windows can actually start elevated.** The runas verb
-    /// on a .txt does nothing at all — no error, no elevation, no editor — so
-    /// offering it for every file would be an entry that silently fails on most
-    /// of them. This is the set Explorer itself offers it for.
-    /// </summary>
-    /// <summary>
+    /// **Which files those are is the launcher's question now, and a list of
+    /// Windows file extensions used to answer it here.** That list is right on
+    /// Windows — the runas verb on a .txt does nothing at all, no error, no
+    /// elevation, no editor — and it is no answer whatever on a desktop where
+    /// an executable usually has no extension. Sitting in the view model it
+    /// answered for every platform, so when Linux gained pkexec this entry
+    /// would still have been invisible there for want of a file it recognised.
+    ///
     /// **No longer behind Shift.** Explorer shows "Run as administrator" for
     /// every executable on a plain right-click; only its EXTENDED verbs hide
     /// behind Shift. Copying the gate onto this entry meant an ordinary
@@ -418,36 +420,36 @@ public sealed partial class PaneViewModel : ObservableObject, IDisposable
     /// verb by Explorer's own convention too.
     /// </summary>
     public bool CanRunSelectionAsAdministrator =>
-        _launcher?.CanElevate == true
+        _launcher is { CanElevate: true } launcher
         && !IsTrashListing && !IsRecentListing
         && SelectedEntry is { IsDirectory: false } entry
-        && Executable.Contains(Path.GetExtension(entry.FullPath));
-
-    private static readonly HashSet<string> Executable =
-        new(StringComparer.OrdinalIgnoreCase)
-        {
-            ".exe", ".msi", ".bat", ".cmd", ".ps1", ".com", ".lnk", ".msc", ".vbs", ".reg",
-        };
+        && launcher.CanElevateFile(entry.FullPath);
 
     /// <summary>
     /// Hands the selection to the system to start elevated. The consent dialog
-    /// is the system's, and Vaktari itself stays unelevated whatever is chosen.
+    /// is the system's — Windows' own, or the one polkit puts up — and Vaktari
+    /// itself stays unelevated whatever is chosen.
     /// </summary>
     [RelayCommand]
     public void RunAsAdministrator()
     {
-        if (!CanRunSelectionAsAdministrator) return;
+        if (!CanRunSelectionAsAdministrator || _launcher is not { } launcher) return;
 
         // Every one that is actually runnable. Selecting three installers and
         // choosing this ran one of them — and elevation is the worst place for
         // "it did something, but not what you asked".
+        //
+        // **The full path, not the name.** The rule here used to be an
+        // extension match, which either spelling satisfies; the launcher's rule
+        // can be the file's own mode bits, and a bare name asks the question
+        // about a path relative to wherever this process happens to be running.
         var runnable = EntriesToActOn()
-            .Where(e => !e.IsDirectory && Executable.Contains(Path.GetExtension(e.Name)))
+            .Where(e => !e.IsDirectory && launcher.CanElevateFile(e.FullPath))
             .ToList();
 
         if (runnable.Count == 0 || TooMany(runnable.Count)) return;
 
-        foreach (var entry in runnable) _launcher?.OpenElevated(entry.FullPath);
+        foreach (var entry in runnable) launcher.OpenElevated(entry.FullPath);
     }
 
     /// <summary>

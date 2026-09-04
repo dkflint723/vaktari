@@ -48,6 +48,22 @@ public sealed class MultiSelectionActionTests : OwnedViewModels
 
         public bool CanElevate => true;
 
+        /// <summary>
+        /// Every path the pane asked about, and a stand-in rule: .exe yes,
+        /// everything else no. The real rules are the launchers' own and are
+        /// pinned beside them — a fake that reimplemented one would pin the
+        /// fake. Recorded because the SPELLING of the path is a claim of its
+        /// own; see the full-path test below.
+        /// </summary>
+        public List<string> Asked { get; } = [];
+
+        public bool CanElevateFile(string path)
+        {
+            Asked.Add(path);
+
+            return Path.GetExtension(path) is ".exe";
+        }
+
         public void Open(string path) => Opened.Add(path);
         public void OpenElevated(string path) => Elevated.Add(path);
         public void OpenWith(string path, LaunchOption option) => OpenedWith.Add(path);
@@ -131,9 +147,29 @@ public sealed class MultiSelectionActionTests : OwnedViewModels
 
         pane.RunAsAdministrator();
 
-        // The text file is not something Windows can start elevated, so it is
-        // not sent — but both executables are.
+        // The text file is not something the launcher will start elevated, so
+        // it is not sent — but both executables are.
         Assert.Equal(2, launcher.Elevated.Count);
+    }
+
+    /// <summary>
+    /// **The launcher is asked about the full path, not the bare name.** The
+    /// rule used to be an extension match, which either spelling satisfies, so
+    /// passing the name cost nothing and nobody noticed. It costs everything
+    /// now that the answer can be the file's own mode bits, which is what it is
+    /// on Linux: a bare name asks about a path relative to wherever this
+    /// process happens to be running, so every file would answer no and the
+    /// entry would be dead on that platform.
+    /// </summary>
+    [AvaloniaFact]
+    public void The_launcher_is_asked_about_the_full_path()
+    {
+        var launcher = new RecordingLauncher();
+        var pane = Pane(launcher, File("one.exe"), File("two.exe"));
+
+        pane.RunAsAdministrator();
+
+        Assert.Contains(Path.Combine(Path.GetTempPath(), "two.exe"), launcher.Asked);
     }
 
     [AvaloniaFact]

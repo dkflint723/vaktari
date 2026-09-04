@@ -45,9 +45,25 @@ public sealed class AdminEntryTests : OwnedViewModels
         private sealed class Nothing : IDisposable { public void Dispose() { } }
     }
 
-    private sealed class FakeLauncher(bool canElevate) : IApplicationLauncher
+    /// <summary>
+    /// **Which files can be started elevated is the launcher's answer now**,
+    /// and this one is told rather than working it out. The real rules live
+    /// beside the launchers that own them — the Windows extension list in
+    /// Vaktari.Windows.Tests, the execute bit in Vaktari.Linux.Tests — because
+    /// a fake that reimplemented either would pin the fake.
+    /// </summary>
+    private sealed class FakeLauncher(bool canElevate, params string[] startable)
+        : IApplicationLauncher
     {
-        public bool CanElevate { get; } = canElevate;
+        public bool CanElevate => canElevate;
+
+        /// <summary>
+        /// Independent of <see cref="CanElevate"/> on purpose, so that a
+        /// launcher careless about one and not the other is a state this suite
+        /// can actually produce — it is the state the pane's own check exists
+        /// to survive.
+        /// </summary>
+        public bool CanElevateFile(string path) => startable.Contains(path);
 
         public string? Elevated { get; private set; }
         public string? ElevatedTerminalIn { get; private set; }
@@ -89,7 +105,7 @@ public sealed class AdminEntryTests : OwnedViewModels
     [AvaloniaFact]
     public void An_ordinary_right_click_on_an_executable_offers_elevation()
     {
-        var pane = Pane(new FakeLauncher(true), @"C:\tools\setup.exe");
+        var pane = Pane(new FakeLauncher(true, @"C:\tools\setup.exe"), @"C:\tools\setup.exe");
 
         Assert.True(pane.CanRunSelectionAsAdministrator);
 
@@ -100,7 +116,7 @@ public sealed class AdminEntryTests : OwnedViewModels
     [AvaloniaFact]
     public void Holding_shift_adds_the_extended_section()
     {
-        var pane = Pane(new FakeLauncher(true), @"C:\tools\setup.exe");
+        var pane = Pane(new FakeLauncher(true, @"C:\tools\setup.exe"), @"C:\tools\setup.exe");
 
         pane.AdminRequested = true;
 
@@ -109,35 +125,45 @@ public sealed class AdminEntryTests : OwnedViewModels
     }
 
     /// <summary>
-    /// **Only for things Windows can actually start elevated.** The runas verb
-    /// on a .txt does nothing at all — no error, no elevation, no editor — so
-    /// offering it for every file would be an entry that silently fails on most
-    /// of them.
+    /// **Only for what the platform can actually start elevated, and the
+    /// platform is asked.** This used to be a list of Windows file extensions
+    /// held here, which was the right answer on Windows and the only answer
+    /// anywhere — on a desktop where an executable usually has no extension it
+    /// could only say no, so the entry could never appear on Linux however
+    /// loudly the launcher said it could elevate. What the pane owes is to ask
+    /// and to obey the answer; the rules themselves are pinned beside their
+    /// launchers.
     /// </summary>
-    [AvaloniaTheory]
-    [InlineData(@"C:\tools\setup.exe", true)]
-    [InlineData(@"C:\tools\install.msi", true)]
-    [InlineData(@"C:\tools\go.bat", true)]
-    [InlineData(@"C:\tools\task.ps1", true)]
-    [InlineData(@"C:\notes.txt", false)]
-    [InlineData(@"C:\photo.png", false)]
-    [InlineData(@"C:\archive.zip", false)]
-    public void Run_as_administrator_is_offered_only_where_it_would_work(string path, bool offered)
+    [AvaloniaFact]
+    public void Only_a_file_the_launcher_will_start_is_offered()
     {
-        var pane = Pane(new FakeLauncher(true), path);
-        pane.AdminRequested = true;
+        // **Deliberately the wrong way round for an extension list.** The
+        // launcher says yes to a .txt and no to an .exe, so a pane that kept
+        // the old rule instead of asking gets both answers backwards. Written
+        // with setup.exe and notes.txt the old rule agreed with the fake on
+        // every case, and a pane that had quietly stopped asking passed.
+        var launcher = new FakeLauncher(true, @"C:\tools\payload.txt");
 
-        Assert.Equal(offered, pane.CanRunSelectionAsAdministrator);
+        Assert.True(Pane(launcher, @"C:\tools\payload.txt").CanRunSelectionAsAdministrator);
+        Assert.False(Pane(launcher, @"C:\tools\setup.exe").CanRunSelectionAsAdministrator);
     }
 
     /// <summary>
-    /// A desktop with no elevation route we should be using says so, and the
-    /// section never appears — which is every desktop but Windows today.
+    /// A desktop with no elevation route says so, and the section never
+    /// appears.
+    ///
+    /// **This once read "which is every desktop but Windows today", and that
+    /// stopped being true.** Linux has pkexec, which does not decide anything —
+    /// it hands the request to polkit, and polkit shows the system's own
+    /// authentication dialog, exactly as the runas verb hands a request to
+    /// Windows' consent dialog. What is left of the old claim is a machine with
+    /// no pkexec installed, which is still an ordinary machine and still gets
+    /// no rows.
     /// </summary>
     [AvaloniaFact]
     public void A_platform_that_cannot_elevate_never_offers_it()
     {
-        var pane = Pane(new FakeLauncher(false), @"C:\tools\setup.exe");
+        var pane = Pane(new FakeLauncher(false, @"C:\tools\setup.exe"), @"C:\tools\setup.exe");
 
         pane.AdminRequested = true;
 
@@ -168,7 +194,7 @@ public sealed class AdminEntryTests : OwnedViewModels
     [AvaloniaFact]
     public void Choosing_it_hands_the_file_to_the_system()
     {
-        var launcher = new FakeLauncher(true);
+        var launcher = new FakeLauncher(true, @"C:\tools\setup.exe");
         var pane = Pane(launcher, @"C:\tools\setup.exe");
         pane.AdminRequested = true;
 

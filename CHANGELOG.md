@@ -13,6 +13,28 @@ should not be trusted for compatibility yet.
 
 ### Added
 
+- **On Linux, run a file as administrator and open an admin terminal.** Windows
+  has had both since the administrator entries were added; Linux had the menu
+  rows' code and two methods that did nothing, on the reasoning that pkexec and
+  sudo were a policy question rather than a menu entry and that a file manager
+  should not be deciding to elevate on somebody's desktop. That is true of sudo,
+  which is configured in sudoers and asks nothing on screen. It is not true of
+  pkexec, which decides nothing at all: it hands the request to polkit, and
+  polkit puts up the system's own authentication dialog and answers to the
+  machine's policy — the same arrangement as the Windows verb handing a request
+  to the consent dialog. Vaktari holds no rights of its own on either platform,
+  and a refusal simply ends with the program not running.
+
+  Both entries appear only where pkexec is installed, so a machine without it
+  sees no row rather than a row that fails. *Run as administrator* is offered
+  for files that carry an execute bit — the Windows list of extensions was
+  never going to answer for a desktop where an executable usually has no
+  extension at all — and both run inside your terminal, because pkexec unsets
+  DISPLAY and XAUTHORITY, so anything started from it has no window and, without
+  a console, nowhere to print why it stopped. The terminal is yours and the
+  shell inside it is root's, which is also the arrangement that keeps the window
+  itself unprivileged.
+
 - **Backspace can be told to go up instead of back.** Explorer's Backspace goes
   back through the folders you visited; Dolphin's goes up to the parent folder,
   and Vaktari only ever did the first. So somebody who learned the key on the

@@ -272,10 +272,229 @@ public sealed class LinuxLauncher : IApplicationLauncher
             + $"tried {Terminals.Count} detected and xterm");
     }
 
-    /// <summary>One candidate, the way it asks to be started.</summary>
-    private static bool Spawn(string directory, TerminalOption terminal)
+    // ---- administrator ------------------------------------------------------
+
+    /// <summary>
+    /// Where pkexec is, or null on a machine without it.
+    ///
+    /// **Probed once**, for the same reason the terminal list is: this is read
+    /// while a context menu is being built, on the UI thread, and a PATH walk
+    /// per right-click is exactly what makes a menu feel slow to open. A miss
+    /// is remembered too — a machine with no pkexec is the one that would
+    /// otherwise walk the whole PATH every time.
+    /// </summary>
+    private string? PkExec
     {
-        if (terminal.UsesWorkingDirectory) return TrySpawnIn(directory, terminal.Command);
+        get
+        {
+            if (_probedPkExec) return _pkexec;
+
+            _probedPkExec = true;
+            return _pkexec = OnPath("pkexec");
+        }
+    }
+
+    private string? _pkexec;
+    private bool _probedPkExec;
+
+    /// <summary>
+    /// Stands in for that probe, both ways round.
+    ///
+    /// Both answers have to be pinned — the menu rows appear on one and must
+    /// vanish on the other — and neither can be arranged by asking a machine
+    /// politely, least of all the Windows one where most of this is written.
+    /// </summary>
+    internal void UsePkexec(string? path)
+    {
+        _pkexec = path;
+        _probedPkExec = true;
+    }
+
+    /// <summary>
+    /// **This answered false, and the interface used to explain why: pkexec and
+    /// sudo were "a policy question rather than a menu entry".** Windows had
+    /// "Run as administrator" and an admin terminal; Linux had neither, on that
+    /// reasoning — which does not survive being written down. sudo really is a
+    /// policy question: sudoers is one, and there is no dialog. pkexec decides
+    /// nothing. It hands the request to polkit, which shows the system's own
+    /// authentication dialog and answers to the machine's policy, exactly as
+    /// the runas verb hands a request to Windows' consent dialog. The two were
+    /// being treated as one thing, and Linux paid for it.
+    ///
+    /// False where there is no pkexec, which is what makes the rows disappear
+    /// on such a machine rather than appear and fail.
+    /// </summary>
+    public bool CanElevate => PkExec is not null;
+
+    /// <summary>
+    /// Whether pkexec would have anything to run.
+    ///
+    /// **The execute bit, because on this platform that is the whole of the
+    /// question.** The rule this replaces was a list of Windows extensions, and
+    /// the file a Linux user most wants this for — a system binary, a build
+    /// script, an installer unpacked from a tarball — usually has no extension
+    /// at all.
+    /// </summary>
+    public bool CanElevateFile(string path)
+    {
+        if (PkExec is null) return false;
+
+        try
+        {
+            // File.Exists, which is already false for a directory: pkexec has
+            // nothing to do with a folder, and a folder is the thing a person
+            // is most likely to have selected.
+            if (!File.Exists(path)) return false;
+
+            return Runnable(File.GetUnixFileMode(path));
+        }
+        catch (Exception e) when (e is IOException or UnauthorizedAccessException
+                                    or PlatformNotSupportedException)
+        {
+            Vaktari.Core.Quiet.Swallowed("launcher", e);
+            return false;
+        }
+    }
+
+    /// <summary>
+    /// **Any of the three bits, not the owner's.** The binaries this verb
+    /// exists for are the root-owned ones — 0755, owner root — so asking
+    /// whether the OWNER may run it answers for root rather than for the person
+    /// at the keyboard. Asking whether ANYONE may run it is the question that
+    /// matches what pkexec then does, which is to run it as root.
+    /// </summary>
+    internal static bool Runnable(UnixFileMode mode)
+        => (mode & (UnixFileMode.UserExecute | UnixFileMode.GroupExecute
+                    | UnixFileMode.OtherExecute)) != 0;
+
+    /// <summary>
+    /// Runs a file with root rights, in a terminal.
+    ///
+    /// **In a terminal because pkexec unsets DISPLAY and XAUTHORITY**, which is
+    /// its own documented refusal to launch X11 applications for you. So the
+    /// thing started this way has no window; without a console it has nowhere
+    /// to print its output either, and nowhere to say why it stopped — the same
+    /// fault this repository already fixed for Terminal=true desktop entries,
+    /// where a spawned vim exited instantly off a tty and the launch still
+    /// reported success.
+    ///
+    /// Vaktari never acquires rights of its own: polkit authenticates and
+    /// decides, a refusal ends with the program not running, and this process
+    /// stays exactly as privileged as it was.
+    /// </summary>
+    public void OpenElevated(string path)
+    {
+        if (PkExec is not { } pkexec) return;
+
+        var directory = Path.GetDirectoryName(path) ?? "/";
+
+        foreach (var candidate in Candidates(null))
+        {
+            if (TrySpawnIn(directory, Elevated(pkexec, candidate, [path]))) return;
+        }
+
+        // No terminal on this machine would start, and running it anyway is
+        // better than doing nothing: a desktop session with a polkit agent
+        // registered still gets its graphical prompt, because that agent is a
+        // session service and has nothing to do with our terminal. What is lost
+        // is the program's own output, and pkexec's text prompt on a session
+        // with no agent at all — which is the whole reason a terminal is tried
+        // first.
+        //
+        // Through Elevated with no terminal rather than spelling the two words
+        // out here: written inline, the no-terminal branch of that method would
+        // be reachable from nowhere and so pinned by nothing.
+        TrySpawnIn(directory, Elevated(pkexec, terminal: null, [path]));
+    }
+
+    /// <summary>
+    /// A terminal here, running a root shell.
+    ///
+    /// **The terminal is ours and the shell inside it is root's, not the other
+    /// way round.** "pkexec konsole" is the obvious spelling and it does not
+    /// work: pkexec unsets DISPLAY and XAUTHORITY, so the terminal has no
+    /// display to open on. Running pkexec INSIDE an ordinary terminal also
+    /// leaves the window itself unprivileged, which is the arrangement every
+    /// Linux desktop asks for.
+    /// </summary>
+    public void OpenElevatedTerminal(string directory, TerminalOption? terminal = null)
+    {
+        if (PkExec is not { } pkexec) return;
+
+        var shell = ShellFor(Environment.GetEnvironmentVariable("SHELL"));
+
+        foreach (var candidate in Candidates(terminal))
+        {
+            if (TrySpawnIn(directory, Elevated(pkexec, candidate, [shell]))) return;
+        }
+
+        // Said out loud, like the unelevated one: a terminal that never opens
+        // and never explains reads as the entry doing nothing at all.
+        Console.Error.WriteLine(
+            $"[vaktari] no terminal would start an elevated shell in {directory} — "
+            + $"tried {Terminals.Count} detected and xterm");
+    }
+
+    /// <summary>
+    /// The named terminal first, then the rest, then the one that needs no
+    /// detection.
+    ///
+    /// The same walk OpenTerminal does, and for the same reason: the list is
+    /// cached for the life of the process, so a preferred terminal that refuses
+    /// to start refuses every time, and asking it twice is how the unelevated
+    /// pair used to recurse until the stack ran out.
+    /// </summary>
+    private IEnumerable<TerminalOption> Candidates(TerminalOption? first)
+    {
+        if (first is not null) yield return first;
+
+        foreach (var other in Terminals)
+        {
+            if (first is not null && other.Id == first.Id) continue;
+
+            yield return other;
+        }
+
+        yield return LastResort;
+    }
+
+    private static readonly TerminalOption LastResort = new("xterm", "xterm", "xterm", []);
+
+    /// <summary>
+    /// The argv for running something with root rights, inside a terminal.
+    ///
+    /// Pure and separate for the same reason DesktopEntries.InTerminal is: the
+    /// run flag differs per terminal in ways that cannot be guessed, and the
+    /// shape is the whole of what can go wrong.
+    ///
+    /// **The terminal's working-directory ARGUMENTS are deliberately absent.**
+    /// The folder arrives as the directory the process is started in, which
+    /// every one of them honours, and concatenating the two lists produces
+    /// nonsense on at least one: WezTerm opens with ["start", "--cwd", dir] and
+    /// runs with ["start", "--"], so a joined argv says "start" twice.
+    /// </summary>
+    private static IReadOnlyList<string> Elevated(
+        string pkexec, TerminalOption? terminal, IReadOnlyList<string> command)
+        => terminal is null
+            ? [pkexec, .. command]
+            : [terminal.Command, .. terminal.RunArguments, pkexec, .. command];
+
+    /// <summary>
+    /// The shell an elevated terminal opens: the person's own where $SHELL says
+    /// so, and /bin/sh otherwise — the one path POSIX guarantees, where
+    /// /bin/bash is missing on Alpine and on a good many containers.
+    ///
+    /// Takes the value rather than reading it, because an environment variable
+    /// is process-global and a test that sets one has repointed it for every
+    /// other test in the assembly.
+    /// </summary>
+    internal static string ShellFor(string? shell)
+        => string.IsNullOrWhiteSpace(shell) ? "/bin/sh" : shell;
+
+    /// <summary>One candidate, the way it asks to be started.</summary>
+    private bool Spawn(string directory, TerminalOption terminal)
+    {
+        if (terminal.UsesWorkingDirectory) return TrySpawnIn(directory, [terminal.Command]);
 
         var args = terminal.Arguments
             .Select(a => a.Replace("{dir}", directory, StringComparison.Ordinal))
@@ -284,15 +503,34 @@ public sealed class LinuxLauncher : IApplicationLauncher
         return TrySpawn(terminal.Command, args);
     }
 
-    private static bool TrySpawnIn(string directory, string exe)
+    /// <summary>
+    /// Stands in for starting a process, recording the argv instead.
+    ///
+    /// **The elevated verbs are argv arithmetic and nothing else**, and argv is
+    /// the whole of what can be wrong about them: a flag in the wrong place
+    /// runs the wrong program, or the person's shell rather than root's. None
+    /// of that can be seen by calling the real thing — a passing spawn proves a
+    /// terminal opened, not what it was told to run — and the machine most of
+    /// this is written on has neither pkexec nor a terminal to test with.
+    /// </summary>
+    internal Func<string, IReadOnlyList<string>, bool>? SpawnOverride { get; set; }
+
+    /// <summary>The process started IN a folder rather than told about it.</summary>
+    private bool TrySpawnIn(string directory, IReadOnlyList<string> argv)
     {
+        if (argv.Count == 0) return false;
+
+        if (SpawnOverride is { } stand) return stand(directory, argv);
+
         try
         {
-            var info = new ProcessStartInfo(exe)
+            var info = new ProcessStartInfo(argv[0])
             {
                 UseShellExecute = false,
                 WorkingDirectory = directory,
             };
+
+            for (var i = 1; i < argv.Count; i++) info.ArgumentList.Add(argv[i]);
 
             using var process = Process.Start(info);
             return process is not null;

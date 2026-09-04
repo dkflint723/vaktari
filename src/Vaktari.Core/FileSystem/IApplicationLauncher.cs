@@ -99,11 +99,25 @@ public interface IApplicationLauncher
     /// Whether this desktop has a way to run something with administrator
     /// rights that a file manager should be using.
     ///
-    /// **False is the honest answer nearly everywhere.** Windows has a shell
-    /// verb for it and a consent dialog the system owns; the freedesktop world
-    /// has pkexec and sudo, which are a policy question rather than a menu
-    /// entry, and a file manager quietly deciding to elevate on a Linux desktop
-    /// is not a decision it should be making.
+    /// **This used to answer "false is the honest answer nearly everywhere",
+    /// and gave the reason: the freedesktop world has pkexec and sudo, which
+    /// are a policy question rather than a menu entry, and a file manager
+    /// quietly deciding to elevate on a Linux desktop is not a decision it
+    /// should be making.** The second half of that still holds and is why
+    /// nothing here elevates quietly. The first half was wrong about pkexec,
+    /// and the cost of being wrong was that Linux had neither of the two
+    /// entries Windows has.
+    ///
+    /// pkexec decides nothing. It hands the request to polkit, which puts up
+    /// the SYSTEM's own authentication dialog, refuses on its own rules, and
+    /// answers to the machine's policy rather than to us — which is the same
+    /// arrangement as the runas verb handing a request to Windows' consent
+    /// dialog. sudo really would have been a policy question, because sudoers
+    /// is one and there is no dialog; pkexec is not, and the two were being
+    /// treated as one thing.
+    ///
+    /// False where the machine has no pkexec, so the rows disappear rather than
+    /// being offered and failing.
     /// </summary>
     bool CanElevate => false;
 
@@ -115,6 +129,21 @@ public interface IApplicationLauncher
 
     /// <summary>Opens a terminal here, elevated.</summary>
     void OpenElevatedTerminal(string directory, TerminalOption? terminal = null) { }
+
+    /// <summary>
+    /// Whether starting THIS file elevated would do anything.
+    ///
+    /// **The question is the platform's, and it was being answered in the view
+    /// model** — by a list of Windows file extensions, which is the right
+    /// answer on Windows and no answer at all on a desktop where an executable
+    /// usually has no extension at all. Left there, "Run as administrator"
+    /// could never have appeared on Linux however loudly <see cref="CanElevate"/>
+    /// said yes.
+    ///
+    /// False by default, in step with <see cref="CanElevate"/>: a desktop with
+    /// no elevation route has no files it could elevate.
+    /// </summary>
+    bool CanElevateFile(string path) => false;
 
     /// <summary>
     /// The terminals installed on this machine, preferred first. Empty where
