@@ -350,6 +350,180 @@ public sealed class SearchBandTests : OwnedViewModels
             "SearchWalking",
             (string?)Band().Elements().First().Attribute(X + "Name"));
 
+    /// <summary>
+    /// **A walk stopped by its cap looked exactly like one that finished.** The
+    /// bar goes, the Stop goes, the listing settles — and until now the only
+    /// difference between an answer and a limit was invisible.
+    /// </summary>
+    [AvaloniaFact]
+    public async Task A_search_cut_off_by_the_cap_says_so()
+    {
+        var pane = Own(new PaneViewModel(new NoDisk()));
+
+        UseSearch(new Fake([Entry("one.txt"), Entry("two.txt"), Entry("three.txt")]));
+
+        await pane.NavigateAsync(VirtualPaths.Search("t", null, false));
+
+        Assert.False(pane.SearchHitLimit);
+        Assert.Equal(3, pane.Entries.Count);
+
+        // Keep looking in reverse: the cap belongs to the pane, so a small one
+        // can be tried without building ten thousand files.
+        pane.SearchLimit = 2;
+        await pane.RefreshAsync();
+
+        Assert.True(pane.SearchHitLimit);
+        Assert.Equal(2, pane.Entries.Count);
+        Assert.Equal("stopped after the first 2 matches — there are more", pane.SearchLimitLine);
+    }
+
+    /// <summary>
+    /// Keep looking keeps the question and raises the budget, rather than
+    /// leaving the message as a better-worded dead end.
+    /// </summary>
+    [AvaloniaFact]
+    public async Task Keep_looking_asks_the_same_question_with_a_bigger_budget()
+    {
+        var pane = Own(new PaneViewModel(new NoDisk()));
+
+        UseSearch(new Fake([.. Enumerable.Range(0, 4).Select(i => Entry($"f{i}.txt"))]));
+
+        await pane.NavigateAsync(VirtualPaths.Search("f", null, false));
+
+        pane.SearchLimit = 2;
+        await pane.RefreshAsync();
+
+        Assert.True(pane.SearchHitLimit);
+
+        await pane.SearchMoreCommand.ExecuteAsync(null);
+
+        Assert.Equal(2 + SearchListing.Limit, pane.SearchLimit);
+        Assert.False(pane.SearchHitLimit);
+        Assert.Equal(4, pane.Entries.Count);
+        Assert.Equal("f", pane.SearchQueryText);
+
+        // And the button is honest about what it costs: there is no cursor, so
+        // this is the same walk again rather than a continuation.
+        Assert.Contains("starts from the beginning", pane.SearchMoreHint);
+    }
+
+    /// <summary>
+    /// And it does nothing to an answer that was never cut off: a command is
+    /// reachable without its button, and re-reading every fixed drive to change
+    /// nothing is an expensive way to do nothing.
+    /// </summary>
+    [AvaloniaFact]
+    public async Task Keep_looking_does_not_re_walk_a_complete_answer()
+    {
+        var pane = Own(new PaneViewModel(new NoDisk()));
+        var backend = new Fake([Entry("one.txt")]);
+
+        UseSearch(backend);
+
+        await pane.NavigateAsync(VirtualPaths.Search("t", null, false));
+
+        Assert.False(pane.SearchHitLimit);
+
+        await pane.SearchMoreCommand.ExecuteAsync(null);
+
+        Assert.Equal(SearchListing.Limit, pane.SearchLimit);
+        Assert.Equal(1, backend.Asked);
+    }
+
+    /// <summary>
+    /// **A raised cap would have followed you into the next question.** Keep
+    /// looking belongs to the search that was cut off; carried into an
+    /// unrelated one it spends a bigger budget on a walk nobody asked to widen,
+    /// with nothing on screen saying why.
+    /// </summary>
+    [AvaloniaFact]
+    public async Task A_raised_cap_does_not_follow_you_to_the_next_search()
+    {
+        var pane = Own(new PaneViewModel(new NoDisk()));
+
+        UseSearch(new Fake([Entry("one.txt"), Entry("two.txt"), Entry("three.txt")]));
+
+        await pane.NavigateAsync(VirtualPaths.Search("t", null, false));
+
+        pane.SearchLimit = 2;
+        await pane.RefreshAsync();
+
+        await pane.SearchMoreCommand.ExecuteAsync(null);
+
+        Assert.Equal(2 + SearchListing.Limit, pane.SearchLimit);
+
+        await pane.NavigateAsync(VirtualPaths.Search("o", null, false));
+
+        Assert.Equal(SearchListing.Limit, pane.SearchLimit);
+    }
+
+    /// <summary>
+    /// **The last answer's "there are more" stood over the next one.** Stop
+    /// ends a listing without going through the completion that decides this,
+    /// so a hand-stopped search following one that was cut off went on claiming
+    /// a truncation belonging to a question that was no longer on screen.
+    /// </summary>
+    [AvaloniaFact]
+    public async Task A_stopped_search_does_not_inherit_the_last_truncation()
+    {
+        var pane = Own(new PaneViewModel(new NoDisk()));
+
+        UseSearch(new Fake([Entry("one.txt"), Entry("two.txt"), Entry("three.txt")]));
+
+        await pane.NavigateAsync(VirtualPaths.Search("t", null, false));
+
+        pane.SearchLimit = 2;
+        await pane.RefreshAsync();
+
+        Assert.True(pane.SearchHitLimit);
+
+        UseSearch(new Fake([Entry("only.txt")]) { PauseMs = 400 });
+
+        var going = pane.NavigateAsync(VirtualPaths.Search("only", null, false));
+
+        await WaitUntil(() => pane.IsLoading);
+
+        pane.StopSearchCommand.Execute(null);
+
+        await going;
+
+        Assert.False(
+            pane.SearchHitLimit, "the previous search's truncation was still on the band");
+    }
+
+    /// <summary>
+    /// And the band really draws it. Everything above is about the view model;
+    /// a sentence nothing binds to is the same silence with more code behind
+    /// it.
+    /// </summary>
+    [Fact]
+    public void The_cap_is_said_in_the_band_and_offers_a_way_on()
+    {
+        var band = Band();
+
+        var capped = Named(band, "SearchCapped");
+
+        Assert.Equal("{Binding SearchHitLimit}", (string?)capped.Attribute("IsVisible"));
+        Assert.Equal("Bottom", (string?)capped.Attribute("DockPanel.Dock"));
+
+        var line = capped.Descendants(Avalonia + "TextBlock").Single();
+
+        Assert.Equal("{Binding SearchLimitLine}", (string?)line.Attribute("Text"));
+
+        var more = Named(band, "SearchMore");
+
+        Assert.Equal("{Binding SearchMoreCommand}", (string?)more.Attribute("Command"));
+        Assert.Equal("{Binding SearchMoreHint}", (string?)more.Attribute("ToolTip.Tip"));
+
+        // The way on has to be readable and reachable. An unlabelled button is
+        // the dead end this whole band exists to avoid, and a tooltip is not an
+        // accessible name.
+        Assert.Equal("Keep looking", (string?)more.Attribute("Content"));
+
+        Assert.Equal("{Binding SearchMoreHint}",
+                     (string?)more.Attribute("AutomationProperties.Name"));
+    }
+
     private static XElement Band()
         => XDocument.Parse(RepoSource.Ui("MainWindow.axaml"))
             .Descendants(Avalonia + "DockPanel")

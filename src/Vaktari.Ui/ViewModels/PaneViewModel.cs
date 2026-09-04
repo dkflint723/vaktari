@@ -1413,6 +1413,61 @@ public sealed partial class PaneViewModel : ObservableObject, IDisposable
     }
 
     /// <summary>
+    /// How many matches this search may return before it gives up.
+    ///
+    /// Per pane rather than a constant, because <see cref="SearchMoreAsync"/>
+    /// raises it: the cap exists to stop an unindexed walk running for ever,
+    /// not to decide how many answers a person is allowed to have.
+    /// </summary>
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(SearchLimitLine))]
+    private int _searchLimit = SearchListing.Limit;
+
+    /// <summary>
+    /// **A search that ran out of budget looked exactly like one that ran out
+    /// of tree.** Both end with the bar gone, the Stop gone and the listing
+    /// settled; only one of them is an answer. This is the difference, and
+    /// nothing carried it before — the walk broke out of its loop and returned.
+    /// </summary>
+    [ObservableProperty] private bool _searchHitLimit;
+
+    /// <summary>What the band says when the walk was cut off.</summary>
+    public string SearchLimitLine =>
+        $"stopped after the first {SearchLimit:N0} matches — there are more";
+
+    /// <summary>
+    /// Honest about the cost. There is no cursor to resume from — the walk
+    /// keeps no state between runs — so this is the same walk again with a
+    /// bigger budget, not a continuation, and the hint says so rather than
+    /// letting "Keep looking" imply otherwise.
+    /// </summary>
+    public string SearchMoreHint =>
+        $"search again for another {SearchListing.Limit:N0} — the walk starts from the beginning";
+
+    /// <summary>
+    /// The way on from a truncated answer.
+    ///
+    /// **A message with no next step is a better-worded dead end.** The two
+    /// things a person could already do about a cut-off search — narrow the
+    /// words, tick "this folder only" — both throw away the answer in front of
+    /// them. This keeps the question and raises the cap.
+    ///
+    /// Guarded as well as hidden: the button is bound to
+    /// <see cref="SearchHitLimit"/>, but a command is reachable without its
+    /// button, and re-reading every fixed drive to change nothing is an
+    /// expensive way to do nothing.
+    /// </summary>
+    [RelayCommand]
+    private async Task SearchMoreAsync()
+    {
+        if (!SearchHitLimit) return;
+
+        SearchLimit += SearchListing.Limit;
+
+        await RefreshAsync();
+    }
+
+    /// <summary>
     /// Whether this pane is looking at a real folder rather than one of the
     /// virtual listings.
     ///
@@ -3284,7 +3339,18 @@ public sealed partial class PaneViewModel : ObservableObject, IDisposable
         // came up filtered by a word that has nothing to do with it — reading
         // as an empty folder. Explorer and Dolphin both drop the filter when
         // you leave. Cleared before the load so nothing renders through it.
-        if (!PathRules.Same(CurrentPath, path)) FilterText = "";
+        if (!PathRules.Same(CurrentPath, path))
+        {
+            FilterText = "";
+
+            // **And a raised cap would have followed you too.** Keep looking
+            // belongs to the question that was cut off; carried into the next
+            // one it would quietly make an unrelated search twice as expensive,
+            // and more with every press, with nothing on screen saying why.
+            // Same() rather than equality, so a refresh — which is what Keep
+            // looking performs — keeps the budget it just raised.
+            SearchLimit = SearchListing.Limit;
+        }
 
         CurrentPath = path;
         PathText = path;
@@ -3300,6 +3366,14 @@ public sealed partial class PaneViewModel : ObservableObject, IDisposable
         // locations, which is exactly what that check exists to prevent.
         IsLoaded = false;
         LoadError = "";
+
+        // Cleared with the rest of the previous answer, next to LoadError and
+        // for the same reason: a reload that finds fewer than the cap must not
+        // leave the last run's "there are more" standing over it. Stop is why
+        // this cannot wait for the completion block — it ends a listing
+        // without going through one.
+        SearchHitLimit = false;
+
         _all.Clear();
         Entries.Reset();
         NotifyNavigationState();
@@ -3312,11 +3386,19 @@ public sealed partial class PaneViewModel : ObservableObject, IDisposable
         // the same IAsyncEnumerable shape, so everything below — batching, the
         // generation guard, sorting, filtering, the status line — runs
         // unchanged and knows nothing about where the rows came from.
+        // Written from the pool by the listing below and read on the dispatcher
+        // when the load finishes; the await between them is what orders the
+        // two. A property the band binds to cannot be raised from the pool, so
+        // the notice lands in a local first.
+        var capped = false;
+
         var source =
             VirtualPaths.IsRecent(path) ? RecentListing.EnumerateAsync(Recents, path, ct)
             : path == VirtualPaths.Trash ? RecentListing.EnumerateTrashAsync(Trash, ct)
             : path == VirtualPaths.Computer ? ComputerListing.EnumerateAsync(Places, ct)
-            : VirtualPaths.IsSearch(path) ? SearchListing.EnumerateAsync(Search, path, options, ct)
+            : VirtualPaths.IsSearch(path)
+                ? SearchListing.EnumerateAsync(
+                    Search, path, options, ct, SearchLimit, () => capped = true)
             : _fs.EnumerateAsync(path, options, ct);
 
         var sw = Stopwatch.StartNew();
@@ -3401,6 +3483,11 @@ public sealed partial class PaneViewModel : ObservableObject, IDisposable
                 Status = "";
                 IsLoading = false;
                 IsLoaded = true;
+
+                // **This is the sentence the walk never said.** Set here rather
+                // than where the truncation was noticed: it is noticed on the
+                // pool, and the band binds to this.
+                SearchHitLimit = capped;
 
                 // AFTER the listing is on screen, never before it. Status can
                 // take seconds on a large repository and the folder must not

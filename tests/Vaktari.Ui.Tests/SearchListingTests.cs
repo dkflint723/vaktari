@@ -122,9 +122,64 @@ public sealed class SearchListingTests : OwnedViewModels
 
         await ReadAsync(backend, VirtualPaths.Search("e", null, false));
 
-        Assert.Equal(SearchListing.Limit, backend.Asked!.MaxResults);
+        // One MORE than the cap, deliberately. The extra row is never shown; it
+        // is the only way to tell "there are more" from "there are exactly this
+        // many", and without it a folder holding precisely ten thousand matches
+        // would be reported as cut short.
+        Assert.Equal(SearchListing.Limit + 1, backend.Asked!.MaxResults);
         Assert.True(SearchListing.Limit > new SearchQuery { Text = "x" }.MaxResults,
                     "the listing's cap must beat the record's popup-sized default");
+    }
+
+    /// <summary>
+    /// **The listing ended at the cap without a word.** The pane sees an
+    /// enumeration that finished; it cannot tell that from one that ran out.
+    /// </summary>
+    [Fact]
+    public async Task Reaching_the_cap_is_reported_rather_than_swallowed()
+    {
+        var backend = new Fake([.. Enumerable.Range(0, 5).Select(i => Entry($"f{i}.txt"))]);
+
+        var capped = false;
+        var rows = new List<FileEntry>();
+
+        await foreach (var batch in SearchListing.EnumerateAsync(
+            backend, VirtualPaths.Search("f", null, false), Visible, CancellationToken.None,
+            limit: 3, onCapped: () => capped = true))
+        {
+            rows.AddRange(batch);
+        }
+
+        Assert.True(capped, "the listing was cut short and said nothing");
+
+        // And the extra row the query asked for is not shown.
+        Assert.Equal(3, rows.Count);
+    }
+
+    /// <summary>
+    /// And exactly the cap is a complete answer, not a cut one.
+    ///
+    /// **Counting to the cap cannot tell the two apart.** A tree with precisely
+    /// ten thousand matches would have been reported as truncated, and "there
+    /// are more" that is sometimes false is worse than the silence it replaced.
+    /// </summary>
+    [Fact]
+    public async Task Exactly_the_cap_is_a_complete_answer()
+    {
+        var backend = new Fake([.. Enumerable.Range(0, 3).Select(i => Entry($"f{i}.txt"))]);
+
+        var capped = false;
+        var rows = new List<FileEntry>();
+
+        await foreach (var batch in SearchListing.EnumerateAsync(
+            backend, VirtualPaths.Search("f", null, false), Visible, CancellationToken.None,
+            limit: 3, onCapped: () => capped = true))
+        {
+            rows.AddRange(batch);
+        }
+
+        Assert.False(capped, "a complete answer the size of the cap was called cut short");
+        Assert.Equal(3, rows.Count);
     }
 
     /// <summary>

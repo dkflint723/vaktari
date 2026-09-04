@@ -1767,6 +1767,29 @@
                   <ProgressBar x:Name="SearchWalking" DockPanel.Dock="Bottom"
                                IsVisible="{Binding IsLoading}"
                                IsIndeterminate="True" Height="3" Margin="0,6,0,0"/>
+                  <!-- **The cap was reached in silence.** A walk that stopped
+                       at ten thousand looked exactly like one that had run out
+                       of tree: the bar went away, the Stop went away, and the
+                       listing settled on a number that was a limit rather than
+                       an answer. Its own row rather than an addition to the
+                       question above, which is already carrying the scope box
+                       and the Stop.
+
+                       Second, not first: the bar is docked first so it spans
+                       the band, and the two are never on screen together — one
+                       means still walking, the other means stopped. -->
+                  <DockPanel x:Name="SearchCapped" DockPanel.Dock="Bottom"
+                             IsVisible="{Binding SearchHitLimit}" Margin="0,6,0,0">
+                    <Button x:Name="SearchMore" DockPanel.Dock="Right"
+                            Command="{Binding SearchMoreCommand}"
+                            Content="Keep looking" Padding="10,3" MinWidth="0" Margin="8,0,0,0"
+                            FontSize="{DynamicResource FontSizeSmall}"
+                            AutomationProperties.Name="{Binding SearchMoreHint}"
+                            ToolTip.Tip="{Binding SearchMoreHint}"/>
+                    <TextBlock VerticalAlignment="Center" TextTrimming="CharacterEllipsis"
+                               Text="{Binding SearchLimitLine}"
+                               FontSize="{DynamicResource FontSizeSmall}"/>
+                  </DockPanel>
                   <Button x:Name="SearchStop" DockPanel.Dock="Right"
                           IsVisible="{Binding IsLoading}"
                           Command="{Binding StopSearchCommand}"

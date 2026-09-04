@@ -13,6 +13,15 @@ should not be trusted for compatibility yet.
 
 ### Added
 
+- **A search that stops at its limit says so, and can be told to keep going.**
+  The walk gives up after ten thousand matches so an unindexed search cannot run
+  for ever, and until now it gave up in silence — the progress bar and the Stop
+  disappeared exactly as they do when a search finishes, so a truncated answer
+  and a complete one looked the same. The band now says it stopped and how many
+  it stopped at, with *Keep looking* beside it, which asks the same question
+  again with a larger budget. Nothing resumes: the walk starts from the
+  beginning, and the button says so.
+
 - **Recent can take you to where a row actually lives.** Both Recent listings
   gather their rows from the whole machine, and both show the folder each came
   from in its own column for that reason — but the only entry they added to the
@@ -219,6 +228,15 @@ should not be trusted for compatibility yet.
   local and one on a share, and nothing said which was which.
 
 ### Changed
+
+- **A Windows search fills up from the top of the tree rather than the bottom.**
+  The walk was depth-first, so the ten thousand results it is allowed came out
+  of whichever branch it happened to enter first — a package cache nine levels
+  down would use the whole budget before anything in your home folder was
+  reached. Measured on a real machine, searching every fixed drive for "e"
+  returned not one row from the home folder. It now works outward level by
+  level, so the answer is a shallow slice of the whole machine rather than one
+  deep branch of it. It is still a slice, which is what *Keep looking* is for.
 
 - **Enter finishes a dialog, the way Escape leaves one.** Escape was given to
   all six windows and Enter to none of them: Settings, Batch rename and Share

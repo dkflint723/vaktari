@@ -37,11 +37,35 @@ public static class SearchListing
     private const int Batch = 32;
     private const int FlushMs = 200;
 
+    /// <summary>
+    /// Reads the backend into batches the pane can take.
+    ///
+    /// **A truncated answer was indistinguishable from a complete one.** The
+    /// walk stopped at <see cref="Limit"/> and simply ended — the bar went
+    /// away, the Stop went away, and the listing settled on a number that was a
+    /// limit rather than an answer. Raising the cap from 500 to 10,000 moved
+    /// the number the silence was kept at and nothing else.
+    ///
+    /// <paramref name="onCapped"/> is how it gets said, and it fires ONLY when
+    /// the backend really had more. That is what the extra row buys: the query
+    /// asks for one more than the caller wants, and the arrival of that row —
+    /// never shown, never counted as a result — is the proof. Asking for
+    /// exactly the limit cannot tell "there are more" from "there are exactly
+    /// this many", so a folder holding precisely ten thousand matches would
+    /// have been reported as cut short.
+    ///
+    /// The count is of what the BACKEND handed over, hidden rows included,
+    /// because the cap is applied there. That is also why the break is here
+    /// rather than left to the backend: Everything and Baloo are other people's
+    /// programs, and MaxResults is a request rather than a guarantee.
+    /// </summary>
     public static async IAsyncEnumerable<IReadOnlyList<FileEntry>> EnumerateAsync(
         ISearchProvider? search,
         string path,
         ListingOptions options,
-        [System.Runtime.CompilerServices.EnumeratorCancellation] CancellationToken ct)
+        [System.Runtime.CompilerServices.EnumeratorCancellation] CancellationToken ct,
+        int limit = Limit,
+        Action? onCapped = null)
     {
         // An absent backend is an EMPTY listing, not a crash. The pane's empty
         // state is what says which of the two it is.
@@ -55,10 +79,15 @@ public static class SearchListing
         {
             Text = text,
             ScopePath = VirtualPaths.ScopeOf(path),
-            MaxResults = Limit,
+            MaxResults = limit + 1,
         };
 
         var batch = new List<FileEntry>(Batch);
+
+        // What the backend has handed over, hidden rows and all. Not the same
+        // number as the rows shown, and deliberately so — see above.
+        var seen = 0;
+
         var since = System.Diagnostics.Stopwatch.StartNew();
 
         // **Every step of the backend BEGINS on the pool, and that is what the
@@ -84,6 +113,14 @@ public static class SearchListing
                          .ConfigureAwait(false))
         {
             var entry = results.Current;
+
+            // One past the limit is the proof that there was more. It is
+            // counted, reported and thrown away rather than shown.
+            if (++seen > limit)
+            {
+                onCapped?.Invoke();
+                break;
+            }
 
             // **The backends return hidden and system files, and the pane
             // expects them already gone.** Everywhere else that rule is the
