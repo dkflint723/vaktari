@@ -398,6 +398,12 @@ public sealed class LinuxPlacesProvider : IPlacesProvider, IDisposable
                 Kind = PlaceKind.RemovableDevice,
                 Icon = "device-drive",
                 IsAvailable = false,
+
+                // The one thing that makes the row actable. Everything else
+                // here says "not ready"; this says what to do about it, and it
+                // is what routes the click to MountAsync instead of to an
+                // empty path.
+                CanMount = true,
             });
         }
 

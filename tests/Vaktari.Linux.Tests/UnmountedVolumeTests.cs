@@ -113,6 +113,28 @@ public sealed class UnmountedVolumeTests
     }
 
     /// <summary>
+    /// The row says it can be mounted, which is the fact the click reads —
+    /// the empty Path deliberately says nothing, and that is what used to
+    /// stop it.
+    /// </summary>
+    [Fact]
+    public async Task An_unmounted_volume_offers_to_be_mounted()
+    {
+        var places = await Devices(Provider(
+            mounts: ["/dev/sda2 / ext4 rw 0 0"],
+            devices: ["/dev/sda2", "/dev/sdb1"]));
+
+        var stick = Assert.Single(places, p => p.Label == "STICK");
+        var root = Assert.Single(places, p => p.Path == "/");
+
+        Assert.True(stick.CanMount);
+
+        // And the flag is about this row rather than about devices: a mounted
+        // volume is not something to offer to mount.
+        Assert.False(root.CanMount);
+    }
+
+    /// <summary>
     /// Mounting something that is not one of these is ignored rather than
     /// shelling out — a pinned folder's id must never reach udisksctl.
     /// </summary>

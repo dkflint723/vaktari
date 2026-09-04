@@ -25,6 +25,25 @@ public sealed record Place
     public bool CanEject { get; init; }
 
     /// <summary>
+    /// Whether this row is a volume that is present but not mounted, so
+    /// clicking it should mount it rather than open it.
+    ///
+    /// **The provider listed volumes it could mount and nothing could act on
+    /// one.** MountAsync was written, tested and reachable from nowhere: the
+    /// sidebar row's command navigated to Place.Path, which for one of these is
+    /// deliberately empty because there is no folder to open yet — so the click
+    /// hit an empty-path guard and did nothing at all, and a stick plugged into
+    /// a desktop that does not automount could be seen and not opened.
+    ///
+    /// Set by the provider rather than inferred in the view from an empty Path,
+    /// for the same reason CanDisconnect is: what can be mounted is a fact
+    /// about the platform. Windows has no unmounted volumes to offer and its
+    /// MountAsync does nothing, so a view that guessed from the shape of a row
+    /// would send it ids it will only ignore.
+    /// </summary>
+    public bool CanMount { get; init; }
+
+    /// <summary>
     /// Whether this place can be disconnected — a mapped network drive.
     ///
     /// **A mapped drive could not be got rid of.** Its row offered Open, Open

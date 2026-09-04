@@ -2129,6 +2129,91 @@ public sealed partial class ShellViewModel : ObservableObject, IDisposable
     }
 
     /// <summary>
+    /// What clicking a place does, which is not always to go there.
+    ///
+    /// **A volume that was present but not mounted could not be opened at
+    /// all.** The Linux provider lists every filesystem it can see, mounted or
+    /// not, and gives an unmounted one an empty Path on purpose — there is no
+    /// folder to open until somebody mounts it. The row's command was
+    /// GoToPlace with that Path as its parameter, so the click hit
+    /// `if (!string.IsNullOrEmpty(path))` and stopped, while MountAsync sat
+    /// implemented on both providers, covered by tests, and called from nowhere
+    /// in this application.
+    ///
+    /// Concurrent executions are allowed deliberately. Every row in the sidebar
+    /// binds to this one command object, and an async RelayCommand refuses a
+    /// second execution while the first is running — so a mount that takes a
+    /// second or two would grey out every other place on the way past. That
+    /// trap is already written up on PropertiesViewModel.MeasureAsync, where it
+    /// disabled the button that stops the measurement.
+    /// </summary>
+    [RelayCommand(AllowConcurrentExecutions = true)]
+    private async Task OpenPlaceAsync(PlaceItemViewModel? place)
+    {
+        if (place is null) return;
+
+        // Captured before the first await, the way the eject beside this does:
+        // a mount takes seconds, a tab can be switched inside them, and the
+        // answer must land where it was asked for.
+        if (ActiveTab is not { } pane) return;
+
+        // The ordinary row, unchanged in effect: NavigateAsync makes the
+        // empty-path check itself, which is the only thing GoToPlace's guard
+        // was doing here.
+        if (!place.CanMount)
+        {
+            await pane.NavigateAsync(place.Path).ConfigureAwait(true);
+            return;
+        }
+
+        // One mount at a time per volume. The row is a Button, so a
+        // double-click sends this command twice, and the second attempt would
+        // report its own refusal over the first one's success.
+        if (!_mounting.Add(place.Id)) return;
+
+        pane.Status = $"mounting {place.Label}…";
+
+        try
+        {
+            var outcome = await Sidebar.MountAsync(place.Id).ConfigureAwait(true);
+
+            // Where it landed is asked first, because the two answers can
+            // disagree: a volume can be mounted and listed at its new path
+            // while the row that offered to mount it is still on screen.
+            if (outcome.OpenedAt is { } path)
+            {
+                await pane.NavigateAsync(path).ConfigureAwait(true);
+                return;
+            }
+
+            // It mounted and the sidebar cannot say where, or it did not mount
+            // at all. Either way the click says something — which is the whole
+            // of what it did not do before.
+            pane.Status = outcome.Mounted
+                ? $"mounted {place.Label}"
+                : $"could not mount {place.Label}";
+        }
+        catch (Exception ex)
+        {
+            pane.Status = Core.FileSystem.Failures.Describe(ex, $"mount {place.Label}");
+        }
+        finally
+        {
+            _mounting.Remove(place.Id);
+        }
+    }
+
+    /// <summary>
+    /// The volumes with a mount in flight, by place id.
+    ///
+    /// Ids rather than rows, and on the shell rather than on the row: a rebuild
+    /// throws every row object away and builds new ones, and a mount spans at
+    /// least one of them — the mount is what changes the mount table the
+    /// device watcher is polling.
+    /// </summary>
+    private readonly HashSet<string> _mounting = new(StringComparer.Ordinal);
+
+    /// <summary>
     /// **Ctrl+D in the bin pinned "vaktari:trash".** The gesture asks for the
     /// folder you are in, and in a listing that is a view rather than a folder
     /// there is none — so the place that landed in the sidebar was the internal

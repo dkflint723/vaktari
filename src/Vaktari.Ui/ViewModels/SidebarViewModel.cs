@@ -565,6 +565,76 @@ public sealed partial class SidebarViewModel : ObservableObject
         }
     }
 
+    /// <summary>
+    /// Mounts a volume that is listed but not mounted, and works out what
+    /// happened by looking at the sidebar afterwards.
+    ///
+    /// **Both providers implemented MountAsync and nothing ever called it.**
+    /// Linux lists every filesystem it can see whether or not it is mounted,
+    /// and gives an unmounted one an empty Path on purpose; the row's command
+    /// navigated to that Path, so the click stopped at the empty-path guard and
+    /// the volume could only be reached by mounting it in another application.
+    ///
+    /// The rebuild is what turns the mount into an answer. MountAsync returns
+    /// nothing and the Linux provider swallows what udisksctl said — on
+    /// purpose, a desktop without udisks2 is a real configuration — so the only
+    /// honest signals are the two the rebuilt list carries: the row that
+    /// offered to be mounted is gone, and a mount point that was not there
+    /// before is.
+    /// </summary>
+    public async Task<MountOutcome> MountAsync(string id)
+    {
+        if (_places is not { } places) return default;
+
+        // Taken before the mount, on the UI thread, where the rows live.
+        var before = Groups
+            .SelectMany(g => g.Places)
+            .Select(p => p.Path)
+            .Where(p => p.Length > 0)
+            .ToHashSet(StringComparer.Ordinal);
+
+        // Off the UI thread, like the eject and the import above it: the
+        // prologue of a mount is the fork and exec of a mount helper, which
+        // runs on the calling thread, and the interface promises nothing about
+        // how long any of the rest of it takes. (The pin, unpin, rename and
+        // reorder calls in this file do NOT do this — they write a small JSON
+        // file and return.)
+        try
+        {
+            await Task.Run(() => places.MountAsync(id, CancellationToken.None).AsTask())
+                      .ConfigureAwait(true);
+        }
+        catch (Exception ex)
+        {
+            // The rebuild below decides whether it worked, so a provider that
+            // threw is just a provider that mounted nothing.
+            Quiet.Swallowed("mount", ex);
+        }
+
+        // Explicitly, rather than waiting on PlacesChanged. The Linux provider
+        // does raise it and the Windows one has nothing to raise it for, and
+        // either way the caller has to be able to say what happened the moment
+        // this returns. The provider's own event posts a reload of its own,
+        // which the gate above folds into this one when it lands inside it and
+        // which is a harmless second rebuild when it lands after.
+        await ReloadAsync().ConfigureAwait(true);
+
+        var rows = Groups.SelectMany(g => g.Places).ToList();
+
+        var arrived = rows
+            .Where(p => p.IsAvailable && p.Path.Length > 0 && !before.Contains(p.Path))
+            .Select(p => p.Path)
+            .ToList();
+
+        return new MountOutcome(
+            Mounted: !rows.Any(p => p.Id == id),
+
+            // Exactly one, or none. A card reader with two slots arrives as
+            // several rows at once, and opening whichever of them sorted first
+            // would be a guess dressed up as an answer.
+            OpenedAt: arrived.Count == 1 ? arrived[0] : null);
+    }
+
     public Task PinAsync(string path)
         => _places?.PinAsync(path, null, CancellationToken.None).AsTask() ?? Task.CompletedTask;
 
@@ -599,6 +669,21 @@ public sealed partial class SidebarViewModel : ObservableObject
         await ReloadAsync().ConfigureAwait(false);
     }
 }
+
+/// <summary>
+/// What a mount attempt came to.
+///
+/// Two answers rather than one, because "it did not mount" and "it mounted and
+/// the sidebar cannot say where it landed" are different things to tell
+/// somebody — and a single nullable path would have to report the second one as
+/// a failure, which is the kind of message this whole finding was about.
+/// </summary>
+/// <param name="Mounted">True when the volume is no longer listed as one
+/// waiting to be mounted.</param>
+/// <param name="OpenedAt">Where it landed, when exactly one new place appeared
+/// while it was being mounted. Null when none did, and null when several
+/// did.</param>
+public readonly record struct MountOutcome(bool Mounted, string? OpenedAt);
 
 public sealed partial class PlaceGroupViewModel(PlaceGroup group, SidebarViewModel? sidebar = null)
     : ObservableObject
@@ -757,6 +842,19 @@ public sealed partial class PlaceItemViewModel(Place place) : ObservableObject
     /// nothing and said nothing.
     /// </summary>
     public bool CanEject { get; } = place.CanEject;
+
+    /// <summary>
+    /// Whether clicking this row should mount the volume rather than open it.
+    ///
+    /// Carried on the row rather than reached through to the Place, because
+    /// compiled bindings are on: a binding to a property this type does not
+    /// have is a build error rather than the silent nothing an interpreted one
+    /// would be. The same reason CanDisconnect is here.
+    ///
+    /// Not to be confused with PaneViewModel.CanMountSelection, which is about
+    /// a disk image file in a listing. This one is about a partition.
+    /// </summary>
+    public bool CanMount { get; } = place.CanMount;
 
     /// <summary>
     /// Whether this row is a mapped network drive, which can be given back.

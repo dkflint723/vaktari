@@ -13,6 +13,15 @@ should not be trusted for compatibility yet.
 
 ### Added
 
+- **A volume that is there but not mounted can be mounted by clicking it.** The
+  sidebar has listed them for a while — a partition nobody automounts, a stick
+  just plugged into a desktop that leaves that to you — dimmed, with no folder
+  behind them because there is not one yet. Clicking did nothing whatsoever:
+  the row navigated to the folder it did not have. It mounts now, and opens
+  where the volume landed; if two arrive at once it says it mounted rather than
+  guessing which one you meant, and if it could not mount it says that instead
+  of failing silently.
+
 - **A search that stops at its limit says so, and can be told to keep going.**
   The walk gives up after ten thousand matches so an unindexed search cannot run
   for ever, and until now it gave up in silence — the progress bar and the Stop

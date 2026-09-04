@@ -3070,8 +3070,18 @@
                                  or a drive is how a lot of filing gets done,
                                  and the sidebar accepting nothing meant the
                                  drag simply died over it. -->
-                            <Button ContextRequested="OnPlaceContextRequested" Command="{Binding $parent[Window].((vm:ShellViewModel)DataContext).GoToPlaceCommand}"
-                                    CommandParameter="{Binding Path}"
+                            <!-- **Opens the place, which is not always the same
+                                 as going to it.** This was GoToPlaceCommand
+                                 with the Path as its parameter, and a volume
+                                 that is listed but not mounted has no path by
+                                 design — so clicking one ran into the
+                                 empty-path guard and did nothing, with
+                                 MountAsync implemented and unreachable behind
+                                 it. The whole row goes to the command now,
+                                 because choosing between opening and mounting
+                                 needs more than the path. -->
+                            <Button ContextRequested="OnPlaceContextRequested" Command="{Binding $parent[Window].((vm:ShellViewModel)DataContext).OpenPlaceCommand}"
+                                    CommandParameter="{Binding}"
                                     AutomationProperties.Name="{Binding Label}"
                                     ToolTip.Tip="{Binding Path}"
                                     ToolTip.ShowDelay="900"
