@@ -3568,19 +3568,6 @@ public sealed partial class PaneViewModel : ObservableObject, IDisposable
 
 
 
-    private void RemoveByPathSilently(string path)
-    {
-        var masterIndex = _all.FindIndex(e => e.FullPath == path);
-        if (masterIndex >= 0) _all.RemoveAt(masterIndex);
-
-        for (var i = 0; i < Entries.Count; i++)
-        {
-            if (Entries[i].FullPath != path) continue;
-            Entries.RemoveAt(i);
-            break;
-        }
-    }
-
     /// <summary>
     /// Whether a row survives the filter.
     ///
@@ -3657,7 +3644,7 @@ public sealed partial class PaneViewModel : ObservableObject, IDisposable
     /// behind one selection model, so the binding that sets SelectedEntry fills
     /// DetailsSelection with it — but this view model is written to be driven
     /// without one, and the places that set the focused row on its own
-    /// (RemoveByPath after a delete, a restored session, a test) would hand a
+    /// (ApplyBatch after a delete, a restored session, a test) would hand a
     /// rebuild nothing to keep. Belt and braces: the collection is still the
     /// answer whenever it has one.
     /// </summary>
@@ -3771,7 +3758,16 @@ public sealed partial class PaneViewModel : ObservableObject, IDisposable
     /// <summary>Raised when headers change, so realized rows re-read them.</summary>
     public event EventHandler? GroupingChanged;
 
-    private void RecomputeGroups(List<FileEntry> ordered)
+    /// <summary>
+    /// Takes a read-only list rather than a <c>List</c>, so the live watcher
+    /// can hand it <c>Entries</c> itself.
+    ///
+    /// **It could only be given a List, so the watcher copied one per event.**
+    /// `RecomputeGroups(Entries.ToList())` ran on both halves of every change —
+    /// a 100k-element array allocated and thrown away for one file arriving.
+    /// This only ever reads the order it is given.
+    /// </summary>
+    private void RecomputeGroups(IReadOnlyList<FileEntry> ordered)
     {
         _groupHeaders.Clear();
 

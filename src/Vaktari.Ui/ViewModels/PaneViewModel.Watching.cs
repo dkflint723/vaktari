@@ -71,8 +71,7 @@ public sealed partial class PaneViewModel
         try
         {
             var generation = _generation;
-            _watcher = _fs.Watch(path, change =>
-                Dispatcher.UIThread.Post(() => ApplyChange(path, generation, change)));
+            _watcher = _fs.Watch(path, change => Queue(path, generation, change));
         }
         catch
         {
@@ -80,17 +79,40 @@ public sealed partial class PaneViewModel
         }
     }
 
-    private void ApplyChange(string watchedPath, int generation, FileSystemChange change)
+    /// <summary>
+    /// Takes one event, on whatever thread the watcher raised it on, and folds
+    /// it into the burst that <see cref="Drain"/> will apply.
+    ///
+    /// **This used to post a dispatcher job per event, and each job was a whole
+    /// pass over the folder.** A removal ran FindIndex down `_all` and then
+    /// walked `Entries` for the same path; an arrival did both again before
+    /// inserting; and each ended by copying the entire visible list and
+    /// relabelling every group heading from the copy. One file is nothing. An
+    /// extraction, a build or a large download is thousands of files in a
+    /// second, and thousands of full passes over a 100k-row listing is a window
+    /// that has stopped answering.
+    ///
+    /// Only the FIRST event of a burst posts anything. Everything after it
+    /// joins the sets, so the pass sees the whole burst — and it still runs in
+    /// the very first dispatcher job the burst produces, which is where the
+    /// per-event version ran and what a deletion's follow-up refresh has to
+    /// stay behind.
+    /// </summary>
+    private void Queue(string watchedPath, int generation, FileSystemChange change)
     {
-        // Events can arrive after the user has navigated away, or mid-load.
-        if (IsLoading || generation != _generation || CurrentPath != watchedPath) return;
-
         // **Not per-file news, and handled before the child test** — the path
         // on these IS the watched folder, so the check below would discard
-        // both.
+        // both. Posted rather than answered here: reloading is UI-thread work,
+        // and this may not be the UI thread.
         if (change.Kind is ChangeKind.Lost or ChangeKind.Gone)
         {
-            LostTrack(change.Kind);
+            Dispatcher.UIThread.Post(() =>
+            {
+                if (IsLoading || generation != _generation || CurrentPath != watchedPath) return;
+
+                LostTrack(change.Kind);
+            });
+
             return;
         }
 
@@ -101,30 +123,50 @@ public sealed partial class PaneViewModel
         // line that silently discarded every event when they did not, and the
         // watcher is the one place where being wrong is invisible rather than
         // loud. Same is what the rest of the application compares paths with.
+        //
+        // Answered here rather than on the UI thread because it is pure path
+        // arithmetic: an event about something nested now costs nothing at all
+        // instead of a dispatcher job that exists only to be dropped.
         if (!Vaktari.Core.FileSystem.PathRules.Same(
                 Path.GetDirectoryName(change.Path), watchedPath)) return;
 
-        switch (change.Kind)
+        bool first;
+
+        lock (_pendingGate)
         {
-            case ChangeKind.Removed:
-                RemoveByPath(change.Path);
-                break;
+            // **The queue belongs to one listing.** Whatever is left over from
+            // the folder we were in is not news about the one we are in now,
+            // and the pass reads the generation from here rather than from a
+            // closure so that it always judges the batch it is holding.
+            if (_pendingGeneration != generation)
+            {
+                _pendingGone.Clear();
+                _pendingHere.Clear();
+                _pendingGeneration = generation;
+                _pendingPath = watchedPath;
+            }
 
-            case ChangeKind.Renamed:
-                if (change.OldPath is { } old) RemoveByPath(old);
-                _ = AddOrUpdateAsync(change.Path, generation);
-                break;
+            switch (change.Kind)
+            {
+                case ChangeKind.Removed:
+                    Departing(change.Path);
+                    break;
 
-            default:
-                _ = AddOrUpdateAsync(change.Path, generation);
-                break;
+                case ChangeKind.Renamed:
+                    if (change.OldPath is { } old) Departing(old);
+                    Arriving(change.Path);
+                    break;
+
+                default:
+                    Arriving(change.Path);
+                    break;
+            }
+
+            first = !_applyQueued;
+            _applyQueued = true;
         }
 
-        // The row's size and timestamp are updated above, but its version
-        // control mark is not — that comes from a subprocess, and re-running it
-        // per event would be the per-row `git status` this design exists to
-        // avoid. Queue it instead.
-        QueueVcsRefresh();
+        if (first) Dispatcher.UIThread.Post(Drain);
     }
 
     private DispatcherTimer? _vcsRefresh;
@@ -242,16 +284,206 @@ public sealed partial class PaneViewModel
         Detached(LoadAsync(CurrentPath), "reload");
     }
 
-    private void RemoveByPath(string path)
-    {
-        var masterIndex = _all.FindIndex(e => e.FullPath == path);
-        if (masterIndex >= 0) _all.RemoveAt(masterIndex);
+    /// <summary>The row to select once a deletion has finished arriving.</summary>
+    private string? _selectAfterRemoval;
 
-        for (var i = 0; i < Entries.Count; i++)
+    // ---- one pass per burst, not one pass per file --------------------------
+
+    /// <summary>
+    /// What the watcher has said that the listing has not caught up with yet:
+    /// paths reported gone, and paths reported there and still to be described.
+    ///
+    /// Sets rather than a list, so ten writes to one file in one second cost
+    /// one stat and one insertion rather than ten of each. Ordinal, which is
+    /// what the per-path scans these replace compared paths with.
+    ///
+    /// Two of them rather than one map, because the two words are not
+    /// alternatives: a path reported gone AND then reported back stays in both,
+    /// so the old row goes even if the description of the new one fails.
+    ///
+    /// Written on the watcher's thread and emptied on the UI thread, so every
+    /// touch of all four fields below is under <see cref="_pendingGate"/>.
+    /// </summary>
+    private readonly HashSet<string> _pendingGone = new(StringComparer.Ordinal);
+
+    /// <inheritdoc cref="_pendingGone"/>
+    private readonly HashSet<string> _pendingHere = new(StringComparer.Ordinal);
+
+    /// <summary>The listing the queued events belong to. -1 is no listing:
+    /// generations start at one.</summary>
+    private int _pendingGeneration = -1;
+
+    /// <summary>The folder they were reported for.</summary>
+    private string _pendingPath = "";
+
+    private bool _applyQueued;
+
+    private readonly Lock _pendingGate = new();
+
+    private void Arriving(string path) => _pendingHere.Add(path);
+
+    private void Departing(string path)
+    {
+        // A path that went after it arrived has not arrived. The reverse is not
+        // symmetric — see the field — so only this side clears the other.
+        _pendingHere.Remove(path);
+        _pendingGone.Add(path);
+    }
+
+    /// <summary>
+    /// Takes the whole burst off the queue and gets it applied, once.
+    ///
+    /// The very first dispatcher job the burst produces, which is what the
+    /// per-event version was too. That matters beyond speed: a finished
+    /// deletion posts a refresh of its own from the pool, and a pass that let
+    /// itself be overtaken by it would find the listing reloaded underneath and
+    /// throw the batch away — taking with it the row Delete had promised the
+    /// keyboard.
+    /// </summary>
+    private void Drain()
+    {
+        HashSet<string> departures;
+        List<string> arriving;
+        int generation;
+        string watchedPath;
+
+        lock (_pendingGate)
         {
-            if (Entries[i].FullPath != path) continue;
-            Entries.RemoveAt(i);
-            break;
+            // Cleared before the work rather than after it, so an event that
+            // arrives while this batch is being applied posts a pass of its own
+            // instead of being swallowed by this one.
+            _applyQueued = false;
+
+            if (_pendingGone.Count == 0 && _pendingHere.Count == 0) return;
+
+            departures = new HashSet<string>(_pendingGone, StringComparer.Ordinal);
+            arriving = [.. _pendingHere];
+            generation = _pendingGeneration;
+            watchedPath = _pendingPath;
+
+            _pendingGone.Clear();
+            _pendingHere.Clear();
+        }
+
+        // Events can arrive after the user has navigated away, or mid-load.
+        if (IsLoading || generation != _generation || CurrentPath != watchedPath) return;
+
+        // The rows' sizes and timestamps are updated below, but their version
+        // control marks are not — those come from a subprocess, and re-running
+        // it per burst would be the per-row `git status` this design exists to
+        // avoid. Queue it instead.
+        QueueVcsRefresh();
+
+        // Nothing to describe, and this is already the UI thread: a burst of
+        // deletions is applied here rather than paying a task and a trip back
+        // through the dispatcher to say so.
+        if (arriving.Count == 0)
+        {
+            ApplyBatch([], departures, generation);
+            return;
+        }
+
+        _ = StatAndApplyAsync(arriving, departures, generation);
+    }
+
+    /// <summary>
+    /// Describes everything that arrived — off the UI thread, because a stat is
+    /// a syscall and there may be thousands of them — and then hands the whole
+    /// batch over in one go.
+    /// </summary>
+    private async Task StatAndApplyAsync(
+        List<string> arriving, HashSet<string> departures, int generation)
+    {
+        var arrivals = new List<FileEntry>(arriving.Count);
+
+        foreach (var path in arriving)
+        {
+            FileEntry? entry;
+
+            try
+            {
+                entry = await _fs.GetEntryAsync(path, CancellationToken.None).ConfigureAwait(false);
+            }
+            catch (Exception ex)
+            {
+                // **This runs on every filesystem event, and it is fire-and-forget.**
+                // A file created and deleted between the notification and the stat is
+                // ordinary — a build writing temporaries does it constantly — but
+                // without this the throw became an unobserved task exception rather
+                // than a shrug.
+                Vaktari.Core.Quiet.Swallowed("watch", ex);
+                continue;
+            }
+
+            if (entry is not { } value) continue;
+
+            // **Asked of the entry, not of its name.** This was `name.StartsWith('.')`
+            // — the freedesktop rule — while what governs the listing is the
+            // provider's own: Windows excludes by the Hidden and System attributes
+            // and treats a leading dot as an ordinary visible file. The two
+            // disagreed in both directions on Windows, and the listing lost either
+            // way.
+            //
+            // A dotfile another program wrote — `.editorconfig` from an extraction,
+            // `.env` from a terminal — never appeared until F5, and a rename INTO a
+            // dotted name removed the row outright, because the removal lands and
+            // the re-add was dropped. In the other direction Word's hidden
+            // `~$Report.docx` was let in, into a listing defined to exclude it,
+            // where it also skewed the item count and survived every filter and
+            // re-sort because it had been inserted into _all as well.
+            //
+            // Hidden OR System, because that is exactly what the Windows
+            // enumeration excludes; the flags carry them separately. Asking the
+            // entry means there is one rule again rather than two that agree only
+            // on Linux.
+            if (!ShowHidden && (value.IsHidden || (value.Flags & EntryFlags.System) != 0)) continue;
+
+            // Here rather than when the queue was drained, and only for a row
+            // that is actually going in. The stale row for this path has to go
+            // or the insertion below doubles it — but a file that vanished
+            // before the stat, or one this listing excludes, must leave the row
+            // it already has alone, which is what dropping out above rather
+            // than here means.
+            departures.Add(path);
+
+            arrivals.Add(value);
+        }
+
+        await Dispatcher.UIThread.InvokeAsync(
+            () => ApplyBatch(arrivals, departures, generation));
+    }
+
+    /// <summary>
+    /// The whole burst, applied to the two lists in one pass each.
+    ///
+    /// **This is the pass that used to run once per file.** A hash lookup per
+    /// row rather than a list scan per path is what makes a thousand deletions
+    /// cost one walk of the listing instead of a thousand.
+    /// </summary>
+    private void ApplyBatch(List<FileEntry> arrivals, HashSet<string> departures, int generation)
+    {
+        // Re-checked here as well as in the drain: describing the arrivals goes
+        // through an await, and a listing may have started while it did.
+        // Inserting into that one would duplicate what the enumeration is about
+        // to produce.
+        if (IsLoading || generation != _generation) return;
+
+        if (departures.Count > 0)
+        {
+            _all.RemoveAll(e => departures.Contains(e.FullPath));
+
+            // Backwards, so removing a row cannot slide one we have not looked
+            // at yet past the cursor.
+            for (var i = Entries.Count - 1; i >= 0; i--)
+                if (departures.Contains(Entries[i].FullPath)) Entries.RemoveAt(i);
+        }
+
+        foreach (var value in arrivals)
+        {
+            _all.Insert(FindSortedIndex(_all, value), value);
+
+            if (MatchesFilter(value))
+                Entries.Insert(FindSortedIndex(Entries, value), value);
         }
 
         // **The bands go stale otherwise.** Headers are computed once per
@@ -259,13 +491,22 @@ public sealed partial class PaneViewModel
         // of a band took its heading with it, and a file arriving at the top of
         // one got none. Any download into a grouped folder left the headings
         // wrong until a manual refresh.
-        RecomputeGroups(Entries.ToList());
+        //
+        // Once for the whole burst, and against the listing itself rather than
+        // a copy of it: both halves of every single event used to hand this a
+        // freshly copied list, which allocated a 100k-element array and
+        // relabelled every row in the folder for each one file that moved.
+        RecomputeGroups(Entries);
 
         // **Where the keyboard goes once the row it was on has gone.** Chosen
-        // before the delete, applied here, when the row it names is finally on
-        // screen without the ones that went — so Delete, Delete, Delete walks
-        // down a list the way it does in both references.
-        if (_selectAfterRemoval is { } wanted
+        // before the delete, applied here, when the rows it names are finally
+        // on screen without the ones that went — so Delete, Delete, Delete
+        // walks down a list the way it does in both references.
+        //
+        // Only when something actually left: a file arriving while a deletion
+        // is still in flight must not consume the row the deletion picked.
+        if (departures.Count > 0
+            && _selectAfterRemoval is { } wanted
             && Entries.FirstOrDefault(e => e.FullPath == wanted) is { FullPath: not null } row)
         {
             _selectAfterRemoval = null;
@@ -279,76 +520,5 @@ public sealed partial class PaneViewModel
         }
 
         SettleSoon();
-    }
-
-    /// <summary>The row to select once a deletion has finished arriving.</summary>
-    private string? _selectAfterRemoval;
-
-    private async Task AddOrUpdateAsync(string path, int generation)
-    {
-        FileEntry? entry;
-
-        try
-        {
-            entry = await _fs.GetEntryAsync(path, CancellationToken.None).ConfigureAwait(false);
-        }
-        catch (Exception ex)
-        {
-            // **This runs on every filesystem event, and it is fire-and-forget.**
-            // A file created and deleted between the notification and the stat is
-            // ordinary — a build writing temporaries does it constantly — but
-            // without this the throw became an unobserved task exception rather
-            // than a shrug.
-            Vaktari.Core.Quiet.Swallowed("watch", ex);
-            return;
-        }
-
-        if (entry is not { } value) return;
-
-        // **Asked of the entry, not of its name.** This was `name.StartsWith('.')`
-        // — the freedesktop rule — while what governs the listing is the
-        // provider's own: Windows excludes by the Hidden and System attributes
-        // and treats a leading dot as an ordinary visible file. The two
-        // disagreed in both directions on Windows, and the listing lost either
-        // way.
-        //
-        // A dotfile another program wrote — `.editorconfig` from an extraction,
-        // `.env` from a terminal — never appeared until F5, and a rename INTO a
-        // dotted name removed the row outright, because the removal lands and
-        // the re-add was dropped. In the other direction Word's hidden
-        // `~$Report.docx` was let in, into a listing defined to exclude it,
-        // where it also skewed the item count and survived every filter and
-        // re-sort because it had been inserted into _all as well.
-        //
-        // Hidden OR System, because that is exactly what the Windows
-        // enumeration excludes; the flags carry them separately. Asking the
-        // entry means there is one rule again rather than two that agree only
-        // on Linux.
-        if (!ShowHidden && (value.IsHidden || (value.Flags & EntryFlags.System) != 0)) return;
-
-        await Dispatcher.UIThread.InvokeAsync(() =>
-        {
-            // Re-checked after the await: a listing may have started while we
-            // were off fetching the entry, and inserting into it would duplicate
-            // whatever the enumeration is about to produce.
-            if (IsLoading || generation != _generation) return;
-
-            RemoveByPathSilently(path);
-
-            var masterAt = FindSortedIndex(_all, value);
-            _all.Insert(masterAt, value);
-
-            if (MatchesFilter(value))
-            {
-                var visibleAt = FindSortedIndex(Entries, value);
-                Entries.Insert(visibleAt, value);
-            }
-
-            // Same reason as the removal above: a row arriving at the top of a
-            // band is precisely when a heading has to appear.
-            RecomputeGroups(Entries.ToList());
-
-            SettleSoon();
-        });
     }
 }

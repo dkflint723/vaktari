@@ -87,6 +87,17 @@ public sealed class PaneStateTests : OwnedViewModels
 
         pane.TrashSelectedCommand.Execute(null);
 
+        // **Drained before the change is raised**, for the reason spelled out
+        // on the test below: the operation finishes on the pool and posts a
+        // refresh of its own, and which side of the watcher event that lands on
+        // is a coin toss. This one used to win the toss by accident, because
+        // the removal happened inside the same dispatcher job as the event.
+        for (var i = 0; i < 50; i++)
+        {
+            Avalonia.Threading.Dispatcher.UIThread.RunJobs();
+            await Task.Yield();
+        }
+
         // The row goes, the way the watcher delivers it.
         fs.Raise(new FileSystemChange(ChangeKind.Removed, second.FullPath!));
         Avalonia.Threading.Dispatcher.UIThread.RunJobs();
@@ -123,6 +134,44 @@ public sealed class PaneStateTests : OwnedViewModels
         Avalonia.Threading.Dispatcher.UIThread.RunJobs();
 
         Assert.Equal("a.txt", pane.SelectedEntry?.Name);
+    }
+
+    /// <summary>
+    /// Several rows at once, which is what Delete on a multi-selection is.
+    ///
+    /// **The rows arrive back as one burst rather than one at a time**, and the
+    /// row the keyboard was promised is only on screen without the ones that
+    /// went at the END of it. Choosing halfway through would land the selection
+    /// on a row that is itself about to go.
+    /// </summary>
+    [AvaloniaFact]
+    public async Task Deleting_several_rows_lands_the_selection_after_the_last_of_them()
+    {
+        var (pane, fs) = await Pane("a.txt", "b.txt", "c.txt", "d.txt");
+
+        foreach (var name in new[] { "b.txt", "c.txt" })
+            pane.DetailsSelection.Add(pane.DetailsEntries.First(e => e.Name == name));
+
+        pane.SelectedEntry = pane.DetailsEntries.First(e => e.Name == "b.txt");
+
+        pane.TrashSelectedCommand.Execute(null);
+
+        for (var i = 0; i < 50; i++)
+        {
+            Avalonia.Threading.Dispatcher.UIThread.RunJobs();
+            await Task.Yield();
+        }
+
+        // One burst, the way a two-file delete actually reports itself.
+        fs.Raise(new FileSystemChange(ChangeKind.Removed,
+                                      Path.Combine(pane.CurrentPath, "b.txt")));
+        fs.Raise(new FileSystemChange(ChangeKind.Removed,
+                                      Path.Combine(pane.CurrentPath, "c.txt")));
+
+        Avalonia.Threading.Dispatcher.UIThread.RunJobs();
+
+        Assert.Equal(["a.txt", "d.txt"], pane.DetailsEntries.Select(e => e.Name).ToList());
+        Assert.Equal("d.txt", pane.SelectedEntry?.Name);
     }
 
     /// <summary>Accepts every operation and does nothing: the filesystem side

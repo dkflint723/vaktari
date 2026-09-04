@@ -248,6 +248,15 @@ should not be trusted for compatibility yet.
 
 ### Changed
 
+- **A folder that changes in bursts is redrawn once, not once per file.** Every
+  watcher event walked the whole listing twice and rebuilt the heading map from
+  a fresh copy of it — so a build writing ten thousand files into a folder you
+  happened to be looking at did ten thousand passes over a hundred thousand
+  rows, and the window went to treacle. A burst is now collected as it arrives
+  and applied in one pass: one walk for what left, one sorted insertion each for
+  what arrived, and one heading rebuild against the listing itself rather than a
+  copy of it.
+
 - **A Windows search fills up from the top of the tree rather than the bottom.**
   The walk was depth-first, so the ten thousand results it is allowed came out
   of whichever branch it happened to enter first — a package cache nine levels
