@@ -1,4 +1,3 @@
-using System.Collections.Concurrent;
 using System.Runtime.InteropServices;
 using System.Runtime.InteropServices.Marshalling;
 using System.Runtime.Versioning;
@@ -18,7 +17,8 @@ namespace Vaktari.Windows;
 /// menu handle, and then read that handle back.
 ///
 /// **Everything happens on one dedicated STA thread, which the menu owns for its
-/// whole life.** Three separate reasons, any one of which is enough:
+/// whole life** — a <see cref="StaWorker"/>. Three separate reasons, any one of
+/// which is enough:
 ///
 /// - The shell requires STA. AssocHandlers measured this on the neighbouring
 ///   interface: the identical call fails from an MTA thread and succeeds from an
@@ -29,23 +29,34 @@ namespace Vaktari.Windows;
 /// - **A shell extension can hang, and it must not take the window with it.**
 ///   This runs other people's code. Doing it on the UI thread would mean one
 ///   badly-written handler freezing the file manager, with us getting the blame;
-///   Explorer's own occasional stalls are this exact hazard. Here the wait is
-///   bounded, and a handler that never returns strands a background thread
-///   instead of the application.
+///   Explorer's own occasional stalls are this exact hazard. A handler that
+///   never returns strands a background thread instead of the application.
+///
+/// **Nobody waits for the shell, so the shell is never given up on.** This used
+/// to block its caller for four seconds and then answer as if the shell had
+/// offered nothing — the same answer a slow machine and an empty menu both
+/// produced, with no way to tell them apart. Reported from GitHub Actions
+/// windows-latest, run 33816866932: ShellContextMenuTests.
+/// No_rule_is_left_drawing_against_nothing failed on Assert.NotNull, the only
+/// failure in the run, while its siblings asking the same question in the same
+/// process passed. The shell answers on that agent; it does not always answer
+/// inside four seconds under load.
+///
+/// Measured here, which is the half this file can vouch for: put a deadline of
+/// a millisecond back on the build — the old shape, a thousandth of the old
+/// length — and nine of this repository's real-shell tests go red, which is
+/// what a caller that gave up looks like from the outside. A four-second one
+/// reddens only <see cref="ForAsync"/>'s own pin,
+/// ShellContextMenuTests.A_build_that_outruns_the_old_deadline_is_still_the_answer,
+/// because nothing else here can afford to be slower than four seconds.
+///
+/// Building is asynchronous end to end now: <see cref="ForAsync"/> returns a
+/// task, the apartment thread completes it whenever the last handler is done,
+/// and the menu on screen says it is still reading until then.
 /// </summary>
 [SupportedOSPlatform("windows")]
 internal sealed partial class ShellContextMenu : IShellMenu
 {
-    /// <summary>
-    /// How long the shell gets to produce a menu before we give up on it.
-    ///
-    /// Generous, because it is not a performance budget — it is the line between
-    /// "slow machine, cold handler DLLs" and "this extension is never coming
-    /// back". A first right-click after boot genuinely can take a moment while
-    /// a dozen handlers are paged in.
-    /// </summary>
-    private static readonly TimeSpan BuildTimeout = TimeSpan.FromSeconds(4);
-
     /// <summary>
     /// The command id range handed to QueryContextMenu. Starts at 1 because 0
     /// is what a menu returns for "nothing was chosen", so an entry with id 0
@@ -54,89 +65,105 @@ internal sealed partial class ShellContextMenu : IShellMenu
     private const uint FirstId = 1;
     private const uint LastId = 0x7FFF;
 
-    private readonly BlockingCollection<Action> _work = new();
-    private readonly Thread _thread;
+    private readonly StaWorker _worker = new("vaktari-shell-menu");
 
+    /// <summary>The one job that reads the shell, in flight from the moment
+    /// this exists.</summary>
+    private readonly Task<IReadOnlyList<ShellMenuEntry>> _built;
+
+    /// <summary>
+    /// The native handles. Written and read only on the apartment thread that
+    /// made them, so they never cross one.
+    /// </summary>
     private IntPtr _menu;
     private IntPtr _contextMenu;
 
+    /// <summary>
+    /// Whether the native handles have been given back: false while a built
+    /// menu is live, true once the apartment thread has run the release
+    /// <see cref="Dispose"/> queues.
+    ///
+    /// **A seam, because otherwise that release has no killing mutation.**
+    /// Both handles are private and never leave the apartment thread, so
+    /// nothing outside could tell whether DestroyMenu and Marshal.Release ever
+    /// ran: before this existed, deleting `_worker.Post(Release);` from Dispose
+    /// left every test in this project green while leaking the menu handle and
+    /// the COM reference on every right-click. Read across threads, hence the
+    /// volatile reads: the test asking is not the apartment thread answering.
+    /// </summary>
+    internal bool HandlesReleased =>
+        Volatile.Read(ref _menu) == IntPtr.Zero
+        && Volatile.Read(ref _contextMenu) == IntPtr.Zero;
+
+    /// <summary>
+    /// The entries, which are the one thing here that does cross a thread — and
+    /// they cross as <see cref="_built"/>'s result, assigned once in
+    /// <see cref="ForAsync"/> before this object is handed to anybody.
+    ///
+    /// **They used to be assigned from the worker thread and read by a caller
+    /// whose four-second wait had just expired**, which is a read with no
+    /// happens-before edge to the write at all: the timed-out path took the
+    /// event's Set out of the picture, and what the caller saw was whatever the
+    /// memory model felt like showing it.
+    /// </summary>
     public IReadOnlyList<ShellMenuEntry> Entries { get; private set; } = [];
 
-    private ShellContextMenu(IReadOnlyList<string> paths)
-    {
-        var built = new ManualResetEventSlim();
-
-        _thread = new Thread(() =>
-        {
-            try
-            {
-                Entries = BuildOnThisThread(paths);
-            }
-            catch (Exception ex)
-            {
-                // A third party's code ran. Nothing it does is worth taking the
-                // process down for, and an empty menu is a survivable answer.
-                Quiet.Swallowed("shell-menu", ex);
-                Entries = [];
-            }
-            finally
-            {
-                built.Set();
-            }
-
-            // Held open for Invoke: the objects behind these ids belong to this
-            // apartment and die with the thread.
-            foreach (var job in _work.GetConsumingEnumerable())
-            {
-                try { job(); }
-                catch (Exception ex) { Quiet.Swallowed("shell-menu", ex); }
-            }
-
-            Release();
-        })
-        {
-            IsBackground = true,
-            Name = "vaktari-shell-menu",
-        };
-
-        _thread.SetApartmentState(ApartmentState.STA);
-        _thread.Start();
-
-        // **Bounded.** A handler that never returns leaves this thread stuck
-        // for the life of the process, which is a leak; leaving the UI stuck
-        // would be a hang, and those are not the same size of problem.
-        if (!built.Wait(BuildTimeout))
-        {
-            Console.Error.WriteLine(
-                "[vaktari] shell-menu: the shell did not answer in "
-                + $"{BuildTimeout.TotalSeconds:0}s — an extension is hanging");
-        }
-    }
+    private ShellContextMenu(
+        IReadOnlyList<string> paths,
+        Func<IReadOnlyList<string>, IReadOnlyList<ShellMenuEntry>>? build)
+        => _built = _worker.RunAsync(() => (build ?? BuildOnThisThread)(paths));
 
     /// <summary>
     /// The menu for these paths, or null when the shell offers nothing.
     ///
-    /// Never throws: it is called while a context menu is opening, and no
+    /// **Returns before the shell has answered.** Reading the menu gives every
+    /// handler on the machine a turn and there is no honest bound on how long
+    /// that takes, so the task completes when the last one is done — and until
+    /// then no thread is held anywhere, which is what makes having no deadline
+    /// affordable.
+    ///
+    /// Never faults: it is awaited while a context menu is opening, and no
     /// third-party handler's opinion is worth failing that.
     /// </summary>
-    public static ShellContextMenu? For(IReadOnlyList<string> paths)
+    /// <param name="paths">What the menu is for.</param>
+    /// <param name="build">
+    /// What reads the shell, for tests only; null is the real shell.
+    ///
+    /// **This parameter is how the fix guards its own site.** The line below
+    /// used to carry a four-second deadline, and a deadline can be put back
+    /// there in one character-for-character edit — measured leaving all 392
+    /// tests in this project green, because the shell on a developer's machine
+    /// answers in about a tenth of a second and no test can be slower than the
+    /// deadline it is trying to notice. A build this test holds open IS a slow
+    /// machine, on demand.
+    /// </param>
+    public static async Task<ShellContextMenu?> ForAsync(
+        IReadOnlyList<string> paths,
+        Func<IReadOnlyList<string>, IReadOnlyList<ShellMenuEntry>>? build = null)
     {
         if (paths.Count == 0) return null;
 
+        ShellContextMenu? menu = null;
+
         try
         {
-            var menu = new ShellContextMenu(paths);
+            menu = new ShellContextMenu(paths, build);
+
+            // The one place the entries cross threads, and they cross as a task
+            // result rather than as a field somebody hopes was written by now.
+            menu.Entries = await menu._built.ConfigureAwait(false);
 
             if (menu.Entries.Count > 0) return menu;
-
-            menu.Dispose();
-            return null;
         }
         catch (Exception ex)
         {
+            // A third party's code ran. Nothing it does is worth taking the
+            // process down for, and an empty menu is a survivable answer.
             Quiet.Swallowed("shell-menu", ex);
-            return null;
         }
+
+        menu?.Dispose();
+        return null;
     }
 
     private IReadOnlyList<ShellMenuEntry> BuildOnThisThread(IReadOnlyList<string> paths)
@@ -413,7 +440,9 @@ internal sealed partial class ShellContextMenu : IShellMenu
     {
         if (id < 0) return;
 
-        _work.Add(() =>
+        // Refused rather than thrown when the menu has already been released:
+        // the click and the close are a race the user can genuinely run.
+        _worker.Post(() =>
         {
             if (Wrap<IContextMenu>(_contextMenu) is not { } contextMenu) return;
 
@@ -450,14 +479,26 @@ internal sealed partial class ShellContextMenu : IShellMenu
 
     /// <summary>
     /// Ends the thread, which releases the COM objects on the apartment that
-    /// created them. Not joined: a handler that hung during the build owns that
-    /// thread forever, and waiting on it here would move the hang into whoever
-    /// closed the menu.
+    /// created them.
+    ///
+    /// Release is queued rather than called: these handles belong to the
+    /// apartment thread, so freeing them from whichever thread closed the menu
+    /// would be freeing them from the wrong apartment. It runs last, behind any
+    /// invoke already queued, and never at all if the build hung — which is the
+    /// leak the type comment already concedes.
+    ///
+    /// **Queuing it is the whole of the release**, so dropping the post leaks
+    /// the menu handle and the COM reference with nothing to show for it — and
+    /// nothing outside this type can see two private IntPtrs. That is what
+    /// <see cref="HandlesReleased"/> is for, and what
+    /// ShellContextMenuTests.Closing_the_menu_gives_the_native_handles_back
+    /// watches. The post can only be refused after the worker has been closed,
+    /// which is a second Dispose, so Release still runs exactly once.
     /// </summary>
     public void Dispose()
     {
-        try { _work.CompleteAdding(); }
-        catch (ObjectDisposedException) { }
+        _worker.Post(Release);
+        _worker.Dispose();
     }
 
     // ---- interop ----------------------------------------------------------

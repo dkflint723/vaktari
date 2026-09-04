@@ -13,5 +13,6 @@ namespace Vaktari.Windows;
 [SupportedOSPlatform("windows")]
 public sealed class WindowsShellMenuProvider : IShellMenuProvider
 {
-    public IShellMenu? Build(IReadOnlyList<string> paths) => ShellContextMenu.For(paths);
+    public async Task<IShellMenu?> BuildAsync(IReadOnlyList<string> paths)
+        => await ShellContextMenu.ForAsync(paths).ConfigureAwait(false);
 }

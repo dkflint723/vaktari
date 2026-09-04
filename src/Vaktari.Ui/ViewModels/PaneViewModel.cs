@@ -280,6 +280,20 @@ public sealed partial class PaneViewModel : ObservableObject, IDisposable
     /// as long as it took, which is the exact failure this feature is shaped to
     /// avoid. The entries arrive when they arrive and the menu fills in.
     ///
+    /// **And nothing waits on it anywhere**, which is what lets the build run
+    /// for as long as the machine needs. The provider hands back a task rather
+    /// than a menu, so no thread is blocked while a handler thinks and nothing
+    /// has to decide when to stop believing it — the placeholder stays on
+    /// screen and says the shell is being read. It used to be given four
+    /// seconds and then answered as though the shell had offered nothing.
+    ///
+    /// Not quite every thread, and the difference is worth being honest about:
+    /// an async method body runs on its caller up to the first incomplete
+    /// await, so the apartment thread this hands off to is now CONSTRUCTED and
+    /// started here, on the UI thread, where the deleted Task.Run used to put
+    /// that on the pool. It is a Thread constructor and a Start; no handler
+    /// code runs on this thread at any point.
+    ///
     /// Lazily for a second reason: no ordinary right-click should pay for
     /// something that lives behind one more hover.
     /// </summary>
@@ -310,7 +324,7 @@ public sealed partial class PaneViewModel : ObservableObject, IDisposable
 
         var generation = _shellGeneration;
 
-        var menu = await Task.Run(() => provider.Build(paths)).ConfigureAwait(false);
+        var menu = await provider.BuildAsync(paths).ConfigureAwait(false);
 
         await Dispatcher.UIThread.InvokeAsync(() =>
         {
@@ -326,17 +340,59 @@ public sealed partial class PaneViewModel : ObservableObject, IDisposable
             }
 
             _shellMenu = menu;
-            ShellMenuItems.Clear();
 
-            foreach (var item in Flatten(menu?.Entries ?? [])) ShellMenuItems.Add(item);
+            var rows = Flatten(menu?.Entries ?? []).ToList();
 
             // Never empty: an empty ItemsSource closes the submenu out from
             // under the pointer, and "nothing" reads as a fault rather than as
             // an answer.
-            if (ShellMenuItems.Count == 0)
-                ShellMenuItems.Add(new Vaktari.Core.FileSystem.ShellMenuEntry(
+            //
+            // **This row now means the shell answered, and answered nothing.**
+            // It used to mean that as well as "the shell was still thinking
+            // when a four-second timer went off", so a slow machine was told
+            // there was nothing here. They are separate rows now: until these
+            // rows go up, what is on screen is the placeholder CloseShellMenu
+            // left, which says the shell is being read.
+            if (rows.Count == 0)
+                rows.Add(new Vaktari.Core.FileSystem.ShellMenuEntry(
                     "Nothing offered here", -1, IsEnabled: false));
+
+            ShowShellRows(rows);
         });
+    }
+
+    /// <summary>
+    /// Puts these rows on screen without the collection ever being empty on the
+    /// way there.
+    ///
+    /// **A clear followed by adds is not a replacement — it is an emptying and
+    /// then a replacement, and the gap between the two is a state that readers
+    /// land in.** Both callers used to do exactly that, three lines under a
+    /// comment promising "never empty", and both were measured doing it: with
+    /// the clear-then-fill version,
+    /// ShellMenuBindingTests.The_rows_are_never_empty_while_they_are_replaced
+    /// records a notification raised with Count 0 on every close and on every
+    /// rebuild. That gap is what the intermittent
+    /// "Assert.Contains … Collection: []" in
+    /// Nothing_offered_is_said_only_after_the_shell_has_answered was reading;
+    /// the same gap is what Avalonia's own reader — the ItemsControl the
+    /// submenu is drawn from, which handles the Reset synchronously — sees
+    /// when it closes the submenu out from under the pointer.
+    ///
+    /// New rows in first, old rows out afterwards, so the count never touches
+    /// zero. A menu's worth of rows is twenty or thirty at the outside, so the
+    /// extra notifications cost nothing worth weighing against that.
+    ///
+    /// **Never called with nothing to show**, and there is no branch here for
+    /// it: the close passes the placeholder, and the rebuild passes the
+    /// "Nothing offered here" row when the shell gave it none. An empty list
+    /// here would empty the collection, which is the thing being prevented.
+    /// </summary>
+    private void ShowShellRows(IReadOnlyList<object> rows)
+    {
+        foreach (var row in rows) ShellMenuItems.Add(row);
+
+        while (ShellMenuItems.Count > rows.Count) ShellMenuItems.RemoveAt(0);
     }
 
     private static IEnumerable<object> Flatten(
@@ -364,8 +420,7 @@ public sealed partial class PaneViewModel : ObservableObject, IDisposable
     {
         _shellGeneration++;
 
-        ShellMenuItems.Clear();
-        ShellMenuItems.Add(Waiting());
+        ShowShellRows([Waiting()]);
 
         _shellMenu?.Dispose();
         _shellMenu = null;

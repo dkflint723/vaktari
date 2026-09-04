@@ -33,18 +33,36 @@ public sealed class ShellMenuBindingTests : OwnedViewModels
         public void Dispose() => Disposed = true;
     }
 
+    /// <summary>
+    /// A shell that answers when told to, because the interesting case is the
+    /// one where it has not answered yet.
+    ///
+    /// **The real thing has no time limit**, so this must be able to model a
+    /// build that is still running: with <see cref="Slow"/> set, the task it
+    /// hands back stays pending until <see cref="Answer"/> is called, which is
+    /// what a cold machine paging in handler DLLs looks like from here.
+    /// </summary>
     private sealed class FakeProvider : IShellMenuProvider
     {
+        private TaskCompletionSource<IShellMenu?>? _pending;
+
         public FakeShellMenu? Last { get; private set; }
         public int Builds { get; private set; }
         public IReadOnlyList<string> AskedFor { get; private set; } = [];
 
-        public IShellMenu? Build(IReadOnlyList<string> paths)
+        /// <summary>Whether the build stays in flight until told otherwise.</summary>
+        public bool Slow { get; set; }
+
+        /// <summary>What a finished build hands back; null is the shell saying
+        /// it has nothing for these paths.</summary>
+        public bool OffersNothing { get; set; }
+
+        public Task<IShellMenu?> BuildAsync(IReadOnlyList<string> paths)
         {
             Builds++;
             AskedFor = paths;
 
-            return Last = new FakeShellMenu(
+            Last = new FakeShellMenu(
             [
                 new ShellMenuEntry("Open", 1),
                 new ShellMenuEntry("", 0, IsSeparator: true),
@@ -54,7 +72,19 @@ public sealed class ShellMenuBindingTests : OwnedViewModels
                 ]),
                 new ShellMenuEntry("Scan", 4, IsEnabled: false),
             ]);
+
+            if (!Slow) return Task.FromResult(Answered());
+
+            _pending = new TaskCompletionSource<IShellMenu?>(
+                TaskCreationOptions.RunContinuationsAsynchronously);
+
+            return _pending.Task;
         }
+
+        /// <summary>Lets a slow build finish.</summary>
+        public void Answer() => _pending!.SetResult(Answered());
+
+        private IShellMenu? Answered() => OffersNothing ? null : Last;
     }
 
     private sealed class InertFileSystem : IFileSystemProvider
@@ -86,10 +116,21 @@ public sealed class ShellMenuBindingTests : OwnedViewModels
 
     public ShellMenuBindingTests() => PaneViewModel.ShellMenu = _provider;
 
-    public override void Dispose() => PaneViewModel.ShellMenu = null;
+    /// <summary>
+    /// **Chained, because a pane that is never disposed keeps a watcher and two
+    /// dispatcher timers running past the end of the test.** OwnedViewModels
+    /// says what that costs and why the victim is always some later test; this
+    /// class used to take the base class and then override its whole teardown
+    /// away, which is the one way to get none of it.
+    /// </summary>
+    public override void Dispose()
+    {
+        PaneViewModel.ShellMenu = null;
+        base.Dispose();
+    }
 
     private PaneViewModel Pane() =>
-        new(new InertFileSystem()) { CurrentPath = Path.GetTempPath() };
+        Own(new PaneViewModel(new InertFileSystem()) { CurrentPath = Path.GetTempPath() });
 
     [AvaloniaFact]
     public async Task Opening_it_fills_the_menu()
@@ -99,6 +140,150 @@ public sealed class ShellMenuBindingTests : OwnedViewModels
         await pane.OpenShellMenuAsync();
 
         Assert.NotEmpty(pane.ShellMenuItems);
+    }
+
+    /// <summary>
+    /// **A shell that has not answered yet is not a shell that offered
+    /// nothing**, and the menu must not say the second while the first is true.
+    ///
+    /// This is the fault. Building used to be given four seconds and then
+    /// answered as though the shell had nothing — reported from GitHub Actions,
+    /// where the answer arrived after longer than that under load and the menu
+    /// came back empty about one run in twenty. A cold machine got the same
+    /// treatment, with no way to tell it from an empty menu.
+    ///
+    /// **Deliberately not awaited at the top.** What has to hold is that the
+    /// call returns while the shell is still thinking — nothing is blocked, and
+    /// the row on screen says so — which awaiting first would hide.
+    ///
+    /// The quarter-second is the wait itself. No test can outlast an arbitrary
+    /// deadline, so what is pinned is that there is none: a deadline shorter
+    /// than the hold turns these assertions red, and one of a millisecond was
+    /// measured doing exactly that.
+    /// </summary>
+    [AvaloniaFact]
+    public async Task A_shell_still_reading_is_not_a_shell_that_offered_nothing()
+    {
+        var pane = Pane();
+        _provider.Slow = true;
+
+        var opening = pane.OpenShellMenuAsync();
+
+        await Task.Delay(TimeSpan.FromMilliseconds(250));
+
+        Assert.False(opening.IsCompleted, "the shell was given up on while it read");
+        Assert.DoesNotContain(pane.ShellMenuItems,
+            i => i is ShellMenuEntry { Label: "Nothing offered here" });
+        Assert.Contains(pane.ShellMenuItems,
+            i => i is ShellMenuEntry { Label: "Reading the shell…" });
+
+        // However long that took, the answer is still wanted when it comes.
+        _provider.Answer();
+        await opening;
+
+        Assert.Contains(pane.ShellMenuItems, i => i is ShellMenuEntry { Label: "7-Zip" });
+    }
+
+    /// <summary>
+    /// The other half of the pair: once the shell has actually answered, and
+    /// answered nothing, the menu says so rather than leaving the row that
+    /// claims it is still reading.
+    ///
+    /// **A GUARD for the deadline, not a pin.** The old code said "Nothing
+    /// offered here" when the shell answered nothing too, so this cannot go red
+    /// for the fault it sits next to — measured: with the deadline back on the
+    /// build, this passed and only
+    /// <see cref="A_shell_still_reading_is_not_a_shell_that_offered_nothing"/>
+    /// failed. What it does hold up is that the two rows stay distinct.
+    /// </summary>
+    [AvaloniaFact]
+    public async Task Nothing_offered_is_said_only_after_the_shell_has_answered()
+    {
+        var pane = Pane();
+        _provider.Slow = true;
+        _provider.OffersNothing = true;
+
+        var opening = pane.OpenShellMenuAsync();
+        _provider.Answer();
+        await opening;
+
+        Assert.Contains(pane.ShellMenuItems,
+            i => i is ShellMenuEntry { Label: "Nothing offered here" });
+        Assert.DoesNotContain(pane.ShellMenuItems,
+            i => i is ShellMenuEntry { Label: "Reading the shell…" });
+    }
+
+    /// <summary>
+    /// **The rows are never empty, not even for the instant between two
+    /// statements** — which is not what "never empty" used to mean here.
+    ///
+    /// Both places that replace the rows used to clear the collection and then
+    /// refill it, three lines under a comment saying an empty ItemsSource
+    /// closes the submenu out from under the pointer. The end state was never
+    /// empty; the collection was, once per close and once per rebuild, and that
+    /// gap is a state readers land in. Avalonia's ItemsControl is one — it
+    /// handles the Reset synchronously, which is the submenu closing itself out
+    /// from under the pointer, the exact failure the placeholder exists to
+    /// prevent. The test above was the other: reported failing on two
+    /// whole-assembly runs out of sixteen with "Assert.Contains() Failure …
+    /// Collection: []", which is that gap read from outside, on a collection
+    /// whose end state was one row.
+    ///
+    /// **Deterministic here, where that was one run in eight.** The subscriber
+    /// below lands in the gap by construction rather than by luck. Measured:
+    /// restoring the clear-then-fill puts three Reset notifications carrying a
+    /// count of zero into the list below, one for the close and two for the
+    /// rebuild.
+    /// </summary>
+    [AvaloniaFact]
+    public async Task The_rows_are_never_empty_while_they_are_replaced()
+    {
+        var pane = Pane();
+        await pane.OpenShellMenuAsync();
+
+        var emptied = new List<string>();
+
+        ((System.Collections.Specialized.INotifyCollectionChanged)pane.ShellMenuItems)
+            .CollectionChanged += (_, e) =>
+            {
+                if (pane.ShellMenuItems.Count == 0) emptied.Add(e.Action.ToString());
+            };
+
+        // The close, which is one of the two.
+        pane.CloseShellMenu();
+
+        // And the rebuild, which is the other.
+        pane.CurrentPath = Path.Combine(Path.GetTempPath(), "elsewhere");
+        await pane.OpenShellMenuAsync();
+
+        Assert.Empty(emptied);
+        Assert.Contains(pane.ShellMenuItems, i => i is ShellMenuEntry { Label: "7-Zip" });
+    }
+
+    /// <summary>
+    /// The same, for the row that says the shell had nothing: it replaces the
+    /// placeholder without the collection passing through empty either.
+    /// </summary>
+    [AvaloniaFact]
+    public async Task An_empty_answer_replaces_the_placeholder_without_a_gap()
+    {
+        var pane = Pane();
+
+        var emptied = new List<string>();
+
+        ((System.Collections.Specialized.INotifyCollectionChanged)pane.ShellMenuItems)
+            .CollectionChanged += (_, e) =>
+            {
+                if (pane.ShellMenuItems.Count == 0) emptied.Add(e.Action.ToString());
+            };
+
+        _provider.OffersNothing = true;
+
+        await pane.OpenShellMenuAsync();
+
+        Assert.Empty(emptied);
+        Assert.Contains(pane.ShellMenuItems,
+            i => i is ShellMenuEntry { Label: "Nothing offered here" });
     }
 
     /// <summary>

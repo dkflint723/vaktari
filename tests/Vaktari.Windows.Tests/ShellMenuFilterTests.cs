@@ -21,14 +21,14 @@ public sealed class ShellMenuFilterTests
     /// they are safe in the app — Vaktari's own menu is English-only today.
     /// </summary>
     [Fact]
-    public void The_hosted_menu_for_a_real_file_lists_no_native_twins()
+    public async Task The_hosted_menu_for_a_real_file_lists_no_native_twins()
     {
         var file = Path.Combine(Path.GetTempPath(), "vaktari-menu-filter-check.txt");
         File.WriteAllText(file, "probe");
 
         try
         {
-            using var menu = ShellContextMenu.For([file]);
+            using var menu = await ShellContextMenu.ForAsync([file]);
 
             // The shell always has SOMETHING for a .txt — an empty answer means
             // the plumbing failed, and an empty menu trivially "contains no

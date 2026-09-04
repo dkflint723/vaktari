@@ -66,9 +66,24 @@ public interface IShellMenuProvider
     /// <summary>
     /// The menu for these paths, or null if there is none to give.
     ///
-    /// **Never throws.** It runs a third party's code — every shell extension
-    /// on the machine gets a turn — and a context menu is not worth failing to
-    /// open because one of them is unhappy.
+    /// **Asynchronous because building has no honest time limit.** Every shell
+    /// extension on the machine gets a turn, and how long that takes is a fact
+    /// about the machine rather than about this code: a first right-click after
+    /// boot pages in a dozen handler DLLs. A synchronous seam would force
+    /// whoever called it to either block a thread for that whole time or pick a
+    /// deadline and call a slow answer no answer — which is exactly what used
+    /// to happen. Returning a task means the wait costs nothing, so it need not
+    /// be cut short.
+    ///
+    /// **The provider owns the wait, deliberately, and no caller may take it
+    /// back.** A bound belongs at a call site that has somewhere to put a
+    /// partial answer — a headless export or a scripted invoke could wrap this
+    /// in its own WaitAsync and report "the shell did not answer" — never here,
+    /// where the only thing on the other end is a menu the user is looking at
+    /// and the only alternative to waiting is lying.
+    ///
+    /// **Never faults.** It runs a third party's code, and a context menu is
+    /// not worth failing to open because one of them is unhappy.
     /// </summary>
-    IShellMenu? Build(IReadOnlyList<string> paths);
+    Task<IShellMenu?> BuildAsync(IReadOnlyList<string> paths);
 }

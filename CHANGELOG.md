@@ -609,6 +609,29 @@ should not be trusted for compatibility yet.
 
 ### Fixed
 
+- **A slow machine gets the Windows menu it waited for, instead of being told
+  there is nothing there.** Reading the desktop's own menu runs every shell
+  extension installed, and a cold machine — first right-click after boot, a
+  dozen handler DLLs still to be paged in — can take a while over it. Vaktari
+  gave the shell four seconds and then answered as though it had offered
+  nothing, which is the same answer you get for a folder the shell really has
+  nothing for: *Windows menu* opened onto "Nothing offered here" and stayed
+  that way until the selection changed. There is no clock on it now. The entry
+  says it is reading while it reads, fills in when the last handler is done
+  however long that takes, and says "Nothing offered here" only once the shell
+  has actually answered that. Nothing waits on it in the meantime, so the
+  window is no more blocked than it was before.
+
+- **The *Windows menu* is never momentarily empty while its rows are being
+  replaced.** Filling it in cleared the list and then added the new rows, so
+  for the instant between the two the menu held nothing — the one state this
+  list is not allowed to be in, because a menu whose items have all gone away
+  closes itself and shows no arrow to open it again. Avoiding exactly that is
+  why the entry carries a "Reading the shell…" row in the first place. The new
+  rows go in ahead of the old ones now and the old ones come out behind them,
+  so the count never touches zero and there is never a moment with nothing to
+  show.
+
 - **A name too long for its column keeps its extension.** The rows cut a name
   at the end, and the end is where the extension is — so
   "quarterly-forecast-final-revision.xlsx" in a narrow Name column drew
