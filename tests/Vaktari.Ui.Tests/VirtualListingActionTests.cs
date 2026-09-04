@@ -60,7 +60,7 @@ public sealed class VirtualListingActionTests : OwnedViewModels
         public IReadOnlyList<TerminalOption> Terminals { get; } =
             [new TerminalOption("xterm", "Terminal", "xterm", [])];
 
-        public void Open(string path) { }
+        public Exception? Open(string path) => null;
         public IReadOnlyList<LaunchOption> GetOpenWithOptions(string path) => [];
         public void OpenWith(string path, LaunchOption option) { }
     }

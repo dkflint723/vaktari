@@ -100,7 +100,11 @@ public sealed class PathBarFileTests : IDisposable
     {
         public List<string> Opened { get; } = [];
 
-        public void Open(string path) => Opened.Add(path);
+        public Exception? Open(string path)
+        {
+            Opened.Add(path);
+            return null;
+        }
         public void OpenTerminal(string directory) { }
         public IReadOnlyList<LaunchOption> GetOpenWithOptions(string path) => [];
         public void OpenWith(string path, LaunchOption option) { }

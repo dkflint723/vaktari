@@ -2158,14 +2158,25 @@ public sealed partial class PaneViewModel : ObservableObject, IDisposable
         if (Shortcuts?.TargetOf(entry.FullPath) is { } target && Directory.Exists(target))
             return NavigateAsync(target);
 
-        // Recorded on the ATTEMPT, not on success: IApplicationLauncher.Open
-        // returns void, so there is nothing to test. Asking to open a file is
-        // the user's act either way, which is the recency semantic that matters
-        // — and a file with no handler is rare next to the cost of pretending
-        // to know whether the launch worked.
+        // Recorded on the ATTEMPT, not on the outcome. Asking to open a file is
+        // the user's act either way, which is the recency semantic that
+        // matters, and a launch the desktop accepts is still no promise that
+        // anything appeared — so there is no better moment than this one.
         Recents?.Record(entry.FullPath, RecentKind.File);
 
-        _launcher?.Open(entry.FullPath);
+        // **This was a bare call with nothing after it**, because Open returned
+        // void — the comment above used to say so and treat it as the end of
+        // the matter. Both launchers caught the failure and dropped it, so
+        // double-clicking a row whose file had been deleted since the listing
+        // was drawn did nothing at all: no window, no message, nothing to
+        // distinguish it from a click that missed.
+        //
+        // One line covers both routes that reach a file: the pointer and Enter
+        // come through here, and so does a path typed into the location bar,
+        // which opens through this method rather than the launcher.
+        if (_launcher?.Open(entry.FullPath) is { } failure)
+            Status = Failures.Describe(failure, "open that file");
+
         return Task.CompletedTask;
     }
 

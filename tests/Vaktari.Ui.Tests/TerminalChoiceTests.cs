@@ -58,7 +58,7 @@ public sealed class TerminalChoiceTests
         public void OpenTerminal(string directory) => OpenedWithoutChoosing = true;
         public void OpenTerminal(string directory, TerminalOption terminal) => Opened = terminal;
 
-        public void Open(string path) { }
+        public Exception? Open(string path) => null;
         public IReadOnlyList<LaunchOption> GetOpenWithOptions(string path) => [];
         public void OpenWith(string path, LaunchOption option) { }
     }

@@ -5,7 +5,40 @@ namespace Vaktari.Linux;
 
 public sealed class LinuxLauncher : IApplicationLauncher
 {
-    public void Open(string path) => Spawn("xdg-open", path);
+    /// <summary>
+    /// The desktop's own opener, with its refusal handed back rather than
+    /// dropped.
+    ///
+    /// **This went through a bare catch that returned nothing.** A machine
+    /// with no xdg-open on PATH — a bare container, a session put together by
+    /// hand — opened nothing and said nothing, because the only caller had a
+    /// void to read.
+    ///
+    /// What this CANNOT see is a file that has vanished: xdg-open is a
+    /// program, so it starts, and whatever it makes of the path it was given
+    /// it makes after this has returned. Only the spawn itself is visible from
+    /// here.
+    /// </summary>
+    public Exception? Open(string path) => SpawnFailure(_opener, path);
+
+    private string _opener = "xdg-open";
+
+    /// <summary>What Open will run. Readable so the default, and the stand-in
+    /// that replaces it, are both pinned from a machine that has neither.
+    /// </summary>
+    internal string Opener => _opener;
+
+    /// <summary>
+    /// Stands in for the desktop's opener, in the same shape as
+    /// <see cref="UseTerminals"/>.
+    ///
+    /// The state that matters is the opener refusing to start, and it cannot
+    /// be produced on a machine that has xdg-open — while calling the real one
+    /// in a test opens whatever it was handed. A name that is not a program
+    /// produces the refusal on any agent, including the Windows one this
+    /// assembly's tests also run on.
+    /// </summary>
+    internal void UseOpener(string program) => _opener = program;
 
     public IReadOnlyList<LaunchOption> GetOpenWithOptions(string path)
         => DesktopEntries.ForFile(path);
@@ -541,9 +574,21 @@ public sealed class LinuxLauncher : IApplicationLauncher
         }
     }
 
-    private static void Spawn(string exe, params string[] args) => TrySpawn(exe, args);
-
+    /// <summary>
+    /// Whether it started, for the callers that only pick the next candidate.
+    /// </summary>
     private static bool TrySpawn(string exe, params string[] args)
+        => SpawnFailure(exe, args) is null;
+
+    /// <summary>
+    /// The same spawn, keeping the exception instead of reducing it to false.
+    ///
+    /// Two shapes over one body because the terminal chain genuinely wants a
+    /// bool — it has another candidate to try and nothing to say — while
+    /// <see cref="Open"/> has nowhere left to fall back to and a status bar to
+    /// fill.
+    /// </summary>
+    private static Exception? SpawnFailure(string exe, params string[] args)
     {
         try
         {
@@ -553,11 +598,20 @@ public sealed class LinuxLauncher : IApplicationLauncher
             // Detached: the file manager closing must not take the opened
             // application with it.
             using var process = Process.Start(info);
-            return process is not null;
+
+            // A null process is what this read as a failure when it answered
+            // bool; it now says the same thing with something a caller can
+            // show. Not a mechanism anyone here has produced, so the message
+            // describes no cause — but it reaches Failures.Describe's
+            // IOException arm verbatim, so it has to be a sentence rather than
+            // a note to a programmer.
+            return process is null
+                ? new IOException("the desktop did not start anything")
+                : null;
         }
-        catch
+        catch (Exception ex)
         {
-            return false;
+            return ex;
         }
     }
 }

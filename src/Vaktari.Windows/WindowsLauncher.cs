@@ -88,7 +88,70 @@ public sealed class WindowsLauncher : IApplicationLauncher
         }
     }
 
-    public void Open(string path)
+    /// <summary>
+    /// ERROR_FILE_NOT_FOUND, as ShellExecute reports it.
+    ///
+    /// Measured on Windows 11: starting a path that is no longer there raises
+    /// Win32Exception with NativeErrorCode 2 and HResult 0x80004005 — E_FAIL,
+    /// which carries no code at all, so the NativeErrorCode is the only thing
+    /// worth matching on.
+    /// </summary>
+    private const int FileNotFound = 2;
+
+    /// <summary>
+    /// ERROR_CANCELLED. <c>OpenElevated</c> below already treats this as an
+    /// answer rather than an error, and the same holds here: a plain
+    /// double-click can raise the consent dialog on its own, because the shell
+    /// elevates a program whose manifest asks it to. Saying no is a decision,
+    /// and a status line under it would be arguing with the person.
+    /// </summary>
+    private const int Cancelled = 1223;
+
+    /// <summary>
+    /// What a refused launch should be reported as.
+    ///
+    /// Pure and separate, the way RecycleRefusal is, and for the same reason:
+    /// these codes are the whole of what can be wrong here, and neither of the
+    /// two below can be produced from a test by asking the shell politely —
+    /// ERROR_CANCELLED needs somebody to press No on a dialog.
+    /// </summary>
+    internal static Exception? Refusal(Exception failure, string path) => failure switch
+    {
+        System.ComponentModel.Win32Exception w when w.NativeErrorCode == Cancelled => null,
+
+        // The TYPE, not the message, exactly as RecycleRefusal does it:
+        // Failures.Describe already matches FileNotFoundException and supplies
+        // the sentence used everywhere else in the application. Win32's own
+        // message is no use in a status bar — measured, it reads "An error
+        // occurred trying to start process 'C:\…\notes.txt' with working
+        // directory 'C:\…'. The system cannot find the file specified.",
+        // which names the path twice and talks about processes to somebody who
+        // double-clicked a row.
+        System.ComponentModel.Win32Exception w when w.NativeErrorCode == FileNotFound
+            => new FileNotFoundException(w.Message, path, w),
+
+        _ => failure,
+    };
+
+    /// <summary>
+    /// Hands the file to the shell and says whether the shell took it.
+    ///
+    /// **The failure used to be swallowed here.** Every exception went to
+    /// Quiet.Swallowed, which prints nothing unless VAKTARI_QUIET_DEBUG is
+    /// set — so a double-click on a file that had been deleted since the
+    /// listing was drawn produced no window and no message. Quiet is for
+    /// failures nobody needs to know about, and its own summary says so; this
+    /// is not one.
+    ///
+    /// Measured on Windows 11, so the caller knows what it will and will not
+    /// hear about. A path that is gone raises Win32Exception with
+    /// NativeErrorCode 2. A file with an extension nothing is registered for
+    /// raises nothing at all: the shell puts up its own "How do you want to
+    /// open this file?" chooser, and when that was dismissed Process.Start
+    /// returned null. So the unopenable file does not reach the status bar,
+    /// and should not — the shell is already asking the user about it.
+    /// </summary>
+    public Exception? Open(string path)
     {
         try
         {
@@ -106,10 +169,12 @@ public sealed class WindowsLauncher : IApplicationLauncher
                 UseShellExecute = true,
                 WorkingDirectory = WorkingDirectoryFor(path),
             })?.Dispose();
+
+            return null;
         }
         catch (Exception ex)
         {
-            Quiet.Swallowed("launcher", ex);
+            return Refusal(ex, path);
         }
     }
 

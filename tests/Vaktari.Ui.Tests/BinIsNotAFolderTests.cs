@@ -111,7 +111,11 @@ public sealed class BinIsNotAFolderTests : OwnedViewModels
     {
         public List<string> Opened { get; } = [];
 
-        public void Open(string path) => Opened.Add(path);
+        public Exception? Open(string path)
+        {
+            Opened.Add(path);
+            return null;
+        }
         public void OpenTerminal(string directory) { }
         public void OpenWith(string path, LaunchOption option) => Opened.Add(path);
         public IReadOnlyList<LaunchOption> GetOpenWithOptions(string path) => [];

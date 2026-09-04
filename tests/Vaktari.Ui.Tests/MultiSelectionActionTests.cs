@@ -64,7 +64,11 @@ public sealed class MultiSelectionActionTests : OwnedViewModels
             return Path.GetExtension(path) is ".exe";
         }
 
-        public void Open(string path) => Opened.Add(path);
+        public Exception? Open(string path)
+        {
+            Opened.Add(path);
+            return null;
+        }
         public void OpenElevated(string path) => Elevated.Add(path);
         public void OpenWith(string path, LaunchOption option) => OpenedWith.Add(path);
 

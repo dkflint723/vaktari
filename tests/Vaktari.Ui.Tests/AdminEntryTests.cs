@@ -73,7 +73,7 @@ public sealed class AdminEntryTests : OwnedViewModels
         public void OpenElevatedTerminal(string directory, TerminalOption? terminal = null)
             => ElevatedTerminalIn = directory;
 
-        public void Open(string path) { }
+        public Exception? Open(string path) => null;
         public void OpenTerminal(string directory) { }
         public IReadOnlyList<LaunchOption> GetOpenWithOptions(string path) => [];
         public void OpenWith(string path, LaunchOption option) { }

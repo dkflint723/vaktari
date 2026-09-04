@@ -78,8 +78,22 @@ public sealed record TerminalOption(
 /// </summary>
 public interface IApplicationLauncher
 {
-    /// <summary>Open with the user's default application for the type.</summary>
-    void Open(string path);
+    /// <summary>
+    /// Open with the user's default application for the type.
+    ///
+    /// **This returned void, and every caller had to pretend the launch
+    /// worked.** Both launchers caught what went wrong and dropped it —
+    /// WindowsLauncher through <c>Quiet.Swallowed("launcher", ex)</c>, which
+    /// prints only under VAKTARI_QUIET_DEBUG, LinuxLauncher through a bare
+    /// catch — so double-clicking a row whose file had been deleted since the
+    /// listing was drawn did nothing whatsoever: no window, no message, no
+    /// clue that anything had been attempted.
+    /// </summary>
+    /// <returns>Null when the desktop accepted the request, and the failure
+    /// otherwise, for <see cref="Failures.Describe"/> to put into words. Null
+    /// is not a promise the application opened: the request is handed to the
+    /// shell, and what it does after that is out of reach.</returns>
+    Exception? Open(string path);
 
     /// <summary>Open the preferred terminal with its working directory set to
     /// this folder. What F4 does.</summary>

@@ -583,6 +583,19 @@ should not be trusted for compatibility yet.
 
 ### Fixed
 
+- **Double-clicking a file the desktop will not open now says so.** It did
+  nothing at all: the launcher returned nothing, so both platforms caught
+  whatever went wrong and dropped it — Windows into a debug-only log, Linux into
+  a bare catch — and the pane fired the request with nothing afterwards. Delete
+  a file from another window, double-click its row before the listing catches
+  up, and the result was indistinguishable from a click that had missed: no
+  window, no message, nothing. The status bar now reads "that file is not there
+  any more", in the same words the copy engine and the listing already use. A
+  file Windows has no application for is deliberately unchanged, because the
+  shell is already asking about it in its own dialog; and saying No to the
+  consent prompt says nothing, because declining is a decision rather than a
+  fault.
+
 - **Sorting a filtered folder no longer puts every hidden row back.** Clicking
   a column heading — or clicking it again to reverse — in a folder narrowed by
   the filter box showed the whole folder again, with your words still sitting
