@@ -583,6 +583,14 @@ should not be trusted for compatibility yet.
 
 ### Fixed
 
+- **Sorting a filtered folder no longer puts every hidden row back.** Clicking
+  a column heading — or clicking it again to reverse — in a folder narrowed by
+  the filter box showed the whole folder again, with your words still sitting
+  in the box that was meant to be hiding them. Nothing said the filter had
+  stopped applying, and the count under the listing went on saying "filtered
+  to 2 of 3" over three rows. Sorting now re-sorts what is on screen, filter
+  and all, whichever way you ask for it.
+
 - **This PC says how big each drive is, and shows a drive that is not there as
   not there.** The Size column reported how many things were at the top of the
   drive — "184 items" where the capacity belonged — because a drive is a folder

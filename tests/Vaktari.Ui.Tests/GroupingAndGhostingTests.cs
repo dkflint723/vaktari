@@ -207,10 +207,10 @@ public sealed class GroupingAndGhostingTests : OwnedViewModels
     }
 
     /// <summary>
-    /// The resort that carries the change across is the one the load path uses,
-    /// filter and all. ResortInPlace rebuilds the listing from the UNFILTERED
-    /// master list, so taking it on its own here would have made switching to
-    /// tiles in a filtered, grouped folder show the whole folder again.
+    /// The resort that carries the change across has to go through the filter,
+    /// and ResortInPlace now does that for itself. It used to rebuild the
+    /// listing from the UNFILTERED master list, so switching to tiles in a
+    /// filtered, grouped folder showed the whole folder again.
     /// </summary>
     [AvaloniaFact]
     public async Task A_filter_survives_the_switch_to_tiles()

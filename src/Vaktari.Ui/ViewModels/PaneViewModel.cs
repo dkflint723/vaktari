@@ -1869,12 +1869,12 @@ public sealed partial class PaneViewModel : ObservableObject, IDisposable
             && GroupBy != GroupMode.None
             && (oldValue == ViewMode.Details) != (newValue == ViewMode.Details))
         {
-            // **Through the filter when there is one.** ResortInPlace rebuilds
-            // Entries from `_all`, which is the UNFILTERED master list, so a
-            // bare resort behind a filter puts every hidden row back —
-            // switching to tiles in a filtered, grouped folder showed the whole
-            // folder. The same pair the load path uses when a listing settles.
-            if (FilterText.Length > 0) ApplyFilter(); else ResortInPlace();
+            // The resort goes through the filter itself. This used to spell
+            // that out here — `FilterText.Length > 0 ? ApplyFilter()` — because
+            // ResortInPlace rebuilt Entries from the UNFILTERED master list,
+            // and switching to tiles in a filtered, grouped folder showed the
+            // whole folder again.
+            ResortInPlace();
         }
 
         OnPropertyChanged(nameof(IsDetailsView));
@@ -3522,13 +3522,16 @@ public sealed partial class PaneViewModel : ObservableObject, IDisposable
                 // that now belongs to somewhere else.
                 if (generation != _generation) return;
 
-                if (FilterText.Length > 0) ApplyFilter(); else ResortInPlace();
+                // Through the filter when there is one, which the resort now
+                // does for itself — a listing that settles while a filter is up
+                // must settle filtered.
+                ResortInPlace();
 
                 // After the sort, not before it: Reselect walks Entries, and
                 // the rows it walks have to be the ones that will still be
-                // there. Both branches above rebuild the collection, and both
-                // restore only what they were holding when they started —
-                // which, on a reload, is nothing.
+                // there. The resort above rebuilds the collection whichever
+                // route it takes, and restores only what it was holding when
+                // it started — which, on a reload, is nothing.
                 Reselect(carry);
 
                 // Nothing to watch: there is no directory behind a recent
@@ -3680,8 +3683,40 @@ public sealed partial class PaneViewModel : ObservableObject, IDisposable
             ? ""
             : $"{Entries.Count:N0} of {_all.Count:N0} items";
 
+    /// <summary>
+    /// Re-sorts the rows already on screen, without going back to the disk.
+    ///
+    /// **Through the filter, because the filter is part of what is on screen.**
+    /// This rebuilt Entries from `_all`, the UNFILTERED master list, so
+    /// clicking a column heading — or clicking it again to reverse — in a
+    /// filtered folder put every hidden row back, with the filter box still
+    /// holding the words that were meant to be hiding them.
+    ///
+    /// The rule lives here rather than at the call sites because five places
+    /// ask for a resort and only two of them had written the check out for
+    /// themselves: OnViewChanged and the load path. The other three —
+    /// OnSortChanged, OnSortDescendingChanged and SortBy — called it bare, and
+    /// three callers out of five getting it wrong is a method with the wrong
+    /// contract rather than three separate mistakes.
+    ///
+    /// Ahead of the empty-listing guard rather than after it, so a bare call
+    /// behind a filter is the same thing as `ApplyFilter()` and the two call
+    /// sites that spelled the pair out can drop it without a behaviour
+    /// question. The order is visible, not merely tidy. A filter matching
+    /// nothing leaves Entries empty beside a full `_all`, and widening it does
+    /// not refill the listing for 120 ms — the box is debounced. A heading
+    /// clicked inside that window arrives here with an empty listing and a
+    /// filter that now matches two rows; behind the guard the click did
+    /// nothing at all.
+    /// </summary>
     private void ResortInPlace()
     {
+        if (FilterText.Length > 0)
+        {
+            ApplyFilter();
+            return;
+        }
+
         if (Entries.Count == 0) return;
 
         _groupNow = DateTimeOffset.Now;
