@@ -231,10 +231,46 @@ public sealed partial class PaneViewModel
 
         await NavigateAsync(folder).ConfigureAwait(true);
 
-        // Selected rather than opened: landing on the file with it highlighted
-        // is the least surprising answer, and launching something because a
-        // path was pasted would be a side effect nobody asked for.
-        SelectedEntry = Entries.FirstOrDefault(e => PathRules.Same(e.FullPath, file));
+        // **It highlighted the file and stopped.** The argument written here
+        // was that launching something because a path was pasted is a side
+        // effect nobody asked for — but nobody types a full path to a file and
+        // presses Enter in order to look at its name in a list. Explorer and
+        // Dolphin both open it; this method's own summary has said "and opens
+        // it" all along while the body did not; and Enter means "open this"
+        // everywhere else in the application, so it has to mean it here.
+        //
+        // Landing on the folder with the row lit stays, because that is the
+        // other half of the answer rather than an alternative to it: the pane
+        // ends up showing where the thing you just opened lives, so whatever
+        // you want to do next has somewhere to happen.
+        //
+        // RowFor, not FirstOrDefault: FileEntry is a record struct, so a miss
+        // handed back default(FileEntry) — a FileEntry? that is not null and
+        // whose FullPath is null. Assigning THAT lit no row while HasSelection
+        // went on reporting a selection, and every verb reading it was pointed
+        // at a null path.
+        var row = RowFor(file);
+
+        SelectedEntry = row;
+
+        // Through OpenAsync rather than the launcher directly, so the typed
+        // route opens things the same way Enter on a row does: one place
+        // decides what opening means, and it is the place that redirects a
+        // shortcut-to-a-folder into the pane and records the file as recent.
+        // Its bin refusal is inert on this route — File.Exists has already said
+        // this is a real file on disk, so the folder just navigated to is never
+        // the bin — but sharing the method is what keeps the two routes one
+        // decision if opening grows another guard.
+        //
+        // The row when the listing holds one, an entry built from the path when
+        // it does not: a concealed file has no row while ShowHidden is off, and
+        // whether a row is drawn must not decide whether a path somebody typed
+        // in full opens. OpenAsync reads the full path and the directory flag,
+        // and the caller has already established this is a file rather than a
+        // directory.
+        await OpenAsync(row ?? new FileEntry(
+            PathRules.LeafName(file), file, 0, default, EntryFlags.None))
+            .ConfigureAwait(true);
     }
 
     /// <summary>

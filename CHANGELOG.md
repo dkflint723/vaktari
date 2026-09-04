@@ -248,6 +248,17 @@ should not be trusted for compatibility yet.
 
 ### Changed
 
+- **A file path typed into the address bar opens the file.** It used to open
+  the folder the file lives in and highlight the row, and stop there — which is
+  half of what both Explorer and Dolphin do, and the wrong half on its own.
+  Nobody types out a full path to a file and presses Enter in order to look at
+  its name in a list; Enter means "open this" on every row in the application,
+  and it means it in the bar as well now. The pane still lands on the folder
+  with the row lit, because that is where you want to be once the file has
+  opened. A file that the listing is not currently showing — one hidden while
+  hidden files are off — opens too, rather than the gesture quietly doing
+  nothing because there was no row to select.
+
 - **A folder that changes in bursts is redrawn once, not once per file.** Every
   watcher event walked the whole listing twice and rebuilt the heading map from
   a fresh copy of it — so a build writing ten thousand files into a folder you
@@ -868,15 +879,16 @@ should not be trusted for compatibility yet.
   opening its own Cut/Copy/Paste menu used to collapse the field back to
   breadcrumbs out from under the menu, taking the typed path with it. A
   relative path such as ".." or "src" is counted from the folder on screen
-  rather than from wherever Vaktari was started, and a path to a file opens its
-  folder and highlights it instead of failing as a missing directory. *Copy as
-  path* puts every path you selected on the clipboard, one per line, rather
-  than one of five with nothing said about the other four — and pasting one of
-  those back into the bar works, where the quotes used to make it a relative
-  path and produce a raw Windows error naming Vaktari's own folder. And Ctrl+L
-  pressed twice keeps what you have typed: beginning to edit again used to
-  reset the box to the folder you were in, so half a typed path disappeared,
-  silently, for a keystroke whose only meaning is "put me in the address bar".
+  rather than from wherever Vaktari was started, and a path to a file opens the
+  file, landing on its folder with the row lit, instead of failing as a missing
+  directory. *Copy as path* puts every path you selected on the clipboard, one
+  per line, rather than one of five with nothing said about the other four —
+  and pasting one of those back into the bar works, where the quotes used to
+  make it a relative path and produce a raw Windows error naming Vaktari's own
+  folder. And Ctrl+L pressed twice keeps what you have typed: beginning to edit
+  again used to reset the box to the folder you were in, so half a typed path
+  disappeared, silently, for a keystroke whose only meaning is "put me in the
+  address bar".
 
 - **A listing that is not a folder stops pretending to be one.** The bin, Recent
   and This PC are views rather than places on disk, and everything that wanted
