@@ -3501,6 +3501,32 @@
                      VerticalAlignment="Center"
                      Value="{Binding OperationPercent}" Maximum="1"
                      IsVisible="{Binding HasOperationProgress}"/>
+        <!-- **Only one operation was ever on this bar, and it did not say so.**
+             Nothing serialises them: the shell keeps a LIST of running handles
+             — its comment records why, a second operation used to take the
+             first's slot — and the bar follows the newest, so the line, the
+             bar, the speed, Pause and Cancel all belong to one handle while
+             another goes on writing with nothing on screen for it. The count is
+             what says the numbers beside it are one of several, and the tooltip
+             says which one.
+
+             Docked for its PLACE in the row, not to save it from the filename:
+             this one sizes to its own text and sets no trimming, so it is
+             never the thing that ellipsizes. Measured on a DockPanel of this
+             shape both ways. Docked right it lands between the status line and
+             the progress bar; with the attribute gone it takes DockPanel's
+             default, which is LEFT, and lands at the far left of the bar at
+             its full width, in FRONT of the status line. The status line came
+             out the same width either way — it pays for the count in both
+             arrangements — so the attribute decides order, not space. And
+             declared after the progress bar, which is what puts it to the
+             bar's left and against the line it qualifies.
+
+             Empty text rather than an IsVisible binding, as the speed beside it
+             does: one property to keep true instead of two. -->
+        <TextBlock DockPanel.Dock="Right" Text="{Binding ConcurrentOperations}" Margin="8,0,0,0"
+                   FontSize="{DynamicResource FontSizeSmall}" VerticalAlignment="Center"
+                   ToolTip.Tip="This line follows the newest of them" ToolTip.ShowDelay="1200"/>
         <!-- Last, so it is the fill child and takes only what is left. Trimmed
              rather than wrapped: wrapping made the bar grow downwards over the
              listing while still not fitting. -->

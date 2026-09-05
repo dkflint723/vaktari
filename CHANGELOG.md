@@ -770,6 +770,13 @@ should not be trusted for compatibility yet.
 
 ### Fixed
 
+- **The transfer bar says when more than one thing is running.** It described
+  whichever operation had started most recently and gave no sign the others
+  existed — so a copy started during another copy replaced it on screen, and
+  the first one carried on invisibly. The bar now carries a count while several
+  are going, and says nothing extra when there is only one, since the line
+  already describes it.
+
 - **F2 renames on the row, not in a box at the bottom of the window.** Pressing
   F2 on a file halfway down a full listing put the edit box in a fixed 320-pixel
   field docked to the bottom edge, with nothing at either end naming the file

@@ -1460,6 +1460,30 @@ public sealed partial class ShellViewModel : ObservableObject, IDisposable
     [ObservableProperty] private string _operationRate = "";
 
     /// <summary>
+    /// "2 running" while more than one operation is going at once, and empty
+    /// while there is one or none.
+    ///
+    /// **The bar shows one operation and never said which of how many.**
+    /// Nothing serialises these — <see cref="_running"/> is a list, and its own
+    /// comment records why: a second operation used to take the first's slot.
+    /// The bar follows the newest, so the line, the percentage, the speed,
+    /// Pause and Cancel all belong to one handle while another goes on writing
+    /// with nothing on screen for it at all. Measured here by
+    /// ConcurrentOperationsTests, which adopts two handles into one shell,
+    /// finds ActiveOperation on the newer of them, and reads the bar.
+    ///
+    /// A count and not a list of rows: IOperationHandle carries an id, a state,
+    /// its paths and its problems, and nothing that says what KIND of work it
+    /// is, so there is no sentence to put on a per-operation row without every
+    /// engine learning to supply one.
+    ///
+    /// Empty rather than "1 running" for the ordinary case: the bar is already
+    /// the one operation, and a badge that is on screen for every single copy
+    /// stops being read by the time it matters.
+    /// </summary>
+    [ObservableProperty] private string _concurrentOperations = "";
+
+    /// <summary>
     /// The offer to go again on what an operation could not do, or null.
     ///
     /// **Set and cleared in the same place the bar's message is**, which is the
@@ -2847,6 +2871,31 @@ public sealed partial class ShellViewModel : ObservableObject, IDisposable
     }
 
     /// <summary>
+    /// Re-reads how many operations are live, for the bar's count.
+    ///
+    /// Counted through InFlight.Unfinished rather than off _running.Count, for
+    /// the reason InFlight.On's own comment gives and that this one measured: a
+    /// finished handle stays in the list until the continuation posted to the
+    /// UI thread takes it out, so a third operation starting in that window
+    /// counted the finished one too — _running.Count put "3 running" on the bar
+    /// with two going, and "4 running" with two going and two ended. And the
+    /// shared helper rather than a hand-rolled state test, because a run ends
+    /// three ways and only one of them is Completed. Both cases are in
+    /// ConcurrentOperationsTests.
+    ///
+    /// Called where the list changes, both sides. IOperationHandle raises
+    /// Progressed and nothing for state, so a subscription is not on offer as
+    /// an alternative: the shell learns an operation is over from its
+    /// Completion continuation, which is the same place the list shrinks.
+    /// </summary>
+    private void RefreshConcurrentOperations()
+    {
+        var live = _running.Count(h => Core.FileSystem.InFlight.Unfinished(h.State));
+
+        ConcurrentOperations = live > 1 ? $"{live} running" : "";
+    }
+
+    /// <summary>
     /// Cancels everything this window started. Called when the question above
     /// is answered yes: leaving them running is the silent loss it exists to
     /// prevent.
@@ -2926,6 +2975,8 @@ public sealed partial class ShellViewModel : ObservableObject, IDisposable
         _running.Add(handle);
         ActiveOperation = handle;
 
+        RefreshConcurrentOperations();
+
         // One rate per operation, because a rate carried across two of them
         // measures the gap between them as a slow patch in whichever is
         // running now.
@@ -2961,6 +3012,8 @@ public sealed partial class ShellViewModel : ObservableObject, IDisposable
             Avalonia.Threading.Dispatcher.UIThread.Post(() =>
             {
                 _running.Remove(handle);
+
+                RefreshConcurrentOperations();
 
                 // A failure stays on screen; only success clears silently.
                 // Travels with the message below, in every branch: an offer
