@@ -1,0 +1,51 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:vm="clr-namespace:Vaktari.Ui.ViewModels"
+        x:Class="Vaktari.Ui.RunFileWindow"
+        x:DataType="vm:RunFileViewModel"
+        Title="Run a program"
+        Background="{DynamicResource AppBackground}"
+        Foreground="{DynamicResource ViewText}"
+        FontFamily="{DynamicResource AppFontFamily}"
+        Width="460" SizeToContent="Height"
+        CanResize="False"
+        WindowStartupLocation="CenterOwner">
+
+  <StackPanel Margin="16" Spacing="10">
+
+    <!-- Trimmed to one line rather than wrapped, which is what the chooser
+         beside this one already does with its identically shaped question. The
+         name in it is content somebody else chose: wrapped, under
+         SizeToContent="Height", a long enough one grows this window past its
+         own buttons, and the view model's OneLine is what keeps the same name
+         from adding lines of its own. -->
+    <TextBlock Text="{Binding Question}"
+               FontSize="{DynamicResource FontSizeBase}"
+               TextTrimming="CharacterEllipsis"/>
+
+    <!-- What running it means, in the words the person needs rather than the
+         ones a permission system uses. "Executable" is the word every desktop
+         reaches for and it explains nothing to whoever is being asked. -->
+    <TextBlock Text="This file is a program. Running it lets it do anything you can do, to any of your files."
+               FontSize="{DynamicResource FontSizeSmall}"
+               Foreground="{DynamicResource ViewDimText}"
+               TextWrapping="Wrap"/>
+
+    <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" Spacing="8">
+      <!-- Cancel takes IsCancel so Escape leaves, and it is the DEFAULT button
+           as well: the safe answer is the one that should happen if somebody
+           hits Enter at a question they have not read. Opening or running
+           either would be a decision made by a keystroke aimed at something
+           else. -->
+      <Button Content="Cancel" Padding="14,4" IsCancel="True" IsDefault="True"
+              Command="{Binding CancelCommand}"/>
+      <!-- The way out that keeps what the double-click used to do: a script is
+           a file you may want to read. -->
+      <Button Content="Open" Padding="14,4"
+              Command="{Binding OpenCommand}"/>
+      <Button Content="Run" Padding="14,4"
+              Command="{Binding RunCommand}"/>
+    </StackPanel>
+
+  </StackPanel>
+</Window>

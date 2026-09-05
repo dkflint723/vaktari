@@ -4871,6 +4871,9 @@ public partial class MainWindow : Window
         pane.ChooseApplicationRequested -= OnChooseApplicationRequested;
         pane.ChooseApplicationRequested += OnChooseApplicationRequested;
 
+        pane.RunFileRequested -= OnRunFileRequested;
+        pane.RunFileRequested += OnRunFileRequested;
+
         pane.PropertyChanged -= OnPaneEditorClosed;
         pane.PropertyChanged += OnPaneEditorClosed;
 
@@ -4888,6 +4891,17 @@ public partial class MainWindow : Window
     /// </summary>
     private void OnChooseApplicationRequested(object? sender, ChooseApplicationViewModel model)
         => new ChooseApplicationWindow(model).ShowDialog(this);
+
+    /// <summary>
+    /// Asks before a double-click starts a program.
+    ///
+    /// Modal, like the chooser: there is exactly one thing to decide and the
+    /// file goes nowhere until it is decided. Windows never reaches here — its
+    /// launcher answers no to CanRunFile, because the shell already runs an
+    /// executable that is double-clicked and puts its own warning up first.
+    /// </summary>
+    private void OnRunFileRequested(object? sender, RunFileViewModel model)
+        => new RunFileWindow(model).ShowDialog(this);
 
     /// <summary>Focus now happens through FocusBehavior.FocusOnVisible in the
     /// markup, since there is no field to focus from here.</summary>

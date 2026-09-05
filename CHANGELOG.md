@@ -13,6 +13,28 @@ should not be trusted for compatibility yet.
 
 ### Added
 
+- **On Linux, double-clicking a program offers to run it.** Every file went to
+  the desktop's opener, and that opener never runs anything: a shell script
+  opened in a text editor, and a binary or an AppImage opened nothing at all —
+  no window, no message. A file you had just marked runnable could not be
+  started from anywhere in Vaktari, because the only menu row that could start
+  a program was "Run as administrator", which needs pkexec and runs it as root.
+
+  The double-click asks first, with three answers — Run, Open, Cancel — because
+  the gesture has meant "open this" everywhere else, and a script is often a
+  file you want to read. There is a "Run" row in the context menu too, and that
+  one does not ask: clicking a row that says the word is the answer.
+
+  A file is a program when it carries an execute bit AND its first bytes say so
+  — an ELF header, which covers every binary and every AppImage, or a `#!`
+  line, which covers every script. The bit alone is not enough: a FAT stick or
+  an NTFS partition reports one for every file on it, so a camera card would
+  otherwise have offered to run each of your photographs.
+
+  Neither the bin nor Recents offers it, by either route. A row in those two
+  listings carries the path something used to occupy, and starting whatever
+  holds that path today is the worst version of opening the wrong file.
+
 - **A listing now looks like one where a single click opens.** With that
   preference set — or inherited from a desktop that sets it — a row under the
   pointer showed the ordinary arrow and a plain name, exactly what it shows when

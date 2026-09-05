@@ -95,6 +95,39 @@ public interface IApplicationLauncher
     /// shell, and what it does after that is out of reach.</returns>
     Exception? Open(string path);
 
+    /// <summary>
+    /// Whether double-clicking this file would mean RUNNING it rather than
+    /// opening it with an application.
+    ///
+    /// **Nobody asked, so nobody could answer.** Opening a file was one call to
+    /// the desktop's opener whatever the file was — and on a desktop that
+    /// opener never runs anything: xdg-open on a shell script hands it to a
+    /// text editor, and on a binary or an AppImage it finds no handler for
+    /// application/x-executable and does nothing at all. Double-clicking a
+    /// program you had just marked runnable produced either an editor or
+    /// silence, with no way in the whole application to start it.
+    ///
+    /// False by default and false on Windows, where the shell already runs an
+    /// executable that is double-clicked, puts its own Mark-of-the-Web warning
+    /// up for a downloaded one, and would show BOTH if this answered yes.
+    /// </summary>
+    bool CanRunFile(string path) => false;
+
+    /// <summary>
+    /// Starts the file as a program, having been told to.
+    ///
+    /// The consent is the CALLER's: this is reached from a question that names
+    /// the file, or from a menu row that says the word. Nothing here decides
+    /// whether running it is a good idea.
+    /// </summary>
+    /// <returns>Null when the system accepted it, and the failure otherwise —
+    /// the same contract as <see cref="Open"/>, and for the same reason.
+    /// </returns>
+    /// <remarks>Falls back to <see cref="Open"/> so a platform that answers
+    /// false above and is reached anyway hands the file to the shell rather
+    /// than dropping it.</remarks>
+    Exception? Run(string path) => Open(path);
+
     /// <summary>Open the preferred terminal with its working directory set to
     /// this folder. What F4 does.</summary>
     void OpenTerminal(string directory);

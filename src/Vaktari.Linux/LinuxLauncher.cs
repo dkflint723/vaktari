@@ -389,6 +389,115 @@ public sealed class LinuxLauncher : IApplicationLauncher
             + $"tried {Terminals.Count} detected and xterm");
     }
 
+    // ---- running a file ------------------------------------------------------
+
+    /// <summary>
+    /// Whether double-clicking this file means starting it.
+    ///
+    /// **The desktop's opener never runs anything, and it was the only route a
+    /// file had.** xdg-open reads the type and launches the registered
+    /// handler: a shell script is text/x-shellscript, so it opened in an
+    /// editor, and a binary or an AppImage is application/x-executable, which
+    /// nothing registers against — so it opened nothing and said nothing.
+    /// Marking a downloaded AppImage runnable and double-clicking it was
+    /// indistinguishable from a click that missed.
+    ///
+    /// **The execute bit is necessary and is NOT sufficient**, which is the
+    /// half that cost the most to get right. A filesystem with no permission
+    /// bits — the FAT stick, the exFAT card, the NTFS partition mounted beside
+    /// the Linux one — reports 0777 for every file on it, so a rule that
+    /// stopped at the mode would have offered to RUN every holiday photograph
+    /// on a camera card. Both desktops read the type as well, and the type is
+    /// read here out of the file's own first bytes: see
+    /// <see cref="Program(ReadOnlySpan{byte})"/>.
+    ///
+    /// A .desktop file is excluded outright. It carries an execute bit as often
+    /// as not and it is not a program: execve on one fails, because it is a
+    /// configuration file. This rule only keeps it out of THAT route — a
+    /// double-clicked .desktop file goes on falling through to
+    /// <see cref="Open"/>, the desktop's own opener, which is what reads its
+    /// Exec line and starts the application named there.
+    /// <see cref="DesktopEntries.Launch"/> is not that route and never was: its
+    /// first argument is a desktop ID and its second the data file to open with
+    /// it, and its one caller is <see cref="OpenWith"/>.
+    /// </summary>
+    public bool CanRunFile(string path)
+    {
+        // File.Exists, which is already false for a directory, and asked first
+        // so that selecting a folder — the likeliest selection there is — does
+        // not open and swallow one exception per selection change. The same
+        // reason DesktopEntries.Launcher asks it before reading a mode.
+        if (!File.Exists(path)) return false;
+
+        if (path.EndsWith(".desktop", StringComparison.OrdinalIgnoreCase)) return false;
+
+        return Executable(path) && Program(path);
+    }
+
+    /// <summary>
+    /// What the first bytes of a file say it is.
+    ///
+    /// Two shapes cover everything a desktop will start: an ELF header, which
+    /// is every compiled binary AND every AppImage — a type-2 AppImage is an
+    /// ELF runtime with a squashfs appended, so it needs no rule of its own —
+    /// and a "#!" line, which is every script whatever language follows it.
+    ///
+    /// **Read from the file rather than from its name**, because the file a
+    /// person most wants this for has no extension: a build script, an
+    /// installer unpacked from a tarball, anything in ~/bin. That is the same
+    /// reasoning <see cref="CanElevateFile"/> already carries, and a list of
+    /// extensions is what it replaced.
+    ///
+    /// The known hole is a script with no shebang — a .sh of bare commands,
+    /// which the kernel refuses and a shell then runs itself. That one opens in
+    /// an editor, as it did before. Believing every executable text file
+    /// instead is what the FAT-mount paragraph above rules out.
+    ///
+    /// Pure, and given the bytes rather than reading them, so both answers can
+    /// be pinned on an agent with no POSIX filesystem to arrange them on.
+    /// </summary>
+    internal static bool Program(ReadOnlySpan<byte> head)
+        => (head.Length >= 4 && head[0] == 0x7F
+            && head[1] == (byte)'E' && head[2] == (byte)'L' && head[3] == (byte)'F')
+           || (head.Length >= 2 && head[0] == (byte)'#' && head[1] == (byte)'!');
+
+    /// <summary>The same question, of a file on disk. Four bytes, once, when
+    /// somebody has selected or double-clicked one thing.</summary>
+    private static bool Program(string path)
+    {
+        try
+        {
+            using var stream = File.OpenRead(path);
+
+            Span<byte> head = stackalloc byte[4];
+
+            var read = stream.ReadAtLeast(head, head.Length, throwOnEndOfStream: false);
+
+            return Program(head[..read]);
+        }
+        catch (Exception e) when (e is IOException or UnauthorizedAccessException)
+        {
+            Vaktari.Core.Quiet.Swallowed("launcher", e);
+            return false;
+        }
+    }
+
+    /// <summary>
+    /// Starts the file as a program.
+    ///
+    /// **In its own folder**, which is the same rule <see cref="OpenElevated"/>
+    /// keeps and for the same reason: a script that reads a file sitting beside
+    /// it finds it, rather than looking wherever the file manager happens to
+    /// have been started from.
+    ///
+    /// Not in a terminal, unlike the elevated verb. That one wraps pkexec
+    /// because pkexec unsets DISPLAY and XAUTHORITY and so has nowhere to
+    /// speak; nothing is unset here, an AppImage draws its own window, and a
+    /// terminal opened over one would be a window nobody asked for.
+    /// </summary>
+    public Exception? Run(string path)
+        => SpawnFailureIn(Path.GetDirectoryName(path) ?? "/", [path]);
+
     // ---- administrator ------------------------------------------------------
 
     /// <summary>
@@ -453,16 +562,27 @@ public sealed class LinuxLauncher : IApplicationLauncher
     /// at all.
     /// </summary>
     public bool CanElevateFile(string path)
+        // File.Exists, which is already false for a directory: pkexec has
+        // nothing to do with a folder, and a folder is the thing a person is
+        // most likely to have selected.
+        => PkExec is not null && File.Exists(path) && Executable(path);
+
+    /// <summary>
+    /// Whether ANYBODY may run this file, off the file itself.
+    ///
+    /// Shared by the two verbs that ask it — the elevated run and
+    /// <see cref="CanRunFile"/> — so that a fix to one is a fix to both.
+    ///
+    /// False rather than throwing where the mode cannot be read at all:
+    /// File.GetUnixFileMode is a PlatformNotSupportedException off Unix, and
+    /// this assembly's tests run on Windows.
+    /// </summary>
+    private bool Executable(string path)
     {
-        if (PkExec is null) return false;
+        if (ExecuteBitOverride is { } stub) return stub(path);
 
         try
         {
-            // File.Exists, which is already false for a directory: pkexec has
-            // nothing to do with a folder, and a folder is the thing a person
-            // is most likely to have selected.
-            if (!File.Exists(path)) return false;
-
             return Runnable(File.GetUnixFileMode(path));
         }
         catch (Exception e) when (e is IOException or UnauthorizedAccessException
@@ -472,6 +592,21 @@ public sealed class LinuxLauncher : IApplicationLauncher
             return false;
         }
     }
+
+    /// <summary>
+    /// Stands in for that read.
+    ///
+    /// **A machine fact this repository cannot arrange on the agent that gates
+    /// the merge**, which is the same reason DesktopEntries.ExecutableOverride
+    /// exists: the suite runs on Windows, where GetUnixFileMode throws and
+    /// chmod does not exist, so both answers — a runnable file and an
+    /// unrunnable one — would otherwise be untestable there. Per instance
+    /// rather than static, like every other seam on this class, so a stand-in
+    /// one test installs cannot reach another.
+    ///
+    /// Null in the application.
+    /// </summary>
+    internal Func<string, bool>? ExecuteBitOverride { get; set; }
 
     /// <summary>
     /// **Any of the three bits, not the owner's.** The binaries this verb
@@ -739,12 +874,22 @@ public sealed class LinuxLauncher : IApplicationLauncher
     /// </summary>
     internal Func<string, IReadOnlyList<string>, bool>? SpawnOverride { get; set; }
 
-    /// <summary>The process started IN a folder rather than told about it.</summary>
+    /// <summary>The process started IN a folder rather than told about it, for
+    /// the callers that only pick the next candidate.</summary>
     private bool TrySpawnIn(string directory, IReadOnlyList<string> argv)
-    {
-        if (argv.Count == 0) return false;
+        => argv.Count > 0 && SpawnFailureIn(directory, argv) is null;
 
-        if (SpawnOverride is { } stand) return stand(directory, argv);
+    /// <summary>
+    /// The same start, keeping the exception instead of reducing it to false —
+    /// the pair <see cref="SpawnFailure"/> and <see cref="TrySpawn"/> already
+    /// are, for the same reason. The terminal chain wants a bool because it has
+    /// another candidate to try; <see cref="Run"/> has nowhere left to fall
+    /// back to and a status bar to fill.
+    /// </summary>
+    private Exception? SpawnFailureIn(string directory, IReadOnlyList<string> argv)
+    {
+        if (SpawnOverride is { } stand)
+            return stand(directory, argv) ? null : NothingStarted;
 
         try
         {
@@ -757,13 +902,21 @@ public sealed class LinuxLauncher : IApplicationLauncher
             for (var i = 1; i < argv.Count; i++) info.ArgumentList.Add(argv[i]);
 
             using var process = Process.Start(info);
-            return process is not null;
+            return process is null ? NothingStarted : null;
         }
-        catch
+        catch (Exception ex)
         {
-            return false;
+            return ex;
         }
     }
+
+    /// <summary>
+    /// What a null Process reads as. Not a mechanism anyone here has produced,
+    /// so it describes no cause — but it reaches Failures.Describe's
+    /// IOException arm verbatim, so it has to be a sentence rather than a note
+    /// to a programmer.
+    /// </summary>
+    private static IOException NothingStarted => new("the desktop did not start anything");
 
     /// <summary>
     /// Whether it started, for the callers that only pick the next candidate.
@@ -792,13 +945,8 @@ public sealed class LinuxLauncher : IApplicationLauncher
 
             // A null process is what this read as a failure when it answered
             // bool; it now says the same thing with something a caller can
-            // show. Not a mechanism anyone here has produced, so the message
-            // describes no cause — but it reaches Failures.Describe's
-            // IOException arm verbatim, so it has to be a sentence rather than
-            // a note to a programmer.
-            return process is null
-                ? new IOException("the desktop did not start anything")
-                : null;
+            // show.
+            return process is null ? NothingStarted : null;
         }
         catch (Exception ex)
         {

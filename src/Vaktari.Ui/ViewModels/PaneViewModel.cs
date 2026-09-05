@@ -676,6 +676,76 @@ public sealed partial class PaneViewModel : ObservableObject, IDisposable
         && launcher.CanElevateFile(entry.FullPath);
 
     /// <summary>
+    /// Whether "Run" would mean anything for what is selected.
+    ///
+    /// **There was no such row, and on a desktop there was no other way.**
+    /// Windows needs none — its shell runs an executable that is
+    /// double-clicked — but the desktop's opener never runs anything, so
+    /// "Run as administrator" was the only entry in the whole menu that could
+    /// start a program, and it needed pkexec and root to do it. A person with
+    /// a script they had just written could either elevate it or nothing.
+    ///
+    /// The platform's question, asked of the launcher, for the reason
+    /// <see cref="CanRunSelectionAsAdministrator"/> gives at length: an
+    /// extension list answered it here once, and there is no such list on a
+    /// desktop where an executable usually has no extension at all.
+    ///
+    /// Not on either listing <see cref="RunnableListing"/> rules out.
+    /// </summary>
+    public bool CanRunSelection =>
+        _launcher is { } launcher
+        && RunnableListing
+        && SelectedEntry is { IsDirectory: false } entry
+        && launcher.CanRunFile(entry.FullPath);
+
+    /// <summary>
+    /// Whether starting a program off this listing means anything, whichever
+    /// gesture asks.
+    ///
+    /// **Not in the bin and not in the recent listing, where a row carries the
+    /// path something USED to occupy** — running whatever holds that path now
+    /// is the worst version of the wrong-file fault this application has
+    /// already fixed twice.
+    ///
+    /// One member because the rule was written twice and only the menu row's
+    /// copy was complete. Measured on a headless pane at
+    /// <see cref="VirtualPaths.Files"/>: CanRunSelection answered false for a
+    /// row the launcher calls a program, and OpenAsync on that same row still
+    /// raised the question — whose Run answer is the callback that starts the
+    /// file. So the row was hidden and a double-click offered to start the
+    /// program anyway. That listing is the one this change fills, too:
+    /// <see cref="Start"/> records every run as a recent file, so the programs
+    /// you have run are exactly the rows the gap sat under.
+    /// </summary>
+    private bool RunnableListing => !IsTrashListing && !IsRecentListing;
+
+    /// <summary>
+    /// Starts what is selected.
+    ///
+    /// **No question here, and that is the difference from a double-click.**
+    /// The gesture there is ambiguous — it has meant "open this" everywhere
+    /// else — so it asks; this row says the word "Run" and clicking it is the
+    /// answer. GNOME's "Run as a program" behaves the same way.
+    ///
+    /// Every runnable file in the selection, like the elevated verb beside it:
+    /// choosing this with three installers selected and having one start is the
+    /// silent loss that rule exists to prevent.
+    /// </summary>
+    [RelayCommand]
+    public void RunSelection()
+    {
+        if (!CanRunSelection || _launcher is not { } launcher) return;
+
+        var runnable = EntriesToActOn()
+            .Where(e => !e.IsDirectory && launcher.CanRunFile(e.FullPath))
+            .ToList();
+
+        if (runnable.Count == 0 || TooMany(runnable.Count)) return;
+
+        foreach (var entry in runnable) Start(entry, run: true);
+    }
+
+    /// <summary>
     /// Hands the selection to the system to start elevated. The consent dialog
     /// is the system's — Windows' own, or the one polkit puts up — and Vaktari
     /// itself stays unelevated whatever is chosen.
@@ -1024,6 +1094,7 @@ public sealed partial class PaneViewModel : ObservableObject, IDisposable
         OnPropertyChanged(nameof(CanRenameInBulk));
         OnPropertyChanged(nameof(HasDirectorySelected));
         OnPropertyChanged(nameof(HasAnyDirectorySelected));
+        OnPropertyChanged(nameof(CanRunSelection));
         OnPropertyChanged(nameof(CanRunSelectionAsAdministrator));
         OnPropertyChanged(nameof(CanMountSelection));
         OnPropertyChanged(nameof(CanUnmountSelection));
@@ -1298,6 +1369,16 @@ public sealed partial class PaneViewModel : ObservableObject, IDisposable
     /// tests that have no owner to be modal to.
     /// </summary>
     public event EventHandler<ChooseApplicationViewModel>? ChooseApplicationRequested;
+
+    /// <summary>
+    /// Raised when the thing that was double-clicked is a program, so the view
+    /// can ask before starting it.
+    ///
+    /// An event for the same reason the chooser above is one — and the pane
+    /// checks whether anybody is listening before it asks, because a pane with
+    /// no window behind it must still open the file rather than swallow it.
+    /// </summary>
+    public event EventHandler<RunFileViewModel>? RunFileRequested;
 
     [ObservableProperty] private string _currentPath = "";
     [ObservableProperty] private string _pathText = "";
@@ -2962,26 +3043,71 @@ public sealed partial class PaneViewModel : ObservableObject, IDisposable
         if (Shortcuts?.TargetOf(entry.FullPath) is { } target && Directory.Exists(target))
             return NavigateAsync(target);
 
-        // Recorded on the ATTEMPT, not on the outcome. Asking to open a file is
-        // the user's act either way, which is the recency semantic that
-        // matters, and a launch the desktop accepts is still no promise that
-        // anything appeared — so there is no better moment than this one.
-        Recording?.Record(entry.FullPath, RecentKind.File);
-
-        // **This was a bare call with nothing after it**, because Open returned
-        // void — the comment above used to say so and treat it as the end of
-        // the matter. Both launchers caught the failure and dropped it, so
-        // double-clicking a row whose file had been deleted since the listing
-        // was drawn did nothing at all: no window, no message, nothing to
-        // distinguish it from a click that missed.
+        // **A program was handed to the desktop's opener, which never runs
+        // one.** On a desktop that meant a shell script opened in a text editor
+        // and a binary or an AppImage opened nothing whatsoever — no window, no
+        // message — so a file you had just marked runnable could not be started
+        // from anywhere in this application. Asked rather than done, because a
+        // double-click has meant "open this" everywhere else here and is not by
+        // itself consent to execute something; the window draws the three
+        // answers.
         //
-        // One line covers both routes that reach a file: the pointer and Enter
-        // come through here, and so does a path typed into the location bar,
-        // which opens through this method rather than the launcher.
-        if (_launcher?.Open(entry.FullPath) is { } failure)
-            Status = Failures.Describe(failure, "open that file");
+        // The listener is checked as well as the platform. A pane with no
+        // window behind it — which is how it is built in several dozen tests,
+        // and how a future headless route would build it — has nobody to show a
+        // question, and swallowing the open would be worse than the fault being
+        // fixed. It falls through and opens, exactly as before.
+        //
+        // **And the listing, which this asked on and the menu row refused.**
+        // RefusedInBin above covers the bin and nothing covered the recent
+        // listing, so a double-click or Enter there offered to start whatever
+        // occupies a remembered path — the fault RunnableListing exists to
+        // prevent, on the one listing this change itself fills with programs.
+        if (RunFileRequested is { } ask
+            && RunnableListing
+            && _launcher is { } runner
+            && runner.CanRunFile(entry.FullPath))
+        {
+            ask(this, new RunFileViewModel(
+                entry.Name, () => Start(entry, run: true), () => Start(entry, run: false)));
+
+            return Task.CompletedTask;
+        }
+
+        Start(entry, run: false);
 
         return Task.CompletedTask;
+    }
+
+    /// <summary>
+    /// Hands one file to the platform, one way or the other, and says so when
+    /// it will not go.
+    ///
+    /// **Recorded here rather than before the question**, which is the rule the
+    /// chooser already keeps by recording inside its callback: a question that
+    /// was dismissed opened nothing and ran nothing, and must not leave a
+    /// recent entry claiming otherwise. Within an answer it is still recorded
+    /// on the ATTEMPT — asking to start something is the user's act whatever
+    /// the desktop then makes of it.
+    ///
+    /// **This was a bare call with nothing after it**, because Open returned
+    /// void. Both launchers caught the failure and dropped it, so
+    /// double-clicking a row whose file had been deleted since the listing was
+    /// drawn did nothing at all: no window, no message, nothing to distinguish
+    /// it from a click that missed. One place covers every route that reaches a
+    /// file — the pointer and Enter through OpenAsync, a path typed into the
+    /// location bar, and both answers to the question above.
+    /// </summary>
+    private void Start(FileEntry entry, bool run)
+    {
+        Recording?.Record(entry.FullPath, RecentKind.File);
+
+        var failure = run
+            ? _launcher?.Run(entry.FullPath)
+            : _launcher?.Open(entry.FullPath);
+
+        if (failure is { } refused)
+            Status = Failures.Describe(refused, run ? "run that file" : "open that file");
     }
 
     /// <summary>
@@ -3419,6 +3545,7 @@ public sealed partial class PaneViewModel : ObservableObject, IDisposable
         OnPropertyChanged(nameof(CanRenameInBulk));
         OnPropertyChanged(nameof(HasDirectorySelected));
         OnPropertyChanged(nameof(HasAnyDirectorySelected));
+        OnPropertyChanged(nameof(CanRunSelection));
         OnPropertyChanged(nameof(CanRunSelectionAsAdministrator));
         OnPropertyChanged(nameof(CanMountSelection));
         OnPropertyChanged(nameof(CanUnmountSelection));

@@ -1,4 +1,5 @@
 using System.Runtime.Versioning;
+using Vaktari.Core.FileSystem;
 using Vaktari.Core.Tests;
 using Xunit;
 
@@ -56,4 +57,23 @@ public sealed class ElevatableFilesTests
     [WindowsFact]
     public void Windows_still_has_a_route_to_elevate_at_all()
         => Assert.True(new WindowsLauncher().CanElevate);
+
+    /// <summary>
+    /// **Nothing here asks whether to run a program, and nothing here should.**
+    /// Double-clicking an executable on a desktop reaches an opener that never
+    /// runs anything, so Vaktari asks the person and starts it itself; the
+    /// Windows shell already runs one, and already puts its own
+    /// Mark-of-the-Web warning up for a downloaded one. A launcher that
+    /// answered yes here would produce two consecutive questions and then start
+    /// the program twice — once from our answer and once from the shell.
+    ///
+    /// The .exe is the case that matters, and the .txt is the control: the same
+    /// launcher is asked about both, so "false" is the rule rather than a
+    /// method that has not been written.
+    /// </summary>
+    [WindowsTheory]
+    [InlineData(@"C:\tools\setup.exe")]
+    [InlineData(@"C:\notes.txt")]
+    public void The_shell_runs_what_it_is_handed_so_nothing_is_asked_here(string path)
+        => Assert.False(((IApplicationLauncher)new WindowsLauncher()).CanRunFile(path));
 }

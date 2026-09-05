@@ -1741,6 +1741,21 @@
                    elevation anywhere visible. Open in new tab earns the same
                    promotion: it was living in "More" while being one of the
                    most-used folder actions a file manager has. -->
+              <!-- **The only row in this menu that can start a program without
+                   asking for root.** Windows needs none — its shell runs an
+                   executable that is double-clicked — but the desktop's opener
+                   never runs anything, so on Linux "Run as administrator" was
+                   the whole of it, and a script you had just written could be
+                   elevated or nothing. Above that row for the same reason it
+                   sits above everything else: the unprivileged verb is the one
+                   people want.
+
+                   No question behind this one, unlike the double-click: the
+                   row says the word, so clicking it is the answer. GNOME's
+                   "Run as a program" behaves the same way. -->
+              <MenuItem Header="Run"
+                                      Command="{Binding ActiveTab.RunSelectionCommand}"
+                                      IsVisible="{Binding ActiveTab.CanRunSelection}"/>
               <MenuItem Header="Run as _administrator"
                                       Command="{Binding ActiveTab.RunAsAdministratorCommand}"
                                       IsVisible="{Binding ActiveTab.CanRunSelectionAsAdministrator}"/>
