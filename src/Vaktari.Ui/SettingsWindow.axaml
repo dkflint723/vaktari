@@ -268,6 +268,23 @@
                       FontSize="{DynamicResource FontSizeSmall}"
                       IsEnabled="{Binding CanSetCaseSensitivity}"
                       IsChecked="{Binding CaseSensitiveSorting}"/>
+
+            <!-- Beside the other two sorting rules, because that is what it
+                 is: the comparer applied it ahead of the field and read no
+                 setting, so sorting by modified could not put a folder at the
+                 top however recently it changed. Ticked out of the box, which
+                 is both the shipped behaviour and what all three references
+                 do. -->
+            <CheckBox FontSize="{DynamicResource FontSizeSmall}"
+                      IsChecked="{Binding FoldersFirst}">
+              <StackPanel>
+                <TextBlock Text="Sort folders before files"/>
+                <TextBlock Text="On, folders are banded above the files whichever column you sort by. Off, they take their place in the order like anything else — the newest thing in a folder can then be a folder. Grouping by size or by type keeps a Folders band whichever way this is set, because those bands have a heading; grouping by name or by date does not, and there this decides whether folders lead inside each band."
+                           FontSize="{DynamicResource FontSizeTiny}"
+                           Foreground="{DynamicResource ViewDimText}"
+                           TextWrapping="Wrap"/>
+              </StackPanel>
+            </CheckBox>
           </StackPanel>
 
           <Border Height="1" Background="{DynamicResource SeparatorColour}"/>
@@ -980,6 +997,29 @@
             <StackPanel>
               <TextBlock Text="Show selection check boxes"/>
               <TextBlock Text="A box ahead of every row in all three layouts, and one on the list heading that ticks or clears the lot. The box appears when you point at a row and stays while the row is ticked. Ctrl+click, shift+click and dragging a rectangle round the rows work the same either way."
+                         FontSize="{DynamicResource FontSizeTiny}"
+                         Foreground="{DynamicResource ViewDimText}"
+                         TextWrapping="Wrap"/>
+            </StackPanel>
+          </CheckBox>
+
+          <Border Height="1" Background="{DynamicResource SeparatorColour}"/>
+
+          <TextBlock Text="File names"
+                     FontSize="{DynamicResource FontSizeTiny}"
+                     Foreground="{DynamicResource ViewDimText}"/>
+
+          <!-- Here rather than under "List view" below: all three layouts bind
+               the same converter, so this is not a property of one of them.
+               Ticked out of the box, which is the behaviour the application has
+               always had — Explorer ships the same switch unticked, and
+               changing what every row says on upgrade is not a default a file
+               manager gets to pick for you. -->
+          <CheckBox FontSize="{DynamicResource FontSizeSmall}"
+                    IsChecked="{Binding ShowFileExtensions}">
+            <StackPanel>
+              <TextBlock Text="Show file name extensions"/>
+              <TextBlock Text="Off, notes.txt lists as notes in all three layouts. Anything that runs when you open it keeps its ending — a program, a script, an installer — so nothing can be listed as the document beside it. The name you type when renaming, the tooltip on a trimmed name and the look-alike mark all keep the whole file name, and a shortcut or a launcher keeps the name it already had."
                          FontSize="{DynamicResource FontSizeTiny}"
                          Foreground="{DynamicResource ViewDimText}"
                          TextWrapping="Wrap"/>

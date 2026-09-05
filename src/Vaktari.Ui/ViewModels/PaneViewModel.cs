@@ -4674,8 +4674,26 @@ public sealed partial class PaneViewModel : ObservableObject, IDisposable
     /// the visible ones — 97 µs each, once per path per process, and 0.1 µs on
     /// every later pass because the answer is cached under it.
     /// </summary>
+    /// <remarks>
+    /// **The name WITH its extension, whatever the extension preference says.**
+    /// Hiding extensions draws main.c and main.h as one word each, and this set
+    /// keys on what a row draws — so a folder of C sources, or of .tex beside
+    /// .pdf, marked every row "Look-alike" the moment the preference went on.
+    /// That is noise, and noise in the one mark whose whole value is that it is
+    /// rare.
+    ///
+    /// What makes the suppression safe is at the other end, in
+    /// <c>FileKind.Runs</c>: the suffix that says a row STARTS something is
+    /// never hidden, so the collision worth marking — "report.exe" and
+    /// "report.pdf" both drawn "report" — cannot be created. What is left
+    /// unmarked is a pair of documents whose only difference is an extension
+    /// the person switched off themselves, and which pressing F2 still spells
+    /// out in full — the Type column and the name tooltip say it too, each
+    /// while its own switch is on.
+    /// </remarks>
     private void RefreshConfusable()
-        => Confusable = ConfusableNames.Among(_all.Select(e => (e.FullPath, FileKind.DisplayName(e))));
+        => Confusable = ConfusableNames.Among(
+            _all.Select(e => (e.FullPath, FileKind.DisplayName(e, hideExtension: false))));
 
 
 

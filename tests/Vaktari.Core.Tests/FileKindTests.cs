@@ -186,6 +186,111 @@ public sealed class FileKindTests
         Assert.Equal("Chrome.lnk", FileKind.DisplayName(File("Chrome.lnk")));
     }
 
+    // ---- the extension the listing may be told to leave off ------------------
+
+    /// <summary>
+    /// **Two extensions were hidden and no others could ever be.** .lnk and
+    /// .desktop were the whole list, both because the platform's own shell
+    /// hides them, and nothing in the application or in settings.json could ask
+    /// for Explorer's "File name extensions" unticked.
+    ///
+    /// The preference is PASSED here rather than set on the static, so this
+    /// class touches no shared state: FileKind.HideExtensions is per-process,
+    /// and xUnit runs the classes in this assembly in parallel.
+    /// </summary>
+    [Theory]
+    [InlineData("notes.txt", "notes")]
+    [InlineData("archive.tar.gz", "archive.tar")]
+    [InlineData("Report.FINAL.DOCX", "Report.FINAL")]
+    // A leading dot begins a name rather than an extension, so there is nothing
+    // to take off and a row cannot be emptied.
+    [InlineData(".gitignore", ".gitignore")]
+    [InlineData("Makefile", "Makefile")]
+    // One character either side of the dot is still an extension.
+    [InlineData("a.b", "a")]
+    // **"..foo" was cut down to a single dot** — a legal name on both
+    // platforms, drawn as the current-directory entry. The last dot decides the
+    // extension and only index 0 is refused, so the leading-dot reasoning above
+    // covers a name whose ONLY dot leads and no other.
+    [InlineData("..foo", "..foo")]
+    [InlineData("...foo", "...foo")]
+    // And the stem being merely SHORT is fine — it is being nothing but dots
+    // that is not.
+    [InlineData(".x.foo", ".x")]
+    public void An_extension_comes_off_only_when_the_listing_asks(string name, string shown)
+    {
+        var entry = File(name);
+
+        Assert.Equal(shown, FileKind.DisplayName(entry, hideExtension: true));
+
+        // And the other way answers the whole name, which is what every row
+        // drew before there was a switch.
+        Assert.Same(entry.Name, FileKind.DisplayName(entry, hideExtension: false));
+    }
+
+    /// <summary>
+    /// A folder called "src.old" is a folder called "src.old", and the type
+    /// column says "Folder" whatever the name looks like.
+    ///
+    /// **The CONDITION has two independent mechanisms; the VALUE has one.**
+    /// <c>DisplayName</c> returns at the top for a directory, and
+    /// <c>FileEntry.Extension</c> is <c>default</c> for one as well — so
+    /// swapping that early return's <c>entry.IsDirectory</c> for
+    /// <c>entry.IsSymlink</c> leaves this green, because the empty extension
+    /// then fails the length test one line further down. Measured, both ways.
+    ///
+    /// Not a guard, then: the killing mutation is on the value rather than on
+    /// the test, and it is <c>return entry.Name ?? ""</c> to <c>return ""</c>
+    /// in that same early return, which reddens this with
+    /// "Expected: src.old, Actual: ". Measured.
+    ///
+    /// Kept for the day somebody removes the second of the two conditions — an
+    /// Extension that starts answering for directories would otherwise turn
+    /// every folder with a dot in its name into a truncated one, silently, in
+    /// all three layouts.
+    /// </summary>
+    [Fact]
+    public void A_folder_keeps_its_whole_name_however_it_is_spelled()
+        => Assert.Equal(
+            "src.old", FileKind.DisplayName(File("src.old", directory: true), hideExtension: true));
+
+    /// <summary>
+    /// **Nothing may allocate per row**, which is the rule the whole method is
+    /// written around — and it still holds for the rows that keep their name
+    /// with the preference switched on.
+    /// </summary>
+    [Fact]
+    public void A_name_with_nothing_to_take_off_is_still_handed_straight_back()
+    {
+        var entry = File("Makefile");
+
+        Assert.Same(entry.Name, FileKind.DisplayName(entry, hideExtension: true));
+    }
+
+    /// <summary>
+    /// **A program could be drawn as the document beside it.** With extensions
+    /// hidden, report.exe and report.pdf in one folder both answered the single
+    /// word "report" — measured — and no other part of the row closed the gap:
+    /// the Type column has no initialiser behind it and exists in one layout of
+    /// three, the name tooltip is gated on a separate preference, and an .exe
+    /// supplies its own icon. So the suffix that says a row STARTS something is
+    /// the one this preference never takes off, and the two rows stay two
+    /// different words.
+    /// </summary>
+    [Theory]
+    [InlineData("report.exe", "report.exe")]
+    [InlineData("setup.MSI", "setup.MSI")]
+    [InlineData("build.ps1", "build.ps1")]
+    [InlineData("install.sh", "install.sh")]
+    [InlineData("Ember.AppImage", "Ember.AppImage")]
+    [InlineData("keys.reg", "keys.reg")]
+    // Not a program, and this is the row it must not be confusable with.
+    [InlineData("report.pdf", "report")]
+    // The famous shape: hiding ".exe" here would draw it as the PDF it is not.
+    [InlineData("invoice.pdf.exe", "invoice.pdf.exe")]
+    public void The_suffix_that_says_a_row_runs_is_never_hidden(string name, string shown)
+        => Assert.Equal(shown, FileKind.DisplayName(File(name), hideExtension: true));
+
     // ---- a link is not the thing it points at -------------------------------
 
     /// <summary>

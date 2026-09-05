@@ -25,10 +25,20 @@ public static class ConfusableNames
     /// mistake. What is worth flagging is a difference somebody could not see
     /// even knowing to look.
     ///
-    /// The Name asked for is whatever the row DRAWS, which is not always the
-    /// file name — a launcher draws its Name= key. Two of those can be exactly
-    /// equal, where two file names in one directory cannot, and an exact match
-    /// flattens to itself and collides like any other.
+    /// The Name asked for is the row's, not the path's — a launcher draws its
+    /// Name= key. Two of those can be exactly equal, where two file names in
+    /// one directory cannot, and an exact match flattens to itself and collides
+    /// like any other.
+    ///
+    /// **With one exception, which the caller makes and this cannot see: the
+    /// extension.** "Show file name extensions" is a preference about tidiness,
+    /// and keying on the trimmed name marked every main.c beside its main.h —
+    /// so <c>PaneViewModel.RefreshConfusable</c> asks
+    /// <c>FileKind.DisplayName</c> for the untrimmed name however that
+    /// preference stands. The pair that trimming could otherwise have hidden is
+    /// closed at the other end instead, by <c>FileKind.Runs</c>: the suffix
+    /// that says a row starts something is never taken off, so a program cannot
+    /// be drawn as the document beside it.
     /// </summary>
     public static IReadOnlySet<string> Among(IEnumerable<(string FullPath, string Name)> entries)
     {

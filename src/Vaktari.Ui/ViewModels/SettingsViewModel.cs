@@ -103,6 +103,9 @@ public sealed partial class SettingsViewModel : ObservableObject
 
         NaturalSorting = general.NaturalSorting;
         CaseSensitiveSorting = general.CaseSensitiveSorting;
+        // Positive question here, negative one in the record, so the record's
+        // zero value is the behaviour every install already has.
+        FoldersFirst = !general.MixFoldersWithFiles;
         RememberViewPerFolder = general.RememberViewPerFolder;
         ShowTooltips = general.ShowTooltips;
         RememberRecent = general.RememberRecent;
@@ -200,6 +203,8 @@ public sealed partial class SettingsViewModel : ObservableObject
         // that one site, and left this one to crash the dialog instead.
         ShowVcsDecorations = current.Vcs?.ShowDecorations ?? true;
         ShowSelectionBoxes = views.ShowSelectionBoxes;
+        // Inverted for the reason given beside FoldersFirst above.
+        ShowFileExtensions = !views.HideFileExtensions;
         GrowWindowForPanel = views.NarrowDetailsPanel == NarrowPanelBehaviour.GrowWindow;
         // The dialog asks the positive question; the record stores the negative
         // one so its zero value is the wanted behaviour.
@@ -263,6 +268,14 @@ public sealed partial class SettingsViewModel : ObservableObject
 
     [ObservableProperty] private bool _naturalSorting;
     [ObservableProperty] private bool _caseSensitiveSorting;
+
+    /// <summary>
+    /// The dialog asks the positive question — "Sort folders before files" —
+    /// while <c>GeneralSettings.MixFoldersWithFiles</c> stores the negative one
+    /// so that its zero value is the shipped behaviour. Same inversion, and the
+    /// same reason, as <see cref="RestoreWidthOnPanelClose"/> below.
+    /// </summary>
+    [ObservableProperty] private bool _foldersFirst;
     [ObservableProperty] private bool _rememberViewPerFolder;
     [ObservableProperty] private bool _showTooltips;
     [ObservableProperty] private bool _rememberRecent;
@@ -1116,6 +1129,16 @@ public sealed partial class SettingsViewModel : ObservableObject
     [ObservableProperty] private bool _showSelectionBoxes;
 
     /// <summary>
+    /// Draw ".txt" on the end of the name, in all three layouts.
+    ///
+    /// Phrased positively because that is the question Explorer's View ribbon
+    /// asks, and inverted on the way in and out because
+    /// <c>ViewSettings.HideFileExtensions</c> is named for its zero value —
+    /// the same arrangement as <see cref="RestoreWidthOnPanelClose"/> below.
+    /// </summary>
+    [ObservableProperty] private bool _showFileExtensions;
+
+    /// <summary>
     /// True: widen the window to fit the details panel. False: grey the toggle
     /// out. A bool rather than the enum because the dialog binds checkboxes, and
     /// two states do not need a picker.
@@ -1296,6 +1319,7 @@ public sealed partial class SettingsViewModel : ObservableObject
             {
                 NaturalSorting = NaturalSorting,
                 CaseSensitiveSorting = CaseSensitiveSorting,
+                MixFoldersWithFiles = !FoldersFirst,
                 RememberViewPerFolder = RememberViewPerFolder,
                 ShowTooltips = ShowTooltips,
                 RememberRecent = RememberRecent,
@@ -1334,6 +1358,7 @@ public sealed partial class SettingsViewModel : ObservableObject
 
                 FollowDesktopColours = FollowDesktopColours,
                 ShowSelectionBoxes = ShowSelectionBoxes,
+                HideFileExtensions = !ShowFileExtensions,
                 ThemeMode = ThemeModeFromIndex(),
                 InterfaceTextScale = InterfaceText.ScaleFor(InterfaceTextIndex),
 

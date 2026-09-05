@@ -52,6 +52,29 @@ should not be trusted for compatibility yet.
   which is the one tooltip that most looks like a bug when the setting says they
   are off.
 
+- **Settings can now stop banding folders above the files, and can leave file
+  name extensions off the rows.** Folders led every listing whichever column you
+  sorted by, with no way to say otherwise, so sorting by Modified could not
+  answer "what changed here most recently" when the answer was a folder; and the
+  name column always drew the whole file name, with no counterpart to Explorer's
+  "File name extensions". Both are checkboxes in Settings — "Sort folders before
+  files" beside the other sorting rules, "Show file name extensions" under View
+  modes — and both arrive ticked, which is exactly what every existing install
+  does, so nothing reorders or renames itself on upgrade.
+
+  Turning the band off puts folders wherever the sort field puts them. Grouping
+  by size or by type keeps its "Folders" heading either way, because that band
+  has a heading of its own; grouping by name or by date has never had one, and
+  there the switch decides whether folders lead inside each band.
+
+  Turning extensions off draws notes.txt as notes in all three layouts, while
+  renaming, the tooltip on a name too long for its column, and the look-alike
+  mark all go on working in whole file names. What it will not hide is the
+  ending that means something happens when you open the row — a program, a
+  script, an installer, a launcher. Explorer hides those, which is how
+  invoice.pdf.exe comes to sit in a folder looking like a PDF; here it keeps
+  every character, so nothing can be listed as the document beside it.
+
 - **The interface text has a size, and it follows the desktop's out of the box.**
   Vaktari drew its menus, sidebar, tabs and status bar at one fixed size and
   ignored the system text-size setting entirely — so a desktop set to 125% for

@@ -50,6 +50,28 @@ public sealed record GeneralSettings
     /// <summary>False today: NaturalOrder.Compare upper-cases both sides.</summary>
     public bool CaseSensitiveSorting { get; init; }
 
+    /// <summary>
+    /// Let folders fall wherever the sort field puts them, instead of banding
+    /// them above the files.
+    ///
+    /// **The comparer said "Directories first, always" and meant it.** The
+    /// tie-break in <c>PaneViewModel.CompareWithin</c> returned on
+    /// <c>a.IsDirectory != b.IsDirectory</c> before it looked at the field at
+    /// all, and no setting was consulted anywhere — so sorting a folder by
+    /// modified date could not answer "what changed here most recently" if the
+    /// answer was a folder, and there was no key in settings.json to change it.
+    /// Explorer, Dolphin and Nautilus all offer this switch.
+    ///
+    /// **NAMED FOR ITS ZERO VALUE, like <see cref="ViewSettings.KeepWidthAfterPanelClose"/>
+    /// and for the same proven reason:** deserialization here does not run
+    /// property initializers, so a key absent from a settings.json written
+    /// before this existed arrives as <c>default(bool)</c>. false therefore has
+    /// to BE the shipped behaviour — and folders-first is the shipped
+    /// behaviour, so false keeps it and nobody's listing reorders itself on
+    /// upgrade.
+    /// </summary>
+    public bool MixFoldersWithFiles { get; init; }
+
     // ---- behaviour --------------------------------------------------------
 
     /// <summary>
@@ -367,6 +389,30 @@ public sealed record ViewSettings
     /// one answer.
     /// </summary>
     public bool ShowSelectionBoxes { get; init; }
+
+    /// <summary>
+    /// Leave the extension off the name a row draws — Explorer's "File name
+    /// extensions", unticked.
+    ///
+    /// **There was no such switch, and the name column always drew the whole
+    /// file name.** <c>FileKind.DisplayName</c> hid exactly two extensions —
+    /// .lnk on Windows and .desktop on Linux, both because the platform's own
+    /// shell hides them — and nothing else, ever, with no key in settings.json
+    /// to say otherwise.
+    ///
+    /// Here rather than in <see cref="DetailsViewSettings"/> for the reason
+    /// <see cref="ShowSelectionBoxes"/> gives above it: all three layouts bind
+    /// the same converter, so a per-layout home would be three copies of one
+    /// answer.
+    ///
+    /// **NAMED FOR ITS ZERO VALUE**, for the reason stated on
+    /// <see cref="KeepWidthAfterPanelClose"/>: an absent key arrives as
+    /// <c>default(bool)</c>, so false has to mean the shipped behaviour, and
+    /// the shipped behaviour is that extensions are shown. The dialog asks the
+    /// positive question — the checkbox reads "Show file name extensions" —
+    /// and the view model inverts it, exactly as it does for the panel width.
+    /// </summary>
+    public bool HideFileExtensions { get; init; }
 
     // ---- what a pane starts as --------------------------------------------
     //

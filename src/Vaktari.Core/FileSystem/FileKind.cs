@@ -224,6 +224,59 @@ public static class FileKind
         => extension.Equals("desktop", StringComparison.OrdinalIgnoreCase);
 
     /// <summary>
+    /// Suffixes that make opening a row START something — a program, a script,
+    /// an installer, a launcher, a machine setting — rather than show it in a
+    /// viewer.
+    ///
+    /// Deliberately short, and about the CONSEQUENCE rather than about file
+    /// formats. `.js` is absent on purpose: Windows Script Host will run one,
+    /// and it is also the commonest source file there is, so putting it here
+    /// would leave the ".js" on every row of every web project to guard a case
+    /// nobody in a source tree means.
+    ///
+    /// NOT <c>WindowsLauncher.Startable</c>, which is a different question with
+    /// a different answer — "what the runas verb can elevate on Windows" — and
+    /// lives in an assembly Core may not reference. The two overlap because
+    /// programs are programs; neither is derived from the other.
+    /// </summary>
+    private static readonly HashSet<string> Started = new(StringComparer.OrdinalIgnoreCase)
+    {
+        "exe", "com", "scr", "pif", "bat", "cmd", "ps1", "vbs", "vbe", "wsf",
+        "msi", "msix", "appx", "msc", "cpl", "reg", "jar",
+        "sh", "run", "appimage", "deb", "rpm", "flatpak", "desktop",
+    };
+
+    /// <summary>
+    /// The same set asked with a span, so a row costs no string.
+    ///
+    /// **Nothing may allocate per row** — the rule the whole of
+    /// <see cref="DisplayName"/> is written around. <c>Extension</c> is a span
+    /// into the name, and <c>HashSet&lt;string&gt;.Contains</c> would need it
+    /// materialised; the alternate lookup hashes the span itself.
+    /// </summary>
+    private static readonly HashSet<string>.AlternateLookup<ReadOnlySpan<char>> StartedBySpan =
+        Started.GetAlternateLookup<ReadOnlySpan<char>>();
+
+    /// <summary>
+    /// Whether opening this suffix starts something.
+    ///
+    /// **A program could be drawn as the document beside it.** With extensions
+    /// hidden, "report.exe" and "report.pdf" in one folder both drew the single
+    /// word "report" — measured — and nothing in the row said which was which:
+    /// the Type column is off out of the box and exists in one layout of three,
+    /// the name tooltip is gated on a separate preference, and an .exe chooses
+    /// its own icon, which is the trick this project already refused to help
+    /// with for .desktop launchers. So the suffix that says "this runs" is the
+    /// one thing hiding extensions never takes off.
+    ///
+    /// Private, unlike <see cref="IsShortcut"/> and <see cref="IsLauncher"/>
+    /// beside it: those two are public because a second caller asks them and
+    /// two copies of the rule would drift. Nothing outside this file asks this
+    /// one yet.
+    /// </summary>
+    private static bool Runs(ReadOnlySpan<char> extension) => StartedBySpan.Contains(extension);
+
+    /// <summary>
     /// What a launcher file calls itself, or null for a platform with no such
     /// thing — which is every platform but one.
     ///
@@ -239,8 +292,27 @@ public static class FileKind
     public static Func<string, string?>? LauncherName { get; set; }
 
     /// <summary>
+    /// Whether every file's extension is left off the name a listing draws —
+    /// <c>ViewSettings.HideFileExtensions</c>, as the rows see it.
+    ///
+    /// **A seam rather than a settings read, because Core may not reference the
+    /// assembly holding the live preferences** — the same bargain
+    /// <see cref="LauncherName"/> makes one property above, for the same reason.
+    /// Pushed from <c>AppSettings.Apply</c>, which is the one place the
+    /// preferences change, so this cannot drift out of step with them and a test
+    /// that saves and restores <c>AppSettings.Current</c> restores this with it.
+    ///
+    /// A bool rather than a Func: this is read once per visible row per bind,
+    /// and a delegate call per row would buy nothing.
+    /// </summary>
+    public static bool HideExtensions { get; set; }
+
+    /// <summary>
     /// The name a listing shows: the entry's own, except for a Windows
-    /// shortcut, whose extension Explorer never displays.
+    /// shortcut, whose extension Explorer never displays, a Linux launcher,
+    /// which draws its own Name= key, and — while
+    /// <see cref="HideExtensions"/> is on — anything whose suffix does not say
+    /// it runs.
     ///
     /// Hands back the SAME string instance whenever there is nothing to hide,
     /// which is every row but a handful. This runs once per visible row per
@@ -251,7 +323,25 @@ public static class FileKind
     /// so a file literally named ".lnk" is a name rather than an extension and
     /// keeps every character.
     /// </summary>
-    public static string DisplayName(FileEntry entry)
+    public static string DisplayName(FileEntry entry) => DisplayName(entry, HideExtensions);
+
+    /// <summary>
+    /// The same name with the preference passed in rather than read.
+    ///
+    /// **The look-alike mark is the caller that needs the other answer.**
+    /// <c>ConfusableNames</c> keys on the name a row DRAWS, so with extensions
+    /// hidden every main.c beside its main.h flattened to one key and both rows
+    /// grew a "Look-alike" chip — a folder of C sources or of .tex/.pdf pairs
+    /// lights up end to end, which is noise rather than a warning, in the one
+    /// mark whose whole value is that it is rare. Asking for the name WITH its
+    /// extension keeps it on the difference it was built for.
+    ///
+    /// That suppression is affordable only because the collision it hides has
+    /// no consequence: <see cref="Runs"/> keeps the suffix on anything a
+    /// double-click STARTS, so the pair that would matter — "report.exe" drawn
+    /// as "report" beside "report.pdf" — cannot be made in the first place.
+    /// </summary>
+    public static string DisplayName(FileEntry entry, bool hideExtension)
     {
         if (string.IsNullOrEmpty(entry.Name) || entry.IsDirectory) return entry.Name ?? "";
 
@@ -277,6 +367,39 @@ public static class FileKind
         if (IsLauncher(extension) && LauncherName is { } read
             && read(entry.FullPath) is { Length: > 0 } named)
             return named;
+
+        // **The extension was on every row and there was no way to take it
+        // off.** Explorer ships "File name extensions" unticked and offers the
+        // tick; this application drew the whole file name unconditionally, so
+        // the two arms above were the entire list of things it would hide.
+        //
+        // **The launcher arm was the one this could overrule, and no longer
+        // is.** Measured, all three ways: the cut below computes
+        // "org.kde.dolphin" for org.kde.dolphin.desktop, so hoisting this above
+        // the launcher arm WOULD have put every Linux launcher back under its
+        // reverse-DNS id — and does not, because "desktop" is in the started
+        // set, so this arm passes such a row by and falls through to the arm
+        // that names it. Hoisted, the row still drew "Dolphin"; hoisted with
+        // "desktop" taken out of that set it drew "org.kde.dolphin". The
+        // shortcut arm was never a question: it and the cut below compute the
+        // same characters for "Chrome.v2.lnk", measured.
+        //
+        // A directory returned at the top, so a folder called "src.old" keeps
+        // its whole name.
+        if (hideExtension && extension.Length > 0 && !Runs(extension))
+        {
+            // **"..foo" was drawn as ".", a row reading as the
+            // current-directory entry.** The summary above reasoned that a
+            // leading dot begins a name and so nothing can be cut — true only
+            // when the leading dot is the ONLY one. ExtensionOf takes the LAST
+            // dot and rejects index 0 alone, so "..foo" has extension "foo" and
+            // the cut left one character, which was a dot. Both platforms
+            // accept the name. What is left has to be something a person can
+            // read as a name, so it has to be more than dots.
+            var stem = entry.Name.AsSpan(0, entry.Name.Length - extension.Length - 1);
+
+            if (stem.ContainsAnyExcept('.')) return entry.Name[..^(extension.Length + 1)];
+        }
 
         return entry.Name;
     }

@@ -33,6 +33,17 @@ public static class AppSettings
     {
         _current = Normalise(settings);
 
+        // **The one preference a row needs that Core cannot read for itself.**
+        // FileKind.DisplayName decides what the name column draws and lives in
+        // Vaktari.Core, which does not reference this assembly — so the flag is
+        // pushed rather than pulled, the way FileKind.LauncherName is filled in
+        // by the platform. Here rather than at the settings dialog's Save,
+        // because Apply is the only door into Current: a test, a restore from a
+        // copy and the launch-time load all come through it, and any of them
+        // leaving the two disagreeing would draw names from the previous
+        // settings until the next save.
+        Core.FileSystem.FileKind.HideExtensions = _current.Views.HideFileExtensions;
+
         // **PROVEN 30 July 2026: deserialization does NOT run property
         // initializers here.** A key absent from settings.json arrives as
         // `default(T)`, not as the declared default. The control below printed

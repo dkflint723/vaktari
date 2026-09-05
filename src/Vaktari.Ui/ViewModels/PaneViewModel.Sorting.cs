@@ -169,10 +169,22 @@ public sealed partial class PaneViewModel
     /// </summary>
     private int CompareWithin(FileEntry a, FileEntry b)
     {
-        // Directories first, always — the convention every file manager follows
-        // and users notice immediately when it's missing. Inside a band when
-        // there is one, which is where it belongs.
-        if (a.IsDirectory != b.IsDirectory)
+        // Directories first — the convention every file manager follows and
+        // users notice immediately when it's missing. Inside a band when there
+        // is one, which is where it belongs.
+        //
+        // **It said "always" and meant it: this returned before the field was
+        // looked at and read no setting.** Sorting by modified could therefore
+        // not answer "what changed here most recently" when the answer was a
+        // folder, and there was no key anywhere to say so. The three references
+        // all offer the switch, so this one does too — and the setting is named
+        // for its zero value, so an upgrading install keeps the band.
+        //
+        // Read from the live settings on every comparison rather than lifted
+        // into a local: this is the same static the tie-break below already asks
+        // per comparison, and the read is a field access on a record.
+        if (!Settings.AppSettings.Current.General.MixFoldersWithFiles
+            && a.IsDirectory != b.IsDirectory)
             return a.IsDirectory ? -1 : 1;
 
         // Span comparison rather than Extension.ToString(): sorting 200k entries
