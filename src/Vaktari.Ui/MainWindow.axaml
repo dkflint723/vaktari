@@ -485,10 +485,21 @@
                  four DockPanel.Dock="Right" children, where the first declared
                  sat furthest right and the source read backwards from the
                  screen. -->
-            <!-- Ungated for the same reason as the panel toggle: everything
-                 behind it — hidden files, text size, icon size — is per pane,
-                 and on the left half of a split there was no way to reach any
-                 of it. Clicking here makes this side active first (the window's
+            <!-- **Gated with the panel toggle, and the comment here said
+                 "ungated" long after it stopped being true.** It was ungated
+                 once, on the same audit finding and for the same reason — that
+                 is c99da00, 11 August 2026 — and went back behind
+                 ShowsWindowControls with the panel toggle in bf9ce4b three days
+                 later. That commit updated the panel toggle's note and left
+                 this one describing the state before it.
+
+                 So everything behind this button — hidden files, text size,
+                 icon size — is per pane and has no pointer route at all on the
+                 LEFT half of a split. Hidden files is the one that mattered,
+                 and it is why the listing's own View submenu exists: that menu
+                 belongs to the pane group, so both halves carry it.
+
+                 Clicking here makes this side active first (the window's
                  tunnelling press handler), so the shell-level commands inside
                  act on the pane that was clicked. -->
             <Button Content="&#x2261;"
@@ -1900,6 +1911,67 @@
                 <MenuItem Header="_None" Click="OnSelectNoneClicked"/>
                 <MenuItem Header="_Invert" InputGesture="Ctrl+Shift+A" Click="OnInvertSelectionClicked"/>
               </MenuItem>
+              <!-- **How the listing is drawn had no menu anywhere.** The three
+                   layouts were the chip at the top right and Ctrl+Shift+1..3;
+                   hidden files were Ctrl+H and a checkbox inside the view
+                   options flyout, and nothing else. Its button is gated on
+                   ShowsWindowControls, which SyncWindowControls sets FALSE for
+                   the left half of a split — so on that side the checkbox could
+                   not be reached with a pointer at all, and the only remaining
+                   route to it was a key nobody is told about.
+
+                   This menu belongs to the listing, and every pane group has
+                   its own, so the row reaches both halves. Deliberately
+                   ungated for that reason: a gate here would take back the one
+                   route the left half has.
+
+                   Beside Arrange rather than inside it. Arrange is how the
+                   entries are ORDERED and its whole submenu can be switched
+                   off in settings; this is what they are drawn as, and it is
+                   not something the settings page offers to hide.
+
+                   No access key: every letter of "View" is already spoken for
+                   in this menu — v by "Mo_ve to", i by "Open in new w_indow",
+                   e by "Prop_erties", w by "Open _with" — and only j, k, n and
+                   q are still free. -->
+              <MenuItem Header="View">
+                <!-- **A number-row key is spelled D1 in a gesture and drawn as
+                     1 by the theme.** Measured on Avalonia 12.1, headless: a
+                     MenuItem with InputGesture="Ctrl+Shift+D1" renders
+                     "Ctrl+Shift+1", and the bare "Ctrl+Shift+1" is the spelling
+                     that lies — Avalonia parses a bare digit through
+                     Enum.TryParse&lt;Key&gt;, which reads it NUMERICALLY, so
+                     "1" became Key.Cancel, "2" Key.Back and "3" Key.Tab. The
+                     third drew "Ctrl+Shift+Tab", which is a live binding that
+                     switches tab. These match the KeyBindings below character
+                     for character for that reason.
+
+                     Radios OneWay-bound, the way the Sort by rows are: the
+                     header is the current layout's own report, and writing
+                     back into a get-only property is a binding error. Each row
+                     names the same command the chip's button does, so the two
+                     routes cannot drift into meaning different things. -->
+                <MenuItem Header="_List" ToggleType="Radio"
+                          IsChecked="{Binding ActiveTab.IsDetailsView, Mode=OneWay}"
+                          Command="{Binding ActiveTab.ShowAsDetailsCommand}"
+                          InputGesture="Ctrl+Shift+D1"/>
+                <MenuItem Header="_Small grid" ToggleType="Radio"
+                          IsChecked="{Binding ActiveTab.IsCompactView, Mode=OneWay}"
+                          Command="{Binding ActiveTab.ShowAsCompactCommand}"
+                          InputGesture="Ctrl+Shift+D2"/>
+                <MenuItem Header="L_arge grid" ToggleType="Radio"
+                          IsChecked="{Binding ActiveTab.IsGridView, Mode=OneWay}"
+                          Command="{Binding ActiveTab.ShowAsGridCommand}"
+                          InputGesture="Ctrl+Shift+D3"/>
+                <Separator/>
+                <!-- The command, not a two-way bind on ShowHidden: with both,
+                     the click would flip the property and then flip it back.
+                     ToggleHidden is a plain flip for exactly this reason. -->
+                <MenuItem Header="S_how hidden files" ToggleType="CheckBox"
+                          IsChecked="{Binding ActiveTab.ShowHidden, Mode=OneWay}"
+                          Command="{Binding ActiveTab.ToggleHiddenCommand}"
+                          InputGesture="Ctrl+H"/>
+              </MenuItem>
               <MenuItem Header="Arran_ge"
                                       IsVisible="{Binding $parent[Window].((vm:ShellViewModel)DataContext).ShowSortByInMenu}">
                 <MenuItem Header="_Sort by">
@@ -2934,7 +3006,7 @@
                                      Margin="8,0,0,0" VerticalAlignment="Center"
                                      FontSize="{DynamicResource FontSizeTiny}"
                                      Foreground="{DynamicResource AccentText}"
-                                     ToolTip.Tip="Another row here is named the same, or close enough to look it.">
+                                     ToolTip.Tip="{Binding Converter={x:Static vm:FileConverters.LookAlikeTip}}">
                             <TextBlock.IsVisible>
                               <MultiBinding Converter="{x:Static vm:FileConverters.Confusable}">
                                 <Binding Path="FullPath"/>
@@ -3165,7 +3237,7 @@
                                      Margin="6,0,2,0" VerticalAlignment="Center"
                                      FontSize="{DynamicResource FontSizeTiny}"
                                      Foreground="{DynamicResource AccentText}"
-                                     ToolTip.Tip="Another row here is named the same, or close enough to look it.">
+                                     ToolTip.Tip="{Binding Converter={x:Static vm:FileConverters.LookAlikeTip}}">
                             <TextBlock.IsVisible>
                               <MultiBinding Converter="{x:Static vm:FileConverters.Confusable}">
                                 <Binding Path="FullPath"/>
@@ -3369,12 +3441,21 @@
                                row to append the word to, so it borrows the VCS
                                badge's geometry in the opposite corner — filled,
                                because it can sit on a thumbnail, and "≈"
-                               because that is the claim: nearly the same. The
-                               tooltip carries the words. -->
+                               because that is the claim: nearly the same.
+
+                               **The tooltip carries the words, and only while
+                               "Show tooltips on rows" is ticked.** Measured on a
+                               real window with the preference off: this badge is
+                               still drawn and its tooltip is null, so of the
+                               three layouts this is the one left showing a mark
+                               it cannot explain — details and compact keep the
+                               word "Look-alike" on the row. See
+                               FileConverters.LookAlikeTip for why that is the
+                               side chosen. -->
                           <Border HorizontalAlignment="Left" VerticalAlignment="Top"
                                   Background="{DynamicResource AccentColour}"
                                   CornerRadius="3" Padding="5,0" Margin="2,2,0,0"
-                                  ToolTip.Tip="Another row here is named the same, or close enough to look it.">
+                                  ToolTip.Tip="{Binding Converter={x:Static vm:FileConverters.LookAlikeTip}}">
                             <Border.IsVisible>
                               <MultiBinding Converter="{x:Static vm:FileConverters.Confusable}">
                                 <Binding Path="FullPath"/>

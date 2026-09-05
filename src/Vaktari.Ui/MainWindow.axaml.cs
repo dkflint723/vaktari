@@ -1963,6 +1963,13 @@ public partial class MainWindow : Window
     /// so four files were silently left behind. The right-button drag carried
     /// all five, because Avalonia treats a right press differently — which is
     /// what made it look like a listing quirk rather than a drag one.
+    ///
+    /// **Read on the way out as well as on the way in.** Feeding the payload
+    /// from this fixed what the drag CARRIED and not what the window SHOWED:
+    /// the collapsed selection stayed collapsed, so a drag of three that was
+    /// cancelled with Escape, and one the bin refused before it started, both
+    /// ended with one row picked out. BeginDragAsync's finally hands the list
+    /// back to the pane, from inside the try that now holds the refusals too.
     /// </summary>
     private List<string>? _dragSelection;
 
@@ -3533,33 +3540,53 @@ public partial class MainWindow : Window
 
     private async Task BeginDragAsync(PaneViewModel pane, PointerPressedEventArgs trigger)
     {
-        // The snapshot taken when the button went down wins: by now the press
-        // has collapsed a multi-selection to the one row under the pointer.
-        var paths = _dragSelection is { Count: > 0 } remembered
-            ? remembered
-            : pane.Selection.Count > 0
-                ? pane.Selection.Select(x => x.FullPath).ToList()
-                : pane.SelectedEntry is { } one ? [one.FullPath] : [];
+        // **Held so the snapshot can be put BACK, not only read.** Feeding the
+        // payload from it was half the fix: the press had already collapsed the
+        // selection to the one row under the pointer, and nothing restored the
+        // rest when the drag was over. Measured with three rows selected and
+        // the drag cancelled with Escape — pane.Selection held one entry once
+        // the gesture had finished, while the payload had carried three, so
+        // two rows were left deselected with nothing to say which.
+        var restore = _dragSelection;
 
-        if (paths.Count == 0) return;
-
-        // Asked before a payload is built, so the refusal reaches the status bar
-        // instead of the drag reaching a target that cannot say why it failed.
-        if (!pane.CanDragOut()) return;
-
-        if (TopLevel.GetTopLevel(this)?.StorageProvider is not { } storage) return;
-
-        _dragging = true;
-        _internalDrag = true;
-        _rightDragInFlight = _dragRight;
-
-        // The release that ends this drag is a right-button release, and a
-        // right-button release is how context menus open. Armed here, consumed
-        // by the tunnelled ContextRequested handler.
-        if (_dragRight) _suppressContextMenu = true;
-
+        // **Everything below is inside the try so the restore covers the
+        // REFUSALS too.** The three guards that follow used to sit above it,
+        // and the one that asks CanDragOut is the bin's: measured in a bin
+        // listing of three, pressing one row collapsed the selection to it,
+        // the drag was refused with "cannot drag out of the Recycle Bin — use
+        // Restore", and two rows stayed silently deselected — finding 156
+        // verbatim, in the one listing where the drag never starts. They set
+        // nothing the finally would wrongly undo: its assignments are the
+        // nulls and falses a fresh press writes anyway.
         try
         {
+            // The snapshot taken when the button went down wins: by now the
+            // press has collapsed a multi-selection to the one row under the
+            // pointer.
+            var paths = _dragSelection is { Count: > 0 } remembered
+                ? remembered
+                : pane.Selection.Count > 0
+                    ? pane.Selection.Select(x => x.FullPath).ToList()
+                    : pane.SelectedEntry is { } one ? [one.FullPath] : [];
+
+            if (paths.Count == 0) return;
+
+            // Asked before a payload is built, so the refusal reaches the status
+            // bar instead of the drag reaching a target that cannot say why it
+            // failed.
+            if (!pane.CanDragOut()) return;
+
+            if (TopLevel.GetTopLevel(this)?.StorageProvider is not { } storage) return;
+
+            _dragging = true;
+            _internalDrag = true;
+            _rightDragInFlight = _dragRight;
+
+            // The release that ends this drag is a right-button release, and a
+            // right-button release is how context menus open. Armed here,
+            // consumed by the tunnelled ContextRequested handler.
+            if (_dragRight) _suppressContextMenu = true;
+
             // DataFormat.File is what other applications actually read; Avalonia
             // serialises it to text/uri-list on X11, the same route the
             // clipboard takes.
@@ -3594,6 +3621,16 @@ public partial class MainWindow : Window
             _dragSource = null;
             _dragTrigger = null;
             _dragSelection = null;
+
+            // In the finally rather than after DoDragDropAsync, because the
+            // press collapsed the selection before any of these was known: a
+            // bin listing that refuses to drag out, a folder whose files the
+            // storage provider would not hand over, a payload that came out
+            // empty, a platform that threw, and the ordinary drop or cancel.
+            // Each of those is a return or a throw from inside the try above.
+            // Two were measured with three rows selected and both ended with
+            // one row picked out: the cancel, and the bin's refusal.
+            if (restore is { Count: > 0 }) pane.ReselectPaths(restore);
         }
     }
 

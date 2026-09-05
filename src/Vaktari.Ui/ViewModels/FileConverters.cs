@@ -77,6 +77,52 @@ public static class FileConverters
                 : null);
 
     /// <summary>
+    /// Why a row wears the look-alike mark, or nothing when the user has turned
+    /// row tooltips off.
+    ///
+    /// **"Show tooltips on rows" reached every row tooltip except this one.**
+    /// The words were a literal ToolTip.Tip in markup, written out once per
+    /// listing layout, and the setting was read only in converters — the age
+    /// description, PathTip, NameTip — so unticking the preference silenced the
+    /// three of them and left the look-alike tip popping on every hover. That is
+    /// the fault PathTip was written to end, repeated at the one site the sweep
+    /// had not reached: a preference that silences some tooltips and not others
+    /// is worse than one that does nothing, because the ones that remain look
+    /// like a fault rather than a setting.
+    ///
+    /// The mark stays and only the hover goes, which is the bargain the modified
+    /// column already makes — with tooltips off its age shading is still drawn
+    /// and the words explaining the colour are not. Somebody who unticks a
+    /// preference named for rows has asked for that.
+    ///
+    /// **The grid tile pays more for it than the other two, and that was still
+    /// the right side to come down on.** Details and compact write "Look-alike"
+    /// on the row, so switching tooltips off costs them an explanation and
+    /// leaves the warning; a tile's mark is a bare "≈" and loses the only text
+    /// it ever had — measured on a real window, the badge is still drawn and its
+    /// tooltip is null. That is not the coloured date's bargain, which keeps a
+    /// readable date either way. What it buys is the preference meaning what it
+    /// says, and the alternative was the fault above: three row tooltips
+    /// silenced and a fourth that goes on popping, which reads as a malfunction
+    /// rather than a setting.
+    ///
+    /// One converter rather than a gate at each site, so the sentence has one
+    /// spelling: it had three identical copies to keep in step, and a fourth
+    /// layout would have had to remember.
+    ///
+    /// Typed on FileEntry like its siblings, so an unrealized container — whose
+    /// DataContext is null against a value-type input — never reaches the lambda
+    /// and gets UnsetValue, rather than a tooltip for a row that has no entry.
+    /// That row's mark is collapsed anyway, by the same null through Confusable,
+    /// so this is the idiom holding rather than a hover anybody could reach.
+    /// </summary>
+    public static readonly IValueConverter LookAlikeTip =
+        new FuncValueConverter<FileEntry, string?>(_ =>
+            Settings.AppSettings.Current.General.ShowTooltips
+                ? "Another row here is named the same, or close enough to look it."
+                : null);
+
+    /// <summary>
     /// What one listing row is called, for anything reading the window rather
     /// than looking at it.
     ///

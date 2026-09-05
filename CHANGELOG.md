@@ -13,6 +13,17 @@ should not be trusted for compatibility yet.
 
 ### Added
 
+- **The right-click menu can change the view.** The layouts and the hidden-files
+  switch lived on the toolbar and on keys and nowhere else — and the toolbar's
+  view button is hidden on the quiet half of a split window, so that pane could
+  reach none of it at all. A View submenu now sits in the listing's own menu,
+  naming each layout and the key that reaches it.
+
+- **The look-alike mark honours *Show tooltips on rows*.** Turning row tooltips
+  off silenced the age and the path and left the look-alike warning talking,
+  which is the one tooltip that most looks like a bug when the setting says they
+  are off.
+
 - **The interface text has a size, and it follows the desktop's out of the box.**
   Vaktari drew its menus, sidebar, tabs and status bar at one fixed size and
   ignored the system text-size setting entirely — so a desktop set to 125% for
@@ -945,6 +956,14 @@ should not be trusted for compatibility yet.
   — which is the reason to open three — gave three identical taskbar buttons.
 
 ### Fixed
+
+- **A drag that goes nowhere gives you your selection back.** Pressing one of
+  several selected rows is how a drag starts, and the press narrowed the
+  selection to the row under the pointer before it did — so cancelling the
+  drag, or dragging in the Recycle Bin, which refuses to let anything out,
+  left you with one row picked out of the several you had and no sign of which
+  the others were. The rows you were holding come back when the drag ends,
+  however it ends, including with Ctrl held.
 
 - **On Linux, a copied file keeps its tags and the address it was downloaded
   from.** A copy carried the bytes, the timestamps and the permission bits and

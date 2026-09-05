@@ -3657,9 +3657,15 @@ public sealed partial class PaneViewModel : ObservableObject, IDisposable
     }
 
     /// <summary>
-    /// Flips hidden-file visibility. Exists for the keyboard route only — the
-    /// settings flyout binds `ShowHidden` directly, so this must stay a plain
-    /// flip with no extra behaviour, or the two paths would diverge.
+    /// Flips hidden-file visibility. Two routes reach it — Ctrl+H, and the
+    /// listing menu's View row, which is the only pointer route the left half
+    /// of a split has. The settings flyout binds `ShowHidden` directly
+    /// instead, so this must stay a plain flip with no extra behaviour, or the
+    /// paths would diverge.
+    ///
+    /// **The menu row binds this command and reads ShowHidden OneWay**, never
+    /// both ways at once: a two-way tick plus this command would flip the
+    /// property and then flip it straight back.
     /// </summary>
     [RelayCommand]
     private void ToggleHidden() => ShowHidden = !ShowHidden;
@@ -4428,6 +4434,39 @@ public sealed partial class PaneViewModel : ObservableObject, IDisposable
         // The focused row too, or the keyboard would carry on from wherever it
         // happened to be rather than from what is selected.
         if (selection.Count > 0) SelectedEntry = selection[0];
+    }
+
+    /// <summary>
+    /// Puts back a selection that a GESTURE had to collapse, rather than one a
+    /// rebuild dropped.
+    ///
+    /// **A drag begun on one of three selected rows ended with one row
+    /// selected.** The press underneath the drag reduces the selection to the
+    /// row it landed on before the drag starts — the window snapshots the
+    /// three on the tunnelled press, so the payload does carry all three — but
+    /// nothing wrote them back afterwards. Measured in a bin listing, where
+    /// the drag is refused outright: three rows selected, a press, and the
+    /// gesture ended with one, the other two deselected and no way to tell
+    /// which.
+    ///
+    /// **Nothing happens when none of the paths is still on screen**, and that
+    /// is a floor under the call rather than a case a drag was seen in.
+    /// <see cref="Reselect"/> clears the selection before it re-adds, so a
+    /// snapshot naming only rows the listing no longer has would empty what
+    /// the listing holds now instead of restoring anything — measured by
+    /// handing this two absent paths over a pane with one row selected. The
+    /// drag route was measured NOT to reach it: three files dropped on a
+    /// folder row in the same pane hand the move to a background operation and
+    /// return, and this call was reached with all four rows still listed and
+    /// all three wanted paths among them, so the snapshot went straight back.
+    /// </summary>
+    public void ReselectPaths(IReadOnlyList<string> paths)
+    {
+        var wanted = new HashSet<string>(paths, StringComparer.Ordinal);
+
+        if (!VisibleRows.Any(e => e.FullPath is { } path && wanted.Contains(path))) return;
+
+        Reselect([.. paths]);
     }
 
     /// <summary>
