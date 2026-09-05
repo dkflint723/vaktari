@@ -54,6 +54,9 @@ internal sealed class WindowServices
 
     private DispatcherTimer? _trashTimer;
 
+    /// <summary>Let go of with the timer, and for the same reason.</summary>
+    private Settings.BinPolicyWatch? _binPolicy;
+
     private WindowServices(
         IPlatform platform,
         JsonSettingsStore settingsStore,
@@ -377,6 +380,11 @@ internal sealed class WindowServices
 
         _ = SweepAsync();
 
+        // And again whenever the policy itself changes, or a new one waited up
+        // to an hour to be acted on with nothing on screen saying so. See
+        // BinPolicyWatch for why this hangs on Apply rather than on the dialog.
+        _binPolicy = new Settings.BinPolicyWatch(() => _ = SweepAsync());
+
         _trashTimer = new DispatcherTimer { Interval = TimeSpan.FromHours(1) };
         _trashTimer.Tick += (_, _) => _ = SweepAsync();
         _trashTimer.Start();
@@ -476,6 +484,9 @@ internal sealed class WindowServices
 
                 _trashTimer?.Stop();
                 _trashTimer = null;
+
+                _binPolicy?.Dispose();
+                _binPolicy = null;
             }
 
             await Session.FlushAsync(CancellationToken.None);

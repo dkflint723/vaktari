@@ -760,6 +760,16 @@ should not be trusted for compatibility yet.
 
 ### Fixed
 
+- **A new bin policy is acted on when you save it, not up to an hour later.**
+  Setting *delete after 7 days* over a bin full of three-week-old files and
+  pressing Save changed nothing you could see — the clear-out ran once when
+  Vaktari started and then on an hourly timer, and neither of them knew a
+  setting had changed. Which reads as a setting that does not work, and to
+  anyone who waited long enough, as one that works sometimes. It now runs the
+  moment the policy changes, including when the policy arrives by replacing
+  your settings from a copy. Saving any other setting does not start a
+  clear-out.
+
 - **On Linux, an application you have un-chosen for a file type stops being
   offered for it.** Turning an application off in the desktop's own settings
   writes it into a *Removed Associations* list, and Vaktari read that list —
