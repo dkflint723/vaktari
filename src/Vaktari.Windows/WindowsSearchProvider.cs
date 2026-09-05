@@ -84,12 +84,27 @@ public sealed class WindowsSearchProvider : ISearchProvider
         await producer.ConfigureAwait(false);
     }
 
-    private static List<string> FixedDrives()
+    /// <summary>
+    /// The drives an unscoped search covers.
+    ///
+    /// **Removable ones were left out, and that is the case the box exists
+    /// for.** Searching without a scope skipped the stick, the SD card and the
+    /// external disk — the drives whose contents somebody is least likely to
+    /// remember the layout of, and so most likely to be searching.
+    ///
+    /// Network drives stay out, deliberately and not by omission. A mapped
+    /// drive whose server has gone away blocks for the whole SMB timeout, and
+    /// this walk would pay that once per unscoped search with nothing on screen
+    /// to say why — the same hazard the places provider names for reading a
+    /// volume label. It is also why <see cref="Everywhere"/> says "on this
+    /// machine": a mapped drive is on a server, and the phrase is true.
+    /// </summary>
+    private static List<string> SearchableDrives()
     {
         try
         {
             return DriveInfo.GetDrives()
-                .Where(d => d.DriveType == DriveType.Fixed && d.IsReady)
+                .Where(d => Searchable(d.DriveType, d.IsReady))
                 .Select(d => d.Name)
                 .ToList();
         }
@@ -98,6 +113,15 @@ public sealed class WindowsSearchProvider : ISearchProvider
             return [];
         }
     }
+
+    /// <summary>
+    /// The rule itself, apart from DriveInfo so it can be asked about a drive
+    /// type this machine does not have. Nobody can plug a CD-ROM into a test.
+    /// </summary>
+    internal static bool Searchable(DriveType type, bool ready)
+        => ready && type is DriveType.Fixed or DriveType.Removable;
+
+    public string Everywhere => "every drive on this machine";
 
     /// <summary>
     /// One directory read per directory, and nothing else.
@@ -160,9 +184,10 @@ public sealed class WindowsSearchProvider : ISearchProvider
         var glob = query.Text.Contains('*') || query.Text.Contains('?');
 
         // A null scope means "everywhere indexed", and with no index the honest
-        // reading is every fixed drive.
+        // reading is every drive on the machine — which is the phrase the box
+        // beside the search field uses, from Everywhere above.
         var roots = string.IsNullOrEmpty(query.ScopePath)
-            ? FixedDrives()
+            ? SearchableDrives()
             : [query.ScopePath];
 
         var options = new EnumerationOptions

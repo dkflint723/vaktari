@@ -770,6 +770,21 @@ should not be trusted for compatibility yet.
 
 ### Fixed
 
+- **Searching without a scope now covers what the box says it covers.** When
+  the *Only in …* box is off — or greyed out, because you are searching from
+  This PC or from another search — Vaktari said it was "searching everywhere"
+  and was not. On Windows it walked the fixed drives only, so the stick you had
+  just plugged in was skipped; on Linux it walked your home folder alone, so
+  every other disk on the machine was. Removable drives are searched on Windows
+  now, and mounted drives on Linux, and the box says which: *searching every
+  drive on this machine*, or *searching your home folder and any mounted
+  drives*.
+
+  Network drives and network mounts stay out, on purpose: a mapped drive whose
+  server has gone away blocks for as long as the network waits, and an unscoped
+  search would pay that every time with nothing on screen to explain the delay.
+  Search a network location by opening it and scoping to it.
+
 - **The confirmation settings are near the top of the General page instead of
   at the bottom of it.** *Ask me before moving to the bin*, *before deleting
   permanently* and *before closing a window with several tabs* were the ninth

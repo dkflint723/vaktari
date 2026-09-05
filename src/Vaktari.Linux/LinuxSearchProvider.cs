@@ -184,13 +184,106 @@ public sealed class LinuxSearchProvider : ISearchProvider
     internal static bool InScope(string? scope, string path)
         => scope is not { Length: > 0 } || PathRules.Contains(scope, path);
 
+    public string Everywhere => "your home folder and any mounted drives";
+
+    /// <summary>
+    /// Stands in for /proc/mounts in tests, the same seam LinuxPlacesProvider
+    /// gives its own mount reading and for the same reason. Null in the
+    /// application.
+    /// </summary>
+    internal static Func<IEnumerable<string>>? MountLines { get; set; }
+
+    /// <summary>
+    /// What an unscoped walk covers.
+    ///
+    /// **It was the home folder and nothing else.** A machine with a second
+    /// disk, or a stick plugged in, answered a search of "everywhere" from
+    /// somewhere the box could not scope to — This PC, a search listing — with
+    /// results from one directory tree, and said "everywhere" while doing it.
+    ///
+    /// Mounts are taken from /proc/mounts through MountTable.IsRealVolume,
+    /// which is the same rule the sidebar uses to decide what is a drive. That
+    /// also settles the network question without a second rule: IsRealVolume
+    /// requires a source under /dev, and a cifs mount's source is
+    /// //server/share while an nfs one is server:/path, so neither can pass —
+    /// which matters because a stale network mount blocks rather than failing,
+    /// and a walk cannot time out of it.
+    ///
+    /// Anything already under home is dropped: a mount inside the home
+    /// directory would otherwise be walked twice, once as itself and once on
+    /// the way down.
+    /// </summary>
+    internal static List<string> Roots(SearchQuery query)
+    {
+        if (query.ScopePath is { Length: > 0 } scope) return [scope];
+
+        var home = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
+        var roots = new List<string>();
+
+        if (home.Length > 0) roots.Add(home);
+
+        foreach (var mount in Volumes())
+        {
+            if (home.Length > 0 && PathRules.Contains(home, mount)) continue;
+            if (roots.Any(r => PathRules.Same(r, mount))) continue;
+
+            roots.Add(mount);
+        }
+
+        return roots;
+    }
+
+    private static IEnumerable<string> Volumes()
+    {
+        IEnumerable<string> lines;
+
+        try
+        {
+            lines = MountLines is { } stub
+                ? stub()
+                : File.Exists("/proc/mounts") ? File.ReadLines("/proc/mounts") : [];
+        }
+        catch (IOException)
+        {
+            yield break;
+        }
+
+        foreach (var line in lines)
+        {
+            var parts = line.Split(' ');
+            if (parts.Length < 3) continue;
+
+            var source = MountTable.Unescape(parts[0]);
+            var mountPoint = MountTable.Unescape(parts[1]);
+
+            if (!MountTable.IsRealVolume(source, mountPoint, parts[2])) continue;
+            if (mountPoint is "/") continue;
+
+            yield return mountPoint;
+        }
+    }
+
     private static async IAsyncEnumerable<FileEntry> SearchByWalkingAsync(
         SearchQuery query, [EnumeratorCancellation] CancellationToken ct)
     {
-        var root = query.ScopePath is { Length: > 0 } scope
-            ? scope
-            : Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
+        var found = 0;
 
+        foreach (var root in Roots(query))
+        {
+            if (ct.IsCancellationRequested || found >= query.MaxResults) yield break;
+
+            await foreach (var entry in WalkOneAsync(root, query, ct).ConfigureAwait(false))
+            {
+                yield return entry;
+
+                if (++found >= query.MaxResults) yield break;
+            }
+        }
+    }
+
+    private static async IAsyncEnumerable<FileEntry> WalkOneAsync(
+        string root, SearchQuery query, [EnumeratorCancellation] CancellationToken ct)
+    {
         var comparison = query.CaseSensitive
             ? StringComparison.Ordinal
             : StringComparison.OrdinalIgnoreCase;
@@ -235,6 +328,9 @@ public sealed class LinuxSearchProvider : ISearchProvider
 
         while (true)
         {
+            // A ceiling for THIS root, not the answer's. The caller counts
+            // across every root and stops there; this only keeps one root from
+            // running past the point where the total is already full.
             if (ct.IsCancellationRequested || count >= query.MaxResults) yield break;
 
             string? path = null;

@@ -1355,10 +1355,19 @@ public sealed partial class PaneViewModel : ObservableObject, IDisposable
         {
             var origin = VirtualPaths.OriginOf(CurrentPath);
 
-            if (origin is null) return "searching everywhere";
+            // **"Everywhere" was not true on either platform.** Windows walked
+            // the fixed drives, so the stick just plugged in was skipped;
+            // Linux walked the home folder alone, so every other disk was. The
+            // provider says what it actually covers now, because the provider
+            // is what decides the roots — and it still says "everywhere" when
+            // there is no provider, which is the one case where nothing is
+            // being covered and no narrower claim would be truer.
+            var reach = Search?.Everywhere ?? "everywhere";
+
+            if (origin is null) return $"searching {reach}";
 
             return VirtualPaths.IsVirtual(origin)
-                ? $"{VirtualPaths.Label(origin)} is not a folder — searching everywhere"
+                ? $"{VirtualPaths.Label(origin)} is not a folder — searching {reach}"
                 : $"Only in {System.IO.Path.GetFileName(origin.TrimEnd(
                     System.IO.Path.DirectorySeparatorChar,
                     System.IO.Path.AltDirectorySeparatorChar))}";

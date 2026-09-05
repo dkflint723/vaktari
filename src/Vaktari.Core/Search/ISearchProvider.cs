@@ -6,7 +6,7 @@ public sealed record SearchQuery
 {
     public required string Text { get; init; }
 
-    /// <summary>Null searches every indexed location.</summary>
+    /// <summary>Null searches everything the provider reaches unscoped.</summary>
     public string? ScopePath { get; init; }
 
     public bool MatchContent { get; init; }
@@ -32,6 +32,28 @@ public interface ISearchProvider
     string BackendName { get; }
 
     bool SupportsContentSearch { get; }
+
+    /// <summary>
+    /// What an unscoped search actually covers, as a phrase that finishes
+    /// "searching …".
+    ///
+    /// **The box said "everywhere" and meant something narrower on both
+    /// platforms.** Windows walked the fixed drives — so a search with the box
+    /// unticked skipped the stick you had just plugged in — and Linux walked
+    /// the home folder alone, so it skipped every other disk on the machine.
+    /// Neither is everywhere, and the one word nobody could argue with is the
+    /// one that was there.
+    ///
+    /// Answered by the provider because the provider is what decides the
+    /// roots. A phrase kept next to the checkbox would be a second copy of a
+    /// rule that lives here, and the two would part company the first time
+    /// either moved.
+    ///
+    /// Defaulted to the old word so a provider that has not thought about it is
+    /// no worse than before, and so the null-provider case in the UI has
+    /// something to say.
+    /// </summary>
+    string Everywhere => "everywhere";
 
     /// <summary>
     /// Streams results as the index answers, so the panel fills progressively

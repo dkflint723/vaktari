@@ -543,12 +543,67 @@ public sealed class SearchBandTests : OwnedViewModels
         Assert.True(done(), "the pane never got there");
     }
 
+    // ---- what the box claims it is covering ----------------------------------
+
+    private async Task<string> LabelFor(ISearchProvider? backend, string? origin)
+    {
+        var pane = Own(new PaneViewModel(new NoDisk()));
+
+        UseSearch(backend);
+
+        await pane.NavigateAsync(VirtualPaths.Search("report", origin, scoped: true));
+
+        return pane.SearchScopeLabel;
+    }
+
+    /// <summary>
+    /// **The box said "everywhere" and neither platform meant it.** Windows
+    /// walked the fixed drives, so the stick just plugged in was skipped;
+    /// Linux walked the home folder alone, so every other disk on the machine
+    /// was. The backend is what decides the roots, so the backend is what says
+    /// how to describe them — a phrase kept beside the checkbox would be a
+    /// second copy of a rule that lives there, and the two would part company
+    /// the first time either moved.
+    /// </summary>
+    [AvaloniaFact]
+    public async Task The_box_says_what_the_backend_actually_reaches()
+        => Assert.Equal(
+            "searching every drive on this machine",
+            await LabelFor(new Fake([]) { Everywhere = "every drive on this machine" }, null));
+
+    /// <summary>
+    /// And so does the sentence that explains why the box is disabled, which is
+    /// the other place the claim is made and the one a person reads while
+    /// wondering what is being searched instead.
+    /// </summary>
+    [AvaloniaFact]
+    public async Task And_so_does_the_sentence_that_says_why_it_is_disabled()
+        => Assert.EndsWith(
+            "— searching every drive on this machine",
+            await LabelFor(
+                new Fake([]) { Everywhere = "every drive on this machine" }, VirtualPaths.Trash));
+
+    /// <summary>
+    /// **With no backend at all it still says "everywhere."** That is the one
+    /// case where nothing is being covered, so no narrower claim would be
+    /// truer, and it is what the interface default is for.
+    /// </summary>
+    [AvaloniaFact]
+    public async Task With_no_backend_it_says_what_it_always_said()
+        => Assert.Equal("searching everywhere", await LabelFor(null, null));
+
     private sealed class Fake(FileEntry[] results) : ISearchProvider
     {
         public bool IsAvailable => true;
         public string BackendName => "fake";
         public bool SupportsContentSearch => false;
         public int PauseMs { get; init; }
+
+        /// <summary>
+        /// What this backend claims an unscoped search covers. Defaulted to the
+        /// interface's own word so every existing test is unchanged.
+        /// </summary>
+        public string Everywhere { get; init; } = "everywhere";
 
         /// <summary>
         /// How many walks were started, which is the count a redundant
