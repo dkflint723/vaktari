@@ -256,6 +256,29 @@ public sealed class ShellContextMenuTests : IDisposable
             .Except(item.Entries.Select(e => e.Label)));
     }
 
+    /// <summary>
+    /// What the marker holds, or null while it cannot be read yet.
+    ///
+    /// **Existing is not the same as finished, and waiting on the name was
+    /// waiting on the wrong thing.** MEASURED: GitHub Actions windows-latest,
+    /// run 33943817000, this test failed with "The process cannot access the
+    /// file ... ran.txt because it is being used by another process".
+    /// `cmd.exe /c echo %V> file` creates the file the moment it opens the
+    /// redirect and holds it exclusively until it exits, so a spin that stops
+    /// at File.Exists can hand the read a file whose writer has not let go.
+    ///
+    /// Waiting for content as well as for a successful open: an empty read is
+    /// the same race one instant later.
+    /// </summary>
+    private static string? Finished(string path)
+    {
+        try { return File.ReadAllText(path); }
+        catch (Exception e) when (e is IOException or UnauthorizedAccessException)
+        {
+            return null;
+        }
+    }
+
     /// <summary>Where a per-user verb for a folder's empty space is
     /// registered. The scratch key below is written under the current user
     /// only, and removed again whatever the test does.</summary>
@@ -299,12 +322,16 @@ public sealed class ShellContextMenuTests : IDisposable
 
             menu.Invoke(entry.Id);
 
+            string? wrote = null;
+
             Assert.True(
-                SpinWait.SpinUntil(() => File.Exists(marker), Patience),
+                SpinWait.SpinUntil(
+                    () => Finished(marker) is { Length: > 0 } text && (wrote = text) is not null,
+                    Patience),
                 "the background entry was clicked and nothing happened");
 
             // And it ran in THIS folder, which is what %V was asking for.
-            Assert.Equal(_folder, File.ReadAllText(marker).Trim());
+            Assert.Equal(_folder, wrote!.Trim());
         }
         finally
         {
