@@ -13,6 +13,13 @@ should not be trusted for compatibility yet.
 
 ### Added
 
+- **Copy to and Move to can send files anywhere, not just to a pinned place.**
+  Both menus listed the sidebar's places and stopped there, so sending something
+  to a folder you had not pinned meant opening it in a tab and pasting. The last
+  row is now *Choose a folder...*, which opens a picker starting where you are.
+  The folder the files are already in is refused rather than offered, since a
+  copy onto itself is not a thing to do quietly.
+
 - **A folder remembers its hidden files, its columns and its zoom, not just its
   layout.** Per-folder view memory kept the layout, the sort and the grouping and
   forgot everything else — so a folder you had zoomed in on came back at the old

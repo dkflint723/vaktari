@@ -30,6 +30,35 @@ namespace Vaktari.Ui.ViewModels;
 public sealed record ProblemRow(string Name, string Path, string Reason);
 
 /// <summary>
+/// What "Choose a folder…" at the foot of Copy to and Move to asks the window
+/// for: a folder picker, opened at <see cref="StartAt"/>, whose answer goes
+/// back through <see cref="Chose"/>.
+///
+/// **The files are captured when the row is picked, not read back when the
+/// picker closes.** The shell holds them in the callback, so a listing that
+/// refreshes itself while the dialog is up — a watcher firing on the folder
+/// being copied out of — cannot leave the transfer with a shorter selection
+/// than the one the user chose the row for.
+///
+/// A callback rather than a path property the window assigns, because a
+/// dismissed picker must do NOTHING: the window simply does not call it.
+/// </summary>
+public sealed class TransferBrowseRequest(bool move, string startAt, Action<string> chose)
+{
+    /// <summary>True when the folder picked is to receive a move rather than a
+    /// copy. The picker's title is the only thing that still says which.</summary>
+    public bool Move { get; } = move;
+
+    /// <summary>Where the picker should open — the folder the files are in,
+    /// since a destination is more often near the source than at home.</summary>
+    public string StartAt { get; } = startAt;
+
+    /// <summary>Hands back the folder the user picked, which starts the
+    /// transfer. Not called at all when the picker was dismissed.</summary>
+    public void Chose(string folder) => chose(folder);
+}
+
+/// <summary>
 /// Owns one or two pane groups. Deliberately thin — it decides which side is
 /// active and nothing else; all the behaviour lives in PaneViewModel, which is
 /// what made split view an addition rather than a rewrite.
@@ -2014,6 +2043,33 @@ public sealed partial class ShellViewModel : ObservableObject, IDisposable
         Icon = "",
     });
 
+    /// <summary>
+    /// The last row of both transfer submenus, and the only destination on
+    /// either that is not already on the list.
+    ///
+    /// **Copy to could only reach a folder somebody had pinned.** The list is
+    /// the sidebar's places, so sending a file anywhere else meant pinning that
+    /// folder first — adding a permanent row to the sidebar to make a one-off
+    /// copy — or opening a split, navigating the other half there, and using
+    /// "The other pane". A one-off destination is what a Copy to is usually
+    /// for, and it was the one thing the menu could not name.
+    ///
+    /// Last rather than first: the pinned places are the frequent answers, and
+    /// Dolphin's own transfer submenu ends with its picker too. Routed by its
+    /// id in TransferTo like the other-pane row, since it has no path until the
+    /// picker returns one.
+    /// </summary>
+    internal const string BrowseTargetId = "vaktari:browse";
+
+    private static readonly PlaceItemViewModel BrowseTarget = new(new Place
+    {
+        Id = BrowseTargetId,
+        Label = "Choose a folder…",
+        Path = "",
+        Kind = PlaceKind.Virtual,
+        Icon = "",
+    });
+
     public IReadOnlyList<PlaceItemViewModel> TransferTargets
     {
         get
@@ -2035,6 +2091,11 @@ public sealed partial class ShellViewModel : ObservableObject, IDisposable
                 .ToList();
 
             if (CanTransferToOtherPane) targets.Insert(0, OtherPaneTarget);
+
+            // Unconditional, and that is deliberate: it is also what a submenu
+            // whose every place was filtered out has left to show, instead of
+            // an empty popup.
+            targets.Add(BrowseTarget);
 
             return targets;
         }
@@ -2068,6 +2129,10 @@ public sealed partial class ShellViewModel : ObservableObject, IDisposable
     [RelayCommand]
     private void MoveSelectionTo(PlaceItemViewModel? place) => TransferTo(place, move: true);
 
+    /// <summary>Raised by "Choose a folder…"; the window owns the picker,
+    /// exactly as it owns the settings dialog's startup-folder one.</summary>
+    public event EventHandler<TransferBrowseRequest>? TransferBrowseRequested;
+
     private void TransferTo(PlaceItemViewModel? place, bool move)
     {
         if (place is null || ActiveTab is not { } source) return;
@@ -2082,9 +2147,82 @@ public sealed partial class ShellViewModel : ObservableObject, IDisposable
         var paths = SelectionOf(source);
         if (paths.Count == 0) { source.Status = "nothing selected"; return; }
 
-        if (!Directory.Exists(place.Path))
+        // Nor is the last one. Asked for before the picker opens rather than
+        // after it closes, so nothing is asked for at all when there is nothing
+        // to send.
+        if (place.Id == BrowseTargetId)
         {
-            source.Status = $"{place.Label} is not reachable";
+            // A place brings its own label; a picked folder brings only a path,
+            // and a whole path in a one-line status bar pushes the count off the
+            // end of it — so it is named by its leaf, through the same LeafName
+            // a crumb and a tab title use, which already answers "a drive root
+            // is its own leaf".
+            TransferBrowseRequested?.Invoke(this, new TransferBrowseRequest(
+                move,
+                source.CurrentPath,
+                folder => TransferInto(
+                    source, paths, folder, PathRules.LeafName(folder), move)));
+
+            return;
+        }
+
+        TransferInto(source, paths, place.Path, place.Label, move);
+    }
+
+    /// <summary>
+    /// The transfer itself, once something has named a destination — a place
+    /// row, or the folder that came back from the picker.
+    ///
+    /// **Both refusals live here rather than in the target list, because the
+    /// picker answers with folders the list never saw.** The list drops a place
+    /// inside the SelectedEntry and a place equal to the folder being viewed;
+    /// the picker reaches any folder on the machine, and it OPENS at the folder
+    /// being viewed — which makes that second one the destination a single
+    /// wrong click gives.
+    ///
+    /// **And that one had no refusal anywhere.** Measured against
+    /// WindowsFileOperations: moving a file, and moving a folder, into the
+    /// folder it already lives in both came back <c>state=Completed</c> with no
+    /// error and the directory unchanged, because a target that IS the source
+    /// has nothing to do — so a status line reading "moving 1 item(s) to X" was
+    /// reporting a transfer that never happened. The copy half answered
+    /// Completed too and left a "notes - Copy.txt" behind, which is what
+    /// Duplicate is for.
+    ///
+    /// Asked per path rather than against CurrentPath, so a Recents or search
+    /// listing — where CurrentPath is a virtual path and the rows come from all
+    /// over the disk — is judged by where its files actually are.
+    ///
+    /// The containment refusal, by contrast, is not new behaviour but the same
+    /// answer sooner. Measured the same way, copying "work" into "work\deep"
+    /// came back <c>state=Failed</c> before a byte moved, saying that "work"
+    /// cannot be copied into a folder inside it — and LinuxFileOperations
+    /// carries the identical guard. So a destination the list did offer, inside
+    /// a folder that was selected but not focused, was refused by the engine
+    /// rather than taken; what it was not, was refused in time, because that
+    /// answer arrives asynchronously over a status line already reading
+    /// "copying 1 item(s) to deep". Worded exactly as the other-pane route
+    /// words it, since it is one refusal reached three ways.
+    /// </summary>
+    private void TransferInto(
+        PaneViewModel source, IReadOnlyList<string> paths,
+        string destination, string label, bool move)
+    {
+        if (!Directory.Exists(destination))
+        {
+            source.Status = $"{label} is not reachable";
+            return;
+        }
+
+        if (paths.All(p => PathRules.Same(PathRules.Parent(p), destination)))
+        {
+            source.Status = $"already in {label}";
+            return;
+        }
+
+        if (paths.Any(p => PathRules.Contains(p, destination)))
+        {
+            source.Status = "that folder cannot be sent into itself";
             return;
         }
 
@@ -2094,14 +2232,14 @@ public sealed partial class ShellViewModel : ObservableObject, IDisposable
         var open = new[] { Left, Right }
             .Where(g => g is not null)
             .SelectMany(g => g!.Tabs)
-            .FirstOrDefault(t => PathRules.Same(t.CurrentPath, place.Path));
+            .FirstOrDefault(t => PathRules.Same(t.CurrentPath, destination));
 
         if (open is not null) open.PasteInto(paths, move);
-        else source.PasteIntoFolder(place.Path, paths, move);
+        else source.PasteIntoFolder(destination, paths, move);
 
         source.Status = move
-            ? $"moving {paths.Count} item(s) to {place.Label}"
-            : $"copying {paths.Count} item(s) to {place.Label}";
+            ? $"moving {paths.Count} item(s) to {label}"
+            : $"copying {paths.Count} item(s) to {label}";
     }
 
     private static List<string> SelectionOf(PaneViewModel pane)
