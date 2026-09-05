@@ -4928,6 +4928,40 @@
               Background="{DynamicResource AccentDim}"
               BorderBrush="{DynamicResource AccentColour}"
               BorderThickness="1" CornerRadius="1" Opacity="0.45"/>
+
+      <!-- What the drag is carrying, which was the half of a drag nothing drew:
+           the destination takes a ring and the source had only the cursor. It
+           shares the band's layer for the band's own two reasons — one gesture
+           at a time, and no translation between split sides — and depends on
+           the layer being IsHitTestVisible=False even harder than the band
+           does, because this one travels WITH the pointer: hit-testable, it
+           would sit between the drag and every target it passes over.
+
+           MaxWidth so a long name cannot draw a label wider than the window,
+           and the listings' own trimming so what it gives up is the middle
+           rather than the extension. Height is answered in DragGhost.Label
+           instead: a file name may contain newlines, and only a bound on the
+           text keeps the box a label rather than a slab.
+
+           **A SURFACE of its own, where this borrowed ChipBackground.** That
+           brush was written for a chip on the opaque toolbar and is a wash
+           rather than a colour: measured with Views.FollowDesktopColours on
+           and a Breeze-shaped palette, it resolved to #1AFCFCFC — alpha 26 of
+           255 — and this is the only thing in the window that floats over the
+           listing, so the label was drawn onto row text with nothing behind
+           it. PanelBackground is opaque on both paths (#FF26262D by default,
+           #FF202327 under that same desktop palette, derived from the window
+           background rather than washed over it) and is a step away from the
+           listing's own ground, which is what makes a floating thing read as
+           floating. The 0.92 opacity went with it for the same reason. -->
+      <Border x:Name="DragGhostBox" IsVisible="False"
+              Background="{DynamicResource PanelBackground}"
+              BorderBrush="{DynamicResource AccentColour}"
+              BorderThickness="1" CornerRadius="4" Padding="7,3">
+        <TextBlock x:Name="DragGhostText" FontSize="12" MaxWidth="220"
+                   Foreground="{DynamicResource AppText}"
+                   TextTrimming="{x:Static local:NameEllipsis.KeepingTheExtension}"/>
+      </Border>
     </Canvas>
 
   </Grid>

@@ -13,6 +13,14 @@ should not be trusted for compatibility yet.
 
 ### Added
 
+- **A drag shows what it is carrying.** While dragging, the only feedback was the
+  cursor the operating system chose, so a drag begun by accident looked exactly
+  like a drag of the twenty files you meant — and there was no way to tell which
+  before letting go. A small label now follows the pointer naming the one thing
+  being dragged, or counting them when there are several. It sits beside the
+  pointer rather than under it, and flips to the other side at the edge of the
+  window so it never leaves the screen.
+
 - **Copy to and Move to can send files anywhere, not just to a pinned place.**
   Both menus listed the sidebar's places and stopped there, so sending something
   to a folder you had not pinned meant opening it in a tab and pasting. The last

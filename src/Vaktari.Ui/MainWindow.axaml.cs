@@ -2030,6 +2030,30 @@ public partial class MainWindow : Window
     /// </summary>
     private bool _internalDrag;
 
+    /// <summary>
+    /// True while a drag started by THIS APPLICATION is in flight, in whichever
+    /// of its windows began it.
+    ///
+    /// **A drag between two Vaktari windows lost its label at the boundary.**
+    /// <see cref="_internalDrag"/> above belongs to one window, and a window is
+    /// not what "our own drag" means to the ghost: measured with two headless
+    /// MainWindows, the first holding the drag, the second reported its ghost
+    /// invisible with an empty label while the first had already put its own
+    /// away on the leave — so for the whole crossing there was nothing on
+    /// screen, which is the gesture this feature exists for. Vaktari opens
+    /// windows on purpose: OpenNewWindow builds one per invocation and a
+    /// restored session brings back several.
+    ///
+    /// Separate from <see cref="_internalDrag"/> rather than replacing it,
+    /// because that field also decides what a DROP does — the move-versus-copy
+    /// default and the right-drag menu — and whether a drop arriving from
+    /// another window of this application should count as internal there is a
+    /// different question, unmeasured, and not this one.
+    ///
+    /// Static, so a test that sets it must put it back; DragGhostTests does.
+    /// </summary>
+    private static bool _dragBegunInThisApplication;
+
     /// <summary>Walks up from whatever was hit to the pane that owns it.</summary>
     private static PaneViewModel? PaneAt(object? source)
     {
@@ -3619,6 +3643,7 @@ public partial class MainWindow : Window
 
             _dragging = true;
             _internalDrag = true;
+            _dragBegunInThisApplication = true;
             _rightDragInFlight = _dragRight;
 
             // The release that ends this drag is a right-button release, and a
@@ -3655,6 +3680,7 @@ public partial class MainWindow : Window
         {
             _dragging = false;
             _internalDrag = false;
+            _dragBegunInThisApplication = false;
             _rightDragInFlight = false;
             _dragRight = false;
             _dragSource = null;
@@ -3670,6 +3696,18 @@ public partial class MainWindow : Window
             // Two were measured with three rows selected and both ended with
             // one row picked out: the cancel, and the bin's refusal.
             if (restore is { Count: > 0 }) pane.ReselectPaths(restore);
+
+            // The drop and the leave both take the ghost away, and neither is
+            // guaranteed: a drag released over another application, or
+            // abandoned with Escape, ends here and nowhere else. A label left
+            // on the glass after the gesture is over is worse than no label.
+            //
+            // This window's own, and that is enough of them. A SECOND window of
+            // ours is drawing a ghost only while the pointer is inside it, so
+            // the leave or the drop it is about to be handed is the same route
+            // it would use anyway — it is this window, which the pointer has
+            // already left, that had nothing else to fall back on.
+            HideDragGhost();
         }
     }
 
@@ -3701,9 +3739,74 @@ public partial class MainWindow : Window
     /// </summary>
     private bool _suppressContextMenu;
 
+    /// <summary>
+    /// Moves the label that says what the drag is carrying.
+    ///
+    /// **This APPLICATION's own drags, not this WINDOW's.**
+    /// <see cref="DragDrop.DoDragDropAsync"/> takes a trigger, a payload and a
+    /// set of effects and has no drag-image parameter, so a drag begun in
+    /// Vaktari has nothing following the pointer but the cursor — which is the
+    /// gap this fills. A drag arriving from another application brings whatever
+    /// that application drew for it, and a second label under the first would
+    /// be Vaktari narrating somebody else's gesture.
+    ///
+    /// Asked of <see cref="_dragBegunInThisApplication"/> and not of
+    /// <see cref="_internalDrag"/>, which is per window: measured on the
+    /// per-window field, a drag from one Vaktari window into a second lost its
+    /// label at the boundary — the receiving window called it foreign and drew
+    /// nothing while the source window had already put its own away.
+    ///
+    /// **Shown before it is measured.** A control that is not visible measures
+    /// to an empty size — <c>Layoutable.MeasureCore</c> returns one without
+    /// asking the content — so measuring first gave the first ghost of every
+    /// drag a width of zero, and the flip at the right-hand edge then placed it
+    /// under the pointer instead of clear of it.
+    /// </summary>
+    private void ShowDragGhost(DragEventArgs e)
+    {
+        var carried = _dragBegunInThisApplication
+            ? Input.DroppedFileReader.Offered(e.DataTransfer)
+            : [];
+
+        var label = Input.DragGhost.Label(carried);
+
+        if (label.Length == 0)
+        {
+            HideDragGhost();
+            return;
+        }
+
+        DragGhostText.Text = label;
+        DragGhostBox.IsVisible = true;
+
+        // Out of band with the layout pass, which runs after this handler has
+        // already placed the label — and invalidated first, because the text
+        // change marks the TextBlock dirty and leaves the border it sits in
+        // measured and valid. **Measuring a valid border hands back the width
+        // of the label before this one**, so at the right-hand edge a drag that
+        // changed what it said was flipped by the old width and drew clear of
+        // nothing. See The_ghost_is_placed_against_the_label_it_draws_now.
+        DragGhostBox.InvalidateMeasure();
+        DragGhostBox.Measure(Size.Infinity);
+
+        var spot = Input.DragGhost.Spot(
+            e.GetPosition(BandLayer), DragGhostBox.DesiredSize, BandLayer.Bounds.Size);
+
+        Canvas.SetLeft(DragGhostBox, spot.X);
+        Canvas.SetTop(DragGhostBox, spot.Y);
+    }
+
+    private void HideDragGhost() => DragGhostBox.IsVisible = false;
+
     private void OnDragOver(object? sender, DragEventArgs e)
     {
         e.Handled = true;
+
+        // Before every branch below, refusals included: what a drag is carrying
+        // does not stop being carried over a target that will not take it, and
+        // a label that blinked out over the wrong folder would read as the drag
+        // itself having ended.
+        ShowDragGhost(e);
 
         // The sidebar first: a place row has no pane above it, so asking for
         // one would refuse the drop before the place was ever considered.
@@ -3974,6 +4077,7 @@ public partial class MainWindow : Window
     private void OnDragLeave(object? sender, DragEventArgs e)
     {
         HighlightDropTarget(null);
+        HideDragGhost();
         StopDragScroll();
         HoverTab(null);
     }
@@ -4012,6 +4116,7 @@ public partial class MainWindow : Window
     private void OnDrop(object? sender, DragEventArgs e)
     {
         HighlightDropTarget(null);
+        HideDragGhost();
         StopDragScroll();
         HoverTab(null);
 
