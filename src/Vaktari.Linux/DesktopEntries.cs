@@ -229,7 +229,7 @@ public static class DesktopEntries
         foreach (var id in ids)
         {
             if (FindDesktopFile(id) is not { } file) continue;
-            var (name, _, noDisplay, terminal) = ReadEntry(file);
+            var (name, _, _, noDisplay, terminal) = ReadEntry(file);
             if (noDisplay || string.IsNullOrEmpty(name)) continue;
 
             // Offered only if there is something to run it in. An entry that
@@ -300,7 +300,7 @@ public static class DesktopEntries
                 // replaced.
                 if (found.ContainsKey(id)) continue;
 
-                var (name, exec, noDisplay, terminal) = ReadEntry(entry.Path);
+                var (name, exec, _, noDisplay, terminal) = ReadEntry(entry.Path);
 
                 if (noDisplay || name.Length == 0) continue;
 
@@ -528,9 +528,10 @@ public static class DesktopEntries
         return null;
     }
 
-    internal static (string Name, string Exec, bool NoDisplay, bool Terminal) ReadEntry(string desktopFile)
+    internal static (string Name, string Exec, string Icon, bool NoDisplay, bool Terminal)
+        ReadEntry(string desktopFile)
     {
-        string name = "", exec = "";
+        string name = "", exec = "", icon = "";
         var noDisplay = false;
         var terminal = false;
         var inMainSection = false;
@@ -555,6 +556,17 @@ public static class DesktopEntries
                     name = line[5..];
                 else if (exec.Length == 0 && line.StartsWith("Exec=", StringComparison.Ordinal))
                     exec = line[5..];
+                // **Icon= was never read.** Six keys are in this file and this
+                // was the one nobody had needed yet, so a launcher shown as a
+                // ROW rather than as a menu entry had no icon of its own to
+                // ask for and fell through to the mime answer, which is
+                // application/x-desktop for every one of them.
+                //
+                // First wins, like Name and Exec beside it: the localised
+                // Icon[de]= spellings do not match this prefix, and a file that
+                // repeats a key is one the spec says to read top-down.
+                else if (icon.Length == 0 && line.StartsWith("Icon=", StringComparison.Ordinal))
+                    icon = line[5..];
                 else if (line.StartsWith("NoDisplay=true", StringComparison.OrdinalIgnoreCase))
                     noDisplay = true;
                 else if (line.StartsWith("Hidden=true", StringComparison.OrdinalIgnoreCase))
@@ -570,10 +582,167 @@ public static class DesktopEntries
         }
         catch
         {
-            return ("", "", true, false);
+            return ("", "", "", true, false);
         }
 
-        return (name, exec, noDisplay, terminal);
+        return (name, exec, icon, noDisplay, terminal);
+    }
+
+    // ---- a launcher shown as a row rather than as a menu entry -------------
+
+    /// <summary>
+    /// What one .desktop file says it is called and what picture goes with it,
+    /// for a LISTING row that is the file itself.
+    ///
+    /// **A launcher listed as "org.kde.konsole.desktop" with the generic
+    /// unknown-file icon.** Everything else in this class answers "what can
+    /// open this?", which builds menu rows out of the database by id; nothing
+    /// answered "what is THIS file", so a folder of launchers — the desktop,
+    /// ~/.local/share/applications, the folder every KDE application ships its
+    /// entry into — read as a column of reverse-DNS file names beside a column
+    /// of identical grey pages. The name and the icon were both sitting in the
+    /// file, two keys apart.
+    ///
+    /// Empty for anything this must not or cannot answer for, which the two
+    /// callers treat as "no opinion" and fall back exactly as they did before.
+    ///
+    /// **Only an answer that came out of a file is remembered.** The first
+    /// version cached every answer including the empty ones, and two callers
+    /// ask before there is anything to read: the bin lists a row under the path
+    /// the file will come BACK to, which by definition does not exist yet, and
+    /// an untrusted launcher is one whose trust the person can change from this
+    /// application's own Properties dialog. Both of those poisoned the entry
+    /// for the life of the process — restoring a launcher, or ticking its
+    /// execute bit, left the row showing the raw file name until restart.
+    /// Measured: 97 µs for the first ask about one launcher on this machine,
+    /// and 0.1 µs for every ask after it, which is what a row that is not a
+    /// launcher at all costs.
+    /// </summary>
+    public static (string Name, string Icon) Launcher(string path)
+    {
+        if (string.IsNullOrEmpty(path)
+            || !path.EndsWith(".desktop", StringComparison.OrdinalIgnoreCase))
+            return ("", "");
+
+        if (LauncherCache.TryGetValue(path, out var cached)) return cached;
+
+        // Not remembered. A bin row's FullPath is where the file WILL be, so
+        // opening the bin asked about every trashed launcher's original path —
+        // and this also keeps Executable below off a path that is not there,
+        // which was one swallowed FileNotFoundException per bin row.
+        if (!File.Exists(path)) return ("", "");
+
+        // Not remembered either: an execute bit is a fact about the file NOW,
+        // and Properties can flip it while the folder is showing.
+        if (!Trusted(path, ApplicationDirs(), Executable(path))) return ("", "");
+
+        var entry = ReadEntry(path);
+        var answer = (entry.Name, entry.Icon);
+
+        // Bounded rather than merely finite, the same treatment IconLoader's
+        // two caches get: the key is a PATH, so a folder of ten thousand
+        // launchers would otherwise leave ten thousand pairs behind it.
+        if (LauncherCache.Count > MaxLaunchers) LauncherCache.Clear();
+
+        LauncherCache[path] = answer;
+        return answer;
+    }
+
+    /// <summary>
+    /// Read launchers, so that scrolling a folder of them does not re-read the
+    /// same files. This is called per visible row per bind by the name
+    /// converter and per row from the pool by the icon loader, and each miss is
+    /// one open-read-close — 97 µs measured here against 0.1 µs for a hit.
+    ///
+    /// Keyed by path, and therefore stale if the file's CONTENT is edited while
+    /// its folder is showing — the same trade <see cref="MimeCache"/> already
+    /// makes, for the same reason: the alternative is a stat per row to learn
+    /// whether the read is still worth skipping. Its existence and its trust
+    /// are not stale, because neither is written here until a file has actually
+    /// been read.
+    /// </summary>
+    private static readonly System.Collections.Concurrent.ConcurrentDictionary<string, (string Name, string Icon)>
+        LauncherCache = new(StringComparer.Ordinal);
+
+    /// <summary>
+    /// How many remembered launchers is too many.
+    ///
+    /// **Settable, because the alternative way to watch the bound fire is to
+    /// write two thousand files** — and a test that does that to prove one
+    /// comparison is a test nobody will keep running.
+    /// </summary>
+    internal static int MaxLaunchers { get; set; } = 2000;
+
+    /// <summary>
+    /// Whether a .desktop file's own words may be repeated to the person
+    /// looking at the folder.
+    ///
+    /// **Name and Icon are chosen by whoever wrote the file, and a row is where
+    /// a person decides what to double-click.** A .desktop that arrives by
+    /// download or by mail can claim to be called "Invoice" and wear a PDF
+    /// icon while its Exec runs something else entirely; that is the oldest
+    /// trick this format has, and believing every one of these unconditionally
+    /// would have been this application's way of falling for it.
+    ///
+    /// So this is Vaktari's own rule, and here is what it costs. A file under
+    /// an application directory got there by an install or by the person
+    /// putting it there, and a file carrying an execute bit was marked runnable
+    /// by somebody; those two are repeated. Everything else keeps its file name
+    /// and its generic icon. The known hole is the second half: a .desktop that
+    /// arrives inside an archive can carry the bit already, and unpacking it is
+    /// not the same gesture as marking it runnable — that file IS believed
+    /// here. The alternative, believing only what an installer put in place,
+    /// would refuse the launchers people write for themselves and drop on the
+    /// desktop, which is the ordinary case.
+    ///
+    /// Pure, and given both facts rather than reading them, for the reason
+    /// <see cref="Scan"/> gives at length: neither state can be arranged on a
+    /// machine by asking politely, and both of them matter.
+    /// </summary>
+    internal static bool Trusted(string path, IEnumerable<string> applicationDirs, bool executable)
+    {
+        if (executable) return true;
+
+        foreach (var dir in applicationDirs)
+            if (Vaktari.Core.FileSystem.PathRules.Contains(dir, path)) return true;
+
+        return false;
+    }
+
+    /// <summary>
+    /// The execute bit, for a test — a machine fact this repository cannot
+    /// arrange, since the suite runs on Windows where File.GetUnixFileMode
+    /// throws and chmod does not exist.
+    ///
+    /// **The half of the trust rule that decides whether an answer may be
+    /// remembered.** Null in the application.
+    /// </summary>
+    internal static Func<string, bool>? ExecutableOverride { get; set; }
+
+    /// <summary>
+    /// The machine fact behind <see cref="Trusted"/>. False off Linux rather
+    /// than throwing: File.GetUnixFileMode is a PlatformNotSupportedException
+    /// on Windows, and this assembly's tests run there.
+    /// </summary>
+    private static bool Executable(string path)
+    {
+        if (ExecutableOverride is { } stub) return stub(path);
+
+        if (!OperatingSystem.IsLinux()) return false;
+
+        try
+        {
+            const UnixFileMode any = UnixFileMode.UserExecute
+                                     | UnixFileMode.GroupExecute
+                                     | UnixFileMode.OtherExecute;
+
+            return (File.GetUnixFileMode(path) & any) != 0;
+        }
+        catch (Exception e) when (e is IOException or UnauthorizedAccessException)
+        {
+            Vaktari.Core.Quiet.Swallowed("launcher mode", e);
+            return false;
+        }
     }
 
     /// <summary>Which terminals this machine has, asked once.</summary>
@@ -595,7 +764,7 @@ public static class DesktopEntries
     {
         if (FindDesktopFile(desktopId) is not { } file) return false;
 
-        var (_, exec, _, terminal) = ReadEntry(file);
+        var (_, exec, _, _, terminal) = ReadEntry(file);
         if (string.IsNullOrEmpty(exec)) return false;
 
         var parts = SplitExec(exec, path);

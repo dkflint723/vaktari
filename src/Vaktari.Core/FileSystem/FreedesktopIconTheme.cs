@@ -278,6 +278,9 @@ public sealed class FreedesktopIconTheme : IIconThemeProvider
         }
     }
 
+    /// <param name="names">Icon names, most specific first. A name that is a
+    /// rooted PATH names its file directly rather than being searched for —
+    /// see the note inside.</param>
     public string? Resolve(IReadOnlyList<string> names, int size)
     {
         foreach (var name in names)
@@ -290,7 +293,19 @@ public sealed class FreedesktopIconTheme : IIconThemeProvider
                 continue;
             }
 
-            var found = Search(name, size);
+            // **A rooted name was looked up in the theme index, where no such
+            // key can exist**, so it resolved to nothing every time. The icon
+            // theme spec says an Icon= value that is an absolute path names the
+            // file itself, and the launchers that write one are exactly the
+            // applications no theme ships an icon for: an AppImage, a JetBrains
+            // Toolbox entry, anything installed under /opt.
+            //
+            // Costs one IsPathRooted per name per SIZE, once, because the
+            // answer is cached beside every other one.
+            var found = Path.IsPathRooted(name)
+                ? File.Exists(name) ? name : null
+                : Search(name, size);
+
             _cache[key] = found;
 
             if (found is not null) return found;

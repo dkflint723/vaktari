@@ -24,6 +24,11 @@ public static class ConfusableNames
     /// names that are merely unusual — a Cyrillic folder name is not a
     /// mistake. What is worth flagging is a difference somebody could not see
     /// even knowing to look.
+    ///
+    /// The Name asked for is whatever the row DRAWS, which is not always the
+    /// file name — a launcher draws its Name= key. Two of those can be exactly
+    /// equal, where two file names in one directory cannot, and an exact match
+    /// flattens to itself and collides like any other.
     /// </summary>
     public static IReadOnlySet<string> Among(IEnumerable<(string FullPath, string Name)> entries)
     {

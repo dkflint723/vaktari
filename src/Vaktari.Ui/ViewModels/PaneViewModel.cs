@@ -4335,9 +4335,20 @@ public sealed partial class PaneViewModel : ObservableObject, IDisposable
     ///
     /// Over the WHOLE folder rather than the filtered view: two names collide
     /// whether or not a filter happens to be showing both.
+    ///
+    /// **The string the row DRAWS, not the file name.** Keyed on the file name
+    /// this could never fire twice in one folder for two launchers, because
+    /// file names in a directory are unique — and once a .desktop row started
+    /// drawing its Name= key, org.kde.dolphin.desktop and dolphin.desktop both
+    /// rendered the single word "Dolphin" with nothing to tell them apart and
+    /// no mark. That is the exact thing this set exists to say.
+    ///
+    /// Costs the launcher read for every .desktop in the folder rather than for
+    /// the visible ones — 97 µs each, once per path per process, and 0.1 µs on
+    /// every later pass because the answer is cached under it.
     /// </summary>
     private void RefreshConfusable()
-        => Confusable = ConfusableNames.Among(_all.Select(e => (e.FullPath, e.Name)));
+        => Confusable = ConfusableNames.Among(_all.Select(e => (e.FullPath, FileKind.DisplayName(e))));
 
 
 

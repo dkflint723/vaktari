@@ -80,6 +80,14 @@ public static class ThumbnailLoader
         // 0 means no limit, which is the default — and it matters that the
         // stat below is skipped entirely in that case, because this runs once
         // per visible row and the listing is deliberately stat-free.
+        //
+        // Deliberately, and no longer entirely: FileKind.DisplayName opens and
+        // reads a .desktop file to learn what a launcher calls itself, once per
+        // path per process. That one is gated the same two ways this is — on
+        // the row being a launcher at all, and on IsRemote, wired by
+        // WindowServices.KeepLauncherNamesOffTheWire — so the rule is now "no
+        // per-row disk over a wire, and nothing at all for an ordinary row"
+        // rather than "no per-row disk".
         if (limit <= 0) return true;
 
         try

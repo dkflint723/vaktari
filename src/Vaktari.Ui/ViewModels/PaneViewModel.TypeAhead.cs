@@ -75,8 +75,7 @@ public sealed partial class PaneViewModel
         {
             var index = (start + offset) % rows.Count;
 
-            if (!rows[index].Name.StartsWith(_typeAhead, StringComparison.OrdinalIgnoreCase))
-                continue;
+            if (!Reaches(rows[index])) continue;
 
             SelectedEntry = rows[index];
             return;
@@ -86,6 +85,27 @@ public sealed partial class PaneViewModel
         // start matching against a shorter one — but a miss should not move the
         // selection somewhere arbitrary either.
     }
+
+    /// <summary>
+    /// Whether typing the current prefix should land on this row.
+    ///
+    /// **The row's own name AND the name it draws, because those came apart.**
+    /// A Windows shortcut only loses ".lnk", so "Chrome" still matched
+    /// "Chrome.lnk" as a prefix and one comparison was enough. A Linux launcher
+    /// draws a name out of its Name= key that need share no character with the
+    /// file name — org.kde.dolphin.desktop lists as "Dolphin" — so in a folder
+    /// of launchers, D reached nothing and O reached the row labelled Dolphin.
+    /// That is the rule this whole method is written around: a row you can see
+    /// and cannot reach by typing its name is worse than one that is not there.
+    ///
+    /// The file name is still matched, so nothing that used to be reachable
+    /// stopped being. One extra comparison per row, on a keystroke rather than
+    /// on a bind — and only the second one can read a disk, which is why it is
+    /// second.
+    /// </summary>
+    private bool Reaches(FileEntry row)
+        => row.Name.StartsWith(_typeAhead, StringComparison.OrdinalIgnoreCase)
+           || FileKind.DisplayName(row).StartsWith(_typeAhead, StringComparison.OrdinalIgnoreCase);
 
     /// <summary>
     /// Where a row sits in the listing on screen.

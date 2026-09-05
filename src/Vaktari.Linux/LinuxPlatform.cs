@@ -25,6 +25,12 @@ public sealed class LinuxPlatform : IPlatform
         places.Start();
         Places = places;
         Icons = new FreedesktopIconTheme(Theme?.Read()?.IconTheme, naming: new XdgIconNaming());
+
+        // The listing's own name for a .desktop row. Adopted here beside the
+        // icon naming, and for the same reason Naming.Adopt is called from the
+        // one place a platform is chosen: Core cannot reference this assembly,
+        // and a launcher's name is a parse of a freedesktop file.
+        FileKind.LauncherName = path => DesktopEntries.Launcher(path).Name;
     }
 
     public string Name => "linux";

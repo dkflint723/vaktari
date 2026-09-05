@@ -217,6 +217,28 @@ public static class FileKind
         => extension.Equals("lnk", StringComparison.OrdinalIgnoreCase);
 
     /// <summary>
+    /// The freedesktop launcher extension, in the same shape and public for the
+    /// same reason <see cref="IsShortcut"/> is.
+    /// </summary>
+    public static bool IsLauncher(ReadOnlySpan<char> extension)
+        => extension.Equals("desktop", StringComparison.OrdinalIgnoreCase);
+
+    /// <summary>
+    /// What a launcher file calls itself, or null for a platform with no such
+    /// thing — which is every platform but one.
+    ///
+    /// **A seam rather than a call, because Core may not reference the Linux
+    /// assembly** and the answer is a parse of a freedesktop file. Set once
+    /// from the composition root that already chose the platform, exactly the
+    /// bargain <see cref="Naming"/> makes for the bin's name; null everywhere
+    /// else, so a Windows build never asks and never pays.
+    ///
+    /// Consulted only for a row whose extension is already .desktop, so the
+    /// per-row cost on every other file is one span comparison.
+    /// </summary>
+    public static Func<string, string?>? LauncherName { get; set; }
+
+    /// <summary>
     /// The name a listing shows: the entry's own, except for a Windows
     /// shortcut, whose extension Explorer never displays.
     ///
@@ -235,8 +257,27 @@ public static class FileKind
 
         var extension = entry.Extension;
 
-        return OperatingSystem.IsWindows() && IsShortcut(extension)
-            ? entry.Name[..^(extension.Length + 1)]
-            : entry.Name;
+        if (OperatingSystem.IsWindows() && IsShortcut(extension))
+            return entry.Name[..^(extension.Length + 1)];
+
+        // **A launcher listed as "org.kde.konsole.desktop".** A .desktop file
+        // is an application as far as a person browsing the folder is
+        // concerned, and the row showed the file name — which under the
+        // reverse-DNS convention KDE files its entries under is an id, and for
+        // the rest is a lowercase fragment. The same trade the shortcut above
+        // makes, on the other platform's shortcut, and it is the same trade in
+        // the same place rather than an appeal to what any other file manager
+        // does: nobody here can run one and say.
+        //
+        // Null from the seam is "no opinion" and keeps the file name: an
+        // untrusted launcher, an unreadable one, and one with no Name= at all
+        // all arrive that way. Costs one span comparison for every row that is
+        // not a launcher — 0.1 µs per row measured — and, for one that is, a
+        // file read the first time it is asked about.
+        if (IsLauncher(extension) && LauncherName is { } read
+            && read(entry.FullPath) is { Length: > 0 } named)
+            return named;
+
+        return entry.Name;
     }
 }

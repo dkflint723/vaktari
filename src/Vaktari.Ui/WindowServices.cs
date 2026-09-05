@@ -156,6 +156,35 @@ internal sealed class WindowServices
     };
 
     /// <summary>
+    /// Wraps the launcher-name reader so a REMOTE listing never pays for it.
+    ///
+    /// **A launcher name is the only thing in the row pipeline that opens a
+    /// file, and it does it on the UI thread.** Measured here: 97 µs for the
+    /// first ask about one launcher, and 0.1 µs for every ask after it — the
+    /// same as a row that is not a launcher at all. That is a fair price on a
+    /// local disk and not a price at all over a wire, where one open-read-close
+    /// is a round trip and a screenful of them is a stalled window. So a
+    /// launcher on an sshfs or gvfs mount keeps its file name, which is exactly
+    /// what the row showed before any of this.
+    ///
+    /// Asked of <see cref="Thumbnails.ThumbnailLoader.IsRemote"/> rather than
+    /// of a second list, for the reason that method's own doc gives: asking the
+    /// question twice from two lists is how they come to disagree. That is also
+    /// why the wrap lives here instead of in the platform assembly that fills
+    /// the seam in — the remote roots are discovered by the sidebar, which the
+    /// platform assemblies cannot see.
+    ///
+    /// A no-op on a build whose platform sets no reader, which is the Windows
+    /// one.
+    /// </summary>
+    internal static void KeepLauncherNamesOffTheWire()
+    {
+        if (FileKind.LauncherName is not { } read) return;
+
+        FileKind.LauncherName = path => Thumbnails.ThumbnailLoader.IsRemote(path) ? null : read(path);
+    }
+
+    /// <summary>
     /// Builds the half of the old MainWindow constructor that is per
     /// APPLICATION.
     ///
@@ -205,6 +234,8 @@ internal sealed class WindowServices
         // a platform is chosen, is what keeps the window from naming the bin
         // two different ways.
         Naming.Adopt(platform);
+
+        KeepLauncherNamesOffTheWire();
 
         // Clears a folder-handler registration left by a previous name of this
         // application pointing at a binary that no longer exists. Upgrading

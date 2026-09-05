@@ -46,6 +46,14 @@ public sealed class XdgIconNaming : IIconNaming
 
     public IReadOnlyList<string> NamesFor(string path)
     {
+        // **A launcher asked the mime database what it was.** That answer is
+        // application/x-desktop for every one of them, so Konsole, Firefox and
+        // Steam all resolved to the same grey page — while the file itself
+        // named its icon in a key two lines from the top. Ahead of the mime
+        // lookup, because everything below returns: the mime answer is not
+        // wrong so much as useless here, and it would win if it went first.
+        if (LauncherIcons(path) is { Count: > 0 } launcher) return launcher;
+
         // The glob database first: one parsed file rather than a process tree
         // per listing. Only a name it cannot classify — no extension, or an
         // unusual pattern — pays for a content sniff.
@@ -74,5 +82,49 @@ public sealed class XdgIconNaming : IIconNaming
         var media = mime.Split('/')[0];
 
         return [flat, $"{media}-x-generic", "application-x-generic", "text-x-generic"];
+    }
+
+    /// <summary>
+    /// The theme names to try for a .desktop file, most specific first, or
+    /// empty for a file that is not one or whose Icon= this must not believe.
+    ///
+    /// **The spec says the extension "should be omitted" and real entries carry
+    /// one anyway.** Icon=firefox.png ships in the wild, and the theme index is
+    /// keyed by file name WITHOUT its extension — so the value as written
+    /// matched nothing and the launcher kept the generic icon it was already
+    /// wearing. Verbatim first all the same, because a dot in an icon name is
+    /// not automatically an extension: org.kde.konsole is the naming convention
+    /// half of KDE follows, and stripping ".konsole" off it would ask for the
+    /// wrong picture.
+    ///
+    /// The two fallbacks are what the row had before, kept so an entry with no
+    /// Icon= at all, or one naming an icon this theme does not ship, lands on
+    /// the launcher page rather than on nothing.
+    ///
+    /// **Case-insensitively, because the index this feeds is.** The first
+    /// version pattern-matched the extension ordinally, so Icon=firefox.PNG
+    /// kept its extension and matched nothing — while
+    /// FreedesktopIconTheme's index is an OrdinalIgnoreCase dictionary keyed on
+    /// the file name without its extension, where "firefox" would have hit. And
+    /// the length test is not spare: Path.GetExtension(".png") answers ".png",
+    /// so a degenerate Icon=.png stripped to the empty string and handed Resolve
+    /// a name it could only search for and fail on.
+    /// </summary>
+    internal static IReadOnlyList<string> LauncherIcons(string path)
+    {
+        if (DesktopEntries.Launcher(path).Icon is not { Length: > 0 } icon) return [];
+
+        var extension = Path.GetExtension(icon);
+
+        var stripped = icon.Length > extension.Length
+                       && (extension.Equals(".png", StringComparison.OrdinalIgnoreCase)
+                           || extension.Equals(".svg", StringComparison.OrdinalIgnoreCase)
+                           || extension.Equals(".xpm", StringComparison.OrdinalIgnoreCase))
+            ? icon[..^4]
+            : icon;
+
+        return stripped == icon
+            ? [icon, "application-x-desktop", "application-x-executable"]
+            : [icon, stripped, "application-x-desktop", "application-x-executable"];
     }
 }

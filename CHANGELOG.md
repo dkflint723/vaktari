@@ -13,6 +13,20 @@ should not be trusted for compatibility yet.
 
 ### Added
 
+- **On Linux, application launchers are listed by their name and their icon.**
+  A folder of `.desktop` files — the desktop itself, `~/.local/share/applications`,
+  the folder every KDE application ships its entry into — read as a column of
+  reverse-DNS file names beside a column of identical grey pages. Both the name
+  and the icon were in the file the whole time, two keys apart.
+
+  Not every launcher, and deliberately so. A `.desktop` file chooses its own name
+  and its own icon, so one that arrives by download or by mail can call itself
+  "Invoice", wear a PDF icon, and run something else entirely — the oldest trick
+  the format has. Vaktari believes a launcher that is installed under an
+  application directory, or that somebody has marked runnable; everything else
+  keeps its file name and its generic icon. Marking one runnable from Properties
+  takes effect on the row without a restart.
+
 - **A folder dropped on the sidebar's empty space becomes a place.** It is how
   both Explorer and Dolphin add a bookmark, and here the drag was simply
   refused: only the place rows themselves accepted a drop, and those take one

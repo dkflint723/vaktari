@@ -2648,7 +2648,7 @@
                                      Margin="8,0,0,0" VerticalAlignment="Center"
                                      FontSize="{DynamicResource FontSizeTiny}"
                                      Foreground="{DynamicResource AccentText}"
-                                     ToolTip.Tip="Another name here differs only by spacing or capitals.">
+                                     ToolTip.Tip="Another row here is named the same, or close enough to look it.">
                             <TextBlock.IsVisible>
                               <MultiBinding Converter="{x:Static vm:FileConverters.Confusable}">
                                 <Binding Path="FullPath"/>
@@ -2879,7 +2879,7 @@
                                      Margin="6,0,2,0" VerticalAlignment="Center"
                                      FontSize="{DynamicResource FontSizeTiny}"
                                      Foreground="{DynamicResource AccentText}"
-                                     ToolTip.Tip="Another name here differs only by spacing or capitals.">
+                                     ToolTip.Tip="Another row here is named the same, or close enough to look it.">
                             <TextBlock.IsVisible>
                               <MultiBinding Converter="{x:Static vm:FileConverters.Confusable}">
                                 <Binding Path="FullPath"/>
@@ -3088,7 +3088,7 @@
                           <Border HorizontalAlignment="Left" VerticalAlignment="Top"
                                   Background="{DynamicResource AccentColour}"
                                   CornerRadius="3" Padding="5,0" Margin="2,2,0,0"
-                                  ToolTip.Tip="Another name here differs only by spacing or capitals.">
+                                  ToolTip.Tip="Another row here is named the same, or close enough to look it.">
                             <Border.IsVisible>
                               <MultiBinding Converter="{x:Static vm:FileConverters.Confusable}">
                                 <Binding Path="FullPath"/>
