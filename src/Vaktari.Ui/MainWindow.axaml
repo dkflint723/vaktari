@@ -1336,7 +1336,48 @@
 
             </StackPanel>
 
-            <Panel>
+            <!-- Named so the Menu key can recognise it. A crumb is an ordinary
+                 focusable Button, and Key.Apps is handled once for the whole
+                 window; the handler walks up from whatever holds the keyboard
+                 looking for this name, because the flyout below lives inside a
+                 DataTemplate and there is no generated field to compare
+                 against. -->
+            <Panel x:Name="AddressBar">
+              <!-- **The bar answered a double-click and nothing else.** A
+                   right-click on it — on a crumb, or on the empty strip past
+                   them — reached no menu anywhere, so the two things a person
+                   does to an address were folklore: Ctrl+L, or a double-click
+                   on a target whose only notice is a tooltip after 1200ms.
+                   Explorer and Dolphin both hang exactly these two off the
+                   bar's own context menu.
+
+                   On this Panel because it is the one ancestor the two halves
+                   of the bar share: the crumbs are an ItemsControl and the
+                   empty strip past them is the double-click Border behind
+                   them, ContextRequested bubbles, and a menu on either alone
+                   answers a right-click on half the bar. It may not go higher
+                   either — the toolbar Border above is shared with Back,
+                   Forward, the search field and the filter chip, and "Copy
+                   address" is not the answer to a right-click on any of them.
+
+                   The rows bind to the GROUP's own ActiveTab, which is what
+                   this template's DataContext is. So the menu acts on the bar
+                   it was opened over whichever half of a split is active,
+                   rather than on whatever the window last called current.
+
+                   The editor keeps its own menu when it is open. Measured on
+                   Avalonia 12.1: a TextBox carries a ContextFlyout from the
+                   theme, and a flyout that opens marks ContextRequested
+                   handled, so this one never fires over the box — the same
+                   mechanism AddressBarKeysTests already relies on for the box's
+                   Cut/Copy/Paste. -->
+              <Panel.ContextFlyout>
+                <MenuFlyout>
+                  <MenuItem Header="_Copy address" Command="{Binding ActiveTab.CopyAddressCommand}"/>
+                  <MenuItem Header="_Edit address" InputGesture="Ctrl+L" Command="{Binding ActiveTab.BeginEditPathCommand}"/>
+                </MenuFlyout>
+              </Panel.ContextFlyout>
+
               <!-- The double-click target sits BEHIND the crumbs and fills the
                    bar, rather than being a strip beside them.
                    

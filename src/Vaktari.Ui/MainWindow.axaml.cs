@@ -3208,6 +3208,30 @@ public partial class MainWindow : Window
     }
 
     /// <summary>
+    /// The name the address bar's Panel carries in MainWindow.axaml.
+    ///
+    /// A name rather than a field: the bar lives inside the per-group
+    /// DataTemplate, so there is one of it per split half and no generated
+    /// field for either.
+    /// </summary>
+    private const string AddressBarName = "AddressBar";
+
+    /// <summary>
+    /// Whether the keyboard is somewhere on the address bar.
+    ///
+    /// Walked from the focused element UP, because what is focused is a crumb
+    /// button — the bar's menu hangs on the Panel above the crumbs and the
+    /// double-click target both, which is the only ancestor they share.
+    /// </summary>
+    private static bool InAddressBar(object? element)
+    {
+        for (var visual = element as Visual; visual is not null; visual = visual.GetVisualParent())
+            if (visual is Control { Name: AddressBarName }) return true;
+
+        return false;
+    }
+
+    /// <summary>
     /// Ticks the FOLDER's rows, not the screen's.
     ///
     /// **A folder opened in place put rows from two folders in one listing**,
@@ -6181,6 +6205,24 @@ public partial class MainWindow : Window
             || (e.Key == Key.F10 && e.KeyModifiers == KeyModifiers.Shift))
         {
             e.Handled = true;
+
+            // **The keyboard on the address bar got the LISTING's menu.** A
+            // crumb is an ordinary focusable Button, so Tab reaches it and both
+            // these keys fell straight through to the listing — offering Cut,
+            // Copy and Delete for files that are not what the keyboard is
+            // pointing at, and leaving the bar's own two rows reachable by
+            // mouse alone. The same treatment the sidebar already gets one
+            // screen up, and for the same reason: Avalonia raises
+            // ContextRequested for a right-click and for nothing else, so
+            // raising it here is the only keyboard route into a flyout that
+            // hangs off a control inside a template.
+            if (FocusManager?.GetFocusedElement() is Interactive onTheBar
+                && InAddressBar(onTheBar))
+            {
+                onTheBar.RaiseEvent(new ContextRequestedEventArgs());
+                return;
+            }
+
             OpenListingMenu();
             return;
         }

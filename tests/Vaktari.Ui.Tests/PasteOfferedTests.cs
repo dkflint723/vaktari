@@ -64,6 +64,8 @@ public sealed class PasteOfferedTests : OwnedViewModels
 
         public Task<ClipboardPayload?> GetFilesAsync()
             => Task.FromResult<ClipboardPayload?>(null);
+
+        public Task<bool> SetTextAsync(string text) => Task.FromResult(true);
     }
 
     private PaneViewModel Pane(IClipboardService clipboard)

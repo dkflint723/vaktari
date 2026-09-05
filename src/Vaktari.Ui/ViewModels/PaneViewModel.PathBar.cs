@@ -199,6 +199,66 @@ public sealed partial class PaneViewModel
         IsPathEditing = true;
     }
 
+    /// <summary>
+    /// The address on the clipboard, as text.
+    ///
+    /// **The bar had one gesture and it was a double-click.** Right-clicking
+    /// the crumbs reached no menu at all, so getting the path into a terminal,
+    /// a message or another window meant opening the editor, selecting the text
+    /// and pressing Ctrl+C — and the only notice anywhere that the editor
+    /// existed was a tooltip after 1200ms. Explorer and Dolphin both put Copy
+    /// address and Edit address on the bar's own context menu.
+    ///
+    /// <see cref="DisplayPath"/> rather than CurrentPath, which is the same
+    /// choice the tooltip beside it already makes: a virtual listing's
+    /// CurrentPath is an internal scheme, and "vaktari:computer" on the
+    /// clipboard is a leak that pastes back as a folder that does not exist.
+    ///
+    /// What a virtual listing copies is therefore its NAME, and only one of
+    /// those names is also an address. This PC's is: NavigateToPathText matches
+    /// the machine by its title, so what it copies pastes back into the box and
+    /// goes there. The bin's and the two Recent listings' are not, and neither
+    /// is "Search: report" — those five labels are what the bar is showing, and
+    /// showing is what the row copies. A person copying the address of a
+    /// listing that has no address is better served by its name than by
+    /// "vaktari:trash".
+    ///
+    /// Unquoted, unlike the listing menu's "Copy as path". That one hands over
+    /// a SELECTION, which is often several paths on their way to a command
+    /// line; this is the single address the bar is showing, and quotes round it
+    /// would have to be deleted by hand in most of the places it is going.
+    /// </summary>
+    [RelayCommand]
+    public async Task CopyAddressAsync()
+    {
+        if (_clipboard is null) { Status = "clipboard unavailable"; return; }
+
+        var address = DisplayPath;
+
+        if (address.Length == 0) { Status = "there is no address to copy"; return; }
+
+        try
+        {
+            // ConfigureAwait(true): a menu row raised this, so the status line
+            // it writes belongs on the thread that owns the bar. The file
+            // clipboard's own writer hops back through the dispatcher instead
+            // because it is reached from paths that start off the UI thread;
+            // this one is only ever a menu row being picked, which is on the
+            // UI thread whether the menu was opened by the mouse or the Menu
+            // key.
+            var ok = await _clipboard.SetTextAsync(address).ConfigureAwait(true);
+
+            Status = ok ? $"copied {address}" : "clipboard unavailable";
+        }
+        catch (Exception ex)
+        {
+            // The same shape as the file clipboard's: a copy that fails says
+            // why on the line that reports everything else, rather than
+            // throwing out of a menu row into nothing.
+            Status = $"copy failed: {ex.Message}";
+        }
+    }
+
     private void RebuildBreadcrumbs()
     {
         Breadcrumbs.Clear();

@@ -185,6 +185,24 @@ public sealed class NewWindowTests : OwnedViewModels
     /// <summary>
     /// Closes the family, peers first, so the LAST close is the one that runs
     /// the last-window-out path.
+    ///
+    /// **Close() only STARTS the teardown, and one RunJobs was a proxy for its
+    /// finishing.** OnClosing cancels the close, awaits ReleaseAsync — which
+    /// writes session.json — and only then closes for real, so a single Settle
+    /// left that write in flight. Measured here, by making the assertion print
+    /// what it read: a run of this class where
+    /// <see cref="The_last_window_still_writes_itself_into_the_session"/>
+    /// flushed a session with SidebarWidth 287 and then loaded one with 210 —
+    /// the PREVIOUS test's window landing its own write over the file this test
+    /// had just written, one test later. The empty-session variant of the same
+    /// failure is a compose taken after the window was dropped from the list.
+    ///
+    /// So it waits on what "they are closed" actually means here — the list of
+    /// live windows emptying, which the last release does only after its flush
+    /// and its DisposeAsync — under a wall-clock ceiling rather than for a
+    /// count of turns. A window held open by a confirm prompt never empties it,
+    /// which is why the ceiling gives up rather than failing: this is teardown,
+    /// and the test that owns that prompt has already made its assertions.
     /// </summary>
     private static void CloseAll(WindowServices services)
     {
@@ -192,6 +210,14 @@ public sealed class NewWindowTests : OwnedViewModels
         {
             try { window.Close(); }
             catch (Exception ex) { Vaktari.Core.Quiet.Swallowed("test-teardown", ex); }
+        }
+
+        var deadline = DateTime.UtcNow.AddSeconds(10);
+
+        while (services.Windows.Count > 0 && DateTime.UtcNow < deadline)
+        {
+            Settle();
+            Thread.Sleep(1);
         }
 
         Settle();

@@ -114,6 +114,24 @@ should not be trusted for compatibility yet.
   drawn, said "searching with directory walk" and "searching with baloo": the
   names of implementation details, put in front of somebody looking for a file.
 
+- **The address bar has a right-click menu.** Right-clicking the breadcrumbs — on
+  a folder name, or on the empty strip past the end of the path — did nothing at
+  all, so the two things anyone does to an address were undiscoverable: Ctrl+L,
+  or a double-click whose only notice was a tooltip after a second and a bit.
+  The menu offers *Copy address* and *Edit address*, and the Menu key opens it
+  when a breadcrumb has the keyboard, where it used to open the file listing's
+  menu instead.
+
+  Copy address puts the path on the clipboard as plain text and unquoted — this
+  is one address on its way to a terminal or a message, not a selection on its
+  way to a command line, which is what *Copy as path* in the listing's menu is
+  for. This PC copies as its name, which is also what you can type back into the
+  box to return there; the bin, both Recent listings and a search copy the name
+  the bar is showing, because those have no address to give.
+
+  The editor keeps its own menu. Right-clicking inside the open address box
+  still answers with Cut, Copy and Paste for the text being edited.
+
 - **A drag shows what it is carrying.** While dragging, the only feedback was the
   cursor the operating system chose, so a drag begun by accident looked exactly
   like a drag of the twenty files you meant — and there was no way to tell which
