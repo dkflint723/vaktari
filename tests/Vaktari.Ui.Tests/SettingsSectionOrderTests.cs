@@ -82,6 +82,26 @@ public class SettingsSectionOrderTests
     }
 
     /// <summary>
+    /// **And the way to empty the folder-view store is too.** A command nothing
+    /// binds is a feature nobody can reach, and this store is otherwise
+    /// invisible: it fills up by itself and its file is not named anywhere in
+    /// the application.
+    /// </summary>
+    [Fact]
+    public void The_behaviour_section_offers_a_way_to_forget_the_views()
+    {
+        var markup = XDocument.Parse(RepoSource.Ui("SettingsWindow.axaml"));
+
+        var ns = markup.Root!.GetDefaultNamespace();
+
+        var button = markup.Descendants(ns + "Button").SingleOrDefault(
+            b => (string?)b.Attribute("Command") == "{Binding ForgetRememberedViewsCommand}");
+
+        Assert.NotNull(button);
+        Assert.Equal("Forget remembered views", (string?)button.Attribute("Content"));
+    }
+
+    /// <summary>
     /// **The way back to the defaults is on the window**, not only on the view
     /// model. A command nothing binds is a feature nobody can reach, and this
     /// dialog has six pages of controls with no other route to one.

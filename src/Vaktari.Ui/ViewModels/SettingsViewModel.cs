@@ -59,8 +59,11 @@ public sealed partial class SettingsViewModel : ObservableObject
         Core.IDefaultFileManager? defaults = null,
         Core.FileSystem.IFileIconProvider? desktopIcons = null,
         Core.IFileManagerService? fileManager = null,
-        string? settingsFile = null)
+        string? settingsFile = null,
+        Core.FileSystem.IFolderViewStore? folderViews = null)
     {
+        _rememberedViews = folderViews?.Remembered ?? 0;
+
         _settingsFile = settingsFile ?? "";
         _defaults = defaults;
         _desktopIcons = desktopIcons;
@@ -1369,6 +1372,48 @@ public sealed partial class SettingsViewModel : ObservableObject
     /// `with`, so replacing it is what makes "every setting" true rather than
     /// "every setting you can see".
     /// </summary>
+    // ---- the folder views nothing could see ---------------------------------
+
+    /// <summary>
+    /// How many folders were being remembered when this dialog opened.
+    ///
+    /// **Turning the setting off left every folder already recorded exactly as
+    /// it was.** The store is written to by merely LOOKING at a folder, so it
+    /// fills up on its own; IFolderViewStore.Forget(path) existed and nothing
+    /// had ever called it, and the file was invisible from the application. So
+    /// a listing that had once been given a layout kept it with the feature
+    /// switched off, and the only way to say otherwise was to find the file and
+    /// delete it.
+    ///
+    /// Read once, at open, rather than live: this dialog is modal and nothing
+    /// behind it is browsing.
+    /// </summary>
+    private readonly int _rememberedViews;
+
+    public bool HasRememberedViews => _rememberedViews > 0;
+
+    public string RememberedViewsLabel => _rememberedViews == 1
+        ? "One folder is remembered"
+        : $"{_rememberedViews:N0} folders are remembered";
+
+    /// <summary>
+    /// Whether Save should clear them. **Armed rather than done**, so this
+    /// behaves like every other control here: Cancel throws it away, and the
+    /// one handler that already applies a save does this too rather than a
+    /// second route reaching the store directly.
+    /// </summary>
+    public bool ForgetViewsOnSave { get; private set; }
+
+    [RelayCommand(CanExecute = nameof(HasRememberedViews))]
+    private void ForgetRememberedViews()
+    {
+        ForgetViewsOnSave = true;
+
+        SettingsFileStatus = _rememberedViews == 1
+            ? "One remembered folder view will be forgotten when you press Save."
+            : $"{_rememberedViews:N0} remembered folder views will be forgotten when you press Save.";
+    }
+
     [RelayCommand]
     private void RestoreDefaults()
     {

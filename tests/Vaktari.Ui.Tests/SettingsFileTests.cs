@@ -257,6 +257,91 @@ public class SettingsFileTests : IDisposable
         Assert.Contains(nameof(vm.NaturalSorting), told);
     }
 
+    // ---- the folder views nothing could see ---------------------------------
+
+    /// <summary>A store that reports a count and remembers being cleared.</summary>
+    private sealed class Views(int remembered) : Vaktari.Core.FileSystem.IFolderViewStore
+    {
+        internal int Cleared;
+
+        public Vaktari.Core.FileSystem.FolderViewState? Read(string path) => null;
+        public void Write(string path, Vaktari.Core.FileSystem.FolderViewState state) { }
+        public void Forget(string path) { }
+
+        public int Remembered => remembered;
+
+        public int ForgetAll()
+        {
+            Cleared++;
+            return remembered;
+        }
+    }
+
+    private SettingsViewModel WithViews(int remembered)
+        => new(new SettingsState(), settingsFile: File("settings.json"),
+               folderViews: new Views(remembered));
+
+    /// <summary>
+    /// **Turning the setting off left every folder already recorded exactly as
+    /// it was.** The store fills up on its own — merely looking at a folder
+    /// writes to it — Forget(path) had never been called by anything, and the
+    /// file was invisible from the application, so a listing that had once been
+    /// given a layout kept it with the feature switched off.
+    /// </summary>
+    [AvaloniaFact]
+    public void Forgetting_the_remembered_views_is_offered_when_there_are_some()
+    {
+        var vm = WithViews(4);
+
+        Assert.True(vm.HasRememberedViews);
+        Assert.True(vm.ForgetRememberedViewsCommand.CanExecute(null));
+        Assert.Equal("4 folders are remembered", vm.RememberedViewsLabel);
+    }
+
+    /// <summary>
+    /// And not offered when there are none: a button that clears an empty list
+    /// is a button that does nothing.
+    /// </summary>
+    [AvaloniaFact]
+    public void And_is_not_offered_when_there_are_none()
+    {
+        var vm = WithViews(0);
+
+        Assert.False(vm.HasRememberedViews);
+        Assert.False(vm.ForgetRememberedViewsCommand.CanExecute(null));
+    }
+
+    /// <summary>One is one, not "1 folders".</summary>
+    [AvaloniaFact]
+    public void One_folder_is_said_in_the_singular()
+        => Assert.Equal("One folder is remembered", WithViews(1).RememberedViewsLabel);
+
+    /// <summary>
+    /// **Armed, not done.** Pressing it must behave like every other control on
+    /// these six pages: nothing has happened until Save, so Cancel throws it
+    /// away. Pressing it and cancelling would otherwise clear a list the person
+    /// then chose not to clear.
+    /// </summary>
+    [AvaloniaFact]
+    public void Pressing_it_does_not_clear_anything_yet()
+    {
+        var store = new Views(4);
+
+        var vm = new SettingsViewModel(
+            new SettingsState(), settingsFile: File("settings.json"), folderViews: store);
+
+        vm.ForgetRememberedViewsCommand.Execute(null);
+
+        Assert.True(vm.ForgetViewsOnSave);
+        Assert.Equal(0, store.Cleared);
+        Assert.NotEqual("", vm.SettingsFileStatus);
+    }
+
+    /// <summary>Until it is pressed, the save has nothing to do.</summary>
+    [AvaloniaFact]
+    public void And_a_save_that_was_not_asked_forgets_nothing()
+        => Assert.False(WithViews(4).ForgetViewsOnSave);
+
     /// <summary>
     /// The round trip, so the two halves are pinned against each other rather
     /// than each against its own idea of the format.

@@ -80,6 +80,26 @@ public sealed class JsonFolderViewStore : IFolderViewStore
         }
     }
 
+    public int Remembered
+    {
+        get { lock (_gate) return _states.Count; }
+    }
+
+    public int ForgetAll()
+    {
+        lock (_gate)
+        {
+            var had = _states.Count;
+
+            if (had == 0) return 0;
+
+            _states.Clear();
+            _dirty = true;
+
+            return had;
+        }
+    }
+
     /// <summary>Called on shutdown and on the session flush.</summary>
     public void Flush()
     {

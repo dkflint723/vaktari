@@ -259,6 +259,26 @@
               </StackPanel>
             </CheckBox>
 
+            <!-- **Turning the box above off left every folder already recorded
+                 exactly as it was.** The store fills up on its own — merely
+                 LOOKING at a folder writes to it — and there was no way to see
+                 it or empty it from anywhere in the application.
+
+                 Indented under the box it belongs to, and shown only when
+                 there is something to forget: an offer to clear an empty list
+                 is a button that does nothing. -->
+            <StackPanel Orientation="Horizontal" Spacing="10" Margin="24,0,0,0"
+                        IsVisible="{Binding HasRememberedViews}">
+              <Button Content="Forget remembered views"
+                      Padding="10,3"
+                      FontSize="{DynamicResource FontSizeSmall}"
+                      Command="{Binding ForgetRememberedViewsCommand}"/>
+              <TextBlock Text="{Binding RememberedViewsLabel}"
+                         FontSize="{DynamicResource FontSizeTiny}"
+                         Foreground="{DynamicResource ViewDimText}"
+                         VerticalAlignment="Center"/>
+            </StackPanel>
+
             <CheckBox Content="Show tooltips on rows"
                       FontSize="{DynamicResource FontSizeSmall}"
                       IsChecked="{Binding ShowTooltips}"/>

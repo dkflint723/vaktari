@@ -46,4 +46,25 @@ public interface IFolderViewStore
 
     /// <summary>Forgets one folder's overrides, so it follows the default again.</summary>
     void Forget(string path);
+
+    /// <summary>
+    /// How many folders are being remembered.
+    ///
+    /// Here so the settings dialog can say whether there is anything to forget
+    /// — an offer to clear a list that is already empty is a button that does
+    /// nothing, and this store is otherwise invisible: it is written to by
+    /// merely looking at a folder, and there was no way to see it at all.
+    /// </summary>
+    int Remembered { get; }
+
+    /// <summary>
+    /// Forgets every folder's overrides, and answers how many that was.
+    ///
+    /// **Forget(path) existed and nothing ever called it.** Turning the
+    /// remember-per-folder setting off stops new folders being recorded and
+    /// leaves every folder already recorded exactly as it was, so a listing
+    /// that had been given a layout kept it with the feature switched off and
+    /// no way to say otherwise short of deleting the file by hand.
+    /// </summary>
+    int ForgetAll();
 }

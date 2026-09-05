@@ -793,6 +793,15 @@ should not be trusted for compatibility yet.
   file is left where it is. A swap comes back through the temporary name it
   went out through, and that temporary name is never what the Undo row says.
 
+- **The remembered folder views can be forgotten.** With *Remember the view for
+  each folder* on, Vaktari records a folder the moment you change its layout —
+  and turning the setting back off only stopped it recording new ones. Every
+  folder already recorded kept its layout, with the feature switched off and
+  nothing anywhere to say so. There is now a *Forget remembered views* button
+  under that setting, showing how many folders are being remembered. Like
+  everything else on those pages it takes effect when you press Save, so Cancel
+  leaves them alone.
+
 - **Settings has a *Restore defaults* button.** There was no way back. Nine
   sections on the General page and five more pages, every one of them
   remembering what it was last set to, and the only route to the defaults was
