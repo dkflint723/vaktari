@@ -115,9 +115,11 @@ public sealed class RenameStepTests : OwnedViewModels
     /// run and once alone on a clean tree, then passed three times alone — the
     /// rename is a real file operation followed by a re-list, and under load
     /// neither had finished when the assertion read the box, so it still held
-    /// the name that had just been typed. Waiting on the ANSWER cannot go the
-    /// same way: a slow machine takes longer, and a broken one still fails,
-    /// because the assertion afterwards is unchanged.
+    /// the name that had just been typed.
+    ///
+    /// **A condition is only better than a count if the transition cannot
+    /// satisfy it**, which is the part the first version of this got wrong —
+    /// see the two waits in Rename below.
     /// </summary>
     private static async Task Until(Func<bool> done)
     {
@@ -164,11 +166,23 @@ public sealed class RenameStepTests : OwnedViewModels
 
         rig.Window.KeyPress(Key.Tab, RawInputModifiers.None, PhysicalKey.Tab, null);
 
-        // Until the box stops offering the name just typed, which is what
-        // "the rename landed and the run stepped on" looks like from here.
-        // A run that legitimately stops leaves no box at all, and that ends
-        // the wait too - the assertions afterwards decide which happened.
-        await Until(() => Typed(rig) != to);
+        // **Two waits, because the obvious one is satisfied by the gap between
+        // them.** The first spelling of this waited for the box to stop
+        // offering the name just typed — and Typed() answers "" when there is
+        // no box at all, which is exactly the state between Tab closing the
+        // editor and the re-list reopening it on the next row. So the wait
+        // ended in the middle and the assertion read "" where it wanted
+        // "b.txt". MEASURED twice: once in a full local run of 1762 tests, and
+        // once more as an unnamed intermittent before that.
+        //
+        // The old name leaving the listing is the rename actually landing, and
+        // it is monotonic — a refusal never reaches it, and those tests assert
+        // negatives, so exhausting the ceiling is the correct outcome there.
+        await Until(() => rig.Shell.ActiveTab!.Entries.All(e => e.Name != row.Name));
+
+        // And then the box reopening on whatever the run stepped to, which is
+        // a continuation after the re-list rather than part of it.
+        await Until(() => Typed(rig) is { Length: > 0 } next && next != to);
     }
 
     /// <summary>The whole gesture: rename one, land on the next.</summary>
