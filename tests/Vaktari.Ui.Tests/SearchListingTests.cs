@@ -287,13 +287,43 @@ public sealed class SearchListingTests : OwnedViewModels
     /// continuations after a suspension, not that prologue, so without the pump
     /// the freeze lands on the UI thread on every search.
     /// </summary>
+    /// <remarks>
+    /// **Asked from a thread the pool does not own, and that is the fix rather
+    /// than a detail.** xUnit runs an async fact on a POOL thread, and the pool
+    /// is free to schedule the pumped prologue onto that very thread the moment
+    /// the test awaits and releases it -- so the two ids matched while the code
+    /// was doing exactly what it should. MEASURED: a full Ui run failed here
+    /// with "Expected: Not 19, Actual: 19", and the same test passed alone. A
+    /// thread the pool cannot choose makes the comparison mean what it says.
+    /// </remarks>
     [Fact]
-    public async Task The_backend_never_starts_on_the_thread_that_asked()
+    public void The_backend_never_starts_on_the_thread_that_asked()
     {
         var backend = new Fake(Entry("a.txt"));
-        var asking = Environment.CurrentManagedThreadId;
 
-        await ReadAsync(backend, VirtualPaths.Search("a", null, false));
+        var asking = 0;
+        Exception? failure = null;
+
+        var asker = new Thread(() =>
+        {
+            try
+            {
+                asking = Environment.CurrentManagedThreadId;
+
+                ReadAsync(backend, VirtualPaths.Search("a", null, false))
+                    .GetAwaiter().GetResult();
+            }
+            catch (Exception ex)
+            {
+                failure = ex;
+            }
+        });
+
+        asker.Start();
+
+        Assert.True(asker.Join(TimeSpan.FromSeconds(30)), "the search never finished");
+
+        if (failure is not null) throw failure;
 
         Assert.NotNull(backend.RanOn);
         Assert.NotEqual(asking, backend.RanOn);
