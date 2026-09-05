@@ -671,6 +671,122 @@ public sealed partial class PaneViewModel
     }
 
     /// <summary>
+    /// Whether there is something to put in a zip.
+    ///
+    /// **IsRealFolder rather than CanActOnSelection**, which excludes only the
+    /// bin. A Recent or a search row names where a file was when it was
+    /// indexed, so compressing there would archive whatever occupies that path
+    /// now — the same reason Mount and Duplicate refuse those listings.
+    ///
+    /// **And out of one folder**, which is <see cref="Archives.CanCompress"/>'s
+    /// rule and is written there with what it costs to break it. A selection
+    /// CAN span folders here — the details listing splices an expanded folder's
+    /// rows in underneath it — and the row hides for one that does rather than
+    /// offering an archive that would drop half of it.
+    ///
+    /// No <c>HasSelection</c> beside them: an empty selection is an empty list
+    /// of paths, which is a question CanCompress already answers, and a term
+    /// that cannot change the answer is a term no test can hold to account.
+    /// </summary>
+    public bool CanCompressSelection => IsRealFolder && Archives.CanCompress(SelectionPaths());
+
+    /// <summary>
+    /// Whether the selection is one archive this can open.
+    ///
+    /// **Exactly one**, which is what "Extract all" means: all of ONE
+    /// archive's contents. <see cref="EntriesToActOn"/> is the whole selection
+    /// when there is one and the focused row otherwise, so a list pattern of
+    /// one is the honest test — reading <c>SelectedEntry</c> alone would offer
+    /// the row while four other files were also picked and quietly ignore them.
+    /// </summary>
+    public bool CanExtractSelection =>
+        IsRealFolder
+        && EntriesToActOn() is [{ IsDirectory: false } only]
+        && Archives.CanExtract(only.FullPath);
+
+    /// <summary>
+    /// Puts the selection into a zip beside itself.
+    ///
+    /// **Beside the source rather than in CurrentPath**, because a details
+    /// listing can have folders expanded in place: a row picked inside an
+    /// expanded folder belongs to that folder, and the archive should land
+    /// where the thing it holds lives.
+    ///
+    /// Off the UI thread, because compressing a folder reads every byte of it.
+    /// The listing is refreshed afterwards rather than waiting for the watcher,
+    /// so the new archive is there to be picked up straight away.
+    /// </summary>
+    [RelayCommand]
+    public async Task CompressSelectionAsync()
+    {
+        if (!CanCompressSelection) return;
+
+        var paths = SelectionPaths();
+
+        // There is a first path and it has a parent: both are what
+        // Archives.CanCompress asked a moment ago, so this line binds the
+        // destination rather than guarding a case the gate lets through.
+        if (Path.GetDirectoryName(paths[0]) is not { Length: > 0 } into) return;
+
+        Status = paths.Count == 1
+            ? $"compressing {Path.GetFileName(paths[0])}…"
+            : $"compressing {paths.Count} items…";
+
+        try
+        {
+            var made = await Task.Run(() => Archives.Compress(paths, into)).ConfigureAwait(true);
+
+            // Undoable, the same way a new folder is: the undo puts it in the
+            // bin, so nothing is destroyed.
+            _ops?.RecordCreation(made);
+
+            await RefreshAsync().ConfigureAwait(true);
+
+            Status = $"made {Path.GetFileName(made)}";
+        }
+        catch (Exception ex)
+        {
+            Status = Failures.Describe(ex, "compress those");
+        }
+    }
+
+    /// <summary>
+    /// Unpacks the selected archive into a folder beside it.
+    /// </summary>
+    [RelayCommand]
+    public async Task ExtractSelectionAsync()
+    {
+        if (!CanExtractSelection) return;
+        if (EntriesToActOn() is not [{ } archive]) return;
+        if (Path.GetDirectoryName(archive.FullPath) is not { Length: > 0 } into) return;
+
+        Status = $"extracting {archive.Name}…";
+
+        try
+        {
+            var done = await Task.Run(() => Archives.Extract(archive.FullPath, into))
+                .ConfigureAwait(true);
+
+            _ops?.RecordCreation(done.Folder);
+
+            await RefreshAsync().ConfigureAwait(true);
+
+            // **The refused count is said out loud.** An entry naming a path
+            // outside the folder is dropped rather than written, and an
+            // extraction that quietly produced fewer files than the archive
+            // holds is exactly the thing somebody needs to be told about.
+            Status = done.Refused == 0
+                ? $"extracted {done.Files} item(s) to {Path.GetFileName(done.Folder)}"
+                : $"extracted {done.Files} item(s) to {Path.GetFileName(done.Folder)} — "
+                  + $"{done.Refused} refused for pointing outside it";
+        }
+        catch (Exception ex)
+        {
+            Status = Failures.Describe(ex, $"extract {archive.Name}");
+        }
+    }
+
+    /// <summary>
     /// How a clash is settled: by asking, once per operation unless told to
     /// stop.
     ///

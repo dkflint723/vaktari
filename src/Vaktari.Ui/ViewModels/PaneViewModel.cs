@@ -795,6 +795,8 @@ public sealed partial class PaneViewModel : ObservableObject, IDisposable
         OnPropertyChanged(nameof(CanRunSelectionAsAdministrator));
         OnPropertyChanged(nameof(CanMountSelection));
         OnPropertyChanged(nameof(CanUnmountSelection));
+        OnPropertyChanged(nameof(CanCompressSelection));
+        OnPropertyChanged(nameof(CanExtractSelection));
 
         // The heading's box is a function of the selection and nothing else, so
         // it belongs on the one notification every route to a selection change
@@ -2770,6 +2772,8 @@ public sealed partial class PaneViewModel : ObservableObject, IDisposable
         OnPropertyChanged(nameof(CanRunSelectionAsAdministrator));
         OnPropertyChanged(nameof(CanMountSelection));
         OnPropertyChanged(nameof(CanUnmountSelection));
+        OnPropertyChanged(nameof(CanCompressSelection));
+        OnPropertyChanged(nameof(CanExtractSelection));
 
         if (IsPreviewVisible) _ = RefreshPreviewAsync();
 
@@ -3095,6 +3099,12 @@ public sealed partial class PaneViewModel : ObservableObject, IDisposable
             OnPropertyChanged(nameof(ShowOneTerminal));
             OnPropertyChanged(nameof(ShowTerminalChoice));
             OnPropertyChanged(nameof(CanActOnSelection));
+
+            // Both read IsRealFolder, so both change when the pane moves
+            // between a folder and one of the virtual listings — a change
+            // announced for IsRealFolder is not a change announced for these.
+            OnPropertyChanged(nameof(CanCompressSelection));
+            OnPropertyChanged(nameof(CanExtractSelection));
             OnPropertyChanged(nameof(CanPurgeFromBin));
         OnPropertyChanged(nameof(CanPurgeFromBin));
         OnPropertyChanged(nameof(CanRenameInBulk));

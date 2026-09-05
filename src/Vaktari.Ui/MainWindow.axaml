@@ -1469,6 +1469,32 @@
                                 </Style>
                               </MenuItem.Styles>
                             </MenuItem>
+              <!-- **The two archive verbs, at the top level.** There was no
+                   compress and no extract anywhere in this window or in the
+                   shell view model, and the only ZipArchive in src was the
+                   icon-theme installer's — so every route to a zip went through
+                   the hosted "Windows menu" below, whatever the machine happened
+                   to have registered there.
+
+                   One rule for the pair, gated on the compress row: Extract
+                   needs exactly one archive selected in a real folder, and that
+                   is a subset of "something selected in a real folder", so
+                   wherever Extract shows Compress does too. Gated at all for
+                   the reason written on the Undo row below — Avalonia draws
+                   every separator it is given and collapses none of them, so an
+                   ungated rule here would be a stray line in the bin and in
+                   every folder with nothing selected.
+
+                   No InputGesture on either: neither has a key binding, and a
+                   printed shortcut that does nothing is worse than none — see
+                   Every_shortcut_shown_in_the_menu_is_really_bound. -->
+              <Separator IsVisible="{Binding ActiveTab.CanCompressSelection}"/>
+              <MenuItem Header="Compress to ZIP"
+                                      Command="{Binding ActiveTab.CompressSelectionCommand}"
+                                      IsVisible="{Binding ActiveTab.CanCompressSelection}"/>
+              <MenuItem Header="Extract all"
+                                      Command="{Binding ActiveTab.ExtractSelectionCommand}"
+                                      IsVisible="{Binding ActiveTab.CanExtractSelection}"/>
               <!-- Rename and the bin are the whole of the block below, and both
                    need a selection outside the trash — so this rule goes with
                    them, or it stacks against the one before New. -->
