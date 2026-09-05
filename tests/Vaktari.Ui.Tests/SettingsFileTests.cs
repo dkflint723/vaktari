@@ -257,6 +257,62 @@ public class SettingsFileTests : IDisposable
         Assert.Contains(nameof(vm.NaturalSorting), told);
     }
 
+    // ---- what version this is, and what changed in it -----------------------
+
+    /// <summary>
+    /// **The version line was the whole of the About box, and a dead end.** A
+    /// number, and on hover the path of the binary — nothing saying what
+    /// changed in that version, nothing naming the project, and no way to reach
+    /// either without already knowing where to look.
+    /// </summary>
+    [AvaloniaFact]
+    public void What_is_new_opens_the_releases_page()
+    {
+        var vm = Model();
+        string? opened = null;
+
+        vm.OpenUrlRequested += (_, url) => opened = url;
+        vm.OpenReleasesCommand.Execute(null);
+
+        Assert.Equal(SettingsViewModel.ReleasesUrl, opened);
+    }
+
+    /// <summary>And the project itself is reachable from the same place.</summary>
+    [AvaloniaFact]
+    public void The_project_link_opens_the_repository()
+    {
+        var vm = Model();
+        string? opened = null;
+
+        vm.OpenUrlRequested += (_, url) => opened = url;
+        vm.OpenProjectCommand.Execute(null);
+
+        Assert.Equal(SettingsViewModel.ProjectUrl, opened);
+    }
+
+    /// <summary>
+    /// **The releases page, not CHANGELOG.md in the default branch.** Somebody
+    /// asking "what changed" from inside version N wants the notes for the
+    /// versions around N; the file in main describes whatever is unreleased on
+    /// top of them, which is the one thing they are not running.
+    /// </summary>
+    [AvaloniaFact]
+    public void The_what_is_new_link_is_not_the_unreleased_changelog()
+    {
+        Assert.EndsWith("/releases", SettingsViewModel.ReleasesUrl);
+        Assert.DoesNotContain("CHANGELOG", SettingsViewModel.ReleasesUrl);
+    }
+
+    /// <summary>
+    /// Where this build is installed is said out loud rather than only on
+    /// hover: "which of the two copies am I running" is the question the
+    /// version number alone cannot settle, and a tooltip is not an answer
+    /// somebody can quote.
+    /// </summary>
+    [AvaloniaFact]
+    public void The_footer_says_where_this_build_is()
+        => Assert.Equal(Model().VersionPath, Model().InstalledAt);
+
     // ---- the startup folder box ---------------------------------------------
 
     /// <summary>

@@ -860,6 +860,39 @@ public sealed partial class SettingsViewModel : ObservableObject
     /// </summary>
     public string VersionLine => $"Vaktari {Program.Version}";
 
+    // ---- and what that version IS -------------------------------------------
+
+    /// <summary>
+    /// Where this project lives.
+    ///
+    /// **The version line was the whole of the About box, and it was a dead
+    /// end.** It gave a number and, on hover, the path of the binary; there was
+    /// nothing saying what changed in that version, nothing naming the project,
+    /// and no way to reach either without already knowing where to look.
+    /// </summary>
+    public const string ProjectUrl = "https://github.com/dkflint723/vaktari";
+
+    /// <summary>
+    /// The releases page rather than CHANGELOG.md in the default branch: a
+    /// person asking "what changed" from inside version N wants the notes for
+    /// the versions AROUND N, and the file in main describes whatever is
+    /// unreleased on top of them.
+    /// </summary>
+    public const string ReleasesUrl = ProjectUrl + "/releases";
+
+    [RelayCommand]
+    private void OpenReleases() => OpenUrlRequested?.Invoke(this, ReleasesUrl);
+
+    [RelayCommand]
+    private void OpenProject() => OpenUrlRequested?.Invoke(this, ProjectUrl);
+
+    /// <summary>
+    /// Where this build is installed — the same answer the version tooltip
+    /// gave, said out loud rather than only on hover, because "which of the two
+    /// copies am I running" is the question the number alone cannot settle.
+    /// </summary>
+    public string InstalledAt => VersionPath;
+
     // ---- default file manager ---------------------------------------------
 
     /// <summary>Whether to offer the control at all. Null platform, no control:

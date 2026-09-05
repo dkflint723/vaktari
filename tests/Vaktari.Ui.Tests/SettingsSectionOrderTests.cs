@@ -82,6 +82,25 @@ public class SettingsSectionOrderTests
     }
 
     /// <summary>
+    /// **And the version number is a way in, not a dead end.** The commands
+    /// and their tests would all pass with nothing on the window binding them.
+    /// </summary>
+    [Fact]
+    public void The_version_offers_what_is_new_and_the_project()
+    {
+        var markup = XDocument.Parse(RepoSource.Ui("SettingsWindow.axaml"));
+
+        var ns = markup.Root!.GetDefaultNamespace();
+
+        var bound = markup.Descendants(ns + "MenuItem")
+            .Select(m => (string?)m.Attribute("Command"))
+            .ToList();
+
+        Assert.Contains("{Binding OpenReleasesCommand}", bound);
+        Assert.Contains("{Binding OpenProjectCommand}", bound);
+    }
+
+    /// <summary>
     /// **And the startup folder can be browsed for.** Before this the only way
     /// to set it was to type a path correctly from memory, into a box whose
     /// placeholder suggested a Linux one.

@@ -793,6 +793,14 @@ should not be trusted for compatibility yet.
   file is left where it is. A swap comes back through the temporary name it
   went out through, and that temporary name is never what the Undo row says.
 
+- **The version number in Settings is a way in rather than a dead end.** It
+  showed a number, and on hover the path of the binary, and that was the whole
+  of the About box: nothing said what changed in that version, nothing named
+  the project, and there was no way to reach either without already knowing
+  where to look. Clicking the version now offers *What is new in this version*,
+  which opens the release notes, and *The project*. Where the build is
+  installed is written out beside it instead of only appearing on hover.
+
 - **The startup folder can be browsed for, and a folder that is not there says
   so.** The box for *Open a specific folder* was a bare text field whose
   placeholder suggested `/home/…` — a Linux path, on Windows too — with no way

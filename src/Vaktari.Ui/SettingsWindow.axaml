@@ -135,10 +135,39 @@
                              Margin="0,0,12,0"
                              TextTrimming="CharacterEllipsis"/>
 
+        <!-- **The version line was the whole of the About box, and a dead
+             end.** A number, and on hover the path of the binary — nothing
+             saying what changed in that version, nothing naming the project,
+             and no way to reach either without knowing where to look.
+
+             A flyout on the number itself rather than a seventh page: the
+             page strip is a WrapPanel with no scroller, so a seventh row is
+             taken out of the width every page has (see the floor note at the
+             top of this file), and this is three lines of content. -->
+        <Button Content="{Binding VersionLine}"
+                Padding="0"
+                Background="Transparent"
+                BorderThickness="0"
+                FontSize="{DynamicResource FontSizeTiny}"
+                Foreground="{DynamicResource ViewDimText}"
+                VerticalAlignment="Center"
+                HorizontalAlignment="Left">
+          <Button.Flyout>
+            <MenuFlyout Placement="TopEdgeAlignedLeft">
+              <MenuItem Header="What is new in this version"
+                        Command="{Binding OpenReleasesCommand}"/>
+              <MenuItem Header="The project"
+                        Command="{Binding OpenProjectCommand}"/>
+            </MenuFlyout>
+          </Button.Flyout>
+        </Button>
+
         <!-- Selectable, because the reason anyone reads a version is to quote
              it somewhere — an issue, a message. A number you can see and not
-             copy makes them type it out and get it wrong. -->
-        <SelectableTextBlock Text="{Binding VersionLine}"
+             copy makes them type it out and get it wrong. Kept beside the
+             button rather than replaced by it: a button label cannot be
+             selected, and quoting the build is what this line is for. -->
+        <SelectableTextBlock Text="{Binding InstalledAt}"
                              ToolTip.Tip="{Binding VersionPath}"
                              FontSize="{DynamicResource FontSizeTiny}"
                              Foreground="{DynamicResource ViewDimText}"
