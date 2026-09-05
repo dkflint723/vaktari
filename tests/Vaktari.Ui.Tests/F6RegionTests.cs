@@ -203,14 +203,25 @@ public sealed class F6RegionTests : OwnedViewModels
     }
 
     /// <summary>
-    /// The rename bar is a text box too, and its tenancy is what the guard
+    /// The rename editor is a text box too, and its tenancy is what the guard
     /// above this really protects — F6 must not pull the keyboard out from
     /// under a name being typed.
+    ///
+    /// A REAL row in a real folder, because the box is drawn by the listing's
+    /// item template now: a rename staged onto an entry the listing does not
+    /// hold opens nothing for the keyboard to be pulled out of, and the window
+    /// deliberately lets a key through when a rename has lost its box.
     /// </summary>
     [AvaloniaFact]
-    public void It_leaves_a_rename_in_progress_alone()
+    public async Task It_leaves_a_rename_in_progress_alone()
     {
         UseSearch(PaneViewModel.Search);
+
+        var root = System.IO.Path.Combine(
+            System.IO.Path.GetTempPath(), "vaktari-f6rename-" + Guid.NewGuid().ToString("N")[..8]);
+
+        Directory.CreateDirectory(root);
+        File.WriteAllText(System.IO.Path.Combine(root, "first.txt"), "x");
 
         var window = new MainWindow();
 
@@ -220,26 +231,30 @@ public sealed class F6RegionTests : OwnedViewModels
             Settle();
 
             var shell = Assert.IsType<ShellViewModel>(window.DataContext);
+            var pane = shell.ActiveTab!;
+
+            await pane.NavigateAsync(root);
+            Settle();
+            window.UpdateLayout();
+            Settle();
 
             Focused(window, shell);
-
-            var pane = shell.ActiveTab!;
-            var input = window.FindControl<TextBox>("PromptInput");
-
-            Assert.NotNull(input);
 
             // Staged through the pane, the way the tenancy tests do: pressing
             // F2 with nothing selected opens nothing, and a test of "F6 during
             // a rename" that never starts one measures the ordinary path.
-            pane.SelectedEntry = new Vaktari.Core.FileSystem.FileEntry(
-                "first.txt",
-                System.IO.Path.Combine(System.IO.Path.GetTempPath(), "first.txt"),
-                1, DateTimeOffset.UnixEpoch, Vaktari.Core.FileSystem.EntryFlags.None);
+            pane.SelectedEntry = pane.Entries.Single(e => e.Name == "first.txt");
 
             pane.BeginRenameCommand.Execute(null);
             Settle();
+            window.UpdateLayout();
+            Settle();
 
-            Assert.Equal("first.txt", input!.Text);
+            var box = window.GetVisualDescendants().OfType<TextBox>()
+                            .Single(t => t.Classes.Contains(MainWindow.RenameBoxClass) && t.IsVisible);
+
+            Assert.True(box.IsFocused,
+                        "the name is not being typed anywhere, so this proves nothing");
 
             window.KeyPress(Key.F6, RawInputModifiers.None, PhysicalKey.F6, null);
             Settle();
@@ -247,11 +262,14 @@ public sealed class F6RegionTests : OwnedViewModels
             Assert.False(pane.IsPathEditing,
                          "F6 pulled the keyboard out from under a name being typed");
 
-            Assert.Equal("first.txt", input.Text);
+            Assert.Equal("first.txt", pane.RenameText);
         }
         finally
         {
             window.Close();
+
+            try { Directory.Delete(root, recursive: true); }
+            catch (Exception) { /* a temp dir is not worth failing over */ }
         }
     }
 }

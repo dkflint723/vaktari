@@ -438,6 +438,46 @@ public sealed partial class PaneViewModel
     /// the dialog.</summary>
     public event EventHandler? BatchRenameRequested;
 
+    // ---- the name being typed, on the row it belongs to ---------------------
+
+    /// <summary>
+    /// The full path of the row whose name is being edited in place, or "" when
+    /// none is.
+    ///
+    /// **The name was typed at the bottom of the window instead.** F2 filled a
+    /// 320px box docked under the listing — measured on the shipped markup: a
+    /// fixed <c>Width="320"</c> TextBox in the bottom <c>PromptBar</c> — so the
+    /// row being renamed and the box renaming it were as far apart as the
+    /// window is tall, and neither one said which file the other meant.
+    ///
+    /// A PATH rather than a row flag, the shape <see cref="DropTargetPath"/>
+    /// already uses for the same question: the entries are records replaced
+    /// wholesale by every refresh, so a flag set on one would be thrown away by
+    /// the next listing load, and every realized row re-evaluates a single
+    /// pane-level string the moment it changes.
+    /// </summary>
+    [ObservableProperty] private string _renamingPath = "";
+
+    /// <summary>
+    /// The name as it is being typed. One string per pane, because one row at a
+    /// time is edited — the window's one-tenant rule is what guarantees that.
+    /// </summary>
+    [ObservableProperty] private string _renameText = "";
+
+    /// <summary>
+    /// Why the typed name cannot be used, or null while it can.
+    ///
+    /// Null rather than "": it is bound to the editing box's ToolTip.Tip, and a
+    /// tip of "" is an empty popup rather than no popup.
+    /// </summary>
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(IsRenameRefused))]
+    private string? _renameRefusal;
+
+    /// <summary>Whether to hold that reason open under the box rather than wait
+    /// for a hover nobody performs.</summary>
+    public bool IsRenameRefused => RenameRefusal is { Length: > 0 };
+
     /// <summary>
     /// Renames, and says so by throwing.
     ///

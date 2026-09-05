@@ -243,9 +243,13 @@ public sealed class LabelCasingTests
             .Select(m => m.Groups[1].Value)
             .ToList();
 
-        // Three captions and six confirm buttons; a regex that stopped matching
+        // Two captions and five confirm buttons; a regex that stopped matching
         // would otherwise report nothing and pass.
-        Assert.Equal(9, written.Count);
+        //
+        // Seven rather than nine: a file rename is typed on its own row now, so
+        // the bar no longer writes "Rename to" over a 320px box at the bottom
+        // of the window. A pinned place's caption still comes through here.
+        Assert.Equal(7, written.Count);
 
         foreach (var label in written)
             Assert.True(char.IsUpper(label[0]), $"the prompt bar writes \"{label}\"");

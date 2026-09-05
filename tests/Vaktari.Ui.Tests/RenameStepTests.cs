@@ -3,6 +3,7 @@ using Avalonia.Headless;
 using Avalonia.Headless.XUnit;
 using Avalonia.Input;
 using Avalonia.Threading;
+using Avalonia.VisualTree;
 using Vaktari.Core.FileSystem;
 using Vaktari.Ui.ViewModels;
 using Xunit;
@@ -10,10 +11,10 @@ using Xunit;
 namespace Vaktari.Ui.Tests;
 
 /// <summary>
-/// Tab in the rename bar, in the real window.
+/// Tab in the rename box, in the real window.
 ///
 /// Which row is next is <see cref="RenameRunTests"/>' job. This is the half
-/// that only a window can answer: whether Tab reaches the bar at all, and the
+/// that only a window can answer: whether Tab reaches the box at all, and the
 /// two orderings that decide whether a run is honest — the neighbour picked
 /// before the rename re-lists the folder, and the step held until the file
 /// system has actually said yes.
@@ -27,7 +28,7 @@ public sealed class RenameStepTests : OwnedViewModels
         Dispatcher.UIThread.RunJobs(DispatcherPriority.Background);
     }
 
-    private sealed record Rig(Window Window, ShellViewModel Shell, TextBox Input, string Root)
+    private sealed record Rig(Window Window, ShellViewModel Shell, string Root)
         : IDisposable
     {
         public void Dispose()
@@ -70,14 +71,41 @@ public sealed class RenameStepTests : OwnedViewModels
         // waits for a callback that cannot run until the wait ends.
         await shell.ActiveTab!.NavigateAsync(root);
         Settle();
+        window.UpdateLayout();
+        Settle();
 
-        var input = window.FindControl<TextBox>("PromptInput");
-
-        Assert.NotNull(input);
         Assert.Equal(3, shell.ActiveTab.Entries.Count);
 
-        return new Rig(window, shell, input!, root);
+        return new Rig(window, shell, root);
     }
+
+    /// <summary>
+    /// The box a name is being typed in, which lives in the listing's item
+    /// template rather than in a named control — so it is found by walking the
+    /// window, and there is at most one because the window allows one tenant.
+    /// </summary>
+    private static TextBox Box(Rig rig)
+    {
+        rig.Window.UpdateLayout();
+        Settle();
+
+        return rig.Window.GetVisualDescendants().OfType<TextBox>()
+                  .Single(t => t.Classes.Contains(MainWindow.RenameBoxClass) && t.IsVisible);
+    }
+
+    /// <summary>Whether a name is being typed anywhere in the listing.</summary>
+    private static bool Editing(Rig rig)
+    {
+        rig.Window.UpdateLayout();
+        Settle();
+
+        return rig.Window.GetVisualDescendants().OfType<TextBox>()
+                  .Any(t => t.Classes.Contains(MainWindow.RenameBoxClass) && t.IsVisible);
+    }
+
+    /// <summary>The name currently in that box, or "" when there is none.</summary>
+    private static string Typed(Rig rig)
+        => Editing(rig) ? Box(rig).Text ?? "" : "";
 
     /// <summary>The reload a rename starts is not awaited, so a test has to
     /// wait the way the window does.</summary>
@@ -99,10 +127,17 @@ public sealed class RenameStepTests : OwnedViewModels
 
         Settle();
 
-        Assert.Equal(row.Name, rig.Input.Text);
+        var box = Box(rig);
 
-        rig.Input.Text = to;
-        rig.Input.Focus();
+        Assert.Equal(row.Name, box.Text);
+
+        // The box takes the keyboard itself now, and Tab is answered on the
+        // window's tunnel only while it holds it — so a test that focused the
+        // box by hand would be arranging the one thing worth checking.
+        Assert.True(box.IsFocused, "the box on the row does not have the keyboard");
+
+        box.Text = to;
+        Settle();
 
         rig.Window.KeyPress(Key.Tab, RawInputModifiers.None, PhysicalKey.Tab, null);
         Settle();
@@ -118,7 +153,7 @@ public sealed class RenameStepTests : OwnedViewModels
         Rename(rig, pane.Entries.Single(e => e.Name == "a.txt"), "one.txt");
 
         Assert.True(File.Exists(Path.Combine(rig.Root, "one.txt")));
-        Assert.Equal("b.txt", rig.Input.Text);
+        Assert.Equal("b.txt", Typed(rig));
     }
 
     /// <summary>
@@ -136,8 +171,8 @@ public sealed class RenameStepTests : OwnedViewModels
 
         Rename(rig, pane.Entries.Single(e => e.Name == "a.txt"), "one.txt");
 
-        Assert.Equal("b.txt", rig.Input.Text);
-        Assert.NotEqual("c.txt", rig.Input.Text);
+        Assert.Equal("b.txt", Typed(rig));
+        Assert.NotEqual("c.txt", Typed(rig));
     }
 
     /// <summary>
@@ -155,13 +190,13 @@ public sealed class RenameStepTests : OwnedViewModels
 
         Rename(rig, pane.Entries.Single(e => e.Name == "a.txt"), "c.txt");
 
-        // Still a.txt on disk, and the bar has not moved on to anything.
+        // Still a.txt on disk, and the editor has not moved on to anything.
         Assert.True(File.Exists(Path.Combine(rig.Root, "a.txt")));
-        Assert.NotEqual("b.txt", rig.Input.Text);
+        Assert.NotEqual("b.txt", Typed(rig));
     }
 
     /// <summary>
-    /// A name refused before it ever leaves the window keeps the bar open with
+    /// A name refused before it ever leaves the window keeps the box open with
     /// the text in it, which is what the existing refusal does — Tab must not
     /// turn that into a step.
     /// </summary>
@@ -173,19 +208,15 @@ public sealed class RenameStepTests : OwnedViewModels
 
         Rename(rig, pane.Entries.Single(e => e.Name == "a.txt"), "   ");
 
-        // The premise: the bar really is still open with the refused text in
-        // it. Without this the test would pass just as well if the bar had
-        // closed, and the guard it exists for would be untested.
-        var bar = rig.Window.FindControl<Border>("PromptBar");
-
-        Assert.NotNull(bar);
-        Assert.True(bar!.IsVisible, "the refusal did not keep the bar open");
-
-        Assert.Equal("   ", rig.Input.Text);
+        // The premise: the box really is still open on the row with the refused
+        // text in it. Without this the test would pass just as well if the box
+        // had closed, and the guard it exists for would be untested.
+        Assert.True(Editing(rig), "the refusal did not keep the box open");
+        Assert.Equal("   ", Typed(rig));
         Assert.True(File.Exists(Path.Combine(rig.Root, "a.txt")));
 
         // **And the selection has not moved either.** Stepping on regardless
-        // would leave the bar on a.txt — the one-tenant rule sees to that — and
+        // would leave the box on a.txt — the one-tenant rule sees to that — and
         // the listing's highlight on b.txt, so the two would disagree about
         // which file is being renamed.
         Assert.Equal("a.txt", pane.SelectedEntry?.Name);
@@ -205,18 +236,16 @@ public sealed class RenameStepTests : OwnedViewModels
         pane.BeginRenameCommand.Execute(null);
         Settle();
 
-        rig.Input.Focus();
+        Assert.True(Box(rig).IsFocused, "the box on the row does not have the keyboard");
+
         rig.Window.KeyPress(Key.Tab, RawInputModifiers.Shift, PhysicalKey.Tab, null);
         Settle();
 
-        // Nothing above a.txt, so the run ended: the bar is closed rather than
+        // Nothing above a.txt, so the run ended: the box is closed rather than
         // wrapped round to c.txt, and it has not stepped FORWARD to b.txt
         // either, which is what Shift being ignored would do.
-        var bar = rig.Window.FindControl<Border>("PromptBar");
-
-        Assert.NotNull(bar);
-        Assert.False(bar!.IsVisible, "the run did not end at the top of the listing");
-        Assert.NotEqual("b.txt", rig.Input.Text);
+        Assert.False(Editing(rig), "the run did not end at the top of the listing");
+        Assert.NotEqual("b.txt", Typed(rig));
     }
 
     /// <summary>
@@ -235,8 +264,9 @@ public sealed class RenameStepTests : OwnedViewModels
         pane.BeginRenameCommand.Execute(null);
         Settle();
 
-        rig.Input.Text = "one.txt";
-        rig.Input.Focus();
+        Box(rig).Text = "one.txt";
+        Settle();
+
         rig.Window.KeyPress(Key.Enter, RawInputModifiers.None, PhysicalKey.Enter, null);
         Settle();
 
@@ -247,14 +277,14 @@ public sealed class RenameStepTests : OwnedViewModels
     }
 
     /// <summary>
-    /// **The bar edited one file while the listing highlighted another.** The
-    /// step picks the next row and opens its bar; a request to select the file
+    /// **The editor was on one file while the listing highlighted another.** The
+    /// step picks the next row and opens its box; a request to select the file
     /// just renamed, registered from inside the rename, lands after that and
     /// takes the highlight back — so F2, Delete and Copy would all have acted
     /// on the row nobody was looking at.
     /// </summary>
     [AvaloniaFact]
-    public async Task The_bar_and_the_highlight_name_the_same_file()
+    public async Task The_box_and_the_highlight_name_the_same_file()
     {
         using var rig = await BuildAsync();
         var pane = rig.Shell.ActiveTab!;
@@ -263,7 +293,7 @@ public sealed class RenameStepTests : OwnedViewModels
 
         await Drain();
 
-        Assert.Equal("b.txt", rig.Input.Text);
+        Assert.Equal("b.txt", Typed(rig));
         Assert.Equal("b.txt", pane.SelectedEntry?.Name);
         Assert.Equal("b.txt", Assert.Single(pane.Selection).Name);
     }

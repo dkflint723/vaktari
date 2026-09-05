@@ -288,12 +288,10 @@ public partial class MainWindow : Window
         _shell.ScaleApplier = ApplyScales;
         DataContext = _shell;
 
-        PromptInput.KeyDown += OnPromptKeyDown;
-
-        // The reason arrives while the name is being typed, not only when Enter
-        // is pressed: a colon is refused the moment it appears, which is when
-        // it can be fixed without thinking about it.
-        PromptInput.TextChanged += OnPromptTextChanged;
+        // The rename keys are answered on the window's tunnel now, because the
+        // box they belong to is drawn by the listing's item template rather
+        // than named here; nothing else the bar still shows has keys of its own
+        // to hang on this control.
         PromptConfirm.Click += (_, _) => ConfirmPrompt();
         PromptCancel.Click += (_, _) => ClosePrompt();
 
@@ -317,6 +315,9 @@ public partial class MainWindow : Window
         // before any bubble handler runs, so by the time the window sees it
         // focus has already left the box. Tunnel reaches the window first.
         AddHandler(KeyDownEvent, OnTunnelKeyDown, RoutingStrategies.Tunnel);
+
+        // The row's rename box has no field to hang a LostFocus on either.
+        AddHandler(LostFocusEvent, OnRenameBoxLostFocus, RoutingStrategies.Bubble);
 
         // Clicking anywhere in a side makes it the active one. Tunnelling so it
         // runs before the ListBox handles the press for selection — otherwise
@@ -675,6 +676,13 @@ public partial class MainWindow : Window
     /// thing tying the markup to the handler that gives it meaning.
     /// </summary>
     internal const string SelectionBoxClass = "pick";
+
+    /// <summary>
+    /// The class the three row templates put on the box a name is typed in.
+    /// The style that sizes it to a row is keyed off this, and so is every test
+    /// that has to find an editor which exists only inside a DataTemplate.
+    /// </summary>
+    internal const string RenameBoxClass = "rename";
 
     /// <summary>
     /// The selection box a press landed on, or null for a press anywhere else.
@@ -1055,9 +1063,18 @@ public partial class MainWindow : Window
         // overlay — so a six-pixel twitch while pressing any of them began
         // dragging the current selection, and a drop moved real files. The
         // right arm had had EntryAt all along.
+        //
+        // **And the box a name is typed in is not the row it sits on.** The
+        // editor is drawn inside the item template and carries the row's own
+        // FileEntry, which is exactly what EntryAt walks for — so dragging
+        // across it to select the text armed a real file drag. Measured here:
+        // a left press at one end of the box and a move to the other left the
+        // window with `_dragging` true and the file on the pointer, and the
+        // right button did the same.
         _dragSource =
-            (properties.IsLeftButtonPressed && _bandList is null && EntryAt(e.Source) is not null)
-            || _dragRight
+            !InRenameBox(e.Source)
+            && ((properties.IsLeftButtonPressed && _bandList is null && EntryAt(e.Source) is not null)
+                || _dragRight)
                 ? PaneAt(e.Source)
                 : null;
         _dragTrigger = _dragSource is null ? null : e;
@@ -4361,6 +4378,9 @@ public partial class MainWindow : Window
 
         pane.PropertyChanged -= OnPaneEditorClosed;
         pane.PropertyChanged += OnPaneEditorClosed;
+
+        pane.PropertyChanged -= OnRenameTyped;
+        pane.PropertyChanged += OnRenameTyped;
     }
 
     /// <summary>
@@ -4489,6 +4509,16 @@ public partial class MainWindow : Window
         or PromptMode.ConfirmEmptyTrash;
     private FileEntry _renameTarget;
 
+    /// <summary>
+    /// The pane holding the row being renamed, or null.
+    ///
+    /// Held rather than re-read from <c>ActiveTab</c>, because the editor is
+    /// drawn by that pane's own listing: clicking the other side while a name
+    /// is being typed changes which tab is active and changes nothing about
+    /// where the box is.
+    /// </summary>
+    private PaneViewModel? _renamePane;
+
     /// <summary>The rename the last confirm started, or null. Read only by
     /// <see cref="StepRenameAsync"/>, which must not step past a failure.</summary>
     private Task<bool>? _lastRename;
@@ -4525,37 +4555,40 @@ public partial class MainWindow : Window
         PromptInput.SelectAll();
     }
 
+    /// <summary>
+    /// Opens the editor ON THE ROW.
+    ///
+    /// **A name was typed at the bottom of the window instead.** This filled
+    /// the shared <c>PromptBar</c> — a bottom-docked strip whose TextBox is a
+    /// fixed 320 wide — so renaming a row in a full-height listing happened as
+    /// far from that row as the window is tall, with nothing at either end
+    /// naming the file the other meant, and a listing that stays live behind an
+    /// inline bar can move the selection out from under it. The bar is still
+    /// there for the confirmations, for a pinned place's name and for a server
+    /// address; it is the file rename that has left it.
+    /// </summary>
     private void OnRenameRequested(object? sender, FileEntry entry)
     {
-        if (PromptBar is null || PromptInput is null) return;
+        if (_shell.ActiveTab is not { } pane) return;
 
-        // **Any second request re-pointed a bar that was already open.** F2 was
-        // the loud way in; Ctrl+Shift+N is the quiet one — new folder, new file
-        // and new-from-template all hand off to the rename bar when they are
+        // **Any second request re-pointed an editor that was already open.** F2
+        // was the loud way in; Ctrl+Shift+N is the quiet one — new folder, new
+        // file and new-from-template all hand off to the rename when they are
         // done, and each raised this straight over a name somebody was still
-        // typing. One bar, one tenant: whoever got here first keeps it, and a
-        // caller that wants it must close the one it has.
+        // typing. One editor, one tenant: whoever got here first keeps it, and
+        // a caller that wants it must close the one it has.
         if (_prompt is not PromptMode.None) return;
 
         _prompt = PromptMode.Rename;
         _renameTarget = entry;
+        _renamePane = pane;
 
-        PromptLabel.Text = "Rename to";
-        PromptInput.Text = entry.Name;
-        PromptInput.IsVisible = true;
-        PromptConfirm.Content = "Rename";
-        PromptConfirm.IsVisible = true;
-        PromptCancel.IsVisible = true;
-        PromptHint.Text = "enter to confirm · esc to cancel";
-        PromptBar.IsVisible = true;
+        pane.RenameText = entry.Name;
 
-        PromptInput.Focus();
-
-        // **The name, not the extension** — which is what Explorer selects, and
-        // what makes "press F2 and type" replace the name rather than turn
-        // notes.txt into whatever-was-typed with no extension at all.
-        PromptInput.SelectionStart = 0;
-        PromptInput.SelectionEnd = Input.RenameSelection.LengthFor(entry.Name, entry.IsDirectory);
+        // LAST, and after the text: this is the line that puts a box on the row
+        // and hands it the keyboard, and RenameBox selects the name out of
+        // whatever the box already holds.
+        pane.RenamingPath = entry.FullPath;
     }
 
     /// <summary>
@@ -4569,7 +4602,13 @@ public partial class MainWindow : Window
 
         // Read before closing: the action must not depend on UI state that the
         // closing itself tears down.
-        var name = PromptInput?.Text ?? "";
+        //
+        // A rename is typed on the row and every other prompt in the bar, so
+        // the name comes from whichever one is open.
+        var name = mode is PromptMode.Rename
+            ? _renamePane?.RenameText ?? ""
+            : PromptInput?.Text ?? "";
+
         var entry = _renameTarget;
 
         // **A refused name used to close the bar and report afterwards.** By
@@ -4585,10 +4624,12 @@ public partial class MainWindow : Window
 
             if (decision.Verdict == Input.RenameVerdict.Refused)
             {
-                if (PromptHint is not null)
-                    PromptHint.Text = $"{decision.Reason} — esc to cancel";
+                // Held open under the box on the row, rather than written into
+                // a hint line at the far end of the window. Nothing re-focuses:
+                // the box already has the keyboard, which is where the Enter
+                // that got here came from.
+                if (_renamePane is not null) _renamePane.RenameRefusal = decision.Reason;
 
-                PromptInput?.Focus();
                 return;
             }
 
@@ -4905,6 +4946,25 @@ public partial class MainWindow : Window
     {
         _prompt = PromptMode.None;
 
+        // The row's editor, which has no field here to hide: it is drawn by the
+        // listing's item template, so putting it away is done through the pane
+        // it belongs to. The PANE it was opened on rather than the active one —
+        // the other side can be made active while a name is being typed, and
+        // clearing the wrong pane would leave a box on a row nothing can close.
+        if (_renamePane is { } renaming)
+        {
+            renaming.RenamingPath = "";
+            renaming.RenameRefusal = null;
+
+            // A GUARD, and no mutation can redden it: every route back into a
+            // rename assigns _renamePane before it reads it, and the reads that
+            // remain are all behind the `_prompt is Rename` test that the line
+            // above this block has just failed. It is here so the window does
+            // not keep a closed tab's pane alive, which is not something a test
+            // in this suite can see.
+            _renamePane = null;
+        }
+
         if (PromptBar is not null) PromptBar.IsVisible = false;
         if (PromptInput is not null) PromptInput.IsVisible = false;
         if (PromptConfirm is not null) PromptConfirm.IsVisible = false;
@@ -4916,17 +4976,74 @@ public partial class MainWindow : Window
     }
 
     /// <summary>
-    /// Keeps the hint line under the rename box honest as the name is typed.
+    /// Keeps the reason under the row's box honest as the name is typed.
     ///
-    /// Only for a rename: the connect prompt takes a server address, which
-    /// these rules have nothing to say about, and the confirmations have no box.
+    /// The reason arrives while the name is being typed, not only when Enter is
+    /// pressed: a colon is refused the moment it appears, which is when it can
+    /// be fixed without thinking about it.
+    ///
+    /// Through the pane's property rather than the box's TextChanged, because
+    /// the box lives in a DataTemplate and there is no control here to
+    /// subscribe to — the same reason the tapping and key handlers are hung on
+    /// the window.
     /// </summary>
-    private void OnPromptTextChanged(object? sender, TextChangedEventArgs e)
+    private void OnRenameTyped(object? sender, PropertyChangedEventArgs e)
     {
-        if (_prompt != PromptMode.Rename || PromptHint is null) return;
+        if (_prompt is not PromptMode.Rename) return;
+        if (e.PropertyName != nameof(PaneViewModel.RenameText)) return;
+        if (sender is not PaneViewModel pane || !ReferenceEquals(pane, _renamePane)) return;
 
-        PromptHint.Text = Input.RenamePrompt.HintFor(PromptInput?.Text, _renameTarget.Name);
+        // The reason alone, and null while there is none. The bar's hint line
+        // read "enter to confirm · esc to cancel" the rest of the time; held
+        // open over a listing that is what a popup saying nothing would be.
+        pane.RenameRefusal = Input.RenamePrompt.Decide(pane.RenameText, _renameTarget.Name).Reason;
     }
+
+    /// <summary>
+    /// Puts the row's editor away when the keyboard leaves it.
+    ///
+    /// **An inline editor that outlives its focus is litter.** The bar this
+    /// replaces was docked at the window's edge and obviously a prompt; a box
+    /// left sitting on a row halfway down the listing after you have clicked
+    /// somewhere else reads as part of the listing. Cancelling rather than
+    /// committing, matching Escape: a name nobody confirmed must not be applied
+    /// by a click aimed at something else.
+    ///
+    /// Immediate, and it does not have to work out whether the keyboard is on
+    /// its way to the NEXT box in a Tab run. Measured by listening for the same
+    /// event during a step: the old box loses the keyboard SYNCHRONOUSLY, from
+    /// inside <see cref="ClosePrompt"/>, on the line that clears RenamingPath
+    /// and hides it — and ClosePrompt sets <c>_prompt</c> to None before that
+    /// line, so the first guard below has already returned. The box's own
+    /// Editing flag has gone false by then too, so the second guard would stop
+    /// it as well. There is exactly one such event per step, and it never
+    /// reaches the body.
+    /// </summary>
+    private void OnRenameBoxLostFocus(object? sender, RoutedEventArgs e)
+    {
+        if (_prompt is not PromptMode.Rename) return;
+        if (e.Source is not TextBox box || !Input.RenameBox.GetEditing(box)) return;
+
+        // **A box's own context menu is not somewhere else.** A TextBox carries
+        // a Cut/Copy/Paste flyout, and opening it takes the keyboard — measured
+        // here, a right press inside the editor closed the rename and left the
+        // menu standing over a row with no box under it, which is the gesture
+        // most likely to be wanted: pasting a name in. FocusBehavior makes the
+        // same exception, for the same gesture, on the address bar.
+        if (box.ContextFlyout is { IsOpen: true }) return;
+
+        ClosePrompt();
+    }
+
+    /// <summary>
+    /// Whether the keyboard is in the box a rename opened on a row.
+    ///
+    /// Both the key routing and the recovery above hang on this rather than on
+    /// "a text box has focus": the path box and the filter are text boxes too,
+    /// and a rename that has lost the keyboard to one of them has lost it.
+    /// </summary>
+    private bool RenameHasTheKeyboard()
+        => FocusManager?.GetFocusedElement() is TextBox box && Input.RenameBox.GetEditing(box);
 
     private void OnPromptKeyDown(object? sender, KeyEventArgs e)
     {
@@ -5076,6 +5193,17 @@ public partial class MainWindow : Window
     /// </summary>
     private void OnTapped(object? sender, TappedEventArgs e)
     {
+        // **A click in the row's own rename box counted as a click on the
+        // row.** With the single-click preference on, one click to place the
+        // caret opened the file being renamed; with it off, two did. The
+        // remembered row is cleared as well, so a click before the rename
+        // cannot pair with one aimed at the text.
+        if (InRenameBox(e.Source))
+        {
+            _lastTapPath = null;
+            return;
+        }
+
         if (EntryAt(e.Source) is not { } entry) return;
 
         // **A modified click is a selection gesture and never an open.**
@@ -5197,8 +5325,36 @@ public partial class MainWindow : Window
         return null;
     }
 
+    /// <summary>
+    /// True when the press landed inside the box a name is being typed in.
+    ///
+    /// **Two clicks in the editor opened the file.** <see cref="EntryAt"/>
+    /// walks up to the first FileEntry DataContext and the rename box carries
+    /// the row's own, so placing a caret and then double-clicking to select a
+    /// word was an activation gesture: measured on this window, two clicks in
+    /// the box renaming a folder called "adir" navigated into adir and left the
+    /// rename pointing at what had become the current folder. With the
+    /// single-click preference on, one click to place the caret was enough.
+    /// </summary>
+    private static bool InRenameBox(object? source)
+    {
+        // Visual tree, for the reason EntryAt gives: the press lands on the
+        // TextPresenter inside the box's own template, which has no logical
+        // path back out of it.
+        for (var visual = source as Visual; visual is not null;
+             visual = visual.GetVisualParent())
+        {
+            if (visual is TextBox box && box.Classes.Contains(RenameBoxClass)) return true;
+        }
+
+        return false;
+    }
+
     private void OnDoubleTapped(object? sender, TappedEventArgs e)
     {
+        // Selecting a word in the editor is not asking for the file to open.
+        if (InRenameBox(e.Source)) return;
+
         // **Nothing happened on the blank half of the tab strip.** Both
         // references and every browser open a tab there.
         //
@@ -5234,6 +5390,19 @@ public partial class MainWindow : Window
     /// </summary>
     private void OnTunnelKeyDown(object? sender, KeyEventArgs e)
     {
+        // The box on the row answers Enter, Escape and Tab. On the TUNNEL for
+        // the reason the path box below is: keyboard navigation claims Tab
+        // before any bubble handler runs, so by then focus has already left the
+        // box. The other two come with it rather than being hung on the
+        // control, because the control is built by a DataTemplate and there is
+        // no field here to subscribe to.
+        if (_prompt is PromptMode.Rename && RenameHasTheKeyboard())
+        {
+            OnPromptKeyDown(sender, e);
+
+            if (e.Handled) return;
+        }
+
         if (PageCompactListing(e)) return;
 
         if (e.Key != Key.Tab || e.KeyModifiers != KeyModifiers.None) return;
@@ -5309,7 +5478,19 @@ public partial class MainWindow : Window
             return;
         }
 
-        if (_prompt is PromptMode.Rename) return;
+        if (_prompt is PromptMode.Rename)
+        {
+            // **An inline editor can lose the row it is drawn on.** The box is
+            // built by the listing's item template, so scrolling its row out of
+            // view unrealizes it — and nothing is then holding the keyboard,
+            // while this guard would go on refusing every shortcut in the
+            // window with nothing on screen to say why. A key pressed with the
+            // keyboard out of the box ends the rename and is then handled as it
+            // always was.
+            if (RenameHasTheKeyboard()) return;
+
+            ClosePrompt();
+        }
 
         // F6 moves the keyboard between the listing, the address bar and the
         // sidebar.

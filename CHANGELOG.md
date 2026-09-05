@@ -770,6 +770,15 @@ should not be trusted for compatibility yet.
 
 ### Fixed
 
+- **F2 renames on the row, not in a box at the bottom of the window.** Pressing
+  F2 on a file halfway down a full listing put the edit box in a fixed 320-pixel
+  field docked to the bottom edge, with nothing at either end naming the file
+  the other meant. The name is now edited in place, in whichever view you are
+  in, offered without its extension the way Explorer does it. Enter commits,
+  Escape cancels, Tab moves to the next file, and a name the filesystem will not
+  accept is explained under the box you are typing in. The bottom bar goes back
+  to what it was built for — confirmations, and asking for a server address.
+
 - **Group headings say how many, and clicking one picks the whole group.** With
   grouping on, the band headings were labels and nothing more: no count, and
   nothing happened when you clicked one. A heading now reads *TXT (12)* — with

@@ -5,6 +5,7 @@
         xmlns:core="clr-namespace:Vaktari.Core;assembly=Vaktari.Core"
         xmlns:th="clr-namespace:Vaktari.Ui.Thumbnails"
         xmlns:local="clr-namespace:Vaktari.Ui"
+        xmlns:in="clr-namespace:Vaktari.Ui.Input"
         xmlns:sh="clr-namespace:Vaktari.Core.Sharing;assembly=Vaktari.Core"
         xmlns:pl="clr-namespace:Vaktari.Core.Places;assembly=Vaktari.Core"
         x:Class="Vaktari.Ui.MainWindow"
@@ -132,6 +133,46 @@
     </Style>
     <Style Selector="ListBoxItem:selected Panel.pick > Path">
       <Setter Property="Opacity" Value="1"/>
+    </Style>
+
+    <!-- **The box a name is typed in, on the row the name belongs to.** F2
+         used to fill a fixed 320px TextBox docked at the bottom of the window
+         — `PromptBar`, still below, which the confirmations and the connect
+         prompt go on using. The row it was renaming was as far away as the
+         window is tall, and neither end said which file the other meant.
+
+         Window-wide for the same reason the selection box above is: three row
+         templates draw the same editor, and the day one drifted would be the
+         day it stopped matching the others.
+
+         Every setter here was measured with it removed, in all three layouts.
+
+         MinHeight zero because the theme's own TextBox does not fit a listing
+         row: Fluent gives the box a MinHeight of 32 and it renders 32 tall in a
+         row that is 30 — `PaneScale` makes RowHeight `max(14 * 2.1, 18 + 12)`
+         at 100%. The row is a fixed height that CLIPS rather than growing, so
+         the overflow is silent: the box loses its top and bottom edges.
+
+         Padding, because the theme's own is 10,6,6,5: the box then renders 29
+         tall against a 16px line, and its text starts 11px in where the drawn
+         name started 0 — so the name jumped right and the box swelled to fill
+         the row. With 4,1 the box is 20 and the text moves 5.
+
+         VerticalAlignment, because a TextBox stretches by default and the
+         COMPACT row's name cell is taller than a line: measured with it off the
+         box fills 36 of that row's 48 rather than sitting on the name at 20.
+         Details and Grid measure the same either way; compact is the one that
+         needs it.
+
+         FontSize, because a pane carries its own type scale — Ctrl+scroll — and
+         the theme's default does not follow it. Measured at a pane scale of
+         1.6: the label draws at 22.4 and the box stayed at 14, so pressing F2
+         shrank the name and dropped it 5px below where it had been drawn. -->
+    <Style Selector="TextBox.rename">
+      <Setter Property="MinHeight" Value="0"/>
+      <Setter Property="Padding" Value="4,1"/>
+      <Setter Property="VerticalAlignment" Value="Center"/>
+      <Setter Property="FontSize" Value="{DynamicResource FontSizeBase}"/>
     </Style>
 
   </Window.Styles>
@@ -2416,12 +2457,71 @@
                                NameEllipsis moves the cut into the middle; see
                                that file for why it is a trimming rather than
                                two docked cells. -->
+                          <!-- **The name is edited HERE**, over the cell that
+                               draws it, rather than in the bottom bar. The
+                               drawn name and the box that replaces it are the
+                               two children of this Panel, one visible at a
+                               time; a Panel because the box has to take the
+                               cell's own place in the row rather than a place
+                               of its own beside it.
+
+                               An invisible child is not measured in Avalonia,
+                               so an ordinary row measures exactly as it did:
+                               the Panel's desired size is the TextBlock's.
+
+                               MinWidth because this cell is DOCKED, so it is
+                               arranged at what it wants rather than at the
+                               column it sits in — the box cannot grow into the
+                               slack on its own. Measured with it off, renaming
+                               report.txt opened a 150-wide box (the theme's own
+                               floor) with hundreds of pixels free beside it.
+                               The compact layout's name width, which is the
+                               width the mode built for names uses and scales
+                               with the pane the way everything else here
+                               does. -->
+                          <Panel>
                           <TextBlock Text="{Binding Converter={x:Static vm:FileConverters.DisplayName}}" HorizontalAlignment="Left"
                                      FontSize="{DynamicResource FontSizeBase}" VerticalAlignment="Center"
                                      TextTrimming="{x:Static local:NameEllipsis.KeepingTheExtension}"
                                      ToolTip.Tip="{Binding Converter={x:Static vm:FileConverters.NameTip}}"
                                      ToolTip.ShowDelay="1200"
-                                     Opacity="{Binding Converter={x:Static vm:FileConverters.HiddenFade}}"/>
+                                     Opacity="{Binding Converter={x:Static vm:FileConverters.HiddenFade}}">
+                            <TextBlock.IsVisible>
+                              <MultiBinding Converter="{x:Static vm:FileConverters.NotRenaming}">
+                                <Binding Path="FullPath"/>
+                                <Binding Path="$parent[ListBox].((vm:PaneViewModel)DataContext).RenamingPath"/>
+                              </MultiBinding>
+                            </TextBlock.IsVisible>
+                          </TextBlock>
+                          <TextBox Classes="rename" MinWidth="{DynamicResource CompactWidth}"
+                                   Text="{Binding $parent[ListBox].((vm:PaneViewModel)DataContext).RenameText, Mode=TwoWay}"
+                                   ToolTip.Tip="{Binding $parent[ListBox].((vm:PaneViewModel)DataContext).RenameRefusal}">
+                            <ToolTip.IsOpen>
+                              <MultiBinding Converter="{x:Static vm:FileConverters.RefusedHere}">
+                                <Binding Path="FullPath"/>
+                                <Binding Path="$parent[ListBox].((vm:PaneViewModel)DataContext).RenamingPath"/>
+                                <Binding Path="$parent[ListBox].((vm:PaneViewModel)DataContext).IsRenameRefused"/>
+                              </MultiBinding>
+                            </ToolTip.IsOpen>
+                            <TextBox.IsVisible>
+                              <MultiBinding Converter="{x:Static vm:FileConverters.Renaming}">
+                                <Binding Path="FullPath"/>
+                                <Binding Path="$parent[ListBox].((vm:PaneViewModel)DataContext).RenamingPath"/>
+                              </MultiBinding>
+                            </TextBox.IsVisible>
+                            <!-- Separate from IsVisible rather than derived
+                                 from it: IsVisible defaults to TRUE, so a row
+                                 that is already the renaming one when it is
+                                 realized never raises a change for a visibility
+                                 hook to fire on. This starts false. -->
+                            <in:RenameBox.Editing>
+                              <MultiBinding Converter="{x:Static vm:FileConverters.Renaming}">
+                                <Binding Path="FullPath"/>
+                                <Binding Path="$parent[ListBox].((vm:PaneViewModel)DataContext).RenamingPath"/>
+                              </MultiBinding>
+                            </in:RenameBox.Editing>
+                          </TextBox>
+                          </Panel>
 
                           <!-- **Two files can sit here looking identically
                                named.** One space before the extension is legal,
@@ -2682,12 +2782,48 @@
                                a compact column is narrower and there is no Type
                                column in this layout at all. See the details
                                row. -->
+                          <!-- The same pair as the details row, and the fill
+                               child here rather than a docked one — so the box
+                               takes the width the name had and needs no
+                               MinWidth of its own. See that row. -->
+                          <Panel>
                           <TextBlock Text="{Binding Converter={x:Static vm:FileConverters.DisplayName}}" VerticalAlignment="Center"
                                      FontSize="{DynamicResource FontSizeBase}"
                                      TextTrimming="{x:Static local:NameEllipsis.KeepingTheExtension}"
                                      ToolTip.Tip="{Binding Converter={x:Static vm:FileConverters.NameTip}}"
                                      ToolTip.ShowDelay="1200"
-                                     Opacity="{Binding Converter={x:Static vm:FileConverters.HiddenFade}}"/>
+                                     Opacity="{Binding Converter={x:Static vm:FileConverters.HiddenFade}}">
+                            <TextBlock.IsVisible>
+                              <MultiBinding Converter="{x:Static vm:FileConverters.NotRenaming}">
+                                <Binding Path="FullPath"/>
+                                <Binding Path="$parent[ListBox].((vm:PaneViewModel)DataContext).RenamingPath"/>
+                              </MultiBinding>
+                            </TextBlock.IsVisible>
+                          </TextBlock>
+                          <TextBox Classes="rename"
+                                   Text="{Binding $parent[ListBox].((vm:PaneViewModel)DataContext).RenameText, Mode=TwoWay}"
+                                   ToolTip.Tip="{Binding $parent[ListBox].((vm:PaneViewModel)DataContext).RenameRefusal}">
+                            <ToolTip.IsOpen>
+                              <MultiBinding Converter="{x:Static vm:FileConverters.RefusedHere}">
+                                <Binding Path="FullPath"/>
+                                <Binding Path="$parent[ListBox].((vm:PaneViewModel)DataContext).RenamingPath"/>
+                                <Binding Path="$parent[ListBox].((vm:PaneViewModel)DataContext).IsRenameRefused"/>
+                              </MultiBinding>
+                            </ToolTip.IsOpen>
+                            <TextBox.IsVisible>
+                              <MultiBinding Converter="{x:Static vm:FileConverters.Renaming}">
+                                <Binding Path="FullPath"/>
+                                <Binding Path="$parent[ListBox].((vm:PaneViewModel)DataContext).RenamingPath"/>
+                              </MultiBinding>
+                            </TextBox.IsVisible>
+                            <in:RenameBox.Editing>
+                              <MultiBinding Converter="{x:Static vm:FileConverters.Renaming}">
+                                <Binding Path="FullPath"/>
+                                <Binding Path="$parent[ListBox].((vm:PaneViewModel)DataContext).RenamingPath"/>
+                              </MultiBinding>
+                            </in:RenameBox.Editing>
+                          </TextBox>
+                          </Panel>
                         </DockPanel>
                       </Panel>
                       <!-- **Where the drop lands.** The pane took an outline while a drag
@@ -2866,12 +3002,48 @@
                              stay at full strength here exactly as they do in a
                              details row — fading the whole tile is a design call,
                              not this fix. -->
+                        <!-- The same pair as the two rows, under the artwork
+                             where the tile draws its label. A tile is narrower
+                             than a row and the box takes the label's width,
+                             which is the width there is. See the details row. -->
+                        <Panel>
                         <TextBlock Text="{Binding Converter={x:Static vm:FileConverters.DisplayName}}" TextAlignment="Center"
                                    FontSize="{DynamicResource FontSizeSmall}"
                                    TextWrapping="Wrap" MaxLines="2" TextTrimming="CharacterEllipsis"
                                    ToolTip.Tip="{Binding Converter={x:Static vm:FileConverters.NameTip}}"
                                    ToolTip.ShowDelay="1200"
-                                   Opacity="{Binding Converter={x:Static vm:FileConverters.HiddenFade}}"/>
+                                   Opacity="{Binding Converter={x:Static vm:FileConverters.HiddenFade}}">
+                          <TextBlock.IsVisible>
+                            <MultiBinding Converter="{x:Static vm:FileConverters.NotRenaming}">
+                              <Binding Path="FullPath"/>
+                              <Binding Path="$parent[ListBox].((vm:PaneViewModel)DataContext).RenamingPath"/>
+                            </MultiBinding>
+                          </TextBlock.IsVisible>
+                        </TextBlock>
+                        <TextBox Classes="rename"
+                                 Text="{Binding $parent[ListBox].((vm:PaneViewModel)DataContext).RenameText, Mode=TwoWay}"
+                                 ToolTip.Tip="{Binding $parent[ListBox].((vm:PaneViewModel)DataContext).RenameRefusal}">
+                          <ToolTip.IsOpen>
+                            <MultiBinding Converter="{x:Static vm:FileConverters.RefusedHere}">
+                              <Binding Path="FullPath"/>
+                              <Binding Path="$parent[ListBox].((vm:PaneViewModel)DataContext).RenamingPath"/>
+                              <Binding Path="$parent[ListBox].((vm:PaneViewModel)DataContext).IsRenameRefused"/>
+                            </MultiBinding>
+                          </ToolTip.IsOpen>
+                          <TextBox.IsVisible>
+                            <MultiBinding Converter="{x:Static vm:FileConverters.Renaming}">
+                              <Binding Path="FullPath"/>
+                              <Binding Path="$parent[ListBox].((vm:PaneViewModel)DataContext).RenamingPath"/>
+                            </MultiBinding>
+                          </TextBox.IsVisible>
+                          <in:RenameBox.Editing>
+                            <MultiBinding Converter="{x:Static vm:FileConverters.Renaming}">
+                              <Binding Path="FullPath"/>
+                              <Binding Path="$parent[ListBox].((vm:PaneViewModel)DataContext).RenamingPath"/>
+                            </MultiBinding>
+                          </in:RenameBox.Editing>
+                        </TextBox>
+                        </Panel>
                       </StackPanel>
                       <!-- **The selection box, tile edition.** A tile has no
                            row to dock a slot onto, so it goes in the corner

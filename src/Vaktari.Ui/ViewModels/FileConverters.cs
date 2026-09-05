@@ -457,6 +457,63 @@ public static class FileConverters
                 : Avalonia.Media.Brushes.Transparent;
         });
 
+    /// <summary>
+    /// Whether this row is the one whose name is being edited in place.
+    ///
+    /// Shaped like <see cref="DropRingBrush"/> above and for the same reason:
+    /// the pane holds ONE path and every realized row compares itself against
+    /// it, so there is no per-row flag for a refresh to throw away.
+    ///
+    /// An empty target is nobody, not everybody. "" is what the pane holds when
+    /// no rename is open, and <c>PathRules.Same("", "")</c> answers true —
+    /// measured by dropping the length test and watching the converter's own
+    /// test go red — so without it a row carrying no path yet, which is what a
+    /// container bound to a default entry has, would open an edit box while
+    /// nothing had asked for one.
+    /// </summary>
+    public static readonly Avalonia.Data.Converters.IMultiValueConverter Renaming =
+        new Avalonia.Data.Converters.FuncMultiValueConverter<object?, bool>(Editing);
+
+    /// <summary>
+    /// The other half: the drawn name steps aside for the box that replaces it.
+    ///
+    /// A second converter rather than an inversion at the binding, because
+    /// Avalonia's `!` only negates a bound BOOLEAN path and this is a
+    /// two-value comparison.
+    /// </summary>
+    public static readonly Avalonia.Data.Converters.IMultiValueConverter NotRenaming =
+        new Avalonia.Data.Converters.FuncMultiValueConverter<object?, bool>(values => !Editing(values));
+
+    /// <summary>
+    /// The refusal, held open on the ONE row it belongs to.
+    ///
+    /// **It opened on every realized row.** The reason is a pane-level flag and
+    /// the box is stamped once per row, so binding the tip's IsOpen straight to
+    /// it put a popup on all of them: measured on a 42-entry folder in details
+    /// view, one refused name gave 30 open tooltips, 29 of them over invisible
+    /// boxes whose own bounds are zero — a stack of identical popups at the top
+    /// of the listing. Grid measured the same. So the tip is gated on the same
+    /// row comparison the box's own visibility is.
+    /// </summary>
+    public static readonly Avalonia.Data.Converters.IMultiValueConverter RefusedHere =
+        new Avalonia.Data.Converters.FuncMultiValueConverter<object?, bool>(values =>
+        {
+            var all = values.ToList();
+
+            return all.Count == 3 && all[2] is true && Editing(all.Take(2));
+        });
+
+    private static bool Editing(IEnumerable<object?> values)
+    {
+        var pair = values.ToList();
+
+        return pair.Count == 2
+               && pair[0] is string path
+               && pair[1] is string target
+               && target.Length > 0
+               && Vaktari.Core.FileSystem.PathRules.Same(path, target);
+    }
+
     /// <summary>Accent along the active side's tab bar, transparent on the other.</summary>
     public static readonly IValueConverter ActiveEdge =
         new FuncValueConverter<bool, object?>(active =>

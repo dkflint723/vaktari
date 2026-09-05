@@ -4,6 +4,7 @@ using Avalonia.Threading;
 using Avalonia.Input;
 using Avalonia.Headless;
 using Avalonia.Headless.XUnit;
+using Avalonia.VisualTree;
 using Vaktari.Core.FileSystem;
 using Vaktari.Ui;
 using Vaktari.Ui.ViewModels;
@@ -49,21 +50,21 @@ public sealed class RenamePromptTenancyTests
             var shell = Assert.IsType<ShellViewModel>(window.DataContext);
             var pane = shell.ActiveTab!;
 
-            var input = window.FindControl<TextBox>("PromptInput");
-            Assert.NotNull(input);
-
-            // First tenant: the row the user pressed F2 on.
+            // First tenant: the row the user pressed F2 on. Read off the pane
+            // rather than off a control: the box is drawn by the listing's item
+            // template now, and this window is never laid out.
             pane.SelectedEntry = Row("first.txt");
             pane.BeginRenameCommand.Execute(null);
 
-            Assert.Equal("first.txt", input!.Text);
+            Assert.Equal("first.txt", pane.RenameText);
 
-            // The listing stays live behind the inline bar, so the selection can
-            // move under it — and then a second request arrives.
+            // The listing stays live behind the inline editor, so the selection
+            // can move under it — and then a second request arrives.
             pane.SelectedEntry = Row("second.txt");
             pane.BeginRenameCommand.Execute(null);
 
-            Assert.Equal("first.txt", input.Text);
+            Assert.Equal("first.txt", pane.RenameText);
+            Assert.Equal(Row("first.txt").FullPath, pane.RenamingPath);
         }
         finally
         {
@@ -72,7 +73,7 @@ public sealed class RenamePromptTenancyTests
     }
 
     /// <summary>
-    /// And the bar still opens in the ordinary case — a guard that refused
+    /// And the editor still opens in the ordinary case — a guard that refused
     /// every request would satisfy the test above and make renaming impossible.
     /// </summary>
     [AvaloniaFact]
@@ -85,17 +86,11 @@ public sealed class RenamePromptTenancyTests
             var shell = Assert.IsType<ShellViewModel>(window.DataContext);
             var pane = shell.ActiveTab!;
 
-            var input = window.FindControl<TextBox>("PromptInput");
-            var bar = window.FindControl<Border>("PromptBar");
-
-            Assert.NotNull(input);
-            Assert.NotNull(bar);
-
             pane.SelectedEntry = Row("only.txt");
             pane.BeginRenameCommand.Execute(null);
 
-            Assert.True(bar!.IsVisible);
-            Assert.Equal("only.txt", input!.Text);
+            Assert.Equal(Row("only.txt").FullPath, pane.RenamingPath);
+            Assert.Equal("only.txt", pane.RenameText);
         }
         finally
         {
@@ -118,13 +113,24 @@ public sealed class RenamePromptTenancyTests
     /// **A gesture bound in the markup fired straight through an open rename
     /// bar.** A KeyBinding is dispatched before the window's own key handler
     /// runs at all — before the key is even routed — so the guard that hands
-    /// the keyboard to the bar was structurally unable to see one. Typing a
+    /// the keyboard to the editor was structurally unable to see one. Typing a
     /// name and reaching for Ctrl+I opened the filter and pulled the caret into
     /// it, so the rest of the name was typed somewhere else entirely.
+    ///
+    /// A REAL row in a real folder, because the box is drawn by the listing's
+    /// item template now: a rename staged onto an entry the listing does not
+    /// hold opens no box for the keyboard to be in, and the window deliberately
+    /// lets a key through when a rename has lost its box.
     /// </summary>
     [AvaloniaFact]
-    public void A_gesture_the_markup_used_to_bind_does_not_fire_while_the_bar_is_open()
+    public async Task A_gesture_the_markup_used_to_bind_does_not_fire_while_the_bar_is_open()
     {
+        var root = Path.Combine(
+            Path.GetTempPath(), "vaktari-tenancy-" + Guid.NewGuid().ToString("N")[..8]);
+
+        Directory.CreateDirectory(root);
+        File.WriteAllText(Path.Combine(root, "first.txt"), "x");
+
         var window = new MainWindow();
 
         try
@@ -136,9 +142,22 @@ public sealed class RenamePromptTenancyTests
 
             Assert.False(pane.IsFilterVisible, "the filter is already open, so this proves nothing");
 
-            pane.SelectedEntry = Row("first.txt");
+            await pane.NavigateAsync(root);
+            Settle();
+            window.UpdateLayout();
+            Settle();
+
+            pane.SelectedEntry = pane.Entries.Single(e => e.Name == "first.txt");
             pane.BeginRenameCommand.Execute(null);
             Settle();
+            window.UpdateLayout();
+            Settle();
+
+            var box = window.GetVisualDescendants().OfType<TextBox>()
+                            .Single(t => t.Classes.Contains(MainWindow.RenameBoxClass) && t.IsVisible);
+
+            Assert.True(box.IsFocused,
+                        "the name is not being typed anywhere, so this proves nothing");
 
             window.KeyPress(Key.I, RawInputModifiers.Control, PhysicalKey.I, null);
             Settle();
@@ -149,6 +168,9 @@ public sealed class RenamePromptTenancyTests
         finally
         {
             window.Close();
+
+            try { Directory.Delete(root, recursive: true); }
+            catch (Exception) { /* a temp dir is not worth failing over */ }
         }
     }
 
