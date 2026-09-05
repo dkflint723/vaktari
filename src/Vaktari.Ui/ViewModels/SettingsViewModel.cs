@@ -40,7 +40,15 @@ public sealed record TerminalChoice(string Id, string Name);
 
 public sealed partial class SettingsViewModel : ObservableObject
 {
-    private readonly SettingsState _original;
+    /// <summary>
+    /// The state this dialog opened with, which Collect uses `with` over so
+    /// pages that were never built keep their file values.
+    ///
+    /// Not readonly, because "restore defaults" has to replace this as well:
+    /// resetting only what is on screen would leave every setting on a page
+    /// nobody opened exactly as it was, which is not what the button says.
+    /// </summary>
+    private SettingsState _original = new();
 
     private readonly Core.IDefaultFileManager? _defaults;
     private readonly Core.FileSystem.IFileIconProvider? _desktopIcons;
@@ -53,46 +61,84 @@ public sealed partial class SettingsViewModel : ObservableObject
         Core.IFileManagerService? fileManager = null,
         string? settingsFile = null)
     {
-        _original = current;
         _settingsFile = settingsFile ?? "";
         _defaults = defaults;
         _desktopIcons = desktopIcons;
         _fileManager = fileManager;
         _isDefaultFileManager = defaults?.IsDefault() ?? false;
 
+        // The font LIST is a fact about the machine rather than a setting, so
+        // it is built once here and only re-picked from below. Restoring
+        // defaults does not uninstall anybody's fonts.
+        AvailableFonts = BuildFontList(current.Views.CustomFontFamily);
+
+        Seed(current);
+    }
+
+    /// <summary>
+    /// Every control on the six pages, from a state.
+    ///
+    /// **Lifted out of the constructor so it can be run a second time.** There
+    /// was no way to put the settings back: the constructor read each field
+    /// straight off the record it was handed, so the only route to the
+    /// defaults was to close Vaktari, delete settings.json and start again.
+    ///
+    /// Assigns FIELDS, not properties, exactly as the constructor did — the
+    /// ordering below is load-bearing in two places, and property setters would
+    /// break both. The caller raises one property-changed for everything after
+    /// this returns, which is what a re-seed needs and what construction does
+    /// not.
+    /// </summary>
+    private void Seed(SettingsState current)
+    {
+        _original = current;
+
         var startup = current.Startup;
         var general = current.General;
 
-        _naturalSorting = general.NaturalSorting;
-        _caseSensitiveSorting = general.CaseSensitiveSorting;
-        _rememberViewPerFolder = general.RememberViewPerFolder;
-        _showTooltips = general.ShowTooltips;
-        _tabSwitchesSplitPanes = general.TabSwitchesSplitPanes;
-        _closingSplitDiscardsOtherPane = general.ClosingSplitDiscardsOtherPane;
-        _showStatusBar = general.ShowStatusBar;
-        _showFreeSpace = general.ShowFreeSpace;
-        _showPreviews = general.ShowPreviews;
-        _maxLocalPreviewMegabytes = Limit(general.MaxLocalPreviewMegabytes);
-        _maxRemotePreviewMegabytes = Limit(general.MaxRemotePreviewMegabytes);
-        _confirmMoveToTrash = general.ConfirmMoveToTrash;
-        _confirmPermanentDelete = general.ConfirmPermanentDelete;
-        _confirmClosingMultipleTabs = general.ConfirmClosingMultipleTabs;
+        NaturalSorting = general.NaturalSorting;
+        CaseSensitiveSorting = general.CaseSensitiveSorting;
+        RememberViewPerFolder = general.RememberViewPerFolder;
+        ShowTooltips = general.ShowTooltips;
+        TabSwitchesSplitPanes = general.TabSwitchesSplitPanes;
+        ClosingSplitDiscardsOtherPane = general.ClosingSplitDiscardsOtherPane;
+        ShowStatusBar = general.ShowStatusBar;
+        ShowFreeSpace = general.ShowFreeSpace;
+        ShowPreviews = general.ShowPreviews;
+        MaxLocalPreviewMegabytes = Limit(general.MaxLocalPreviewMegabytes);
+        MaxRemotePreviewMegabytes = Limit(general.MaxRemotePreviewMegabytes);
+        ConfirmMoveToTrash = general.ConfirmMoveToTrash;
+        ConfirmPermanentDelete = general.ConfirmPermanentDelete;
+        ConfirmClosingMultipleTabs = general.ConfirmClosingMultipleTabs;
 
         var views = current.Views;
-
-        AvailableFonts = BuildFontList(views.CustomFontFamily);
 
         // Matched by NAME, not by reference: the configured value comes from a
         // file, and the list is built fresh. A configured font that is not
         // installed was already inserted by BuildFontList, so this cannot miss
         // and silently fall back to the sentinel — which would rewrite the
         // user's font the moment they pressed Save.
-        _selectedFont = AvailableFonts.FirstOrDefault(o =>
+        SelectedFont = AvailableFonts.FirstOrDefault(o =>
             string.Equals(o.Name, views.CustomFontFamily, StringComparison.OrdinalIgnoreCase))
             ?? AvailableFonts[0];
-        _useSystemIcons = current.General.UseSystemIcons;
-        _iconThemeFolder = current.General.IconThemeFolder;
-        _protonDriveFolder = current.General.ProtonDriveFolder;
+        UseSystemIcons = current.General.UseSystemIcons;
+
+        // **Behind the sync guard, which is what it is for.** Setting
+        // IconThemeFolder rebuilds the catalogue around it, and this is about
+        // to rebuild it once at the end anyway — without the guard a re-seed
+        // enumerates the theme folder twice for one press of a button.
+        _syncingIconThemes = true;
+
+        try
+        {
+            IconThemeFolder = current.General.IconThemeFolder;
+        }
+        finally
+        {
+            _syncingIconThemes = false;
+        }
+
+        ProtonDriveFolder = current.General.ProtonDriveFolder;
 
         // **Checked on the way in, not only when it was chosen.** A theme
         // folder that has since been moved, renamed or deleted would otherwise
@@ -108,16 +154,19 @@ public sealed partial class SettingsViewModel : ObservableObject
         // deleted" actually needs is two existence checks, and those are free;
         // whether the folder still READS as a theme is asked behind the dialog
         // and reported if the answer turns out to be no.
-        if (_iconThemeFolder.Length > 0)
+        IconThemeProblem = "";
+        ThemeVerification = Task.CompletedTask;
+
+        if (IconThemeFolder.Length > 0)
         {
-            if (!Directory.Exists(_iconThemeFolder)
-                || !File.Exists(Path.Combine(_iconThemeFolder, "index.theme")))
+            if (!Directory.Exists(IconThemeFolder)
+                || !File.Exists(Path.Combine(IconThemeFolder, "index.theme")))
             {
-                _iconThemeProblem = ThemeGone;
+                IconThemeProblem = ThemeGone;
             }
             else
             {
-                ThemeVerification = Verify(_iconThemeFolder);
+                ThemeVerification = Verify(IconThemeFolder);
             }
         }
 
@@ -125,15 +174,15 @@ public sealed partial class SettingsViewModel : ObservableObject
         // opens already showing what is in use. The field was assigned above
         // rather than the property, so nothing has rebuilt it yet.
         RefreshIconThemes();
-        _followDesktopColours = views.FollowDesktopColours;
-        _themeModeIndex = views.ThemeMode switch
+        FollowDesktopColours = views.FollowDesktopColours;
+        ThemeModeIndex = views.ThemeMode switch
         {
             Core.Settings.ThemeMode.Light => 1,
             Core.Settings.ThemeMode.Dark => 2,
             _ => 0,
         };
-        _absoluteDates = views.Details.DateStyle == Core.Settings.DateStyle.Absolute;
-        _showFolderItemCounts = views.Details.FolderSize != Core.Settings.FolderSizeMode.None;
+        AbsoluteDates = views.Details.DateStyle == Core.Settings.DateStyle.Absolute;
+        ShowFolderItemCounts = views.Details.FolderSize != Core.Settings.FolderSizeMode.None;
 
         // Blank rather than "0": the placeholder says what zero means, and an
         // empty box invites a value where a literal 0 looks like a setting
@@ -142,51 +191,51 @@ public sealed partial class SettingsViewModel : ObservableObject
         // written before it existed, and the DEFAULT is on. Guarding here as
         // well as in the pane: the same dereference crashed the listing, I fixed
         // that one site, and left this one to crash the dialog instead.
-        _showVcsDecorations = current.Vcs?.ShowDecorations ?? true;
-        _showSelectionBoxes = views.ShowSelectionBoxes;
-        _growWindowForPanel = views.NarrowDetailsPanel == NarrowPanelBehaviour.GrowWindow;
+        ShowVcsDecorations = current.Vcs?.ShowDecorations ?? true;
+        ShowSelectionBoxes = views.ShowSelectionBoxes;
+        GrowWindowForPanel = views.NarrowDetailsPanel == NarrowPanelBehaviour.GrowWindow;
         // The dialog asks the positive question; the record stores the negative
         // one so its zero value is the wanted behaviour.
-        _restoreWidthOnPanelClose = !views.KeepWidthAfterPanelClose;
+        RestoreWidthOnPanelClose = !views.KeepWidthAfterPanelClose;
 
-        _iconSpacing = views.Icons.Spacing > 0 ? views.Icons.Spacing.ToString() : "";
-        _compactSpacing = views.Compact.Spacing > 0 ? views.Compact.Spacing.ToString() : "";
+        IconSpacing = views.Icons.Spacing > 0 ? views.Icons.Spacing.ToString() : "";
+        CompactSpacing = views.Compact.Spacing > 0 ? views.Compact.Spacing.ToString() : "";
 
         var trash = current.Trash;
 
-        _deleteOldTrash = trash.DeleteOldFiles;
-        _deleteAfterDays = trash.DeleteAfterDays.ToString();
-        _limitTrashSize = trash.LimitSize;
-        _maxPercentOfDisk = trash.MaximumPercentOfDisk.ToString();
-        _limitActionWarn = trash.WhenLimitReached == TrashLimitAction.Warn;
-        _limitActionOldest = trash.WhenLimitReached == TrashLimitAction.DeleteOldest;
-        _limitActionLargest = trash.WhenLimitReached == TrashLimitAction.DeleteLargest;
+        DeleteOldTrash = trash.DeleteOldFiles;
+        DeleteAfterDays = trash.DeleteAfterDays.ToString();
+        LimitTrashSize = trash.LimitSize;
+        MaxPercentOfDisk = trash.MaximumPercentOfDisk.ToString();
+        LimitActionWarn = trash.WhenLimitReached == TrashLimitAction.Warn;
+        LimitActionOldest = trash.WhenLimitReached == TrashLimitAction.DeleteOldest;
+        LimitActionLargest = trash.WhenLimitReached == TrashLimitAction.DeleteLargest;
 
-        _openWithSystem = current.Navigation.OpenItemsWith == ActivationClick.System;
-        _openWithSingle = current.Navigation.OpenItemsWith == ActivationClick.Single;
-        _openWithDouble = current.Navigation.OpenItemsWith == ActivationClick.Double;
+        OpenWithSystem = current.Navigation.OpenItemsWith == ActivationClick.System;
+        OpenWithSingle = current.Navigation.OpenItemsWith == ActivationClick.Single;
+        OpenWithDouble = current.Navigation.OpenItemsWith == ActivationClick.Double;
 
-        _backspaceGoesUp = current.Navigation.BackspaceGoesUp;
+        BackspaceGoesUp = current.Navigation.BackspaceGoesUp;
 
         var menu = current.ContextMenu;
 
-        _menuCopyTo = menu.ShowCopyTo;
-        _menuMoveTo = menu.ShowMoveTo;
-        _menuSortBy = menu.ShowSortBy;
-        _menuDuplicate = menu.ShowDuplicate;
-        _menuOpenInNewTab = menu.ShowOpenInNewTab;
-        _menuOpenInNewWindow = menu.ShowOpenInNewWindow;
-        _menuAddToPlaces = menu.ShowAddToPlaces;
-        _menuCopyLocation = menu.ShowCopyLocation;
+        MenuCopyTo = menu.ShowCopyTo;
+        MenuMoveTo = menu.ShowMoveTo;
+        MenuSortBy = menu.ShowSortBy;
+        MenuDuplicate = menu.ShowDuplicate;
+        MenuOpenInNewTab = menu.ShowOpenInNewTab;
+        MenuOpenInNewWindow = menu.ShowOpenInNewWindow;
+        MenuAddToPlaces = menu.ShowAddToPlaces;
+        MenuCopyLocation = menu.ShowCopyLocation;
 
-        _restoreLastSession = startup.ShowOnStartup == StartupLocation.RestoreSession;
-        _startInHome = startup.ShowOnStartup == StartupLocation.HomeFolder;
-        _startInSpecificFolder = startup.ShowOnStartup == StartupLocation.SpecificFolder;
-        _startupFolder = startup.StartupFolder ?? "";
-        _beginInSplitView = startup.BeginInSplitView;
-        _showFilterBar = startup.ShowFilterBar;
-        _locationBarEditable = startup.LocationBarEditable;
-        _showFullPathInTitleBar = startup.ShowFullPathInTitleBar;
+        RestoreLastSession = startup.ShowOnStartup == StartupLocation.RestoreSession;
+        StartInHome = startup.ShowOnStartup == StartupLocation.HomeFolder;
+        StartInSpecificFolder = startup.ShowOnStartup == StartupLocation.SpecificFolder;
+        StartupFolder = startup.StartupFolder ?? "";
+        BeginInSplitView = startup.BeginInSplitView;
+        ShowFilterBar = startup.ShowFilterBar;
+        LocationBarEditable = startup.LocationBarEditable;
+        ShowFullPathInTitleBar = startup.ShowFullPathInTitleBar;
     }
 
     // Three booleans rather than one enum property because Avalonia's
@@ -197,7 +246,7 @@ public sealed partial class SettingsViewModel : ObservableObject
     [ObservableProperty] private bool _startInHome;
     [ObservableProperty] private bool _startInSpecificFolder;
 
-    [ObservableProperty] private string _startupFolder;
+    [ObservableProperty] private string _startupFolder = "";
     [ObservableProperty] private bool _beginInSplitView;
     [ObservableProperty] private bool _showFilterBar;
     [ObservableProperty] private bool _locationBarEditable;
@@ -237,8 +286,8 @@ public sealed partial class SettingsViewModel : ObservableObject
     // Text rather than int: a spinner for "0 means unlimited" reads as a
     // quantity when it is really a switch with a quantity attached, and an
     // empty box is a clearer "no limit" than a zero.
-    [ObservableProperty] private string _maxLocalPreviewMegabytes;
-    [ObservableProperty] private string _maxRemotePreviewMegabytes;
+    [ObservableProperty] private string _maxLocalPreviewMegabytes = "";
+    [ObservableProperty] private string _maxRemotePreviewMegabytes = "";
 
     public bool CanSetPreviewLimits => ShowPreviews;
 
@@ -961,7 +1010,10 @@ public sealed partial class SettingsViewModel : ObservableObject
     /// </summary>
     public string VersionPath => Program.RunningFrom;
 
-    [ObservableProperty] private FontOption _selectedFont;
+    // Assigned by Seed before the constructor returns, from a list built the
+    // line before it. The initialiser is for the compiler, which cannot see
+    // through the generated setter to know that.
+    [ObservableProperty] private FontOption _selectedFont = null!;
 
     /// <summary>
     /// Whether the desktop's own colours are layered over the bundled scheme.
@@ -1022,10 +1074,10 @@ public sealed partial class SettingsViewModel : ObservableObject
     [ObservableProperty] private bool _restoreWidthOnPanelClose;
 
     /// <summary>Extra gap between grid tiles, in pixels. Blank means none.</summary>
-    [ObservableProperty] private string _iconSpacing;
+    [ObservableProperty] private string _iconSpacing = "";
 
     /// <summary>Extra gap around compact cells, in pixels. Blank means none.</summary>
-    [ObservableProperty] private string _compactSpacing;
+    [ObservableProperty] private string _compactSpacing = "";
 
     /// <summary>
     /// Installed families, sorted, with the follow-the-desktop sentinel first.
@@ -1101,9 +1153,9 @@ public sealed partial class SettingsViewModel : ObservableObject
     // ---- Trash ------------------------------------------------------------
 
     [ObservableProperty] private bool _deleteOldTrash;
-    [ObservableProperty] private string _deleteAfterDays;
+    [ObservableProperty] private string _deleteAfterDays = "";
     [ObservableProperty] private bool _limitTrashSize;
-    [ObservableProperty] private string _maxPercentOfDisk;
+    [ObservableProperty] private string _maxPercentOfDisk = "";
     [ObservableProperty] private bool _limitActionWarn;
     [ObservableProperty] private bool _limitActionOldest;
     [ObservableProperty] private bool _limitActionLargest;
@@ -1295,6 +1347,34 @@ public sealed partial class SettingsViewModel : ObservableObject
                 ShowFullPathInTitleBar = ShowFullPathInTitleBar,
             },
         };
+    }
+
+    /// <summary>
+    /// Puts every setting back to what a first run would have given.
+    ///
+    /// **There was no way back.** Nine sections on one page and five more
+    /// pages, every one of them remembering what it was last set to, and the
+    /// only route to the defaults was to close Vaktari, find settings.json —
+    /// which nothing in the application could name until recently — delete it,
+    /// and start again.
+    ///
+    /// **No confirmation, and that is not carelessness.** This dialog edits a
+    /// copy and commits it whole on Save, so Cancel discards this exactly as it
+    /// discards any other change: the defaults are on screen to be looked at,
+    /// and nothing has reached disk. A confirmation would be asking permission
+    /// for something the next button already undoes.
+    ///
+    /// The state seeded is a bare SettingsState, which also resets the pages
+    /// this dialog has not built — Collect carries _original forward with
+    /// `with`, so replacing it is what makes "every setting" true rather than
+    /// "every setting you can see".
+    /// </summary>
+    [RelayCommand]
+    private void RestoreDefaults()
+    {
+        Seed(new SettingsState());
+
+        SettingsFileStatus = "Defaults restored — nothing is saved until you press Save.";
     }
 
     [RelayCommand]

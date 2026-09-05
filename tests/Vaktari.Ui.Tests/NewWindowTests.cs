@@ -968,7 +968,15 @@ public sealed class NewWindowTests : OwnedViewModels
 
     /// <summary>The preference reaches the file and comes back, like the seven
     /// beside it.</summary>
-    [Fact]
+    /// <summary>
+    /// **AvaloniaFact, not Fact.** The dialog's constructor asks the font
+    /// manager which fonts are installed, and that needs an application — so
+    /// this only ever passed because an Avalonia test ran before it in the same
+    /// assembly. Run on its own it threw "Unable to locate IFontManagerImpl",
+    /// on a clean tree, which is a test that depends on its neighbours rather
+    /// than on the thing it is testing.
+    /// </summary>
+    [AvaloniaFact]
     public void The_new_window_preference_survives_the_settings_dialog()
     {
         var state = new SettingsState

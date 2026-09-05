@@ -80,4 +80,26 @@ public class SettingsSectionOrderTests
 
         Assert.NotEqual(headings.Count - 1, headings.IndexOf("Ask for confirmation before"));
     }
+
+    /// <summary>
+    /// **The way back to the defaults is on the window**, not only on the view
+    /// model. A command nothing binds is a feature nobody can reach, and this
+    /// dialog has six pages of controls with no other route to one.
+    ///
+    /// Read out of the markup because that is where the gap was: the command
+    /// and its tests would all pass with no button anywhere.
+    /// </summary>
+    [Fact]
+    public void The_footer_offers_a_way_back_to_the_defaults()
+    {
+        var markup = XDocument.Parse(RepoSource.Ui("SettingsWindow.axaml"));
+
+        var ns = markup.Root!.GetDefaultNamespace();
+
+        var button = markup.Descendants(ns + "Button").SingleOrDefault(
+            b => (string?)b.Attribute("Command") == "{Binding RestoreDefaultsCommand}");
+
+        Assert.NotNull(button);
+        Assert.Equal("Restore defaults", (string?)button.Attribute("Content"));
+    }
 }

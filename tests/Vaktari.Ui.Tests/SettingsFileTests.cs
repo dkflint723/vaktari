@@ -171,6 +171,92 @@ public class SettingsFileTests : IDisposable
         Assert.False(vm.Saved);
     }
 
+    // ---- putting everything back --------------------------------------------
+
+    /// <summary>
+    /// **There was no way back to the defaults.** Nine sections on one page and
+    /// five more pages, each remembering what it was last set to, and the only
+    /// route out was to close Vaktari, find settings.json, delete it and start
+    /// again.
+    /// </summary>
+    [AvaloniaFact]
+    public void Restoring_defaults_puts_a_changed_setting_back()
+    {
+        var vm = Model(new SettingsState
+        {
+            General = new GeneralSettings { NaturalSorting = false, ShowStatusBar = false },
+        });
+
+        vm.RestoreDefaultsCommand.Execute(null);
+
+        var fresh = new SettingsState();
+
+        Assert.Equal(fresh.General.NaturalSorting, vm.NaturalSorting);
+        Assert.Equal(fresh.General.ShowStatusBar, vm.ShowStatusBar);
+    }
+
+    /// <summary>
+    /// **And a page this dialog never built.** Collect carries the opened state
+    /// forward with `with`, so a reset that only touched the controls on screen
+    /// would leave every setting on an unopened page exactly as it was — which
+    /// is not what the button says.
+    /// </summary>
+    [AvaloniaFact]
+    public void Restoring_defaults_reaches_settings_no_control_shows()
+    {
+        var vm = Model(new SettingsState
+        {
+            Views = new ViewSettings
+            {
+                Details = new DetailsViewSettings { FolderSize = FolderSizeMode.ContentSize },
+            },
+        });
+
+        vm.RestoreDefaultsCommand.Execute(null);
+        vm.SaveCommand.Execute(null);
+
+        Assert.Equal(new SettingsState().Views.Details.FolderSize, vm.Result.Views.Details.FolderSize);
+    }
+
+    /// <summary>
+    /// **Nothing reaches disk until Save**, which is why there is no
+    /// confirmation: Cancel discards a restore exactly as it discards any other
+    /// change, so the defaults are on screen to be looked at first.
+    /// </summary>
+    [AvaloniaFact]
+    public void Restoring_defaults_does_not_save_anything()
+    {
+        var vm = Model();
+        var closed = 0;
+
+        vm.CloseRequested += (_, _) => closed++;
+        vm.RestoreDefaultsCommand.Execute(null);
+
+        Assert.False(vm.Saved);
+        Assert.Equal(0, closed);
+        Assert.NotEqual("", vm.SettingsFileStatus);
+    }
+
+    /// <summary>
+    /// The controls have to be told, or the boxes go on showing the old values
+    /// over the new ones and Save writes those old values straight back.
+    /// </summary>
+    [AvaloniaFact]
+    public void Restoring_defaults_tells_the_controls()
+    {
+        var vm = Model(new SettingsState
+        {
+            General = new GeneralSettings { NaturalSorting = false },
+        });
+
+        var told = new List<string?>();
+
+        vm.PropertyChanged += (_, e) => told.Add(e.PropertyName);
+        vm.RestoreDefaultsCommand.Execute(null);
+
+        Assert.Contains(nameof(vm.NaturalSorting), told);
+    }
+
     /// <summary>
     /// The round trip, so the two halves are pinned against each other rather
     /// than each against its own idea of the format.

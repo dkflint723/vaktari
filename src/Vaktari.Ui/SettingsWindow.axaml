@@ -107,6 +107,21 @@
           </Button.Flyout>
         </Button>
 
+        <!-- **There was no way back to the defaults.** Nine sections on the
+             General page and five more pages, each remembering what it was
+             last set to, and the only route out was to close Vaktari, find
+             settings.json, delete it and start again.
+
+             Beside the settings-file button rather than next to Save, because
+             both are about the settings AS A WHOLE rather than about any one
+             of them — and because a destructive-looking button next to the
+             one that commits is the wrong pair to put a thumb between. -->
+        <Button DockPanel.Dock="Left"
+                Content="Restore defaults"
+                Padding="10,4"
+                Margin="0,0,12,0"
+                Command="{Binding RestoreDefaultsCommand}"/>
+
         <!-- Takes the space the version line would have had, and only when
              there is something to say. A refusal — a file this version cannot
              read — has to be readable somewhere, and none of these three is

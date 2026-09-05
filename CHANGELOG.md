@@ -770,6 +770,15 @@ should not be trusted for compatibility yet.
 
 ### Fixed
 
+- **Settings has a *Restore defaults* button.** There was no way back. Nine
+  sections on the General page and five more pages, every one of them
+  remembering what it was last set to, and the only route to the defaults was
+  to close Vaktari, find `settings.json`, delete it and start again. The button
+  sits in the footer beside *Settings file*, and it resets everything —
+  including pages you have never opened. Nothing is written until you press
+  Save, so you can look at the defaults first and press Cancel to keep what you
+  had.
+
 - **Icons and thumbnails are sharp on a high-DPI display.** Every picture in a
   listing was asked for in layout units and drawn into real pixels — so on a
   screen at 150%, a 32-unit icon was a 32-pixel image stretched across 48
