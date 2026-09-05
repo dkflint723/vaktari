@@ -453,6 +453,66 @@ public sealed class NewWindowTests : OwnedViewModels
         }
     }
 
+    /// <summary>
+    /// A launch can begin on the drive listing.
+    ///
+    /// **The one route into it that did not exist.** The sidebar row, Up from
+    /// a drive root, the breadcrumb and the path bar all reach
+    /// <c>vaktari:computer</c>; the startup preference could only name a
+    /// session, the home folder or a directory — and the arm that takes a
+    /// directory is gated on <c>Directory.Exists</c>, which this path can never
+    /// satisfy, so putting it in the folder box fell through to home.
+    ///
+    /// Two saved windows, so this also carries the rule the test above states:
+    /// a preference that says not to consult the session opens ONE window.
+    ///
+    /// A folder that is not there is seeded BESIDE the choice, and it is not
+    /// decoration — see the assertion at the end.
+    /// </summary>
+    [AvaloniaFact]
+    public async Task A_this_pc_preference_opens_the_drive_listing()
+    {
+        var first = Directory.CreateTempSubdirectory("vaktari-p0").FullName;
+        var second = Directory.CreateTempSubdirectory("vaktari-p1").FullName;
+        var stale = Path.Combine(
+            Path.GetTempPath(), "vaktari-gone-" + Guid.NewGuid().ToString("N")[..12]);
+
+        await SaveAsync(Saved(first), Saved(second));
+        SaveSettings(new StartupSettings
+        {
+            ShowOnStartup = StartupLocation.Computer,
+            StartupFolder = stale,
+        });
+        PaneViewModel.Search = null;
+
+        var founder = new MainWindow();
+
+        try
+        {
+            founder.Show();
+            Settle();
+
+            Assert.Single(founder.Services.Windows);
+            Assert.Equal(VirtualPaths.Computer, founder.Shell.ActiveTab?.CurrentPath);
+
+            // And no complaint about the folder that has gone: that line
+            // belongs to the specific-folder choice alone.
+            //
+            // **The stale path had to be a real one for this to assert
+            // anything.** Seeded empty, the warning is suppressed by the
+            // is-there-a-folder-at-all test rather than by the choice, and the
+            // scoping this line is here for goes unpinned. The pairing is not
+            // contrived either: Collect writes StartupFolder through unchanged
+            // whichever radio is picked, so moving off the specific folder onto
+            // this one leaves exactly this state in the file.
+            Assert.Equal("", founder.Shell.OperationStatus);
+        }
+        finally
+        {
+            CloseAll(founder.Services);
+        }
+    }
+
     // ---- what a new window opens on, and what it looks like ----------------
 
     /// <summary>

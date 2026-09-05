@@ -242,6 +242,7 @@ public sealed partial class SettingsViewModel : ObservableObject
 
         RestoreLastSession = startup.ShowOnStartup == StartupLocation.RestoreSession;
         StartInHome = startup.ShowOnStartup == StartupLocation.HomeFolder;
+        StartInComputer = startup.ShowOnStartup == StartupLocation.Computer;
         StartInSpecificFolder = startup.ShowOnStartup == StartupLocation.SpecificFolder;
         StartupFolder = startup.StartupFolder ?? "";
         BeginInSplitView = startup.BeginInSplitView;
@@ -250,12 +251,13 @@ public sealed partial class SettingsViewModel : ObservableObject
         ShowFullPathInTitleBar = startup.ShowFullPathInTitleBar;
     }
 
-    // Three booleans rather than one enum property because Avalonia's
+    // Four booleans rather than one enum property because Avalonia's
     // RadioButton binds IsChecked, and a converter per option would be more
     // moving parts than the thing it converts. Only the setters coordinate.
 
     [ObservableProperty] private bool _restoreLastSession;
     [ObservableProperty] private bool _startInHome;
+    [ObservableProperty] private bool _startInComputer;
     [ObservableProperty] private bool _startInSpecificFolder;
 
     [ObservableProperty] private string _startupFolder = "";
@@ -263,6 +265,30 @@ public sealed partial class SettingsViewModel : ObservableObject
     [ObservableProperty] private bool _showFilterBar;
     [ObservableProperty] private bool _locationBarEditable;
     [ObservableProperty] private bool _showFullPathInTitleBar;
+
+    /// <summary>
+    /// The drive-listing radio's label, in the platform's own word for it —
+    /// "Open This PC" on Windows, "Open this computer" on Linux.
+    ///
+    /// **Here rather than in markup because the label is an interpolation, and
+    /// x:Static hands a value over whole.** Measured, in this window: a
+    /// TextBlock reading <c>Text="Open {x:Static core:Naming.ComputerName}"</c>
+    /// rendered the literal characters "Open {x:Static core:Naming.ComputerName}"
+    /// — inside a longer string the extension is not evaluated at all.
+    ///
+    /// NOT for the timing reason written on <see cref="BinName"/>, which was
+    /// measured here and does not hold: with the process words forced to linux
+    /// first, <c>Text="{x:Static core:Naming.ComputerName}"</c> in this window
+    /// still read "This PC". A SettingsWindow is only ever constructed from a
+    /// MainWindow, whose own constructor has already called Naming.Adopt by the
+    /// time it can open one — so unlike MainWindow.axaml, this window's XAML is
+    /// never parsed before the platform is chosen.
+    ///
+    /// <see cref="Core.Naming.ComputerName"/> and not ComputerTitle: the noun
+    /// sits mid-sentence here, which is the difference between "Open this
+    /// computer" and a stray capital.
+    /// </summary>
+    public string StartInComputerLabel => $"Open {Core.Naming.ComputerName}";
 
     // ---- General ----------------------------------------------------------
 
@@ -1270,7 +1296,7 @@ public sealed partial class SettingsViewModel : ObservableObject
     public SettingsState Result { get; private set; } = new();
 
     /// <summary>
-    /// The folder box is only meaningful for one of the three choices, so it
+    /// The folder box is only meaningful for one of the four choices, so it
     /// disables with the others rather than accepting input that will be
     /// ignored.
     /// </summary>
@@ -1305,7 +1331,15 @@ public sealed partial class SettingsViewModel : ObservableObject
     /// </summary>
     private SettingsState Collect()
     {
+        // Above StartInHome, below the folder — and the position is not load
+        // bearing: the order decides only what a state with two of them set
+        // would collapse to, and the four radios share one GroupName (pinned by
+        // StartupOnTheDriveListingTests.The_startup_page_offers_the_drive_listing)
+        // so the dialog does not hand one over. Restore stays LAST, which is the
+        // one position that matters: it is the fallback, so a dialog nobody
+        // touched saves the default rather than a choice nobody made.
         var location = StartInSpecificFolder ? StartupLocation.SpecificFolder
+            : StartInComputer ? StartupLocation.Computer
             : StartInHome ? StartupLocation.HomeFolder
             : StartupLocation.RestoreSession;
 

@@ -75,6 +75,30 @@ public class NamingTests
     }
 
     /// <summary>
+    /// The drive listing has the same two forms as the bin, and it needed the
+    /// second one for the same reason.
+    ///
+    /// **On Linux the two forms differ and on Windows they do not, which is
+    /// exactly why this is a branch and not a ToLower.** "This computer" is a
+    /// description and drops its capital inside a sentence — the Startup page's
+    /// radio otherwise read "Open This computer". "This PC" is Explorer's
+    /// proper noun and keeps its capitals wherever it stands, so lower-casing
+    /// the sentence form would have produced "Open this PC" on the platform the
+    /// name was borrowed from.
+    /// </summary>
+    [Theory]
+    [InlineData("windows", "This PC", "This PC")]
+    [InlineData("linux", "This computer", "this computer")]
+    public void The_drive_listing_has_a_label_form_and_a_sentence_form(
+        string platform, string title, string sentence)
+    {
+        Naming.Adopt("trash", platform);
+
+        Assert.Equal(title, Naming.ComputerTitle);
+        Assert.Equal(sentence, Naming.ComputerName);
+    }
+
+    /// <summary>
     /// Copy that branches must branch on the platform identity, never on the
     /// label. Both are strings and it is an easy mistake — the first version of
     /// the sweep explanation tested the label, which couples an English

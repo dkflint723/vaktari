@@ -13,6 +13,17 @@ should not be trusted for compatibility yet.
 
 ### Added
 
+- **Vaktari can start on This PC.** The startup choice offered last time's
+  session, your home folder, or a folder you name — and the drive listing was
+  none of those. It is reachable from the sidebar, from Up at the top of a
+  drive, from the breadcrumb and by typing its name, but not from the one
+  setting that decides where a launch begins; and it could not be smuggled in
+  through the folder box either, because that box wants a real directory and the
+  listing is not one, so naming it there drew "that folder is not there" and
+  then opened your home folder anyway. Settings, Startup now has a fourth
+  choice, *Open This PC* — *Open this computer* on Linux, which is what that
+  desktop would call it.
+
 - **The band above a search says when nothing is indexing it, and no longer
   names the machinery.** A search of every folder on the machine looked exactly
   like one an index had answered — same band, same bar — so a wait of minutes

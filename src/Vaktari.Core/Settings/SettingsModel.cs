@@ -13,6 +13,37 @@ public enum StartupLocation
     RestoreSession,
     HomeFolder,
     SpecificFolder,
+
+    /// <summary>
+    /// The listing of every drive on the machine — "This PC" on Windows,
+    /// "This computer" on Linux.
+    ///
+    /// **A member of its own, because SpecificFolder could never carry it.**
+    /// That case is gated on <c>Directory.Exists</c>, and the drive listing is
+    /// reached by the virtual path <c>vaktari:computer</c>, which no directory
+    /// check could satisfy — so typing it into the startup folder box drew the
+    /// "that folder is not there" warning under the box, and the next launch
+    /// opened the home folder instead. Explorer's own startup choice is
+    /// exactly these two, This PC or Home, so the one Vaktari could not offer
+    /// was the first one a Windows user went looking for.
+    ///
+    /// Appended rather than slotted in beside HomeFolder, where it reads more
+    /// naturally. The enum is persisted: <c>SettingsJsonContext</c> writes it by
+    /// NAME today, which is what makes the declaration order free — and a member
+    /// added in the middle renumbers SpecificFolder underneath every
+    /// settings.json already written the moment that option comes off. Both
+    /// halves are pinned in Vaktari.Core.Tests.StartupLocationPersistenceTests.
+    ///
+    /// **What appending cannot buy is the NAME, and the cost of that was
+    /// measured: a settings.json saying "Computer", opened by a build without
+    /// this member, loses every preference in the file and not just this one.**
+    /// The deserializer throws on a name it does not have, JsonSettingsStore
+    /// treats an unreadable file the same as an absent one, and the next Save
+    /// writes the defaults over it — sorting, status bar, bin limits and all.
+    /// Measured in
+    /// StartupOnTheDriveListingTests.A_startup_name_this_build_does_not_have_costs_the_whole_file.
+    /// </summary>
+    Computer,
 }
 
 public enum DateStyle { Relative, Absolute }

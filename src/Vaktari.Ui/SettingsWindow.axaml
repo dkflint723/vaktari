@@ -752,6 +752,23 @@
                          FontSize="{DynamicResource FontSizeSmall}"
                          IsChecked="{Binding StartInHome}"/>
 
+            <!-- **The drive listing was reachable from everywhere but here.**
+                 The sidebar row, Up from a drive root, the breadcrumb and the
+                 path bar all went there; the startup choice offered a session,
+                 the home folder, or a directory — and the listing is not a
+                 directory, so the folder box below could not name it either.
+                 Explorer's two startup choices are This PC and Home.
+
+                 Content is bound, not written: the noun is "This PC" on
+                 Windows and "this computer" on Linux, and the label puts a word
+                 in front of it. x:Static was measured here and cannot compose
+                 that — Text="Open {x:Static core:Naming.ComputerName}" rendered
+                 those characters literally, because inside a longer string the
+                 extension is not evaluated at all. -->
+            <RadioButton Content="{Binding StartInComputerLabel}" GroupName="startup"
+                         FontSize="{DynamicResource FontSizeSmall}"
+                         IsChecked="{Binding StartInComputer}"/>
+
             <RadioButton Content="Open a specific folder" GroupName="startup"
                          FontSize="{DynamicResource FontSizeSmall}"
                          IsChecked="{Binding StartInSpecificFolder}"/>

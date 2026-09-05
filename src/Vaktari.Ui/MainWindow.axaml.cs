@@ -483,6 +483,18 @@ public partial class MainWindow : Window
                 !string.IsNullOrWhiteSpace(startup.StartupFolder)
                 && Directory.Exists(startup.StartupFolder) => startup.StartupFolder,
 
+            // **The drive listing had no way in from here.** Every other route
+            // to it — the sidebar row, Up from a drive root, its breadcrumb,
+            // typing its name in the path bar — has existed since the listing
+            // was written, and the one place that decides where a LAUNCH
+            // begins could only name a directory. Explorer opens on This PC or
+            // on Home, so this is the choice a Windows user arrives expecting.
+            //
+            // Not routed through the arm above: that one is gated on
+            // Directory.Exists, and "vaktari:computer" is not a directory, so
+            // it fell to the fallback below and opened home.
+            StartupLocation.Computer => VirtualPaths.Computer,
+
             // A configured folder that no longer exists falls back to home
             // rather than opening nothing — an unremovable empty window would
             // be a worse failure than ignoring a stale path.

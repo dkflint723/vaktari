@@ -53,7 +53,8 @@ public static class Naming
         BinName.Length == 0 ? BinName : char.ToUpperInvariant(BinName[0]) + BinName[1..];
 
     /// <summary>
-    /// What the listing of every drive is called.
+    /// What the listing of every drive is called, standing on its own — the
+    /// sidebar row, the breadcrumb, a window's displayed path.
     ///
     /// **Explorer's own words on Windows, and not on Linux.** "This PC" is what
     /// a Windows user will type into the location bar and look for in the
@@ -63,6 +64,26 @@ public static class Naming
     /// is the plain reading, and it is what this application calls it.
     /// </summary>
     public static string ComputerTitle => Platform == "windows" ? "This PC" : "This computer";
+
+    /// <summary>
+    /// The same inside a sentence: "This PC", "this computer".
+    ///
+    /// **The listing had a heading form and nothing else, and the first label
+    /// to need it mid-sentence read "Open This computer".** Every earlier use
+    /// stood alone, so the stray capital had nowhere to show; the Startup
+    /// page's radio put a word in front of the noun and it did. The bin has
+    /// carried both forms from the start for exactly this — <see cref="BinName"/>
+    /// mid-sentence, <see cref="BinTitle"/> beginning a label — and the two
+    /// platform-noun labels already on that page, "Moving files to the trash"
+    /// and "Limit the trash to a share of the disk", both take the lowercase
+    /// one.
+    ///
+    /// Windows is unchanged between the two forms, and that is the point of
+    /// branching rather than lower-casing: "This PC" is Explorer's proper noun
+    /// and keeps its capitals wherever it stands, while "this computer" is a
+    /// description and does not.
+    /// </summary>
+    public static string ComputerName => Platform == "windows" ? "This PC" : "this computer";
 
     public static void Adopt(IPlatform platform) => Adopt(platform.BinName, platform.Name);
 
