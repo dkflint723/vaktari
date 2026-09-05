@@ -2156,51 +2156,6 @@
               <MenuItem Header="Open admin terminal here"
                                       Command="{Binding ActiveTab.OpenAdminTerminalHereCommand}"
                                       IsVisible="{Binding ActiveTab.ShowAdminEntries}"/>
-              <!-- **The machine's own menu: 7-Zip, VLC, Send to, Restore
-                   previous versions.** Those are COM handlers registered by
-                   installed applications, not a list anybody can write down, so
-                   they can only be hosted.
-
-                   Behind one hover rather than merged inline, and not for
-                   tidiness: hosting runs OTHER PEOPLE'S code in this process. A
-                   slow or broken extension becomes our slow or broken menu, and
-                   confined here it can spoil this submenu instead of every
-                   right-click. Windows 11 draws the same line for the same
-                   reason.
-
-                   Built when opened, never before — SubmenuOpened rather than a
-                   binding — because building it gives every extension on the
-                   machine a turn, and no ordinary right-click should pay for
-                   that. Released when the menu closes: the ids are offsets into
-                   one live menu and mean nothing afterwards. -->
-              <!-- Named for what it IS, not for how much of it there is:
-                   these rows come from Windows and the applications installed
-                   on it, hosted here. Explorer's "Show more options" said
-                   "more" without saying whose; this says whose. -->
-              <MenuItem x:Name="ShellMenu" Header="Windows menu"
-                                      IsVisible="{Binding ActiveTab.HasShellMenu}"
-                                      ItemsSource="{Binding ActiveTab.ShellMenuItems}"
-                                      SubmenuOpened="OnShellMenuOpening">
-                              <MenuItem.ItemTemplate>
-                                <DataTemplate x:DataType="fs:ShellMenuEntry">
-                                  <TextBlock Text="{Binding Label}"/>
-                                </DataTemplate>
-                              </MenuItem.ItemTemplate>
-                              <MenuItem.Styles>
-                                <!-- A DESCENDANT selector, not a child one: the
-                                     shell's menu nests, and 7-Zip's own commands
-                                     live a level down. Anchored on the name so it
-                                     cannot match its own host — the fault that
-                                     killed the New submenu. -->
-                                <Style Selector="MenuItem#ShellMenu MenuItem" x:DataType="fs:ShellMenuEntry">
-                                  <Setter Property="ItemsSource" Value="{Binding Items}"/>
-                                  <Setter Property="IsEnabled" Value="{Binding IsEnabled}"/>
-                                  <Setter Property="Command"
-                                          Value="{Binding $parent[Window].((vm:ShellViewModel)DataContext).ActiveTab.InvokeShellEntryCommand}"/>
-                                  <Setter Property="CommandParameter" Value="{Binding}"/>
-                                </Style>
-                              </MenuItem.Styles>
-                            </MenuItem>
               <!-- **The one thing the popup could do that the listing must
                    not lose, and the thing Recent never had.** Choosing a
                    result WAS this: you were taken to its folder with the row
@@ -2226,11 +2181,94 @@
                    trash listing docks both as buttons above the column header on
                    the same IsTrashListing gate these rows carried, so the menu
                    could only ever repeat a pair of controls already on screen. -->
-              <Separator/>
+              <!-- **Ungated, this rule drew a second line against the one
+                   below it in This PC and in every search listing.** The two
+                   gates disagree there: CanShowProperties wants a selection or
+                   a real folder, HasShellMenu excludes only the bin and Recent,
+                   so with nothing picked in This PC the row between the rules
+                   was hidden and the rules met. Measured on a headless window
+                   at "vaktari:computer": two adjacent Separators reporting
+                   IsVisible true. Before the hosted row moved down here the
+                   same ungated rule was the LAST visible thing in the bin's
+                   menu — a line under the final row — so it carries the gate of
+                   the row it introduces now, the way every other rule in this
+                   menu does. -->
+              <Separator IsVisible="{Binding $parent[Window].((vm:ShellViewModel)DataContext).CanShowProperties}"/>
               <MenuItem Header="Prop_erties"
                                       Command="{Binding $parent[Window].((vm:ShellViewModel)DataContext).ShowPropertiesCommand}"
                                       IsVisible="{Binding $parent[Window].((vm:ShellViewModel)DataContext).CanShowProperties}"
                                       InputGesture="Alt+Enter"/>
+              <!-- **The machine's own menu: 7-Zip, VLC, Send to, Restore
+                   previous versions.** Those are COM handlers registered by
+                   installed applications, not a list anybody can write down, so
+                   they can only be hosted.
+
+                   Behind one hover rather than merged inline, and not for
+                   tidiness: hosting runs OTHER PEOPLE'S code in this process. A
+                   slow or broken extension becomes our slow or broken menu, and
+                   confined here it can spoil this submenu instead of every
+                   right-click. Windows 11 draws the same line for the same
+                   reason.
+
+                   Built when opened, never before — SubmenuOpened rather than a
+                   binding — because building it gives every extension on the
+                   machine a turn, and no ordinary right-click should pay for
+                   that. Released when the menu closes: the ids are offsets into
+                   one live menu and mean nothing afterwards. -->
+              <!-- **Last, below Properties, which is where Explorer keeps the
+                   same row.** It used to sit three groups higher, above Open
+                   file location and above Properties: the one row that hands
+                   the click to somebody else's code was in the middle of our
+                   own verbs, and Properties — which Windows 11 draws directly
+                   ABOVE "Show more options", with a rule between them — came
+                   after it.
+
+                   The rule that introduces it is gated on HasShellMenu, and
+                   has to be: Avalonia draws every separator it is given and
+                   collapses none, so an ungated one at the end of the menu
+                   would be a trailing line in the bin, in Recent, and in every
+                   listing on Linux, where HasShellMenu is false for want of a
+                   provider.
+
+                   **And the gate had to be made to fire before it could carry
+                   a rule.** HasShellMenu is computed from the path and nothing
+                   announced it when the path changed: measured on a headless
+                   window, a pane moved from a folder to "vaktari:trash"
+                   reported HasShellMenu false while the row and everything
+                   bound to it stayed on screen. A stale ROW was already wrong —
+                   the bin offered a menu the pane refuses to build — and a
+                   stale RULE would have been a line hanging off the bottom of
+                   the bin's menu. OnCurrentPathChanged raises it now.
+
+                   Named for what it IS, not for how much of it there is: these
+                   rows come from Windows and the applications installed on it,
+                   hosted here. Explorer's "Show more options" said "more"
+                   without saying whose; this says whose. -->
+              <Separator IsVisible="{Binding ActiveTab.HasShellMenu}"/>
+              <MenuItem x:Name="ShellMenu" Header="Windows menu"
+                                      IsVisible="{Binding ActiveTab.HasShellMenu}"
+                                      ItemsSource="{Binding ActiveTab.ShellMenuItems}"
+                                      SubmenuOpened="OnShellMenuOpening">
+                              <MenuItem.ItemTemplate>
+                                <DataTemplate x:DataType="fs:ShellMenuEntry">
+                                  <TextBlock Text="{Binding Label}"/>
+                                </DataTemplate>
+                              </MenuItem.ItemTemplate>
+                              <MenuItem.Styles>
+                                <!-- A DESCENDANT selector, not a child one: the
+                                     shell's menu nests, and 7-Zip's own commands
+                                     live a level down. Anchored on the name so it
+                                     cannot match its own host — the fault that
+                                     killed the New submenu. -->
+                                <Style Selector="MenuItem#ShellMenu MenuItem" x:DataType="fs:ShellMenuEntry">
+                                  <Setter Property="ItemsSource" Value="{Binding Items}"/>
+                                  <Setter Property="IsEnabled" Value="{Binding IsEnabled}"/>
+                                  <Setter Property="Command"
+                                          Value="{Binding $parent[Window].((vm:ShellViewModel)DataContext).ActiveTab.InvokeShellEntryCommand}"/>
+                                  <Setter Property="CommandParameter" Value="{Binding}"/>
+                                </Style>
+                              </MenuItem.Styles>
+                            </MenuItem>
             </ContextMenu>
           </ItemsControl.ContextMenu>
 

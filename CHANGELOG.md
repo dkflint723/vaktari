@@ -717,6 +717,19 @@ should not be trusted for compatibility yet.
 
 ### Changed
 
+- **The *Windows menu* is the last row of the right-click menu, under
+  *Properties*.** It sat three groups higher, above *Open file location* and
+  above *Properties* — so the one row that opens onto whatever the machine's
+  installed applications registered was in the middle of Vaktari's own verbs,
+  and the row Windows 11 draws directly above its *Show more options* came
+  after it. The order now matches the menu it is hosting: everything Vaktari
+  offers, a rule, then the machine's own. Both rules down there now appear only
+  with the row underneath them: the one above *Properties* used to be drawn
+  even where *Properties* was not, which left a line under the last row of the
+  Recycle Bin's menu. And the *Windows menu* itself goes away where it never
+  belonged — the bin and *Recent* went on offering it after you navigated to
+  them, and a row in either is not where its file actually is.
+
 - **Deleting on Windows no longer reads the whole Recycle Bin twice.** Working
   out what a delete actually put in the bin means comparing it before and after,
   and both ends were doing it by listing every item on every drive — opening and

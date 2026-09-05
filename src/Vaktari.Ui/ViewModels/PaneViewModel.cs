@@ -3424,6 +3424,15 @@ public sealed partial class PaneViewModel : ObservableObject, IDisposable
             // announced for this: without the line the row keeps whatever
             // visibility the previous listing left it with.
             OnPropertyChanged(nameof(CanGoToLocation));
+
+            // **The bin went on offering "Windows menu" after the pane left
+            // the folder it was in.** Same shape as the line above, and worse
+            // for being a row that hands the click to somebody else's code:
+            // HasShellMenu is computed from the path, IsTrashListing being
+            // raised is not this being raised, and measured on a headless
+            // window at "vaktari:trash" the pane answered false while the row
+            // — and the rule bound to the same gate — stayed on screen.
+            OnPropertyChanged(nameof(HasShellMenu));
             OnPropertyChanged(nameof(SearchQueryText));
             OnPropertyChanged(nameof(CanScopeSearch));
             OnPropertyChanged(nameof(SearchScopedHere));

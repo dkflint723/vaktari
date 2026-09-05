@@ -21,7 +21,8 @@ namespace Vaktari.Ui.Tests;
 /// menu was the arrow keys, one row at a time, down a listing menu that is
 /// thirty-nine rows long. Avalonia does not offer a type-to-select fallback in
 /// menus: with no marker in the header there is no key at all, and "Properties"
-/// — the last row in that menu — was reachable only by walking to it. (The two
+/// — then the last row in that menu, before "Windows menu" moved below it — was
+/// reachable only by walking to it. (The two
 /// counts are measured: ninety-one was the number of rows with a literal header
 /// that <see cref="Menus"/> reached across both markup files, the same at the
 /// commit before that change as at it, and thirty-nine is the listing menu's
