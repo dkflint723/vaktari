@@ -770,6 +770,14 @@ should not be trusted for compatibility yet.
 
 ### Fixed
 
+- **Icons and thumbnails are sharp on a high-DPI display.** Every picture in a
+  listing was asked for in layout units and drawn into real pixels — so on a
+  screen at 150%, a 32-unit icon was a 32-pixel image stretched across 48
+  pixels, and on a 4K laptop at 200% it was stretched across 64. That covered
+  nearly everything a file manager draws: every icon and every thumbnail, in
+  all three view modes. They are now asked for at the size they will actually
+  be drawn. Nothing changes on a display at 100%.
+
 - **Searching without a scope now covers what the box says it covers.** When
   the *Only in …* box is off — or greyed out, because you are searching from
   This PC or from another search — Vaktari said it was "searching everywhere"

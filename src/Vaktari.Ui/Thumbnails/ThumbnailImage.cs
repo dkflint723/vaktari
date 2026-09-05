@@ -105,8 +105,11 @@ public static class ThumbnailImage
             // safe to query.
             var token = cts.Token;
 
+            // In DEVICE pixels, the same as the icon under it — fixing one and
+            // not the other would leave a crisp icon behind a soft picture in
+            // the same cell. See DeviceSize.
             var bitmap = await ThumbnailLoader
-                .LoadAsync(path, image.GetValue(SizeProperty), token)
+                .LoadAsync(path, DeviceSize.For(image, image.GetValue(SizeProperty)), token)
                 .ConfigureAwait(true);
 
             if (token.IsCancellationRequested) return;

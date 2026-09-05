@@ -77,7 +77,11 @@ public static class RowIcon
                 image.IsVisible = true;
             }
 
-            var size = image.GetValue(SizeProperty);
+            // In DEVICE pixels. The markup asks for 32, 48 or 64 layout units
+            // and the shell answers in pixels, so on a display at 150% a 32
+            // was stretched over 48 pixels of screen — see DeviceSize, which
+            // carries the measurement.
+            var size = DeviceSize.For(image, image.GetValue(SizeProperty));
 
             // **The desktop's own icons, when asked for.** Checked before the
             // theme provider because it answers a different question — per
