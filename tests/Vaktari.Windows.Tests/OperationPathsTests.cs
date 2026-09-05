@@ -89,6 +89,49 @@ public sealed class OperationPathsTests
         Assert.Contains(doomed, handle.Paths);
     }
 
+    /// <summary>
+    /// **The bar offered Pause and Cancel for an operation that is one blocking
+    /// call.** The whole batch goes through a single synchronous
+    /// SHFileOperation: there is no loop between items to await the pause gate
+    /// in, and the shell reads no cancellation token. So Pause set a flag
+    /// nothing would look at and Cancel cancelled a token nobody was passing,
+    /// and the two buttons accepted a press and did nothing.
+    ///
+    /// Through <c>RecycleOverride</c>, like the test above it, so a green run
+    /// leaves nothing in the developer's own bin.
+    /// </summary>
+    [WindowsFact]
+    public async Task A_recycle_says_it_cannot_be_paused_or_cancelled()
+    {
+        using var tree = new TempTree();
+        var doomed = tree.Write("one.txt");
+
+        var ops = new WindowsFileOperations
+        {
+            Bin = null,
+            RecycleOverride = _ => new RecycleResult(0, false),
+        };
+
+        var handle = await Settled(ops.Trash([doomed]));
+
+        Assert.False(handle.CanPause);
+        Assert.False(handle.CanCancel);
+    }
+
+    /// <summary>A permanent delete walks the paths itself and awaits the gate
+    /// between them, so it keeps both.</summary>
+    [WindowsFact]
+    public async Task A_permanent_delete_keeps_both()
+    {
+        using var tree = new TempTree();
+        var doomed = tree.Write("one.txt");
+
+        var handle = await Settled(new WindowsFileOperations().Delete([doomed]));
+
+        Assert.True(handle.CanPause);
+        Assert.True(handle.CanCancel);
+    }
+
     [WindowsFact]
     public async Task A_delete_reports_what_it_is_destroying()
     {

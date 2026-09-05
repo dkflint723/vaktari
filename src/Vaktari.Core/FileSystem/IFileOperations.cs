@@ -71,6 +71,27 @@ public interface IOperationHandle
     void Resume();
     void Cancel();
 
+    /// <summary>
+    /// Whether stopping this half way is a thing that can be asked for.
+    ///
+    /// **Both buttons were offered for an operation that is one blocking
+    /// call.** Windows recycles a whole batch through a single synchronous
+    /// SHFileOperation, so there is no loop between items to check a gate in
+    /// and no token the shell will read: pressing Pause set a flag nothing
+    /// would ever look at, and pressing Cancel cancelled a token nobody was
+    /// passing. The buttons did nothing and gave no sign of it, which reads as
+    /// the application being broken rather than as the operation being
+    /// uninterruptible.
+    ///
+    /// Default true, because every engine written in this codebase awaits the
+    /// gate between items and inside the byte loop. It is the operation that
+    /// hands its work to somebody else's API that has to say otherwise.
+    /// </summary>
+    bool CanPause => true;
+
+    /// <inheritdoc cref="CanPause"/>
+    bool CanCancel => true;
+
     Task Completion { get; }
 
     /// <summary>

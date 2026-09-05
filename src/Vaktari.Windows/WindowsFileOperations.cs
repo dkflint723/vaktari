@@ -147,7 +147,18 @@ public sealed class WindowsFileOperations : IFileOperations
 
     public IOperationHandle Trash(IReadOnlyList<string> paths)
     {
-        var handle = new OperationHandle { Paths = paths };
+        // **Neither, and the recycle below is why.** The whole batch goes
+        // through ONE SHFileOperation, which blocks until the shell is done
+        // with it: there is no loop between items to await the pause gate in,
+        // and the shell reads no cancellation token. The shell's own progress
+        // dialog carries a Cancel of its own for a batch big enough to get one,
+        // and pressing THAT comes back as Aborted a few lines down.
+        var handle = new OperationHandle
+        {
+            Paths = paths,
+            CanPause = false,
+            CanCancel = false,
+        };
 
         _ = Task.Run(() =>
         {

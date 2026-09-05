@@ -1731,6 +1731,11 @@ public sealed partial class ShellViewModel : ObservableObject, IDisposable
     {
         OnPropertyChanged(nameof(ShowOperationBar));
         OnPropertyChanged(nameof(OperationFinished));
+
+        // The two buttons answer from the handle, so they have to be re-asked
+        // when the handle changes -- including to null, where both go false.
+        CancelOperationCommand.NotifyCanExecuteChanged();
+        PauseOperationCommand.NotifyCanExecuteChanged();
     }
 
     /// <summary>
@@ -2413,7 +2418,19 @@ public sealed partial class ShellViewModel : ObservableObject, IDisposable
 
     [RelayCommand] private void NextTab() => ActiveGroup.Cycle(1);
     [RelayCommand] private void PreviousTab() => ActiveGroup.Cycle(-1);
-    [RelayCommand] private void CancelOperation() => ActiveOperation?.Cancel();
+    [RelayCommand(CanExecute = nameof(CanCancelOperation))]
+    private void CancelOperation() => ActiveOperation?.Cancel();
+
+    /// <summary>
+    /// **A button that does nothing reads as the application being broken.**
+    /// Windows recycles a whole batch through one blocking SHFileOperation, so
+    /// there is nothing to cancel from out here; the handle says so and the
+    /// button greys out rather than accepting a press that goes nowhere.
+    /// </summary>
+    private bool CanCancelOperation() => ActiveOperation?.CanCancel ?? false;
+
+    /// <inheritdoc cref="CanCancelOperation"/>
+    private bool CanPauseOperation() => ActiveOperation?.CanPause ?? false;
 
     /// <summary>
     /// Pauses or resumes the running operation.
@@ -2426,7 +2443,7 @@ public sealed partial class ShellViewModel : ObservableObject, IDisposable
     /// reorder cannot be retrofitted onto a Task", which was true and was the
     /// reason a feature nobody could use had been paid for in full.
     /// </summary>
-    [RelayCommand]
+    [RelayCommand(CanExecute = nameof(CanPauseOperation))]
     private void PauseOperation()
     {
         if (ActiveOperation is not { } operation) return;
@@ -3072,9 +3089,19 @@ public sealed partial class ShellViewModel : ObservableObject, IDisposable
                 // quick background one overwrites the foreground one's numbers.
                 if (!ReferenceEquals(ActiveOperation, handle)) return;
 
-                OperationStatus = p.ItemsTotal <= 1 && p.BytesTotal == 0
-                    ? p.CurrentItem ?? ""
-                    : $"{p.ItemsDone}/{p.ItemsTotal}  {ByteSize.Format(p.BytesDone)}/{ByteSize.Format(p.BytesTotal)}  {p.CurrentItem}";
+                // **"0/5  0 B/0 B" is what a five-item trash read.** The
+                // bytes were dropped only when the item count was also one or
+                // less, so a batch operation that reports no sizes -- which is
+                // every trash and every permanent delete, both of which open
+                // with totalBytes: 0 -- drew two figures that were zero at the
+                // start, zero in the middle and zero at the end. The count is
+                // the only real number there, and now it is the only one shown.
+                OperationStatus = (p.BytesTotal == 0
+                    ? p.ItemsTotal <= 1
+                        ? p.CurrentItem ?? ""
+                        : $"{p.ItemsDone}/{p.ItemsTotal}  {p.CurrentItem}"
+                    : $"{p.ItemsDone}/{p.ItemsTotal}  {ByteSize.Format(p.BytesDone)}/{ByteSize.Format(p.BytesTotal)}  {p.CurrentItem}")
+                    .TrimEnd();
 
                 rate.Observe(p.BytesDone);
 

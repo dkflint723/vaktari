@@ -138,6 +138,16 @@ public sealed class OperationHandle : IOperationHandle
         await Task.Run(() => _gate.Wait(_cts.Token), _cts.Token).ConfigureAwait(false);
     }
 
+    /// <summary>
+    /// Answered at construction, because it is a property of the engine that
+    /// opened the handle rather than of the moment. See
+    /// <see cref="IOperationHandle.CanPause"/> for what said otherwise.
+    /// </summary>
+    public bool CanPause { get; init; } = true;
+
+    /// <inheritdoc cref="CanPause"/>
+    public bool CanCancel { get; init; } = true;
+
     public void Pause()
     {
         if (State != OperationState.Running) return;

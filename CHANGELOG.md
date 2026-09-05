@@ -13,6 +13,16 @@ should not be trusted for compatibility yet.
 
 ### Added
 
+- **The transfer bar stops reporting sizes it does not have, and stops offering
+  buttons that do nothing.** Sending five files to the bin read "0/5  0 B/0 B"
+  from beginning to end: nothing measures files on their way to the recycle bin,
+  so both byte figures were zero at the start, in the middle and at the end. The
+  count is the only real number there and is now the only one shown. And on
+  Windows the whole batch is recycled by one blocking call into the shell, which
+  can be neither paused nor cancelled from outside it — so Pause and Cancel
+  accepted a press and did nothing. They grey out for that operation now, and
+  stay live for everything else, where they have always worked.
+
 - **"Create shortcut" is on the right-click menu.** Both platforms could already
   make one, and the only thing that ever asked was the menu a right-button drag
   puts up — a gesture nothing in the window mentions — so there was no way to ask
