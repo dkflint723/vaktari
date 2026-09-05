@@ -75,21 +75,67 @@ public sealed class PathCompleter
         return result;
     }
 
+    /// <summary>
+    /// Every folder Tab would offer for <paramref name="text"/>, as full paths
+    /// in the order Tab hands them out, at most <paramref name="limit"/> of
+    /// them.
+    ///
+    /// **The candidate list was private, so the box could show one candidate at
+    /// a time and only to somebody who already knew to press Tab.** Everything
+    /// a dropdown needs was worked out on the first press and thrown away on
+    /// the last.
+    ///
+    /// Static, and it enumerates again rather than handing out the cycle's own
+    /// list. A cycle in progress is anchored to the directory and fragment it
+    /// was built for, while the caller here asks on every keystroke: handing
+    /// out the live list would show a stale offer the moment another letter was
+    /// typed, and rebuilding it to answer would reset <c>_index</c> — so Tab
+    /// would stop advancing and re-offer the first candidate forever. The cost
+    /// is one directory read per keystroke, which is the read Tab already does
+    /// per press.
+    /// </summary>
+    public static IReadOnlyList<string> Suggestions(string text, int limit)
+    {
+        var (directory, partial) = Split(text);
+
+        return Candidates(directory, partial)
+            .Take(limit)
+            .Select(name => Join(directory, name))
+            .ToList();
+    }
+
     private void Rebuild(string text)
     {
         _index = -1;
-        _matches = [];
 
         var (directory, partial) = Split(text);
 
         _directory = directory;
         _partial = partial;
+        _matches = Candidates(directory, partial);
+    }
 
-        if (directory.Length == 0) return;
+    /// <summary>
+    /// The child folders of <paramref name="directory"/> that
+    /// <paramref name="partial"/> could grow into, in the order they are
+    /// offered.
+    ///
+    /// One place, shared by the cycle and by the dropdown, so what Tab does and
+    /// what the list shows cannot drift apart — otherwise each would carry its
+    /// own copy of the hidden-folder rule and of the ordering.
+    /// </summary>
+    private static List<string> Candidates(string directory, string partial)
+    {
+        // Moved here unchanged from Rebuild, and a fast path rather than a
+        // rule: MEASURED, deleting it leaves every test green, because
+        // EnumerateDirectories("") throws and the catch below answers with the
+        // same empty list. It is kept because that is the answer without an
+        // exception, on a method the box now calls once per keystroke.
+        if (directory.Length == 0) return [];
 
         try
         {
-            _matches = Directory.EnumerateDirectories(directory)
+            return Directory.EnumerateDirectories(directory)
                 .Select(Path.GetFileName)
                 .OfType<string>()
                 .Where(name => name.StartsWith(partial, StringComparison.OrdinalIgnoreCase))
@@ -103,6 +149,7 @@ public sealed class PathCompleter
         catch
         {
             // Unreadable or missing directory: nothing to offer.
+            return [];
         }
     }
 

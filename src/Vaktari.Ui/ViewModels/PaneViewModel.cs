@@ -98,9 +98,33 @@ public sealed partial class PaneViewModel : ObservableObject, IDisposable
         _clipboard = clipboard;
         _scripts = scripts;
 
+        // **The address bar's recent-locations menu is computed, and both of
+        // the things it is computed FROM change behind its back.** The store
+        // answers Record, Forget and ForgetAll; the setting decides whether the
+        // store is consulted at all. Neither announced itself, so turning
+        // "remember recent places" off — or ticking forget-on-close, which
+        // empties the store as it saves — left the chevron standing on the
+        // toolbar with a full menu of everywhere the user had been, which is
+        // the opposite of what the setting was ticked for.
+        //
+        // Held in a field rather than re-read at Dispose: Recents is a settable
+        // static, and unsubscribing from whatever it happens to be later would
+        // leave the handler on the store it was actually attached to.
+        _recents = Recents;
+
+        if (_recents is not null) _recents.Changed += OnRecentPlacesChanged;
+
+        Settings.AppSettings.Changed += OnRecentPlacesChanged;
+
         RefreshScripts();
         RefreshTemplates();
     }
+
+    /// <summary>The store this pane's menu listens to, remembered so the
+    /// handler comes off the same one it went on.</summary>
+    private readonly IRecentStore? _recents;
+
+    private void OnRecentPlacesChanged(object? sender, EventArgs e) => NotifyRecentPlaces();
 
 
 
@@ -2316,6 +2340,10 @@ public sealed partial class PaneViewModel : ObservableObject, IDisposable
         // "recent locations" at the top of recent locations.
         if (IsLoaded && !VirtualPaths.IsVirtual(path))
         {
+            // The address bar's menu is built from this store, and hears about
+            // the write through the store's own Changed rather than from a
+            // notice raised here: Forget and ForgetAll change the same list and
+            // do not come through this line at all.
             Recording?.Record(path, RecentKind.Folder);
         }
     }
@@ -4442,6 +4470,15 @@ public sealed partial class PaneViewModel : ObservableObject, IDisposable
 
     public void Dispose()
     {
+        // **Both static, and both outlive every pane.** A tab closed while the
+        // window stays open would otherwise keep answering settings saves and
+        // store writes forever, and answering them by posting to a dispatcher
+        // — which in the tests is a dispatcher the headless session that made
+        // it has already finished with.
+        if (_recents is not null) _recents.Changed -= OnRecentPlacesChanged;
+
+        Settings.AppSettings.Changed -= OnRecentPlacesChanged;
+
         _vcsRefresh?.Stop();
 
         // **Every timer, or a tick lands on a pane that is gone.** The settle

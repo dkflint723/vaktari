@@ -1,9 +1,21 @@
+using Avalonia.Threading;
+using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using System.Collections.ObjectModel;
+using System.Windows.Input;
 using Vaktari.Core;
 using Vaktari.Core.FileSystem;
 
 namespace Vaktari.Ui.ViewModels;
+
+/// <summary>
+/// One folder the path box is offering, as a row under it.
+///
+/// <c>FullPath</c> keeps the trailing separator the completer puts on every
+/// offer — it is what says "and you can keep typing inside this" — and
+/// <c>Name</c> is the leaf, which is the only part that differs between rows.
+/// </summary>
+public sealed record PathSuggestion(string FullPath, string Name, ICommand Apply);
 
 /// <summary>
 /// The path bar: the clickable ancestors, and the text field it becomes when
@@ -46,6 +58,113 @@ public sealed partial class PaneViewModel
     {
         // Typing invalidates the candidate list; completing does not.
         if (!_completingPath) _completer.Reset();
+
+        // **PathText is written from a pool thread, and this collection is
+        // bound.** LoadListingAsync writes it in its synchronous prologue, and
+        // undo and redo reach that prologue off the UI thread — they await the
+        // refresh with ConfigureAwait(false). So an undo performed while the
+        // box was open rebuilt an ItemsSource, and read a directory to do it,
+        // on whichever pool thread happened to be carrying the operation.
+        // Measured at two CollectionChanged notifications off the UI thread per
+        // undo, in AddressBarSuggestionTests.
+        //
+        // The same treatment OnCurrentPathChanged already gives Breadcrumbs,
+        // for the same reason — except that this one stays synchronous when it
+        // is already on the right thread, because typing must narrow the offer
+        // in the same turn the keystroke arrives.
+        //
+        // PathText rather than value on the posted route: by the time it runs,
+        // the newest write is the one that should be on screen.
+        if (!Dispatcher.UIThread.CheckAccess())
+        {
+            Dispatcher.UIThread.Post(() => RebuildPathSuggestions(PathText));
+            return;
+        }
+
+        // Both ways round: a keystroke narrows the offer, and a Tab that lands
+        // inside a folder turns the offer into that folder's own children.
+        RebuildPathSuggestions(value);
+    }
+
+    // ---- the completion list -------------------------------------------
+
+    /// <summary>
+    /// How many folders the dropdown shows. Deep enough to cover an ordinary
+    /// folder's worth of children, short enough that a list typed over the
+    /// listing does not bury it.
+    /// </summary>
+    private const int SuggestionRows = 10;
+
+    /// <summary>
+    /// What the typed path could grow into, as rows under the box.
+    ///
+    /// **The completer worked these out on every Tab and handed back exactly
+    /// one of them.** The box offered no way to see the alternatives, so the
+    /// only route to the second candidate was to press Tab again and read the
+    /// text — and the only route to knowing Tab did anything at all was the
+    /// tooltip.
+    /// </summary>
+    public ObservableCollection<PathSuggestion> PathSuggestions { get; } = new();
+
+    /// <summary>
+    /// Whether the dropdown is showing. Driven only from
+    /// <see cref="RebuildPathSuggestions"/> and
+    /// <see cref="ClosePathSuggestions"/>, so it can never stand open over an
+    /// empty list.
+    /// </summary>
+    [ObservableProperty] private bool _isPathSuggestionsOpen;
+
+    /// <summary>
+    /// Re-offers for <paramref name="text"/>.
+    ///
+    /// **Gated on IsPathEditing, because PathText is written on the way in and
+    /// on the way out of editing.** BeginEditPath fills the box before it opens
+    /// it and RevertPathText refills it before it closes it — so without the
+    /// gate the dropdown sprang open under crumbs that were not even in edit
+    /// mode, and Ctrl+L opened a list nobody had typed a character to ask for.
+    ///
+    /// That one gate and no other: an empty box needs no test of its own, since
+    /// nothing to search in already answers with an empty offer.
+    /// </summary>
+    private void RebuildPathSuggestions(string text)
+    {
+        PathSuggestions.Clear();
+
+        if (IsPathEditing)
+        {
+            foreach (var folder in PathCompleter.Suggestions(text, SuggestionRows))
+            {
+                // Picking a row types it, which is what Tab does — NOT a
+                // navigation. The offer ends in a separator, so the write comes
+                // back through here and the list becomes the chosen folder's
+                // own children: clicking down a tree is then the same gesture
+                // repeated, and Enter is still the one key that goes anywhere.
+                //
+                // Written plainly rather than through the completing guard: a
+                // row was picked rather than cycled to, so the next Tab should
+                // start again from what is now in the box.
+                PathSuggestions.Add(new PathSuggestion(
+                    folder,
+                    PathRules.LeafName(folder),
+                    new RelayCommand(() => PathText = folder)));
+            }
+        }
+
+        IsPathSuggestionsOpen = PathSuggestions.Count > 0;
+    }
+
+    /// <summary>
+    /// Puts the dropdown away.
+    ///
+    /// Called by both routes out of the box rather than left to the text
+    /// changing: NavigateToPathText reads PathText and never writes it, so
+    /// nothing would have closed the list behind a path that had just been
+    /// navigated to.
+    /// </summary>
+    private void ClosePathSuggestions()
+    {
+        PathSuggestions.Clear();
+        IsPathSuggestionsOpen = false;
     }
 
     [RelayCommand]
@@ -169,6 +288,7 @@ public sealed partial class PaneViewModel
     public Task NavigateToPathText()
     {
         IsPathEditing = false;
+        ClosePathSuggestions();
 
         if (string.IsNullOrWhiteSpace(PathText)) return Task.CompletedTask;
 
@@ -303,5 +423,6 @@ public sealed partial class PaneViewModel
 
         PathText = CurrentPath;
         IsPathEditing = false;
+        ClosePathSuggestions();
     }
 }

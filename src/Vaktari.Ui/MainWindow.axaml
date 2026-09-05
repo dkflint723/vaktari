@@ -991,6 +991,48 @@
                     StrokeThickness="1.2" StrokeLineCap="Round" StrokeJoin="Round"
                     Width="16" Height="16" Stretch="Uniform"/>
             </Button>
+
+            <!-- **Back and Forward were the only history the window had, and
+                 both are per-tab and per-walk.** A folder opened in another tab,
+                 or before the last restart, was in neither — and going back and
+                 then somewhere else discards the forward stack, so a place left
+                 five minutes ago could only be reached by typing it again. The
+                 recent-folder store has recorded every user-initiated
+                 navigation since it was written and nothing but the sidebar's
+                 virtual listing ever read it.
+
+                 Between Forward and Up, which is where Explorer has kept its
+                 recent-locations chevron for four versions.
+
+                 Flyout rather than ContextFlyout: this button exists to be
+                 left-clicked, and it has no other action to take first.
+
+                 Hidden rather than disabled when the store is empty or the
+                 setting that fills it is off — a disabled control asks the
+                 reader to work out what would enable it, and the answer here is
+                 "go somewhere", which they are about to do anyway. -->
+            <Button DockPanel.Dock="Left" Width="22"
+                    Background="Transparent" BorderThickness="0"
+                    IsVisible="{Binding ActiveTab.HasRecentPlaces}"
+                    AutomationProperties.Name="Recent locations"
+                    ToolTip.Tip="Recent locations">
+              <Button.Flyout>
+                <MenuFlyout ItemsSource="{Binding ActiveTab.RecentPlaces}">
+                  <MenuFlyout.ItemContainerTheme>
+                    <ControlTheme TargetType="MenuItem" BasedOn="{StaticResource {x:Type MenuItem}}"
+                                  x:DataType="vm:RecentPlace">
+                      <Setter Property="Header" Value="{Binding Name}"/>
+                      <Setter Property="Command" Value="{Binding Open}"/>
+                      <Setter Property="ToolTip.Tip" Value="{Binding FullPath}"/>
+                    </ControlTheme>
+                  </MenuFlyout.ItemContainerTheme>
+                </MenuFlyout>
+              </Button.Flyout>
+              <Path Data="M6 10 L12 16 L18 10" Stroke="{DynamicResource ViewText}"
+                    StrokeThickness="1.2" StrokeLineCap="Round" StrokeJoin="Round"
+                    Width="16" Height="16" Stretch="Uniform"/>
+            </Button>
+
             <Button DockPanel.Dock="Left" Width="30" Margin="0,0,6,0"
                     Background="Transparent" BorderThickness="0"
                     AutomationProperties.Name="Up one folder  (alt+up)" ToolTip.Tip="Up one folder  (alt+up)"
@@ -1216,8 +1258,9 @@
               <TextBox x:Name="PathBox"
                        Text="{Binding ActiveTab.PathText}"
                        IsVisible="{Binding ActiveTab.IsPathEditing}"
-                       ToolTip.Tip="Tab completes · Enter goes · Esc or click away cancels&#10;%ProgramFiles%, %SystemDrive% and ~ are understood"
+                       ToolTip.Tip="Tab completes · Enter goes · Esc or click away cancels&#10;Matching folders are listed below as you type&#10;%ProgramFiles%, %SystemDrive% and ~ are understood"
                        local:FocusBehavior.LostFocusCommand="{Binding ActiveTab.RevertPathTextCommand}"
+                       local:FocusBehavior.CompanionPopup="{Binding #PathSuggestionList}"
                        local:FocusBehavior.FocusOnVisible="True"
                        local:FocusBehavior.FocusWhen="{Binding ActiveTab.FocusPathBox}"
                        FontFamily="{DynamicResource AppMonoFamily}" FontSize="{DynamicResource FontSizeSmall}">
@@ -1228,6 +1271,71 @@
                               Command="{Binding ActiveTab.RevertPathTextCommand}"/>
                 </TextBox.KeyBindings>
               </TextBox>
+
+              <!-- **The completer had every candidate and the box showed one.**
+                   Tab has extended a typed path since it was written, one offer
+                   per press, with nothing on screen to say there were others or
+                   that the key did anything at all — the only notice was a line
+                   in a tooltip.
+
+                   A Popup rather than a panel in the bar: this list has to draw
+                   OVER the listing, and the bar is a fixed 40px band.
+
+                   Light dismiss is off on purpose. The list closes when the
+                   offer empties or the box closes, and both are decided by the
+                   view model; a light dismiss would close it behind the view
+                   model's back and leave IsPathSuggestionsOpen saying it was
+                   open. **So this popup cannot dismiss itself, and IsOpen is
+                   one-way: the only thing that ever closes it is the view model
+                   writing false.** The box's own two ways out both do that, and
+                   nothing else may be relied on to.
+
+                   The box names this popup as its companion, or clicking a row
+                   would count as focus leaving the box — which reverts the edit
+                   and hides the field, out from under the list being clicked.
+                   Measured: moving the keyboard into the popup DOES raise the
+                   box's LostFocus. The companion rule is what makes that not a
+                   cancel; it defers the decision by one dispatcher turn rather
+                   than to this popup closing, which — see above — it could not.
+                   Focusable="False" on the row is the other half: the click
+                   should not move the caret out of the path being typed. -->
+              <Popup x:Name="PathSuggestionList"
+                     PlacementTarget="{Binding #PathBox}"
+                     Placement="BottomEdgeAlignedLeft"
+                     IsLightDismissEnabled="False"
+                     IsOpen="{Binding ActiveTab.IsPathSuggestionsOpen, Mode=OneWay}">
+                <Border MinWidth="260" MaxHeight="280" Padding="3" CornerRadius="4"
+                        Background="{DynamicResource ViewBackground}"
+                        BorderThickness="1" BorderBrush="{DynamicResource SeparatorColour}">
+                  <ScrollViewer HorizontalScrollBarVisibility="Disabled">
+                    <ItemsControl ItemsSource="{Binding ActiveTab.PathSuggestions}">
+                      <ItemsControl.ItemTemplate>
+                        <DataTemplate x:DataType="vm:PathSuggestion">
+                          <!-- The name goes in a TextBlock, NOT in Content, for
+                               the reason the crumbs give one screen up: a
+                               Button renders Content through AccessText, which
+                               eats "_" and underlines the next letter, so
+                               "git_projects" would draw as "gitprojects". A
+                               folder name is data, never a label to be parsed
+                               for mnemonics. -->
+                          <Button Command="{Binding Apply}"
+                                  Focusable="False"
+                                  HorizontalAlignment="Stretch"
+                                  HorizontalContentAlignment="Left"
+                                  Background="Transparent" BorderThickness="0"
+                                  Padding="7,3" CornerRadius="3"
+                                  AutomationProperties.Name="{Binding Name}"
+                                  ToolTip.Tip="{Binding FullPath}">
+                            <TextBlock Text="{Binding Name}"
+                                       FontFamily="{DynamicResource AppMonoFamily}"
+                                       FontSize="{DynamicResource FontSizeSmall}"/>
+                          </Button>
+                        </DataTemplate>
+                      </ItemsControl.ItemTemplate>
+                    </ItemsControl>
+                  </ScrollViewer>
+                </Border>
+              </Popup>
             </Panel>
           </DockPanel>
         </Border>

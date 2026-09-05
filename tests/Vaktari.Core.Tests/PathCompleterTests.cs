@@ -175,4 +175,89 @@ public sealed class PathCompleterTests : IDisposable
         if (completed is not null)
             Assert.StartsWith(@"C:\", completed, StringComparison.OrdinalIgnoreCase);
     }
+
+    // ---- and the same candidates, all at once -------------------------------
+
+    /// <summary>
+    /// **Every candidate was computed and one was handed back.** A dropdown
+    /// needs the list Tab already built, in the order Tab offers it — so this
+    /// is the same three folders, as full paths, rather than a fresh idea about
+    /// what matches.
+    /// </summary>
+    [Fact]
+    public void Everything_tab_would_offer_can_be_asked_for_at_once()
+    {
+        var offered = PathCompleter.Suggestions(_root + Slash + "Ga", 10);
+
+        Assert.Equal(
+            ["Galaxy", "Games"],
+            offered.Select(p => Path.GetFileName(p.TrimEnd(Slash, '/'))));
+
+        // Full paths, not names: the caller puts one straight into the box.
+        Assert.All(offered, p => Assert.StartsWith(_root, p, StringComparison.Ordinal));
+    }
+
+    /// <summary>The hidden-folder rule is the completer's, and asking for the
+    /// list must not be a way around it.</summary>
+    [Fact]
+    public void A_dotted_folder_still_has_to_be_asked_for()
+    {
+        Assert.DoesNotContain(
+            PathCompleter.Suggestions(_root + Slash, 10),
+            p => p.Contains(".hidden", StringComparison.Ordinal));
+
+        Assert.Contains(
+            PathCompleter.Suggestions(_root + Slash + ".h", 10),
+            p => p.Contains(".hidden", StringComparison.Ordinal));
+    }
+
+    /// <summary>
+    /// Capped, because the caller is a dropdown and a folder can hold thousands
+    /// of children. A list that has to be scrolled past the window's edge is
+    /// not an offer.
+    /// </summary>
+    [Fact]
+    public void The_offer_stops_at_what_was_asked_for()
+        => Assert.Equal(2, PathCompleter.Suggestions(_root + Slash, 2).Count);
+
+    /// <summary>
+    /// **The reason this is static rather than a reader on the cycle's own
+    /// list.** The box asks on every keystroke, and a Tab cycle is anchored to
+    /// the directory and fragment it was built for — so an ask that rebuilt
+    /// that list would reset the cycle position, and Tab would re-offer the
+    /// first candidate forever instead of advancing.
+    ///
+    /// **This is a GUARD: it cannot fail while Suggestions is static**, because
+    /// a static method has no cycle to reach. It exists to fail on the day
+    /// somebody moves it onto the instance to save a directory read — which is
+    /// exactly the change that looks like an optimisation and is not.
+    /// </summary>
+    [Fact]
+    public void Asking_what_is_on_offer_does_not_disturb_a_cycle_in_progress()
+    {
+        var completer = new PathCompleter();
+
+        var first = completer.Complete(_root + Slash + "Ga");
+
+        PathCompleter.Suggestions(_root + Slash + "Ga", 10);
+        PathCompleter.Suggestions(first!, 10);
+
+        var second = completer.Complete(first!);
+
+        Assert.NotNull(first);
+        Assert.NotNull(second);
+        Assert.NotEqual(first, second);
+    }
+
+    /// <summary>Nothing to search in is an empty offer rather than a guess at
+    /// the working directory — and asking for none of them is none of them,
+    /// which is the cap answering at its floor rather than a separate rule
+    /// about it.</summary>
+    [Fact]
+    public void Nothing_to_search_in_offers_nothing()
+    {
+        Assert.Empty(PathCompleter.Suggestions("", 10));
+        Assert.Empty(PathCompleter.Suggestions(_root + Slash + "Zzz", 10));
+        Assert.Empty(PathCompleter.Suggestions(_root + Slash, 0));
+    }
 }

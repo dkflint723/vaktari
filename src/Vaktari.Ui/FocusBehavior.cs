@@ -1,6 +1,7 @@
 using System.Windows.Input;
 using Avalonia;
 using Avalonia.Controls;
+using Avalonia.Controls.Primitives;
 using Avalonia.Input;
 using Avalonia.Interactivity;
 using Avalonia.Threading;
@@ -146,6 +147,33 @@ public static class FocusBehavior
     public static ICommand? GetLostFocusCommand(Control control)
         => control.GetValue(LostFocusCommandProperty);
 
+    /// <summary>
+    /// A popup that belongs to this control, so the keyboard being inside it is
+    /// not the keyboard having left.
+    ///
+    /// **The address bar's own completion list would have destroyed the address
+    /// bar.** The box reverts its edit and hides itself the moment focus goes
+    /// elsewhere — that is how clicking away cancels — and MEASURED, in
+    /// AddressBarSuggestionTests: moving the keyboard into the popup raises the
+    /// box's LostFocus and leaves <c>IsFocused</c> false, so a row click read
+    /// as "gone" and the field collapsed back to breadcrumbs out from under the
+    /// list, taking the typed path with it. That is the identical fault the
+    /// context menu had one paragraph below.
+    ///
+    /// A property rather than a search of the visual tree: a popup is NOT in
+    /// the box's tree — that is the whole reason it can draw over the listing —
+    /// so nothing about the control itself can be asked whether a given popup
+    /// is its own.
+    /// </summary>
+    public static readonly AttachedProperty<Popup?> CompanionPopupProperty =
+        AvaloniaProperty.RegisterAttached<Control, Popup?>("CompanionPopup", typeof(FocusBehavior));
+
+    public static void SetCompanionPopup(Control control, Popup? value)
+        => control.SetValue(CompanionPopupProperty, value);
+
+    public static Popup? GetCompanionPopup(Control control)
+        => control.GetValue(CompanionPopupProperty);
+
     private static void HookLostFocus()
     {
         LostFocusCommandProperty.Changed.AddClassHandler<Control>((control, args) =>
@@ -162,6 +190,44 @@ public static class FocusBehavior
     {
         if (sender is not Control control) return;
         if (GetLostFocusCommand(control) is not { } command) return;
+
+        // The control's own dropdown is not somewhere else either — but "its
+        // list is open" is not an answer to where the keyboard went, so the
+        // question is asked again a turn later rather than deferred to the
+        // list closing.
+        //
+        // **Waiting for the popup to close stranded the box open under a list
+        // nothing could close.** The address bar's list has light dismiss off
+        // and its IsOpen bound one-way from the view model, and the only writes
+        // of false come from the two routes out of the box — one of which is
+        // the revert that was just suppressed. So clicking the listing while
+        // the offer was up suppressed the cancel, and no event was ever coming
+        // to un-suppress it: the box sat open, unfocused, under a floating
+        // list, and Escape could not reach it either.
+        if (GetCompanionPopup(control) is { IsOpen: true } popup)
+        {
+            Dispatcher.UIThread.Post(
+                () =>
+                {
+                    // **Measured: closing the popup hands the keyboard back to
+                    // whatever held it before the popup opened**, which is this
+                    // control. So taking a row — even a folder with no children
+                    // of its own, whose empty offer closes the list — ends with
+                    // the box focused and nothing to cancel.
+                    if (control.IsFocused) return;
+
+                    // And while the list still holds the keyboard, the gesture
+                    // is not finished: a pointer held down on a row idles the
+                    // dispatcher long enough for this to run between the press
+                    // and the release.
+                    if (HoldsFocus(popup)) return;
+
+                    Run(command);
+                },
+                DispatcherPriority.Background);
+
+            return;
+        }
 
         // **A control's own context menu is not somewhere else.**
         //
@@ -197,6 +263,18 @@ public static class FocusBehavior
 
         Run(command);
     }
+
+    /// <summary>
+    /// Whether the keyboard is inside <paramref name="popup"/>.
+    ///
+    /// Asked of the CHILD rather than of the popup itself. **Measured: with the
+    /// content focused, <c>popup.IsKeyboardFocusWithin</c> is false and
+    /// <c>popup.Child.IsKeyboardFocusWithin</c> is true** — the popup hosts its
+    /// child in a root of its own, so focus-within stops at that root and never
+    /// reaches the Popup element sitting in the window's tree.
+    /// </summary>
+    private static bool HoldsFocus(Popup popup)
+        => popup.Child is { IsKeyboardFocusWithin: true };
 
     private static void Run(ICommand command)
     {

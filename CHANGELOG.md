@@ -13,6 +13,16 @@ should not be trusted for compatibility yet.
 
 ### Added
 
+- **The address bar suggests as you type, and remembers where you have been.**
+  It was a bare text box whose tooltip promised that Tab completes and Enter
+  goes — true, and everything the bar had: no list of what you might mean, and
+  nowhere to see the folders you had already visited. Typing part of a path now
+  drops a list of the folders it could be, and picking one types it and offers
+  what is inside, so walking down a tree with the mouse is one gesture repeated.
+  Tab still completes and Enter still goes. The bar also lists where you have
+  been, following the same switch and the same Clear that Recents already has —
+  turn the recording off and the list goes with it.
+
 - **On Windows, the New menu offers what Explorer offers.** It was fed from
   `%APPDATA%\Microsoft\Windows\Templates`, which nothing populates — measured at
   0 files on a machine where Office, VMware and Proton Drive had each registered
