@@ -13,6 +13,16 @@ should not be trusted for compatibility yet.
 
 ### Added
 
+- **A listing now looks like one where a single click opens.** With that
+  preference set — or inherited from a desktop that sets it — a row under the
+  pointer showed the ordinary arrow and a plain name, exactly what it shows when
+  opening takes two clicks, so the only way to find out whether the next click
+  would launch something was to click it. Rows now wear the hand, and the name
+  under the pointer is underlined, the way anything that opens on one click is
+  drawn everywhere else. The rename box keeps the pointer for typing. Changing
+  the setting, or a desktop changing its own, reaches a window already open. In
+  the bin nothing changes, because a click there opens nothing.
+
 - **Alt+drag now makes a shortcut, the way Ctrl+Shift+drag already did.** Explorer
   has two ways to ask for one and Vaktari knew only the longer of them. Holding
   Alt did nothing whatever, so the drag fell through to the plain one and moved

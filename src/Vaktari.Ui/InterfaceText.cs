@@ -51,8 +51,8 @@ public static class InterfaceText
     /// The desktop's own setting, or null when it did not say.
     ///
     /// Published by <see cref="ThemeApplier"/> rather than read from here,
-    /// following <c>MainWindow.SystemSingleClick</c> exactly: Apply is the one
-    /// place every palette read funnels through — startup, a desktop scheme
+    /// following <c>PaneViewModel.SystemSingleClick</c> exactly: Apply is the
+    /// one place every palette read funnels through — startup, a desktop scheme
     /// change and a settings save all reach it — so a value published there
     /// cannot fall out of step with the palette it came from.
     ///

@@ -396,13 +396,20 @@ public static class ThemeApplier
         ApplyBanding(target, dark);
         ApplyAgeRamp(target);
 
-        // Always set, so the markup can bind unconditionally. A configured font
-        // wins over the desktop's, which is the whole point of configuring one;
-        // blank means follow Plasma, which stays the default.
+        // Always set, so the markup can bind unconditionally: a palette that
+        // never mentioned single click writes null here rather than leaving the
+        // last desktop's answer standing.
+        //
         // Published here rather than at each call site: Apply is the one place
         // every palette read funnels through — startup, a Plasma change, and a
         // settings save all reach it — so this cannot fall out of step.
-        MainWindow.SystemSingleClick = palette?.SingleClick;
+        //
+        // Onto the PANE rather than the window, because the listings bind to it
+        // as well as the click handlers: a row wears a hand and an underlined
+        // name exactly while one click opens it. A pane already on screen is
+        // told separately — see ShellViewModel.RefreshActivation — because this
+        // is a plain static with nothing watching it.
+        ViewModels.PaneViewModel.SystemSingleClick = palette?.SingleClick;
 
         // The desktop's text SIZE, published the same way and for the same
         // reason — it arrives on the same palette, in the same read.
@@ -416,9 +423,12 @@ public static class ThemeApplier
         // looked at.
         InterfaceText.SystemScale = InterfaceText.FromPalette(palette);
 
-        // Precedence, most specific first. ApplyDesignScheme has already put the
-        // reference typeface in, so the last arm is "leave it alone" rather than
-        // a value — which is why this reads as two overrides and not a chain.
+        // Precedence, most specific first. A configured font wins over the
+        // desktop's, which is the whole point of configuring one; blank means
+        // follow Plasma, which stays the default. ApplyDesignScheme has already
+        // put the reference typeface in, so the last arm is "leave it alone"
+        // rather than a value — which is why this reads as two overrides and
+        // not a chain.
         var chosen = Settings.AppSettings.Current.Views.CustomFontFamily;
 
         if (chosen is { Length: > 0 })

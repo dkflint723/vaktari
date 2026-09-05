@@ -148,6 +148,20 @@ public partial class MainWindow : Window
                     // setting not being read at all.
                     RescaleForDesktop();
 
+                    // The palette carries the desktop's single-click setting
+                    // too, and Apply has just rewritten the static holding it.
+                    // A listing already on screen binds to that decision, so
+                    // without this the rows keep the pointer they were built
+                    // with until the pane is rebuilt — the same trap the
+                    // selection boxes fell into on a settings save, and the
+                    // same reason RescaleForDesktop is here.
+                    //
+                    // Through the property rather than the field: this lambda is
+                    // built in the constructor, before the field it would read is
+                    // assigned, and the compiler will not take "it only runs
+                    // later" for an answer (CS8602).
+                    Shell.RefreshActivation();
+
                     // Icons follow the desktop too: the resolved paths belong to
                     // the old icon theme and every cached drawable has the old
                     // text colour baked into its currentColor.
@@ -715,6 +729,22 @@ public partial class MainWindow : Window
     /// that has to find an editor which exists only inside a DataTemplate.
     /// </summary>
     internal const string RenameBoxClass = "rename";
+
+    /// <summary>
+    /// The class each listing wears while one click opens. Bound rather than
+    /// set, so it follows the preference, the desktop and the path; the three
+    /// styles that draw the affordance — a hand over the row, an underline
+    /// under the name being pointed at, and the I-beam the open rename box
+    /// keeps — are keyed off it.
+    /// </summary>
+    internal const string SingleClickClass = "singleclick";
+
+    /// <summary>
+    /// The class the three row templates put on the cell that draws the name,
+    /// which is the one thing in a row that can be underlined the way a target
+    /// you are about to open is underlined everywhere else.
+    /// </summary>
+    internal const string RowNameClass = "filename";
 
     /// <summary>
     /// The selection box a press landed on, or null for a press anywhere else.
@@ -5590,23 +5620,16 @@ public partial class MainWindow : Window
     // ---- input ---------------------------------------------------------
 
     /// <summary>
-    /// What the desktop is set to, when it says so. Null means it did not, and
-    /// this application's own default (double) applies. Set from the theme
-    /// palette, which is re-read on startup, on a Plasma change, and on save.
-    /// </summary>
-    public static bool? SystemSingleClick { get; set; }
-
-    /// <summary>
     /// Single click when the preference says so, or when it defers to a desktop
     /// that says so.
+    ///
+    /// The rule itself moved to <see cref="PaneViewModel.SingleClickOpens"/>,
+    /// because the LISTING has to ask the same question — a row under the
+    /// pointer wears a hand and an underlined name when one click opens it, and
+    /// a style can only reach a view model. Kept here as a name so the two
+    /// click handlers below still read as they did.
     /// </summary>
-    private static bool OpensOnSingleClick
-        => AppSettings.Current.Navigation.OpenItemsWith switch
-        {
-            ActivationClick.Single => true,
-            ActivationClick.Double => false,
-            _ => SystemSingleClick ?? false,
-        };
+    private static bool OpensOnSingleClick => PaneViewModel.SingleClickOpens;
 
     private string? _lastTapPath;
 

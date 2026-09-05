@@ -1546,6 +1546,11 @@ public sealed partial class ShellViewModel : ObservableObject, IDisposable
                     tab.RefreshSelectionBoxes();
                 }
 
+        // Which pointer a row wears is the same kind of question and reaches
+        // the same way — see RefreshActivation, which the desktop's own change
+        // also goes through.
+        RefreshActivation();
+
         // The narrow-panel behaviour changes whether the toggle may be pressed,
         // and that is computed rather than stored — so it has to be re-raised or
         // a greyed button stays greyed until the next resize.
@@ -1589,6 +1594,27 @@ public sealed partial class ShellViewModel : ObservableObject, IDisposable
 
             foreach (var tab in group.Tabs)
                 tab.RefreshCommand.Execute(null);
+        }
+    }
+
+    /// <summary>
+    /// Tells every open pane to re-ask whether one click opens.
+    ///
+    /// **The desktop can change its mind while the window is open.** A Plasma
+    /// scheme change re-reads the palette and rewrites
+    /// <see cref="PaneViewModel.SystemSingleClick"/>, and that is a plain
+    /// static with nothing watching it — so a listing already on screen went on
+    /// showing the pointer it was built with. Separate from
+    /// <see cref="OnSettingsChanged"/> because that path is a SAVE, and the
+    /// desktop change is not one.
+    /// </summary>
+    public void RefreshActivation()
+    {
+        foreach (var group in new[] { Left, Right })
+        {
+            if (group is null) continue;
+
+            foreach (var tab in group.Tabs) tab.RefreshActivation();
         }
     }
 

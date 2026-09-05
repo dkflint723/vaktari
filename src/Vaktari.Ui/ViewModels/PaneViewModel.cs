@@ -1173,6 +1173,70 @@ public sealed partial class PaneViewModel : ObservableObject, IDisposable
     }
 
     /// <summary>
+    /// What the desktop is set to, when it says so. Null means it did not, and
+    /// this application's own default (double) applies. Written by
+    /// <c>ThemeApplier.Apply</c> from the theme palette, which is re-read on
+    /// startup, on a Plasma change, and on save.
+    ///
+    /// It lives here rather than on the window because the window is not the
+    /// only thing that has to know: the click handlers ask it to decide what a
+    /// tap means, and the three listings ask it to decide what the POINTER
+    /// looks like over a row.
+    /// </summary>
+    public static bool? SystemSingleClick { get; set; }
+
+    /// <summary>
+    /// Single click when the preference says so, or when it defers to a desktop
+    /// that says so. The one place the rule is written; MainWindow's own
+    /// <c>OpensOnSingleClick</c> reads this.
+    /// </summary>
+    internal static bool SingleClickOpens
+        => Settings.AppSettings.Current.Navigation.OpenItemsWith switch
+        {
+            Vaktari.Core.Settings.ActivationClick.Single => true,
+            Vaktari.Core.Settings.ActivationClick.Double => false,
+            _ => SystemSingleClick ?? false,
+        };
+
+    /// <summary>
+    /// Whether one click opens, asked by the LISTING rather than by a click
+    /// handler.
+    ///
+    /// **A single-click listing looked exactly like a double-click one.** The
+    /// preference changed what a tap did and nothing about what a row looked
+    /// like under the pointer: no hand, no underline, nothing anywhere in the
+    /// window saying that the next click was going to open something. Measured
+    /// before this went in, the only <c>Cursor="Hand"</c> in the whole window
+    /// was the sidebar's section fold, and the decision was a private static
+    /// read by two click handlers — there was nothing a style could bind to.
+    ///
+    /// Read from the live settings rather than stored on the pane, so a save
+    /// only has to raise the notification; see <see cref="RefreshActivation"/>.
+    /// The same shape as <see cref="ShowSelectionBoxes"/>, for the same reason.
+    ///
+    /// **Not in the bin, where a click opens nothing.** The rule the click
+    /// handlers ask has no term for WHERE the pane is, and the behaviour does:
+    /// <see cref="OpenAsync"/> refuses on a binned row before it reaches the
+    /// launcher or the navigation, because the path on that row is the one the
+    /// item USED to occupy. Measured with single click set and a pane at
+    /// <c>vaktari:trash</c>, every row wore the hand and underlined its name
+    /// under the pointer — advertising an open that the guard one layer down
+    /// then declined. Same gate the drag payload carries for the same reason,
+    /// see <c>CanDragOut</c>.
+    /// </summary>
+    public bool OpensOnSingleClick => SingleClickOpens && !IsTrashListing;
+
+    /// <summary>
+    /// Re-asks the activation question after a save, or after the desktop has
+    /// changed its own mind.
+    ///
+    /// Nothing is stored, so nothing raises on its own — a pane already on
+    /// screen would keep the pointer it had until it was rebuilt, which is the
+    /// trap <see cref="RefreshSelectionBoxes"/> was written for.
+    /// </summary>
+    public void RefreshActivation() => OnPropertyChanged(nameof(OpensOnSingleClick));
+
+    /// <summary>
     /// Carries the selection to the layout being switched to, so changing view
     /// does not silently drop what you had chosen.
     /// </summary>
@@ -3654,6 +3718,13 @@ public sealed partial class PaneViewModel : ObservableObject, IDisposable
             RebuildBreadcrumbs();
             OnPropertyChanged(nameof(IsRecentListing));
             OnPropertyChanged(nameof(IsTrashListing));
+
+            // The pointer a row wears is computed from the path too — one click
+            // opens everywhere except the bin — and IsTrashListing being raised
+            // is not this being raised. Without the line, walking into the bin
+            // with single click set carried the hand and the underline in with
+            // it, and walking back out left them behind.
+            OnPropertyChanged(nameof(OpensOnSingleClick));
 
             // All six, because a search moves between searches: retyping the
             // query or ticking either box changes the path from one search

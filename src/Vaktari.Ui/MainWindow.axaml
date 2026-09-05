@@ -135,6 +135,46 @@
       <Setter Property="Opacity" Value="1"/>
     </Style>
 
+    <!-- **With one click set to open, a listing looked exactly like one where
+         it does not.** The preference changed what a tap DID and nothing about
+         what a row looked like under the pointer — so the difference between
+         "this click selects" and "this click launches" was invisible until
+         after the click, on the one setting where a misjudged click is not
+         undoable. Measured before this went in, the only Cursor="Hand" in the
+         window was the sidebar's section fold.
+
+         Both halves of what Explorer and every browser draw for a thing that
+         opens on one click: the hand over the whole row, and the name
+         underlined while it is the one being pointed at. Cursor is an inherited
+         property in Avalonia, so setting it on the container reaches every cell
+         inside the template.
+
+         **Including the open rename box, which is a text field and was
+         answering the pointer with a hand.** Measured on a realized row rather
+         than reasoned about: with the hand on the ListBoxItem, the box's own
+         Cursor read back as Hand. Nothing in this file sets a cursor on a
+         TextBox and neither does the Fluent TextBox theme, so the inherited
+         value had no competition. The third style is that competition — a
+         setter on the element outranks a value that merely arrived by
+         inheritance — and it is scoped under the same class as the other two,
+         so a listing where two clicks are needed is left exactly as it was.
+
+         Window-wide rather than three copies in three ListBox.Styles, for the
+         same reason the selection box above is: the three listings answer the
+         same preference, and the day one of them drifted would be the day it
+         stopped matching the others. The class is bound on each listing, so
+         these apply exactly while one click opens — which is everywhere except
+         the bin, where the click is refused before it opens anything. -->
+    <Style Selector="ListBox.singleclick ListBoxItem">
+      <Setter Property="Cursor" Value="Hand"/>
+    </Style>
+    <Style Selector="ListBox.singleclick ListBoxItem:pointerover TextBlock.filename">
+      <Setter Property="TextDecorations" Value="Underline"/>
+    </Style>
+    <Style Selector="ListBox.singleclick TextBox.rename">
+      <Setter Property="Cursor" Value="Ibeam"/>
+    </Style>
+
     <!-- **The box a name is typed in, on the row the name belongs to.** F2
          used to fill a fixed 320px TextBox docked at the bottom of the window
          — `PromptBar`, still below, which the confirmations and the connect
@@ -2790,6 +2830,7 @@
                        local:FocusBehavior.FocusWhen="{Binding FocusListing}"
                        SelectedItem="{Binding SelectedEntry}"
                        SelectedItems="{Binding DetailsSelection}"
+                       Classes.singleclick="{Binding OpensOnSingleClick}"
                        DragDrop.AllowDrop="True"
                        SizeChanged="OnListSizeChanged"
                        Focusable="True"
@@ -3140,7 +3181,8 @@
                                with the pane the way everything else here
                                does. -->
                           <Panel>
-                          <TextBlock Text="{Binding Converter={x:Static vm:FileConverters.DisplayName}}" HorizontalAlignment="Left"
+                          <TextBlock Classes="filename"
+                                     Text="{Binding Converter={x:Static vm:FileConverters.DisplayName}}" HorizontalAlignment="Left"
                                      FontSize="{DynamicResource FontSizeBase}" VerticalAlignment="Center"
                                      TextTrimming="{x:Static local:NameEllipsis.KeepingTheExtension}"
                                      ToolTip.Tip="{Binding Converter={x:Static vm:FileConverters.NameTip}}"
@@ -3287,6 +3329,7 @@
                        local:FocusBehavior.FocusWhen="{Binding FocusListing}"
                        SelectedItem="{Binding SelectedEntry}"
                        SelectedItems="{Binding CompactSelection}"
+                       Classes.singleclick="{Binding OpensOnSingleClick}"
                        IsVisible="{Binding IsCompactView}"
                        DragDrop.AllowDrop="True"
                        Focusable="True"
@@ -3462,7 +3505,8 @@
                                takes the width the name had and needs no
                                MinWidth of its own. See that row. -->
                           <Panel>
-                          <TextBlock Text="{Binding Converter={x:Static vm:FileConverters.DisplayName}}" VerticalAlignment="Center"
+                          <TextBlock Classes="filename"
+                                     Text="{Binding Converter={x:Static vm:FileConverters.DisplayName}}" VerticalAlignment="Center"
                                      FontSize="{DynamicResource FontSizeBase}"
                                      TextTrimming="{x:Static local:NameEllipsis.KeepingTheExtension}"
                                      ToolTip.Tip="{Binding Converter={x:Static vm:FileConverters.NameTip}}"
@@ -3528,6 +3572,7 @@
                        local:FocusBehavior.FocusWhen="{Binding FocusListing}"
                        SelectedItem="{Binding SelectedEntry}"
                        SelectedItems="{Binding GridSelection}"
+                       Classes.singleclick="{Binding OpensOnSingleClick}"
                        IsVisible="{Binding IsGridView}"
                        DragDrop.AllowDrop="True"
                        Focusable="True"
@@ -3691,7 +3736,8 @@
                              than a row and the box takes the label's width,
                              which is the width there is. See the details row. -->
                         <Panel>
-                        <TextBlock Text="{Binding Converter={x:Static vm:FileConverters.DisplayName}}" TextAlignment="Center"
+                        <TextBlock Classes="filename"
+                                   Text="{Binding Converter={x:Static vm:FileConverters.DisplayName}}" TextAlignment="Center"
                                    FontSize="{DynamicResource FontSizeSmall}"
                                    TextWrapping="Wrap" MaxLines="2" TextTrimming="CharacterEllipsis"
                                    ToolTip.Tip="{Binding Converter={x:Static vm:FileConverters.NameTip}}"
