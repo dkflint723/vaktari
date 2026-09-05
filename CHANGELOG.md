@@ -1044,6 +1044,30 @@ should not be trusted for compatibility yet.
 
 ### Fixed
 
+- **Adding a place says what it did.** Ctrl+D and *Add to places* both wrote a
+  place and said nothing at all — the only sign was a row appearing in a panel
+  you may have collapsed, and Ctrl+D is the key Explorer deletes with, so a
+  Windows habit met a gesture that looked, at the moment of the press, exactly
+  like nothing happening. Both now name the folder they pinned. A folder the
+  panel is already showing says so rather than claiming a pin: pinning Downloads
+  wrote an entry to the places file that was never drawn and that no *Remove
+  from places* could take back out, and pinning a drive drew it twice, once as
+  its own row under Devices and once as a bookmark beside it. In the bin, This
+  PC or a search, where there is no folder to pin, the answer is that only a
+  folder can be a place — and in the bin *Add to places* no longer offers to pin
+  a deleted folder, whose path is the one it was deleted from. And the F1
+  sheet's Ctrl+D line now names Delete as the key that does move things to the
+  bin, the way the F3 line names the search key.
+
+- **The F1 sheet's Ctrl+B line names the key that adds a place.** The same
+  collision as Ctrl+D, running the other way: Dolphin adds a place on Ctrl+B and
+  Vaktari shows and hides the sidebar on it, so somebody reaching for *Add to
+  Places* watched the panel fold away instead, opened the sheet, and found a
+  line that confirmed what had just happened and said nothing about the key they
+  wanted. Both meanings stay — Ctrl+B is also Firefox's bookmarks sidebar, and
+  F9, Dolphin's own key for that panel, sits beside it — and the line now points
+  at Ctrl+D.
+
 - **A drag that goes nowhere gives you your selection back.** Pressing one of
   several selected rows is how a drag starts, and the press narrowed the
   selection to the row under the pointer before it did — so cancelling the

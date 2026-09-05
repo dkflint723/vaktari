@@ -117,7 +117,20 @@ public static class Shortcuts
             // moment the question is asked.
             new("F3", "Split the window — search is Ctrl+F"),
             new("F11", "Details panel"),
-            new("Ctrl+B", "Sidebar"),
+            // **Dolphin adds a place on Ctrl+B; Vaktari folds the sidebar on
+            // it.** The third of these collisions, and the one left unanswered:
+            // a Plasma user reaches for "Add to Places", watches the panel
+            // shrink to a rail instead, and opens this sheet — landing on a
+            // line that named what had just happened and said nothing about the
+            // key they wanted, which is four headings down under "Looking at
+            // things". The Ctrl+B meaning stays, because it is also Firefox's
+            // bookmarks sidebar and it is what this window has always answered;
+            // the answer moves to the line being read at the moment the
+            // question is asked, exactly as F3 above does.
+            new("Ctrl+B", "Sidebar — adding a place is Ctrl+D"),
+            // F9 is not asked the same question: it is Dolphin's OWN gesture
+            // for this panel, so somebody arriving from there and pressing it
+            // got what they came for and has nothing to look up.
             new("F9", "Sidebar"),
         ]),
 
@@ -204,7 +217,16 @@ public static class Shortcuts
             // take the case labels out of the switch, and
             // Every_listed_key_is_actually_bound goes red.
             new("→ / ←", "In the list, open a folder where it is and close it again"),
-            new("Ctrl+D", "Pin this folder to places"),
+            // **Explorer deletes on Ctrl+D; Vaktari pins on it** — the
+            // bookmark key browsers answer, while Dolphin spells this same job
+            // Ctrl+B, which is the sidebar here. The trap the F3 line under
+            // "Tabs and panes" already answers, with a worse consequence:
+            // somebody arriving from Explorer presses it over a file expecting
+            // the bin, gets a place instead, and comes here to find out what
+            // happened — landing on this line. The key they wanted is two
+            // headings up under "Working with files", so this line names it
+            // rather than leaving them to go looking for it.
+            new("Ctrl+D", "Pin this folder to places — the bin is Delete"),
             new("Ctrl + scroll", "Resize the pane under the pointer"),
             new("Ctrl+Shift + scroll", "Resize its icons only"),
             new("Ctrl + middle click", "Reset that pane's size"),

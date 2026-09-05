@@ -239,6 +239,92 @@ public sealed class ShortcutListTests
     }
 
     /// <summary>
+    /// **Ctrl+D deletes in Explorer and adds a place here.** The same trap as
+    /// F3 above, and the one with the worse consequence: the key a Windows user
+    /// presses to put a file in the bin quietly bookmarks the folder they are
+    /// standing in instead, and the file is still there. They open this sheet
+    /// to find out what happened and land on the Ctrl+D line — so that line has
+    /// to name the key that does move things to the bin.
+    ///
+    /// The key it must name is read from the BINDINGS, the same way the F3 line
+    /// above is checked: a sheet checked against its own Delete row would go on
+    /// passing after the bin moved to another key.
+    /// </summary>
+    [Fact]
+    public void The_pin_key_says_where_the_bin_is()
+    {
+        var pin = Shortcuts.All
+            .SelectMany(g => g.Keys)
+            .Single(k => k.Keys
+                .Split(" / ", StringSplitOptions.TrimEntries)
+                .Contains("Ctrl+D", StringComparer.OrdinalIgnoreCase));
+
+        // TrashSelected rather than "Trash": the question is which key moves
+        // the selection to the bin, and emptying it is a different verb that
+        // shares the word.
+        var binKeys = KeyBindingSites.Markup()
+            .Concat(KeyBindingSites.CodeBehind())
+            .Where(b => b.Value.Contains("TrashSelected", StringComparison.Ordinal))
+            .Select(b => Readable(b.Key))
+            .ToList();
+
+        Assert.NotEmpty(binKeys);
+
+        Assert.True(
+            binKeys.Any(key => pin.Does.Contains(key, StringComparison.OrdinalIgnoreCase)),
+            $"the Ctrl+D line reads \"{pin.Does}\" and names none of "
+            + $"{string.Join(", ", binKeys)} — somebody who pressed Ctrl+D expecting "
+            + "Explorer's delete and got a bookmark learns nothing from the line they "
+            + "are looking at.");
+    }
+
+    /// <summary>
+    /// **Dolphin adds a place on Ctrl+B; Vaktari folds the sidebar on it.** The
+    /// third collision of this shape and the one that was left unanswered: F3
+    /// and Ctrl+D each name the key the other reference would have run, and the
+    /// Ctrl+B line read "Sidebar" and nothing else — so a Plasma user who
+    /// reached for "Add to Places", watched the panel shrink to a rail and
+    /// opened this sheet landed on a line that confirmed what had just happened
+    /// and said nothing about the key they wanted.
+    ///
+    /// F9 is deliberately not asked the same question, which is why this looks
+    /// up Ctrl+B by name rather than every key that folds the sidebar: F9 is
+    /// Dolphin's own gesture for this panel, so somebody pressing it got what
+    /// they came for.
+    ///
+    /// The key the line must name is read from the BINDINGS, the same way the
+    /// two above are: a sheet checked against its own Ctrl+D row would go on
+    /// passing after the pin moved to another key.
+    /// </summary>
+    [Fact]
+    public void The_sidebar_key_says_where_a_place_is_added()
+    {
+        var sidebar = Shortcuts.All
+            .SelectMany(g => g.Keys)
+            .Single(k => k.Keys
+                .Split(" / ", StringSplitOptions.TrimEntries)
+                .Contains("Ctrl+B", StringComparer.OrdinalIgnoreCase));
+
+        // PinCurrent rather than "Pin": the question is which key adds the
+        // folder you are standing in, and the menu's own row — which pins the
+        // SELECTION — is not a key at all.
+        var pinKeys = KeyBindingSites.Markup()
+            .Concat(KeyBindingSites.CodeBehind())
+            .Where(b => b.Value.Contains("PinCurrent", StringComparison.Ordinal))
+            .Select(b => Readable(b.Key))
+            .ToList();
+
+        Assert.NotEmpty(pinKeys);
+
+        Assert.True(
+            pinKeys.Any(key => sidebar.Does.Contains(key, StringComparison.OrdinalIgnoreCase)),
+            $"the Ctrl+B line reads \"{sidebar.Does}\" and names none of "
+            + $"{string.Join(", ", pinKeys)} — somebody who pressed Ctrl+B expecting "
+            + "Dolphin's \"Add to Places\" and got the sidebar folding away learns "
+            + "nothing from the line they are looking at.");
+    }
+
+    /// <summary>
     /// **The direction nothing checked.** The list was kept honest one way
     /// only: a gesture bound in the application had to be printed here, and
     /// nothing stopped a gesture being printed here that the application does

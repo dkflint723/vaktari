@@ -1386,9 +1386,18 @@ public sealed partial class ShellViewModel : ObservableObject, IDisposable
     /// is not a directory — so with nothing selected, or a file selected, both
     /// rows pinned the same path under two different labels, and the one naming
     /// a selection was not acting on it.
+    ///
+    /// **And never in the bin**, where a deleted folder's path is the one it
+    /// was deleted from — the same reason the two rows above carry the same
+    /// gate, one heading up, and with the same consequence: a place naming a
+    /// path the folder no longer occupies. The current-folder row is already
+    /// out of the bin, because <c>IsRealFolder</c> is false there, so without
+    /// this the only "Add to places" the bin offered was the one that could
+    /// only get it wrong.
     /// </summary>
     public bool ShowAddSelectionToPlaces
-        => Menu.ShowAddToPlaces && ActiveTab?.HasDirectorySelected == true;
+        => Menu.ShowAddToPlaces
+           && ActiveTab is { HasDirectorySelected: true, IsTrashListing: false };
 
     /// <summary>
     /// The current-folder row shows only when the selection row does not —
@@ -1451,15 +1460,31 @@ public sealed partial class ShellViewModel : ObservableObject, IDisposable
     /// Pins the selected folder rather than the current one, which is what a
     /// context menu on a row should mean. Falls back to the current folder when
     /// the click was on empty space.
+    ///
+    /// Through the same helper the gesture uses, so **the menu is not the one
+    /// route that stays silent**: this was the other caller of the bare
+    /// <c>Sidebar.PinAsync</c>, and it reported nothing for the same reason.
+    ///
+    /// **Not the selection in the bin, where a row's path is where the folder
+    /// USED to be.** MEASURED: <c>RecentListing.GatherTrash</c> builds each row
+    /// as <c>new FileEntry(name, item.OriginalPath, …)</c> and copies the
+    /// deleted item's directory flag onto it, so a deleted folder there is a
+    /// selected directory carrying a real-looking path that nothing occupies —
+    /// and this pinned it, a bookmark that could never be opened. The bin is
+    /// the only listing that hands out such a path: Recent's <c>Build</c>
+    /// returns null where the path is neither a directory nor a file, and a
+    /// search listing's folders are really there and are worth pinning, which
+    /// is why the guard names the bin rather than asking whether the folder
+    /// exists.
     /// </summary>
     [RelayCommand]
-    private void AddSelectionToPlaces()
+    private async Task AddSelectionToPlacesAsync()
     {
-        var path = ActiveTab?.SelectedEntry is { IsDirectory: true } entry
+        var path = ActiveTab is { IsTrashListing: false, SelectedEntry: { IsDirectory: true } entry }
             ? entry.FullPath
             : ActiveTab?.CurrentPath;
 
-        if (path is { Length: > 0 }) _ = Sidebar.PinAsync(path);
+        await PinOneAsync(path).ConfigureAwait(true);
     }
 
     /// <summary>
@@ -2853,12 +2878,80 @@ public sealed partial class ShellViewModel : ObservableObject, IDisposable
     /// there is none — so the place that landed in the sidebar was the internal
     /// scheme, a row that could never be opened and had to be removed by hand.
     /// The menu row hides for the same reason.
+    ///
+    /// **The gesture said nothing, whether it worked or not**, and Ctrl+D is
+    /// what Explorer deletes with. Somebody arriving from there presses it over
+    /// a selected file, and every visible thing stays exactly as it was: the
+    /// folder is written to places.json, the panel rebuilds from the provider's
+    /// own PlacesChanged a moment later, and the only evidence is one new row
+    /// in a panel that may be collapsed. Nothing told them a place had been
+    /// added rather than a file removed. So it reports, in the same line the
+    /// drop onto the panel already writes — and the F1 sheet's Ctrl+D row names
+    /// the key that does move things to the bin.
+    ///
+    /// Async now, because the report is made AFTER the write returns rather
+    /// than in front of it, which is the order <see cref="PinDroppedAsync"/>
+    /// already reports in.
     /// </summary>
     [RelayCommand]
-    private void PinCurrent()
+    private async Task PinCurrentAsync()
     {
-        if (ActiveTab is { IsRealFolder: true, CurrentPath: { Length: > 0 } path })
-            _ = Sidebar.PinAsync(path);
+        // Null, not an early return: the refusal is a line the helper writes,
+        // and a listing with no folder in it is one of the two things this can
+        // have to say.
+        var here = ActiveTab is { IsRealFolder: true, CurrentPath: { Length: > 0 } path }
+            ? path
+            : null;
+
+        await PinOneAsync(here).ConfigureAwait(true);
+    }
+
+    /// <summary>
+    /// One folder onto the panel, and a line saying which of the three things
+    /// happened — pinned, already there, or nothing that could be a place.
+    ///
+    /// **"Already there" is asked of the RENDERED ROWS, not of the pins file**,
+    /// and that is measured rather than tidy: the provider drops a pin whose
+    /// path is already a built-in place while BUILDING the list it renders, so
+    /// pinning Downloads wrote an entry to places.json that was never drawn and
+    /// that no "Remove from places" could reach, while pinning a drive drew it
+    /// twice — once as its device row and once as a bookmark beside it. The
+    /// pins file answers neither question: MEASURED on a real provider, it
+    /// refuses a path its list already holds and never re-reads the file, so
+    /// the entry behind Downloads is written once and every later press is a
+    /// no-op that <c>PinAsync</c> has no way to report. The same reasoning, and
+    /// the same measured fault, as <see cref="PinDroppedAsync"/>; the rows are
+    /// read live here because there is one path rather than a loop over
+    /// several.
+    ///
+    /// On the active tab because that is where this window says things: the
+    /// sidebar has no line of its own.
+    /// </summary>
+    private async Task PinOneAsync(string? path)
+    {
+        if (ActiveTab is not { } pane) return;
+
+        // VirtualPaths as well as the length, because the menu's selection row
+        // falls back to the current listing — when nothing is selected, and in
+        // the bin whatever is — and in the bin that fallback is the scheme
+        // itself. The length alone answers Ctrl+D, which hands over a null.
+        if (path is not { Length: > 0 } || VirtualPaths.IsVirtual(path))
+        {
+            pane.Status = Input.PinPlan.OnlyFolders;
+            return;
+        }
+
+        var name = PathRules.LeafName(path);
+
+        if (Sidebar.Groups.SelectMany(g => g.Places).Any(p => PathRules.Same(p.Path, path)))
+        {
+            pane.Status = $"{name} is already in places";
+            return;
+        }
+
+        await Sidebar.PinAsync(path).ConfigureAwait(true);
+
+        pane.Status = $"pinned {name} to places";
     }
 
     /// <summary>

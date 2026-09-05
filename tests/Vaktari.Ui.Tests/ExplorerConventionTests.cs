@@ -317,6 +317,29 @@ public sealed class ExplorerConventionTests : OwnedViewModels
     [InlineData("Ctrl+Z", "Undo")]
     [InlineData("Ctrl+Y", "Redo")]
     [InlineData("Ctrl+Shift+Z", "Redo")]
+
+    // **The three gestures spelled deliberately unlike one of the two
+    // references, and the three whose command was pinned nowhere.** Explorer
+    // deletes on Ctrl+D and this pins on it; Dolphin adds a place on Ctrl+B and
+    // this folds the sidebar on it, with F9 — Dolphin's own key for that panel
+    // — beside it. Each choice was answered on the F1 sheet and held by nothing
+    // else: MEASURED, pointing the code-behind's Ctrl+D case at
+    // ToggleHiddenCommand reddens exactly two tests in this project, and both
+    // of them arrive with this change — this row, and
+    // ShortcutListTests.The_sidebar_key_says_where_a_place_is_added, which
+    // fails first at its Assert.NotEmpty(pinKeys). Before those two the
+    // round-trip in ShortcutListTests asked only whether a printed key was
+    // bound SOMEWHERE, and the only two lines there that read a command out of
+    // the bindings read the bin's and the search's — so the key a Windows user
+    // presses expecting the bin could have been repointed at anything at all,
+    // and the sheet would have gone on explaining a pin.
+    //
+    // These rows are the half of that pair which does not depend on wording:
+    // they name the command each gesture runs, whatever the sheet's line for it
+    // is worded as.
+    [InlineData("Ctrl+D", "PinCurrent")]
+    [InlineData("Ctrl+B", "CycleRail")]
+    [InlineData("F9", "CycleRail")]
     public void The_expected_shortcut_is_bound(string gesture, string command)
     {
         // Either binding site counts, and the command has to match at whichever

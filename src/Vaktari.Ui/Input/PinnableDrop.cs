@@ -24,6 +24,17 @@ public readonly record struct PinPlan(IReadOnlyList<string> Folders, int Files)
     public bool Any => Folders.Count > 0;
 
     /// <summary>
+    /// What is said when nothing in hand can be a place.
+    ///
+    /// A constant rather than two literals, because the same refusal answers
+    /// two gestures: a drop carrying only files, and Ctrl+D in a listing that
+    /// is a view rather than a folder — the bin, This PC, a search. **The
+    /// second of those said nothing at all**, so the key that pins a folder
+    /// was, in those listings, a key that did nothing and explained nothing.
+    /// </summary>
+    public const string OnlyFolders = "only a folder can be a place";
+
+    /// <summary>
     /// What the cursor says over the panel.
     ///
     /// Link rather than Copy or Move, because a place is a pointer at a folder:
@@ -64,7 +75,7 @@ public readonly record struct PinPlan(IReadOnlyList<string> Folders, int Files)
         // Nothing about the drop could be a place at all, which the head says
         // on its own — a "1 file(s) cannot be a place" after it would be the
         // same sentence twice.
-        if (pinned == 0 && already == 0) return "only a folder can be a place";
+        if (pinned == 0 && already == 0) return OnlyFolders;
 
         var clauses = new List<string>
         {

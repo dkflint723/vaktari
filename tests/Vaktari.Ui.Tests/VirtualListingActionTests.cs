@@ -168,14 +168,61 @@ public sealed class VirtualListingActionTests : OwnedViewModels
             RepoSource.Ui("ViewModels", "ShellViewModel.cs"));
     }
 
-    /// <summary>And the gesture behind it, which no markup gate reaches.</summary>
+    /// <summary>
+    /// And the gesture behind it, which no markup gate reaches.
+    ///
+    /// (The declaration this anchors to became <c>private async Task
+    /// PinCurrentAsync()</c> when the gesture started reporting what it did —
+    /// the command it generates is still <c>PinCurrentCommand</c>, which is
+    /// what the key handler and the menu bind. What it asserts is unchanged.
+    /// The behaviour is also driven end to end in
+    /// <c>PinSaysWhatItDidTests</c>, which this outlived by reading the guard
+    /// that no window is needed to see.)
+    /// </summary>
     [Fact]
     public void And_ctrl_d_pins_nothing_there()
         => Assert.Contains(
             "ActiveTab is { IsRealFolder: true, CurrentPath: { Length: > 0 } path }",
             RepoSource.Body(
                 RepoSource.Ui("ViewModels", "ShellViewModel.cs"),
-                "private void PinCurrent()"));
+                "private async Task PinCurrentAsync()"));
+
+    /// <summary>
+    /// The OTHER "Add to places" row — the one that acts on the selection —
+    /// and the one listing where a selected folder is not a folder.
+    ///
+    /// **A bin row's path is where the folder used to be.**
+    /// <c>RecentListing.GatherTrash</c> builds each row as
+    /// <c>new FileEntry(name, item.OriginalPath, …)</c> with the deleted item's
+    /// directory flag, so <c>HasDirectorySelected</c> is true over a deleted
+    /// folder and the row offering to pin it was drawn — the same fault the
+    /// "Open in new tab" and "Open in new window" rows already carry an
+    /// <c>IsTrashListing</c> gate for, and one the current-folder row above
+    /// escaped only because <c>IsRealFolder</c> is false in the bin.
+    ///
+    /// This PC is the control: its rows are drives, whose paths are real, so
+    /// the gate has to name the bin rather than every listing that is a view.
+    /// </summary>
+    [AvaloniaFact]
+    public async Task The_add_selection_row_is_not_offered_in_the_bin()
+    {
+        var shell = await ShellOn(VirtualPaths.Trash);
+
+        shell.ActiveTab!.SelectedEntry = new FileEntry(
+            "reports", Path.Combine(Path.GetTempPath(), "gone", "reports"), 0,
+            DateTimeOffset.UnixEpoch, EntryFlags.Directory);
+
+        // Asserted, not assumed: it is what makes the next line mean anything.
+        Assert.True(shell.ActiveTab.HasDirectorySelected);
+        Assert.False(shell.ShowAddSelectionToPlaces);
+
+        await shell.ActiveTab.NavigateAsync(VirtualPaths.Computer);
+        global::Avalonia.Threading.Dispatcher.UIThread.RunJobs();
+
+        shell.ActiveTab.SelectedEntry = Row();
+
+        Assert.True(shell.ShowAddSelectionToPlaces);
+    }
 
     /// <summary>
     /// A shell whose one tab is showing <paramref name="path"/>.
