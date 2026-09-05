@@ -452,7 +452,25 @@ public sealed class LinuxFileOperations : IFileOperations
                     }
                     else if (item.IsDirectory)
                     {
+                        // **Asked before the folder is made, because making it
+                        // is what erases the answer.** "Overwrite" on a folder
+                        // means merge into it, and CreateDirectory on a folder
+                        // that is already there is a no-op — so without this,
+                        // carrying below wrote the source folder's tags onto a
+                        // folder of the user's own that they had only agreed to
+                        // merge into, replacing its Baloo tags with a different
+                        // folder's.
+                        var made = !Directory.Exists(target);
+
                         Directory.CreateDirectory(target);
+
+                        // A folder carries user attributes of its own, and a
+                        // folder is recreated rather than copied — so this
+                        // branch is the only place they could travel. It is
+                        // also the only metadata a copied folder gets today:
+                        // times and mode on directories were never carried
+                        // either, and that is a different hole from this one.
+                        if (made) Xattrs.Carry(item.Source, target);
                     }
                     else if (CanRename(item.Source, target, move))
                     {
@@ -762,6 +780,19 @@ public sealed class LinuxFileOperations : IFileOperations
             Discard(target);
             throw;
         }
+
+        // **Extended attributes before the permission bits, never after.** The
+        // kernel checks write permission on the inode before it will take a
+        // user.* attribute (xattr(7)), and FileMetadata.Carry is exactly what
+        // takes that permission away — it reproduces a 0400 private key as
+        // 0400 — so the reverse order would drop the tags on precisely the
+        // files whose modes are most restrictive. The same shape as "times
+        // before attributes" inside FileMetadata itself.
+        //
+        // Not reproducible on the Windows agent this was written on; the order
+        // is pinned by reading this file instead. See
+        // ExtendedAttributeTests.The_attributes_are_carried_before_the_mode_is.
+        Xattrs.Carry(source, target);
 
         // The executable bit above all: a copied script that will not run is
         // the loss people notice, and a stream copy always drops it.

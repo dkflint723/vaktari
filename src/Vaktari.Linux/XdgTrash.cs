@@ -454,6 +454,12 @@ public static partial class XdgTrash
     /// <summary>
     /// Directory.Move fails across filesystems, so a directory on another mount
     /// has to be copied and then removed. File.Move handles this itself.
+    ///
+    /// **Whatever crosses here is copied, and a copy drops the extended
+    /// attributes.** This is the route the trash, the restore and the undo of a
+    /// move all take, so once the copy engine started carrying a file's Baloo
+    /// tags, Ctrl+Z after a move between two drives was the step that destroyed
+    /// them — the move out kept the tags and putting the file back lost them.
     /// </summary>
     internal static void MoveAcrossDevices(string source, string destination)
     {
@@ -471,18 +477,42 @@ public static partial class XdgTrash
         }
         else
         {
+            // Read before, written after. A rename keeps the attributes and
+            // this rewrites them unchanged; the cross-device fallback inside
+            // File.Move is a byte copy and an unlink, which carries the mode
+            // and the times and nothing else — and by then the source is gone,
+            // so there is nothing left to read them from. File.Move does not
+            // say which of the two it did, so both pay for the second.
+            var carried = Xattrs.Capture(source);
+
             File.Move(source, destination, overwrite: false);
+
+            Xattrs.Apply(destination, carried);
         }
     }
 
-    private static void CopyDirectory(string source, string destination)
+    /// <summary>
+    /// The copy behind the cross-device fallback above: the folder itself, then
+    /// everything under it.
+    ///
+    /// **Internal so it can be exercised.** Reaching it through
+    /// <see cref="MoveAcrossDevices"/> needs Directory.Move to refuse, which
+    /// needs two filesystems, and the agent this was written on has one.
+    /// </summary>
+    internal static void CopyDirectory(string source, string destination)
     {
         Directory.CreateDirectory(destination);
+        Xattrs.Carry(source, destination);
 
         foreach (var dir in Directory.EnumerateDirectories(source))
             CopyDirectory(dir, Path.Combine(destination, Path.GetFileName(dir)));
 
         foreach (var file in Directory.EnumerateFiles(source))
-            File.Copy(file, Path.Combine(destination, Path.GetFileName(file)), overwrite: false);
+        {
+            var landed = Path.Combine(destination, Path.GetFileName(file));
+
+            File.Copy(file, landed, overwrite: false);
+            Xattrs.Carry(file, landed);
+        }
     }
 }

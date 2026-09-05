@@ -17,7 +17,11 @@ namespace Vaktari.Linux;
 public sealed partial class LinuxRemoteMounts : IRemoteMounts
 {
     // Source-generated marshalling, so it survives trimming and AOT — same
-    // reasoning as the xattr calls in LinuxTagStore.
+    // reasoning as the xattr calls in Xattrs. That sentence named LinuxTagStore
+    // until this was corrected: the class had been gone long enough that this
+    // line was the only place in the repository the word "xattr" appeared at
+    // all, so the one cross-reference to the attributes pointed at nothing and
+    // the copy engine was not reading them either.
     [System.Runtime.InteropServices.LibraryImport("libc", EntryPoint = "getuid")]
     private static partial uint GetUid();
 

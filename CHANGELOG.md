@@ -936,6 +936,26 @@ should not be trusted for compatibility yet.
 
 ### Fixed
 
+- **On Linux, a copied file keeps its tags and the address it was downloaded
+  from.** A copy carried the bytes, the timestamps and the permission bits and
+  nothing else, so the extended attributes went missing: Dolphin's tags and
+  rating on a file, and `user.xdg.origin.url`, the address a browser writes onto
+  what it fetched. Tag a folder of photos, copy it to a backup drive, and the
+  copies arrived untagged — and because a move between two filesystems is a copy
+  and a delete, moving them lost the tags outright rather than just failing to
+  duplicate them. Copies and cross-filesystem moves now reproduce the `user.`
+  attributes, on folders as well as files, and so does undoing such a move.
+
+  Merging a folder into one that is already there leaves that folder's own tags
+  alone — answering "Overwrite" for a folder means "put these contents in", not
+  "give it somebody else's labels".
+
+  Only that one namespace. `security.` is where a program's granted capabilities
+  and its SELinux label live, and handing those to a duplicate because somebody
+  pressed copy is not a file manager's business; `system.` is where POSIX ACLs
+  sit, and an ACL names the accounts allowed in — accounts that need not be the
+  same people on the drive the copy is going to.
+
 - **A folder with an underscore in its name keeps it in the Back and Forward
   menus.** A menu row treats the name it is given as a label, and a label's
   underscore means "the letter after this one is the keyboard shortcut" — so
