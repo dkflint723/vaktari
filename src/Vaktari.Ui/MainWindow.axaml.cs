@@ -1365,7 +1365,8 @@ public partial class MainWindow : Window
             // cases that matter — a portable install, a test directory.
             _services.SettingsStore.FilePath,
             _services.FolderViews,
-            _services.Recents);
+            _services.Recents,
+            _services.Searches);
 
         // The pane already holds the detected list, ordered and cached, so the
         // dialog borrows it rather than probing the disk again as it opens.
@@ -1566,6 +1567,7 @@ public partial class MainWindow : Window
             // away like every other change made on those six pages.
             if (model.ForgetViewsOnSave) _services.FolderViews.ForgetAll();
             if (model.ForgetRecentOnSave) _services.Recents.ForgetAll();
+            if (model.ForgetSearchHistoryOnSave) _services.Searches.ForgetAll();
 
             // The font lives in the theme resources, and ThemeApplier is the
             // only thing that writes them — so a saved font does nothing until

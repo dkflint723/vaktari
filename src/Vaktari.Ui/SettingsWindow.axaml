@@ -358,6 +358,41 @@
                          VerticalAlignment="Center"/>
             </StackPanel>
 
+            <!-- **Nothing recorded what had been searched for**, so there was
+                 nothing to switch off — and the first thing a list of the
+                 questions somebody asks their own machine needs is the switch.
+
+                 Bound to RememberSearches, which is the positive half of
+                 GeneralSettings.ForgetSearches: that property is named for its
+                 zero value because deserialization here does not run property
+                 initializers, so a positively named default would ship the
+                 feature off for everybody upgrading. -->
+            <CheckBox FontSize="{DynamicResource FontSizeSmall}"
+                      IsChecked="{Binding RememberSearches}">
+              <StackPanel>
+                <TextBlock Text="Remember what you search for"/>
+                <TextBlock Text="On, right-clicking the search button lists the searches you have run, and choosing one asks it again. Off, nothing new is recorded. What is already remembered stays until you clear it."
+                           FontSize="{DynamicResource FontSizeTiny}"
+                           Foreground="{DynamicResource ViewDimText}"
+                           TextWrapping="Wrap"/>
+              </StackPanel>
+            </CheckBox>
+
+            <!-- Separate from the switch above, and only when there is
+                 something to clear: turning recording off must not silently
+                 delete a list, because that is not what the checkbox says. -->
+            <StackPanel Orientation="Horizontal" Spacing="10" Margin="24,0,0,0"
+                        IsVisible="{Binding HasSearchHistory}">
+              <Button Content="Forget what was searched for"
+                      Padding="10,3"
+                      FontSize="{DynamicResource FontSizeSmall}"
+                      Command="{Binding ForgetSearchHistoryCommand}"/>
+              <TextBlock Text="{Binding SearchCountLabel}"
+                         FontSize="{DynamicResource FontSizeTiny}"
+                         Foreground="{DynamicResource ViewDimText}"
+                         VerticalAlignment="Center"/>
+            </StackPanel>
+
             <CheckBox Content="Show tooltips on rows"
                       FontSize="{DynamicResource FontSizeSmall}"
                       IsChecked="{Binding ShowTooltips}"/>

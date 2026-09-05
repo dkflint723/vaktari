@@ -710,14 +710,19 @@ public sealed class CrumbMenuTests : OwnedViewModels
             .ToList();
 
         // A guard, not decoration: a new menu of this shape must fail here
-        // rather than quietly drop out of the check below. It has already
-        // earned its keep twice — the address bar's Recent locations flyout
-        // arrived between this test being written and being run, took a folder
-        // name as a bare Header, and this line is what said so; and the
-        // ellipsis crumb's menu of the ancestors the bar dropped is the fifth,
-        // which shows folder names for the same reason and needed the same
-        // HeaderTemplate.
-        Assert.Equal(5, themes.Count);
+        // rather than quietly drop out of the check below. It has earned its
+        // keep three times now, which is the argument for writing the check
+        // this way rather than as a list somebody has to remember to add to:
+        // the address bar's Recent locations flyout arrived between this test
+        // being written and being run and took a folder name as a bare Header;
+        // then the ellipsis crumb's menu of the ancestors the bar dropped; then
+        // the search history's flyout. The last two were built at the same time
+        // by different hands, each bumped this number to five, and it is six —
+        // which is what a count catches and a list does not.
+        //
+        // A question somebody typed is the worst of the six to get wrong:
+        // "*_test.cs" is an ordinary thing to search for.
+        Assert.Equal(6, themes.Count);
 
         foreach (var theme in themes)
             Assert.Contains(theme.Elements(Xaml + "Setter"),

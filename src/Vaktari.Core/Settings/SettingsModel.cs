@@ -194,6 +194,41 @@ public sealed record GeneralSettings
     /// </summary>
     public bool RememberRecent { get; init; } = true;
 
+    /// <summary>
+    /// Whether a search that is run is kept in the search history.
+    ///
+    /// **Nothing recorded what had been searched for at all**, so there was
+    /// nothing to switch off — and the first thing a search history needs is
+    /// the switch, because it is a list of the questions somebody has asked
+    /// their own machine.
+    ///
+    /// **NAMED FOR ITS ZERO VALUE, and this is the important part.** The
+    /// paragraph on <see cref="ViewSettings.KeepWidthAfterPanelClose"/> says
+    /// deserialization here does not run property initializers, and that claim
+    /// was RE-MEASURED for this property rather than taken on trust:
+    /// <c>{"version":1,"general":{"showTooltips":true}}</c> deserialized
+    /// through <see cref="SettingsJsonContext"/> came back with
+    /// <see cref="RememberRecent"/> FALSE, though it is declared
+    /// <c>= true</c>. So a <c>= true</c> default is decorative for every
+    /// settings.json written before the key existed — which is every one that
+    /// exists — and a positively named <c>RememberSearches = true</c> would
+    /// have shipped the feature switched off for everybody upgrading, with a
+    /// checkbox that says it is on.
+    ///
+    /// So the wanted behaviour IS the zero: false means the history is kept,
+    /// which is what should happen when nobody has said otherwise. The dialog
+    /// still shows it the positive way round, as "Remember what you search
+    /// for" — the inversion belongs at the one control that reads it, not in
+    /// the file.
+    ///
+    /// On by default for the reason <see cref="RememberRecent"/> gives: a
+    /// privacy switch that ships off is a feature nobody finds. Turning it on
+    /// stops NEW searches being recorded; it does not empty what is already
+    /// there, because silently deleting somebody's list from a checkbox is not
+    /// what the checkbox says. Emptying is its own button.
+    /// </summary>
+    public bool ForgetSearches { get; init; }
+
     // ---- previews ---------------------------------------------------------
 
     public bool ShowPreviews { get; init; } = true;

@@ -1134,7 +1134,58 @@
                         Height="{DynamicResource ChromeRowHeight}" Padding="0"
                         Background="Transparent" BorderThickness="0"
                         AutomationProperties.Name="Search files  (ctrl+f)"
-                        ToolTip.Tip="Search files  (ctrl+f)">
+                        ToolTip.Tip="{Binding ActiveTab.SearchTip}">
+                  <!-- **Nothing recorded what had been searched for**, so a
+                       question was retyped every time it was asked again — and
+                       one that had been narrowed to a folder or told to mind
+                       its capitals had to be rebuilt a control at a time.
+
+                       Right-click, exactly as Back and Forward hang their
+                       places off the buttons that walk them, and for one
+                       further reason of its own: the OPEN field's TextBox runs
+                       CloseSearchIfEmpty on LostFocus, so anything inside the
+                       box that takes focus when clicked would collapse the box
+                       out from under itself.
+
+                       The row carries its own command rather than reaching out
+                       through $parent[Window]: a flyout is its own popup root,
+                       and a reach-out would resolve to the SHELL's active tab,
+                       which is the wrong pane on the quiet half of a split. -->
+                  <Button.ContextFlyout>
+                    <MenuFlyout ItemsSource="{Binding ActiveTab.SearchSteps}">
+                      <MenuFlyout.ItemContainerTheme>
+                        <ControlTheme TargetType="MenuItem" BasedOn="{StaticResource {x:Type MenuItem}}"
+                                      x:DataType="vm:SearchStep">
+                          <!-- **The question goes through a TextBlock, NOT
+                               through a Header string.** A MenuItem renders a
+                               string header through an AccessText with
+                               RecognizesAccessKey — measured here: a MenuItem
+                               whose Header was "git_projects" reported
+                               AccessKey 'p' and laid out "gitprojects", the
+                               underscore eaten and the next letter underlined.
+                               The breadcrumb two hundred lines down already
+                               carries that wound written down for folder
+                               names; a QUERY is worse, because "*_test.cs" is
+                               an ordinary thing to type into a search box.
+
+                               Header is the row itself rather than its words,
+                               so the template below has something to read Name
+                               off. The two navigation menus above still bind a
+                               string header and have the same wound for a
+                               folder with an underscore in it; that is theirs
+                               to fix, not something to copy. -->
+                          <Setter Property="Header" Value="{Binding}"/>
+                          <Setter Property="HeaderTemplate">
+                            <DataTemplate x:DataType="vm:SearchStep">
+                              <TextBlock Text="{Binding Name}"/>
+                            </DataTemplate>
+                          </Setter>
+                          <Setter Property="Command" Value="{Binding Open}"/>
+                          <Setter Property="ToolTip.Tip" Value="{Binding Where}"/>
+                        </ControlTheme>
+                      </MenuFlyout.ItemContainerTheme>
+                    </MenuFlyout>
+                  </Button.ContextFlyout>
                   <Path Width="13" Height="13" Stretch="Uniform"
                         Data="M10.5 4 a6.5 6.5 0 1 0 0 13 a6.5 6.5 0 1 0 0 -13 M15.5 15.5 L20 20"
                         Stroke="{DynamicResource ViewDimText}" StrokeThickness="1.03"

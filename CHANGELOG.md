@@ -13,6 +13,32 @@ should not be trusted for compatibility yet.
 
 ### Added
 
+- **Vaktari remembers what you searched for.** Nothing recorded a search at
+  all: a question was typed, answered, and gone the moment the tab moved on —
+  the only copy of it was the pane's own path. Asking it again meant retyping
+  it, and one that had been refined, narrowed to a folder and then told to mind
+  its capitals, had to be rebuilt a control at a time from memory.
+  Right-clicking the search button now lists the searches you have run, newest
+  first, and choosing one asks it again exactly as it was asked — the same
+  words, the same folder, the same answer about capitals — because what is kept
+  is the whole search rather than the words in it. A row says which folder it
+  was confined to and whether it was minding capitals, so questions spelled the
+  same are told apart without hovering them; and one question is one row
+  however many folders you happened to ask it from. The button only mentions
+  the menu once there is something in it, and every open window's menu keeps up
+  with every other, so a search run in one appears in the rest and a list
+  emptied in one is emptied in all of them.
+
+  It arrives with its switch and its clear rather than a release later, because
+  a history that can be neither stopped nor emptied is a log rather than a
+  tool. "Remember what you search for" on the General page stops new searches
+  being recorded and leaves the ones already there alone — turning a switch off
+  is not an instruction to delete anything — and "Forget what was searched for"
+  beside it empties the list in one gesture when you press Save. Fifty searches
+  are kept and the newest twelve are offered, and a search that found nothing
+  is kept too: it is the one most worth asking again once the files it was
+  looking for exist.
+
 - **Vaktari can start on This PC.** The startup choice offered last time's
   session, your home folder, or a folder you name — and the drive listing was
   none of those. It is reachable from the sidebar, from Up at the top of a

@@ -61,10 +61,12 @@ public sealed partial class SettingsViewModel : ObservableObject
         Core.IFileManagerService? fileManager = null,
         string? settingsFile = null,
         Core.FileSystem.IFolderViewStore? folderViews = null,
-        Core.FileSystem.IRecentStore? recents = null)
+        Core.FileSystem.IRecentStore? recents = null,
+        Core.Search.ISearchHistory? searches = null)
     {
         _rememberedViews = folderViews?.Remembered ?? 0;
         _recentCount = recents?.Count ?? 0;
+        _searchCount = searches?.Count ?? 0;
 
         _settingsFile = settingsFile ?? "";
         _defaults = defaults;
@@ -109,6 +111,12 @@ public sealed partial class SettingsViewModel : ObservableObject
         RememberViewPerFolder = general.RememberViewPerFolder;
         ShowTooltips = general.ShowTooltips;
         RememberRecent = general.RememberRecent;
+
+        // Inverted HERE and nowhere else. GeneralSettings.ForgetSearches is
+        // named for its zero value because deserialization does not run
+        // property initializers — measured on this very record — and the
+        // checkbox still has to read the positive way round.
+        RememberSearches = !general.ForgetSearches;
         TabSwitchesSplitPanes = general.TabSwitchesSplitPanes;
         ClosingSplitDiscardsOtherPane = general.ClosingSplitDiscardsOtherPane;
         ShowStatusBar = general.ShowStatusBar;
@@ -305,6 +313,11 @@ public sealed partial class SettingsViewModel : ObservableObject
     [ObservableProperty] private bool _rememberViewPerFolder;
     [ObservableProperty] private bool _showTooltips;
     [ObservableProperty] private bool _rememberRecent;
+
+    /// <summary>The positive half of <c>GeneralSettings.ForgetSearches</c>,
+    /// which is named for its zero value so an upgrading settings.json keeps
+    /// its history.</summary>
+    [ObservableProperty] private bool _rememberSearches;
     [ObservableProperty] private bool _tabSwitchesSplitPanes;
     [ObservableProperty] private bool _closingSplitDiscardsOtherPane;
     [ObservableProperty] private bool _showStatusBar;
@@ -1357,6 +1370,7 @@ public sealed partial class SettingsViewModel : ObservableObject
                 RememberViewPerFolder = RememberViewPerFolder,
                 ShowTooltips = ShowTooltips,
                 RememberRecent = RememberRecent,
+                ForgetSearches = !RememberSearches,
                 TabSwitchesSplitPanes = TabSwitchesSplitPanes,
                 ClosingSplitDiscardsOtherPane = ClosingSplitDiscardsOtherPane,
                 ShowStatusBar = ShowStatusBar,
@@ -1576,6 +1590,48 @@ public sealed partial class SettingsViewModel : ObservableObject
         SettingsFileStatus = _recentCount == 1
             ? "One remembered entry will be forgotten when you press Save."
             : $"{_recentCount:N0} remembered entries will be forgotten when you press Save.";
+    }
+
+    // ---- the searches nothing recorded --------------------------------------
+
+    /// <summary>
+    /// How many searches were held when this dialog opened.
+    ///
+    /// **Nothing recorded what had been searched for**, so this list is new —
+    /// and it arrives with the switch and the button, rather than a release
+    /// later, because the recent lists next door proved what a history with
+    /// neither is: unstoppable, unemptiable, and only removable by finding the
+    /// file.
+    ///
+    /// Read once, at open, rather than live — the same way the recent count
+    /// beside it is read. It is a size to decide by rather than a gauge, and
+    /// the clearing is not sized by it: Save empties whatever the store holds
+    /// at that moment, so a search run in another window between opening this
+    /// dialog and pressing Save is forgotten too, whatever this number said.
+    /// </summary>
+    private readonly int _searchCount;
+
+    public bool HasSearchHistory => _searchCount > 0;
+
+    public string SearchCountLabel => _searchCount == 1
+        ? "One search is remembered"
+        : $"{_searchCount:N0} searches are remembered";
+
+    /// <summary>
+    /// Armed like the two beside it: Save clears them, Cancel does not. And
+    /// SEPARATE from the switch — turning recording off does not delete what
+    /// is already there, because that is not what the checkbox says.
+    /// </summary>
+    public bool ForgetSearchHistoryOnSave { get; private set; }
+
+    [RelayCommand(CanExecute = nameof(HasSearchHistory))]
+    private void ForgetSearchHistory()
+    {
+        ForgetSearchHistoryOnSave = true;
+
+        SettingsFileStatus = _searchCount == 1
+            ? "One remembered search will be forgotten when you press Save."
+            : $"{_searchCount:N0} remembered searches will be forgotten when you press Save.";
     }
 
     // ---- the folder views nothing could see ---------------------------------

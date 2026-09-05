@@ -224,6 +224,22 @@ public sealed partial class PaneViewModel : ObservableObject, IDisposable
 
         Settings.AppSettings.Changed += OnRecentPlacesChanged;
 
+        // **The search menu had the same wound one control along, and worse.**
+        // The store is one per application and this menu is one per pane, so
+        // "Forget what was searched for" — pressed in one window — left every
+        // other window's magnifier listing searches that were gone. Clicking
+        // one of those rows did not merely fail: opening a history row is a
+        // navigation to a search path, and a navigation to a search path
+        // RECORDS it, so the entry the user had just asked to delete was
+        // written straight back into the store.
+        //
+        // Held in a field for the reason above it: Searches is a settable
+        // static, and unsubscribing from whatever it happens to be later would
+        // leave the handler on the store it actually went on.
+        _searches = Searches;
+
+        if (_searches is not null) _searches.Changed += OnSearchHistoryChanged;
+
         // **A pane that is BUILT at 200% has to start there**, and this was
         // measured missing: the threshold multiplier was written only when the
         // pane's own zoom CHANGED, and every creation path assigns that zoom
@@ -243,6 +259,12 @@ public sealed partial class PaneViewModel : ObservableObject, IDisposable
     private readonly IRecentStore? _recents;
 
     private void OnRecentPlacesChanged(object? sender, EventArgs e) => NotifyRecentPlaces();
+
+    /// <summary>The search history this pane's menu listens to, remembered for
+    /// the same reason.</summary>
+    private readonly Vaktari.Core.Search.ISearchHistory? _searches;
+
+    private void OnSearchHistoryChanged(object? sender, EventArgs e) => RefreshSearchHistory();
 
 
 
@@ -2769,6 +2791,17 @@ public sealed partial class PaneViewModel : ObservableObject, IDisposable
             _forward.Clear();
         }
 
+        // **Nothing anywhere recorded what had been searched for.** Here rather
+        // than in RunSearch, because RunSearch is one of four roads to a search
+        // path — the scope box, the case box and a row of the history menu
+        // itself are the others — and a question narrowed to a folder is a
+        // different question, not a repeat of the one it was narrowed from.
+        //
+        // Above the load rather than below it, unlike the recent folder at the
+        // end of this method: see RecordSearch for why a search that found
+        // nothing is still a search that was made.
+        if (VirtualPaths.IsSearch(path)) RecordSearch(path);
+
         await LoadAsync(path).ConfigureAwait(false);
 
         // After the load, and only if it worked — a path that could not be read
@@ -5014,6 +5047,8 @@ public sealed partial class PaneViewModel : ObservableObject, IDisposable
         if (_recents is not null) _recents.Changed -= OnRecentPlacesChanged;
 
         Settings.AppSettings.Changed -= OnRecentPlacesChanged;
+
+        if (_searches is not null) _searches.Changed -= OnSearchHistoryChanged;
 
         _vcsRefresh?.Stop();
 

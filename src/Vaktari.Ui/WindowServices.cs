@@ -64,6 +64,7 @@ internal sealed class WindowServices
         JsonSessionStore session,
         JsonFolderViewStore folderViews,
         JsonRecentStore recents,
+        JsonSearchHistory searches,
         Vaktari.Core.Sharing.ProtonDriveLinks driveLinks,
         JsonDriveLinkStore driveLinkStore)
     {
@@ -73,6 +74,7 @@ internal sealed class WindowServices
         Session = session;
         FolderViews = folderViews;
         Recents = recents;
+        Searches = searches;
         DriveLinks = driveLinks;
         DriveLinkStore = driveLinkStore;
     }
@@ -83,6 +85,13 @@ internal sealed class WindowServices
     internal JsonSessionStore Session { get; }
     internal JsonFolderViewStore FolderViews { get; }
     internal JsonRecentStore Recents { get; }
+
+    /// <summary>
+    /// What has been searched for. One per application like the stores beside
+    /// it: two of these on one directory would have the first window's Flush
+    /// write its stale snapshot over the second's.
+    /// </summary>
+    internal JsonSearchHistory Searches { get; }
     internal Vaktari.Core.Sharing.ProtonDriveLinks DriveLinks { get; }
     internal JsonDriveLinkStore DriveLinkStore { get; }
 
@@ -289,6 +298,12 @@ internal sealed class WindowServices
         var recents = new JsonRecentStore(JsonSessionStore.DefaultDirectory());
         ViewModels.PaneViewModel.Recents = recents;
 
+        // **Nothing recorded what had been searched for.** A static like the
+        // stores above, for the same reason: panes are created by the shell,
+        // not injected here.
+        var searches = new JsonSearchHistory(JsonSessionStore.DefaultDirectory());
+        ViewModels.PaneViewModel.Searches = searches;
+
         // Platform-neutral: it drives the `git` binary, which behaves the same
         // on both targets, so it is constructed here rather than coming from
         // IPlatform like the trash and the icon theme do.
@@ -328,7 +343,7 @@ internal sealed class WindowServices
 
         return new WindowServices(
             platform, settingsStore, settings, session, folderViews, recents,
-            driveLinks, driveLinkStore);
+            searches, driveLinks, driveLinkStore);
     }
 
     /// <summary>
@@ -512,6 +527,7 @@ internal sealed class WindowServices
                 // snapshot over what the windows still open have since changed.
                 FolderViews.Flush();
                 Recents.Flush();
+                Searches.Flush();
 
                 _trashTimer?.Stop();
                 _trashTimer = null;

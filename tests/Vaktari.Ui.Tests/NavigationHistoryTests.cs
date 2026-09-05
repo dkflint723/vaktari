@@ -169,6 +169,13 @@ public sealed class NavigationHistoryTests : OwnedViewModels
     /// $parent[Window]: a flyout is its own popup root, and a reach-out would
     /// resolve to the SHELL's active tab — the wrong pane on the quiet half of
     /// a split.
+    ///
+    /// **The search history is the third menu of this shape and is held to the
+    /// same rule**, which is why it is listed here rather than filtered out:
+    /// the whole point of the sequence below is that every menu built out of a
+    /// pane's own rows is accounted for, so a fourth that quietly reached
+    /// through the window would show up as an unexpected entry rather than as
+    /// nothing at all.
     /// </summary>
     [AvaloniaFact]
     public void The_menus_are_on_both_buttons_and_bind_their_own_rows()
@@ -182,7 +189,11 @@ public sealed class NavigationHistoryTests : OwnedViewModels
         // One each, and the right one on each — two Back menus would look
         // exactly as correct from a count.
         Assert.Equal(
-            ["{Binding ActiveTab.BackSteps}", "{Binding ActiveTab.ForwardSteps}"],
+            [
+                "{Binding ActiveTab.BackSteps}",
+                "{Binding ActiveTab.ForwardSteps}",
+                "{Binding ActiveTab.SearchSteps}",
+            ],
             flyouts.Select(f => (string?)f.Attribute("ItemsSource")));
 
         foreach (var setter in flyouts.Descendants(Avalonia + "Setter")

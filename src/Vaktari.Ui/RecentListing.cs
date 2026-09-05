@@ -143,6 +143,28 @@ public static class VirtualPaths
     public static string? ScopeOf(string path) => IsScoped(path) ? OriginOf(path) : null;
 
     /// <summary>
+    /// The same path with everything the search does not read taken out of it,
+    /// so two paths that ask one question compare equal.
+    ///
+    /// **The origin is carried even when the search is unscoped, and nothing
+    /// reads it then.** <c>SearchListing</c> is the only place that builds a
+    /// <c>SearchQuery</c>, and it takes exactly three fields — <c>QueryOf</c>,
+    /// <c>ScopeOf</c> and <c>MatchesCase</c> — so "report" everywhere from
+    /// C:\Alpha and "report" everywhere from C:\Beta are two strings naming
+    /// one search with one answer. Kept in the path all the same, because the
+    /// origin is what "This folder only" narrows to and what Go to location
+    /// leaves the results for; it is the wrong thing to compare on, not the
+    /// wrong thing to store.
+    ///
+    /// Not <see cref="SamePlace"/>, and the two must not be merged: that one
+    /// answers "am I already here", where two spellings of one question ARE two
+    /// places and going between them re-runs the search. This one answers "is
+    /// this the same question", which is what a history has one row per.
+    /// </summary>
+    public static string SearchIdentity(string path)
+        => IsScoped(path) ? path : Search(QueryOf(path), null, false, MatchesCase(path));
+
+    /// <summary>
     /// Whether the capitals in the question are part of it.
     ///
     /// **Absent means no**, which is what carries a three-field path written by
