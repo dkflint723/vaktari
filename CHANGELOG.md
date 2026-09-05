@@ -13,6 +13,18 @@ should not be trusted for compatibility yet.
 
 ### Added
 
+- **The band above a search says when nothing is indexing it, and no longer
+  names the machinery.** A search of every folder on the machine looked exactly
+  like one an index had answered — same band, same bar — so a wait of minutes
+  had nothing on screen accounting for it. It now reads "every folder is read in
+  turn — there is no index on this machine", naming the folder instead when the
+  search is narrowed to one, and it stays on screen after the walk finishes,
+  which is when you are most likely to be wondering what took so long. On a KDE
+  box with Baloo the line appears for a search like `*.pdf`, which the index
+  cannot answer and has always been walked. The old line, which nobody ever saw
+  drawn, said "searching with directory walk" and "searching with baloo": the
+  names of implementation details, put in front of somebody looking for a file.
+
 - **A drag shows what it is carrying.** While dragging, the only feedback was the
   cursor the operating system chose, so a drag begun by accident looked exactly
   like a drag of the twenty files you meant — and there was no way to tell which

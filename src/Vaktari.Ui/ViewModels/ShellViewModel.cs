@@ -194,8 +194,55 @@ public sealed partial class ShellViewModel : ObservableObject, IDisposable
         MarkDirty();
     }
 
-    private static double Step(double value, double delta)
-        => Math.Round(Math.Clamp(value + delta, 0.7, 2.5), 2);
+    // The font axis has one range for every layout; the icon axis has one per
+    // layout, and asks PaneScale for it.
+    private const double MinFontScale = 0.7;
+    private const double MaxFontScale = 2.5;
+
+    /// <summary>
+    /// One notch on either axis.
+    ///
+    /// **A fixed ADDITIVE delta is not one notch — it is a different notch at
+    /// every size.** Adding 0.15 to 0.7 is a 21% jump and adding it to 3.5 is
+    /// 4%, so the same wheel click lurched at the bottom of the range and
+    /// crawled at the top. That was invisible while every axis was clamped to
+    /// 0.7–2.5; widening the grid to 256px made it the difference between ten
+    /// clicks from 100% to the top of the range and eighteen.
+    ///
+    /// The delta is read as a PROPORTION of the current scale, so callers keep
+    /// the numbers they already pass and every notch is the same perceived
+    /// step. Down is the reciprocal of up rather than <c>1 - delta</c>: a notch
+    /// in followed by a notch out has to land back where it started, and
+    /// x1.15 then x0.85 lands at 0.98.
+    ///
+    /// Rounded to three places, and BEFORE the clamp rather than after. The
+    /// ends of a layout's icon range are a pixel count over a base — 256/72 is
+    /// 3.5555… — so rounding the CLAMPED value hands back a scale a hair past
+    /// the limit it was just held to. Three places rather than two because a
+    /// notch is now a ratio and coarse rounding eats it: measured at ONE place,
+    /// the same 15% notch came out x1.20 from a scale of 1.0 and x1.13 from a
+    /// scale of 3.0 — the unevenness this method exists to remove, put back by
+    /// the rounding.
+    /// </summary>
+    private static double Step(double value, double delta, double min, double max)
+    {
+        var scaled = delta >= 0 ? value * (1 + delta) : value / (1 - delta);
+
+        return Math.Clamp(Math.Round(scaled, 3), min, max);
+    }
+
+    /// <summary>
+    /// One notch on the font axis, and nothing at all when the caller is moving
+    /// only icons. Its own method because two callers need it: the plain scale
+    /// below, and the ladder step in <see cref="ZoomPane"/>, which cannot go
+    /// through the plain scale without also moving the icons a second time.
+    /// </summary>
+    private static void StepFont(PaneViewModel pane, double delta)
+    {
+        if (delta == 0) return;
+
+        pane.FontScale = Step(pane.FontScale, delta, MinFontScale, MaxFontScale);
+    }
 
     /// <summary>
     /// Scaling applies to ONE pane — whichever is active, or whichever the
@@ -206,10 +253,72 @@ public sealed partial class ShellViewModel : ObservableObject, IDisposable
     {
         if (pane is null) return;
 
-        if (fontDelta != 0) pane.FontScale = Step(pane.FontScale, fontDelta);
-        if (iconDelta != 0) pane.IconScale = Step(pane.IconScale, iconDelta);
+        StepFont(pane, fontDelta);
+
+        if (iconDelta != 0)
+        {
+            // The icon range belongs to the LAYOUT, not to the application: the
+            // grid draws a 72px tile and the details row an 18px icon, so one
+            // shared 0.7–2.5 gave the grid 50–180 and the row 13–45 — three
+            // ranges nobody picked. See PaneScale.IconPixelRange.
+            var (min, max) = pane.IconLimits;
+
+            pane.IconScale = Step(pane.IconScale, iconDelta, min, max);
+        }
 
         MarkDirty();
+    }
+
+    /// <summary>
+    /// The zoom gesture: Ctrl+wheel, Ctrl+plus, Ctrl+minus.
+    ///
+    /// **It scaled inside the layout on screen and then stopped dead.** Every
+    /// file manager's Ctrl+wheel walks a ladder — Explorer's runs from a list
+    /// of names to a wall of extra-large tiles — and this one could only
+    /// stretch whichever of the three layouts you happened to be in. Reaching
+    /// large thumbnails meant leaving the wheel, opening a menu and choosing a
+    /// layout by name, which is exactly the work the gesture exists to save.
+    ///
+    /// So: scale within the layout until the icon axis is at the end of that
+    /// layout's stretch, and let the NEXT notch move to the neighbouring layout
+    /// instead, carrying the sizes across. At the ends of the ladder there is
+    /// no neighbour and it goes back to scaling in place, which is what makes
+    /// the outermost notch do nothing rather than wrap around.
+    ///
+    /// Separate from <see cref="ScalePane"/>, which the flyout's own buttons
+    /// use: those sit beside a layout chooser and must not move it.
+    /// </summary>
+    public void ZoomPane(PaneViewModel? pane, double fontDelta, double iconDelta)
+    {
+        if (pane is null) return;
+
+        // The icon delta is what walks the ladder, so a caller moving only the
+        // font must not be read as "step down": AtIconLimit takes a direction,
+        // and a delta of 0 is not one.
+        if (iconDelta != 0
+            && pane.AtIconLimit(iconDelta > 0)
+            && pane.StepLayout(iconDelta > 0))
+        {
+            // **The step used to return here and drop the font half of the
+            // notch**, so the one click in every run that crossed a boundary
+            // left the text frozen while the icons carried across — measured on
+            // the build before this: a plain Ctrl+wheel at the details ceiling
+            // moved neither axis' number. A step consumes the ICON half of the
+            // notch, not the whole gesture.
+            StepFont(pane, fontDelta);
+
+            // And no MarkDirty, which is measured rather than an omission. **A
+            // step always moves the icon SCALE**, because the arriving layout
+            // draws a different base and the same pixel size therefore cannot
+            // be the same multiplier — and every scale change raises
+            // ScaleChanged, which CreatePane already wires to MarkDirty. A
+            // MarkDirty() stood here until the test that guards it — see
+            // ZoomLadderTests.A_ladder_step_is_worth_saving — went on passing
+            // with it deleted, which is what proved the second call redundant.
+            return;
+        }
+
+        ScalePane(pane, fontDelta, iconDelta);
     }
 
     // ---- which pane the menu's size controls act on ------------------------
@@ -327,9 +436,13 @@ public sealed partial class ShellViewModel : ObservableObject, IDisposable
     /// Combined zoom moves BOTH axes — it was stepping only the font, which
     /// made it identical to FontLarger and meant icons never grew with it.
     /// Icons step further per notch because their range is wider.
+    ///
+    /// Through <see cref="ZoomPane"/>, so the keyboard walks the same layout
+    /// ladder the wheel does. Two controls for one gesture that disagreed about
+    /// where the gesture ends would be worse than either.
     /// </summary>
-    [RelayCommand] private void ZoomIn()  => ScalePane(ActiveTab, 0.1, 0.15);
-    [RelayCommand] private void ZoomOut() => ScalePane(ActiveTab, -0.1, -0.15);
+    [RelayCommand] private void ZoomIn()  => ZoomPane(ActiveTab, 0.1, 0.15);
+    [RelayCommand] private void ZoomOut() => ZoomPane(ActiveTab, -0.1, -0.15);
 
     // ---- network sharing -------------------------------------------------
 

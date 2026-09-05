@@ -73,7 +73,9 @@ public sealed class SearchFallbackTests : IDisposable
     {
         if (!OperatingSystem.IsLinux()) return;
 
-        LinuxSearchProvider.BalooOverride = SilentBaloo();
+        var script = SilentBaloo();
+
+        LinuxSearchProvider.BalooOverride = () => script;
 
         Assert.Contains("report.pdf", await Search("report"));
     }
@@ -87,7 +89,9 @@ public sealed class SearchFallbackTests : IDisposable
     {
         if (!OperatingSystem.IsLinux()) return;
 
-        LinuxSearchProvider.BalooOverride = SilentBaloo();
+        var script = SilentBaloo();
+
+        LinuxSearchProvider.BalooOverride = () => script;
 
         Assert.Empty(await Search("nothinghasthisname"));
     }
@@ -101,13 +105,12 @@ public sealed class SearchFallbackTests : IDisposable
     {
         if (!OperatingSystem.IsLinux()) return;
 
-        LinuxSearchProvider.BalooOverride = null;
+        // **The assertion used to be behind a BackendName check**, because a
+        // null override meant "go and look at this machine" and a developer box
+        // with a working index would answer from it. A probe can say absent, so
+        // the case this test is named for is the case it actually runs.
+        LinuxSearchProvider.BalooOverride = () => null;
 
-        var found = await Search("report");
-
-        // Only asserted when the machine has no real Baloo, which is the state
-        // this case is about; a box with a working index answers from it.
-        if (new LinuxSearchProvider().BackendName == "walk")
-            Assert.Contains("report.pdf", found);
+        Assert.Contains("report.pdf", await Search("report"));
     }
 }

@@ -1314,8 +1314,21 @@ public sealed partial class PaneViewModel : ObservableObject, IDisposable
     /// </summary>
     private double BaseIconSize => PaneScale.BaseIcon(View);
 
+    // The FONT axis keeps one range for every layout, and that is honest: 14pt
+    // text is small at 0.7 and large at 2.5 whether it sits in a row, a compact
+    // cell or under a tile. The ICON axis does not — see PaneScale.IconRange.
     private const double MinScale = 0.7;
     private const double MaxScale = 2.5;
+
+    /// <summary>
+    /// How far the icon axis may travel in the layout that is on screen, as a
+    /// multiple of what that layout draws at 100%.
+    ///
+    /// **The icon clamp used MinScale/MaxScale too, and that was the ceiling
+    /// the grid hit.** 2.5 x 72 is 180, so no route existed to the 256 Explorer
+    /// calls extra large, by the wheel or by typing into the size box.
+    /// </summary>
+    public (double Min, double Max) IconLimits => PaneScale.IconRange(View);
 
     /// <summary>
     /// What "share" would act on: the selected folder, or this one. Shown in
@@ -1369,7 +1382,67 @@ public sealed partial class PaneViewModel : ObservableObject, IDisposable
     public double IconPixels
     {
         get => Math.Round(IconScale * BaseIconSize);
-        set => IconScale = Math.Clamp(value / BaseIconSize, MinScale, MaxScale);
+        set
+        {
+            var (min, max) = IconLimits;
+
+            IconScale = Math.Clamp(value / BaseIconSize, min, max);
+        }
+    }
+
+    /// <summary>
+    /// Whether the icon axis has already reached the end of this layout's
+    /// stretch. That is where the zoom gesture steps to the next layout instead
+    /// of pushing against a clamp that cannot move.
+    ///
+    /// **Asked of the rounded PIXEL size, not of the raw scale, because an
+    /// answer given on the raw scale produced a notch that did nothing.**
+    /// Measured on the build before this: from details at 100%, seven notches
+    /// in reached scale 2.658, which draws 48px — the ceiling, as far as
+    /// anything on screen was concerned. The eighth notch only moved the scale
+    /// to 2.667, redrew the same 48px and did not step, so on the icons-only
+    /// Ctrl+Shift branch it changed nothing whatsoever. The step now happens on
+    /// the size the user can see.
+    ///
+    /// Going down the size is compared against <see cref="PaneScale.StepDownAt"/>
+    /// rather than this layout's own floor, which is what makes one notch out
+    /// undo one notch in across a handover.
+    /// </summary>
+    public bool AtIconLimit(bool larger)
+        => larger
+            ? IconPixels >= PaneScale.IconPixelRange(View).Max
+            : PaneScale.StepDownAt(View) is { } handover && IconPixels <= handover;
+
+    /// <summary>
+    /// Moves one rung up or down the layout ladder, carrying the sizes across.
+    ///
+    /// **Every mode keeps its own scale pair, so a bare mode switch made the
+    /// sizes jump.** Arriving in Grid at whatever it was last left at is right
+    /// when the switch was asked for by name, and wrong when it is the
+    /// continuation of a zoom: the whole point of the step is that the size
+    /// under the pointer keeps growing. Both axes are therefore read before the
+    /// switch and written after it — the icon one in PIXELS, because the base
+    /// it multiplies moves with the layout and the same multiplier would mean a
+    /// different size on the other side.
+    ///
+    /// The setter clamps into the arriving layout's own range, so a step never
+    /// lands outside it.
+    /// </summary>
+    /// <returns>False at the ends of the ladder, where there is nothing to step
+    /// to and the caller should go on scaling in place.</returns>
+    public bool StepLayout(bool larger)
+    {
+        if (PaneScale.Neighbour(View, larger) is not { } next) return false;
+
+        var pixels = IconPixels;
+        var font = FontScale;
+
+        View = next;
+
+        FontScale = font;
+        IconPixels = pixels;
+
+        return true;
     }
 
     partial void OnFontScaleChanged(double value)
@@ -1728,11 +1801,23 @@ public sealed partial class PaneViewModel : ObservableObject, IDisposable
 
             return VirtualPaths.IsVirtual(origin)
                 ? $"{VirtualPaths.Label(origin)} is not a folder — searching {reach}"
-                : $"Only in {System.IO.Path.GetFileName(origin.TrimEnd(
-                    System.IO.Path.DirectorySeparatorChar,
-                    System.IO.Path.AltDirectorySeparatorChar))}";
+                : $"Only in {FolderName(origin)}";
         }
     }
+
+    /// <summary>
+    /// A folder path as the one word a person would call it.
+    ///
+    /// Shared rather than written twice: the box says "Only in Documents" and
+    /// the line under it says "every folder in Documents is read in turn", and
+    /// two copies of the trimming would name the same folder differently the
+    /// first time either moved. The trailing separator has to go first — a
+    /// GetFileName of "C:\Users\me\" is the empty string.
+    /// </summary>
+    private static string FolderName(string path)
+        => System.IO.Path.GetFileName(path.TrimEnd(
+            System.IO.Path.DirectorySeparatorChar,
+            System.IO.Path.AltDirectorySeparatorChar));
 
     /// <summary>
     /// What is being typed into the search field, which is NOT what is being
@@ -1898,11 +1983,68 @@ public sealed partial class PaneViewModel : ObservableObject, IDisposable
         await RevealAsync(entry);
     }
 
-    /// <summary>Which index answered, so slow results are explained.</summary>
+    /// <summary>
+    /// The line under a search that no index is answering, which is the whole
+    /// explanation for the wait.
+    ///
+    /// **The sentence was written here and no .axaml ever named the property,
+    /// so it appeared nowhere** — and nothing could have reached it in any
+    /// case. The getter chose between this and the backend's own name on
+    /// <c>ISearchProvider.IsAvailable</c>, which both shipped providers
+    /// hardcoded true, so the arm that ran was always the other one: "searching
+    /// with directory walk" on Windows and "searching with baloo" on Fedora, in
+    /// front of somebody who was looking for a file. There is no branch naming
+    /// the implementation now.
+    ///
+    /// **It follows the scope, because the box directly above it does.** Said
+    /// unconditionally, a search narrowed to one folder read "Only in
+    /// Documents" with "reading every folder" underneath — the two halves of
+    /// one band contradicting each other, which on Windows was every scoped
+    /// search there has ever been. The scope comes from
+    /// <c>VirtualPaths.ScopeOf</c>, which is the same string handed to the
+    /// backend, so the sentence cannot claim a reach the query does not have.
+    ///
+    /// **And it is not in the progressive, because it outlives the walk.** The
+    /// bar and the Stop beside it are gated on <see cref="IsLoading"/> and go
+    /// when the search settles; this one stays for as long as the results are
+    /// on screen, so "searching by reading every folder" would have gone on
+    /// claiming a search was running for ever. Read in turn is how this search
+    /// works, during and after.
+    /// </summary>
     public string SearchBackendLine =>
-        Search is { IsAvailable: true } backend
-            ? $"searching with {backend.BackendName}"
-            : "searching by reading every folder — there is no index on this machine";
+        VirtualPaths.ScopeOf(CurrentPath) is { Length: > 0 } scope
+            ? $"every folder in {FolderName(scope)} is read in turn — "
+              + "there is no index on this machine"
+            : "every folder is read in turn — there is no index on this machine";
+
+    /// <summary>
+    /// Whether that line is drawn at all: an index answering has nothing to
+    /// explain, and a sentence shown over every search would be read as
+    /// furniture within a day.
+    ///
+    /// **Asked of the question, not of the backend.** A provider decides this
+    /// per query — LinuxSearchProvider sends a glob past Baloo to the walk,
+    /// because the index stores words rather than filename patterns — so a flag
+    /// read off the provider alone would have hidden the warning for "*.pdf" on
+    /// every KDE box while home and every mounted drive were being read. The
+    /// query is built by <c>SearchListing.QueryFor</c>, which is what the
+    /// search itself runs on.
+    ///
+    /// A missing backend takes the warning too. Nothing is indexing then
+    /// either, which is what the sentence says, and it is the arm the
+    /// interface's own <c>AnswersFromIndex => false</c> default was written
+    /// for.
+    ///
+    /// **No change notification for <see cref="Search"/>, and that is an
+    /// ordering rather than a hope** — the same one <see cref="CanMatchCase"/>
+    /// stands on. It is assigned by <c>WindowServices.Create</c> BEFORE the
+    /// first MainWindow's constructor builds the ShellViewModel whose panes
+    /// this band binds to, and a binding is not read until its DataContext
+    /// attaches. The PATH half does change, and OnCurrentPathChanged raises it.
+    /// </summary>
+    public bool SearchUnindexed =>
+        Search is not { } backend
+        || !backend.AnswersFromIndex(SearchListing.QueryFor(CurrentPath, SearchLimit));
 
     /// <summary>
     /// Ends a running search where it stands, keeping the hits already found.
@@ -3438,6 +3580,16 @@ public sealed partial class PaneViewModel : ObservableObject, IDisposable
             OnPropertyChanged(nameof(SearchScopedHere));
             OnPropertyChanged(nameof(SearchScopeLabel));
             OnPropertyChanged(nameof(SearchMatchesCase));
+
+            // Both read the PATH now — the warning asks the backend about this
+            // particular question, and the sentence names the folder the scope
+            // box names. Without these lines a search narrowed from one pane to
+            // another keeps the previous question's answer: the wrong folder in
+            // the sentence, and on a KDE box a glob typed after a word would
+            // keep the word's "an index is answering" silence while every
+            // folder was read.
+            OnPropertyChanged(nameof(SearchUnindexed));
+            OnPropertyChanged(nameof(SearchBackendLine));
 
             OnPropertyChanged(nameof(IsRealFolder));
 

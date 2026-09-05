@@ -30,12 +30,39 @@ public sealed class LinuxSearchProvider : ISearchProvider
     /// because no index was ever built — cannot be arranged on a machine that
     /// has a working index, nor on one with no Baloo at all. A script that
     /// prints nothing and exits cleanly is exactly what baloosearch does there.
+    ///
+    /// **A plain string could not say "not installed".** Null meant "go and
+    /// look at this machine", so the no-Baloo case could only be asserted on an
+    /// agent that happens to have no KDE on it — on Linux, where the answer
+    /// actually matters, the test read the developer's own box and had to be a
+    /// guard that asserted nothing. A probe returning null says absent and
+    /// means it.
     /// </summary>
-    internal static string? BalooOverride { get; set; }
+    internal static Func<string?>? BalooOverride { get; set; }
 
-    private static string? Baloo => BalooOverride ?? Detected.Value;
+    private static string? Baloo => BalooOverride is { } probe ? probe() : Detected.Value;
 
-    public bool IsAvailable => true;
+    /// <summary>
+    /// Whether Baloo answers this particular question, which is both how
+    /// <see cref="SearchAsync"/> routes and what the band above the results
+    /// reads. One rule, in one place, so the sentence explaining a slow search
+    /// cannot disagree with the code that made it slow.
+    ///
+    /// **The glob is why the question has to carry a query.** Baloo indexes
+    /// words, not filename patterns, so "*.pdf" has always gone straight past
+    /// it to the walk — and a claim of "there is an index here" made without
+    /// looking at the text would have suppressed the warning for the commonest
+    /// slow search on a KDE box, walking home plus every mounted drive in
+    /// silence.
+    ///
+    /// **The binary being on PATH is still not the same as an index existing**,
+    /// and <c>SearchWithBalooThenWalkingAsync</c> exists for exactly that gap.
+    /// Nothing here can close it: whether Baloo has anything to say is only
+    /// learned by asking it, and the band is drawn before the answer comes
+    /// back. So one case survives — baloosearch installed with an index never
+    /// built — where the fallback walk runs without the warning.
+    /// </summary>
+    public bool AnswersFromIndex(SearchQuery query) => Baloo is not null && !IsGlob(query.Text);
 
     public string BackendName => Baloo is null ? "walk" : "baloo";
 
@@ -60,8 +87,10 @@ public sealed class LinuxSearchProvider : ISearchProvider
 
     public IAsyncEnumerable<FileEntry> SearchAsync(SearchQuery query, CancellationToken ct)
         // Baloo indexes words, not filename patterns, so a glob has to go
-        // through the walk — that is what MatchesSimpleExpression is for.
-        => Baloo is { } baloo && !IsGlob(query.Text)
+        // through the walk — that is what MatchesSimpleExpression is for. The
+        // condition is AnswersFromIndex rather than a copy of it, because the
+        // band tells somebody which of these two branches they are waiting on.
+        => Baloo is { } baloo && AnswersFromIndex(query)
             ? SearchWithBalooThenWalkingAsync(baloo, query, ct)
             : SearchByWalkingAsync(query, ct);
 

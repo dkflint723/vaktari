@@ -59,6 +59,11 @@ text and icons in the pane under your pointer, and each layout keeps its own
 size — a grid tile and a list row want different proportions — and remembers it
 between sessions. Add `Shift` for icons only; `Ctrl+0` resets.
 
+Keep scrolling past a layout's largest icon and the wheel moves to the next
+layout up, carrying the size with it, so one gesture runs from a dense list of
+names to a wall of 256px thumbnails and back. `Ctrl` `+` and `Ctrl` `−` walk the
+same rungs.
+
 **Thumbnails** for images and video, cached so a folder you have visited draws
 instantly. A file too small to enlarge cleanly keeps its icon rather than being
 blown up into a blur.

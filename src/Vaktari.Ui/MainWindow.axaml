@@ -2368,6 +2368,33 @@
                                Text="{Binding SearchLimitLine}"
                                FontSize="{DynamicResource FontSizeSmall}"/>
                   </DockPanel>
+                  <!-- **The promised warning appeared nowhere.** The sentence
+                       was on the pane and no markup file named the property, so
+                       a search with no index behind it looked exactly like one
+                       an index had answered: same band, same bar, and a wait
+                       with nothing on screen accounting for it. What was drawn
+                       instead — the branch that could actually be reached —
+                       named the backend, so the only thing the band said about
+                       searching was "directory walk".
+
+                       Dim, and docked under the question rather than beside it:
+                       it explains the wait, it does not announce anything, and
+                       the row above is already carrying two boxes and a Stop.
+
+                       Third of the three bottom rows, so from the question
+                       downwards it reads why this is slow, then how much was
+                       cut off, then the bar — and NOT gated on IsLoading like
+                       the bar and the Stop are. Having no index is still true
+                       when the walk stops, which is exactly when somebody looks
+                       up to ask what took so long, so the sentence stays and is
+                       written in a tense that is true after the walk as well
+                       as during it. -->
+                  <TextBlock x:Name="SearchNoIndex" DockPanel.Dock="Bottom"
+                             IsVisible="{Binding SearchUnindexed}"
+                             Text="{Binding SearchBackendLine}"
+                             Margin="0,6,0,0" TextTrimming="CharacterEllipsis"
+                             Foreground="{DynamicResource ViewDimText}"
+                             FontSize="{DynamicResource FontSizeSmall}"/>
                   <Button x:Name="SearchStop" DockPanel.Dock="Right"
                           IsVisible="{Binding IsLoading}"
                           Command="{Binding StopSearchCommand}"

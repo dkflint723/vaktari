@@ -1,4 +1,5 @@
 using System.Runtime.Versioning;
+using Vaktari.Core.Search;
 using Vaktari.Core.Tests;
 using Vaktari.Windows;
 using Xunit;
@@ -69,4 +70,24 @@ public class SearchReachTests
         Assert.Equal("every drive on this machine", said);
         Assert.NotEqual("everywhere", said);
     }
+
+    /// <summary>
+    /// **Nothing indexes for us on Windows, and nothing on screen said so.**
+    /// The band's warning about reading every folder was hung on IsAvailable,
+    /// which this provider answered true and had to — the class comment gives
+    /// the reason, that answering false would send the UI to a second fallback
+    /// walk of the same tree. So the one platform where "there is no index on
+    /// this machine" is unconditionally true was the platform that could never
+    /// show it.
+    ///
+    /// Both shapes of question, because the answer here really is
+    /// query-independent: unlike Baloo there is no fast path for a word to take
+    /// and a glob to miss.
+    /// </summary>
+    [WindowsTheory]
+    [InlineData("report")]
+    [InlineData("*.pdf")]
+    public void The_walk_does_not_claim_an_index(string text)
+        => Assert.False(
+            new WindowsSearchProvider().AnswersFromIndex(new SearchQuery { Text = text }));
 }

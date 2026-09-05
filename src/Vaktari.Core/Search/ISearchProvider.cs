@@ -23,12 +23,49 @@ public sealed record SearchQuery
 public interface ISearchProvider
 {
     /// <summary>
-    /// False when the backing index is absent or disabled (Everything not
-    /// running, Baloo switched off). The UI degrades to a slow recursive walk
-    /// with a visible warning rather than silently returning nothing.
+    /// Whether an index answers THIS question, as against every folder being
+    /// read in turn.
+    ///
+    /// This is what somebody waiting on a search is actually asking, and it is
+    /// the only thing the band above the results says about the backend now.
+    ///
+    /// **The band used to ask <c>IsAvailable</c>, and both shipped providers
+    /// hardcoded that true.** It meant "will this return results at all", and
+    /// WindowsSearchProvider spelled out why it had to go on meaning that: it
+    /// IS the fallback walk, so answering false would have sent the UI to a
+    /// second fallback walk of its own. A machine with no index therefore
+    /// reported exactly what a machine with one did, and the sentence hung on
+    /// the false arm was unreachable in the source before anybody noticed that
+    /// no markup file bound it either. Nothing read IsAvailable once the band
+    /// stopped, so it is gone rather than left as a member with no consequence.
+    ///
+    /// **A parameter rather than a property, because the routing takes one.**
+    /// LinuxSearchProvider sends a glob past Baloo to the walk — the index
+    /// stores words, not filename patterns — so a query-independent answer was
+    /// wrong for "*.pdf" on every KDE box, which is the commonest shape of slow
+    /// search there is. A provider answers for the question it was handed, and
+    /// routes on the same answer.
+    ///
+    /// Defaulted to FALSE, the cautious way round and the same way round as
+    /// <see cref="SupportsCaseSensitivity"/>: a provider that has not thought
+    /// about it gets the warning, because a promise of speed nobody made is
+    /// worse than a warning nobody needed. Claiming an index is the thing that
+    /// has to be said out loud.
     /// </summary>
-    bool IsAvailable { get; }
+    bool AnswersFromIndex(SearchQuery query) => false;
 
+    /// <summary>
+    /// Which backend this is, for diagnostics and for the tests that need to
+    /// know which of two paths ran.
+    ///
+    /// **Not words for a person.** It was interpolated into the line above the
+    /// results, where it read "searching with directory walk" on Windows and
+    /// "searching with baloo" on Fedora — the names of implementation details,
+    /// handed to somebody who only wanted to know why finding a file was
+    /// taking so long. What the band says now comes from
+    /// <see cref="AnswersFromIndex"/> and is about the machine rather than
+    /// about the code.
+    /// </summary>
     string BackendName { get; }
 
     bool SupportsContentSearch { get; }

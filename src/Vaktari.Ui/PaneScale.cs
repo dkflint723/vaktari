@@ -63,6 +63,103 @@ public static class PaneScale
         _ => DetailsIcon,
     };
 
+    /// <summary>
+    /// How far the icon axis may travel in a given layout, as the PIXELS that
+    /// layout draws.
+    ///
+    /// **One 0.7–2.5 multiplier was shared by all three layouts, so the range
+    /// each layout got was an artefact of the base it happened to draw.** On
+    /// the grid's 72px tile it ran 50 to 180: no route to the 256 Explorer
+    /// calls extra large — the size a folder of photographs is browsed at, and
+    /// the size Vaktari's own thumbnail pipeline already decodes for — and no
+    /// way to pack the tiles tighter than 50 either. On the details row's 18px
+    /// icon the same two numbers ran 13 to 45. One range's worth of travel,
+    /// applied to three bases, is three different ranges and none of them was
+    /// chosen.
+    ///
+    /// Stated in pixels rather than as a multiplier because pixels are what the
+    /// ends mean: 256 is a size, 3.56 is an artefact of dividing it by a base.
+    /// The ceilings are Explorer's own icon rungs — medium 48, large 96, extra
+    /// large 256 — which is the ladder this gesture is copying.
+    ///
+    /// The slices OVERLAP at their ends deliberately — details reaches 48 and
+    /// compact starts at 20 — so the typed size box can ask for a size the
+    /// neighbouring layout also draws, and so <see cref="Neighbour"/> can hand
+    /// the icon size across a layout step unchanged instead of snapping it to
+    /// the new layout's edge. The LADDER crosses at one point inside that
+    /// overlap rather than at both its edges: see <see cref="StepDownAt"/>.
+    /// </summary>
+    public static (double Min, double Max) IconPixelRange(Vaktari.Core.Session.ViewMode mode)
+        => mode switch
+        {
+            Vaktari.Core.Session.ViewMode.Grid => (32, 256),
+            Vaktari.Core.Session.ViewMode.Compact => (20, 96),
+            _ => (12, 48),
+        };
+
+    /// <summary>
+    /// The same range in the unit <c>IconScale</c> is actually in: a multiple
+    /// of what this layout draws at 100%. Derived rather than written twice,
+    /// because a table of multipliers beside a table of pixels is the drift
+    /// that put 26 in the size box.
+    /// </summary>
+    public static (double Min, double Max) IconRange(Vaktari.Core.Session.ViewMode mode)
+    {
+        var (min, max) = IconPixelRange(mode);
+        var drawn = BaseIcon(mode);
+
+        return (min / drawn, max / drawn);
+    }
+
+    /// <summary>
+    /// The layout one rung up or down the size ladder, or null at its ends.
+    ///
+    /// **Ctrl+wheel had no ladder at all.** It scaled inside whichever layout
+    /// was on screen and then simply stopped, so the gesture every file manager
+    /// uses to walk from a dense list of names to a wall of large thumbnails
+    /// could only ever stretch the one layout it started in. Explorer's wheel
+    /// crosses its whole ladder; this is the three-rung version of it, ordered
+    /// by the icon each layout draws — 18, 36, 72.
+    /// </summary>
+    public static Vaktari.Core.Session.ViewMode? Neighbour(
+        Vaktari.Core.Session.ViewMode mode, bool larger)
+        => (mode, larger) switch
+        {
+            (Vaktari.Core.Session.ViewMode.Details, true) => Vaktari.Core.Session.ViewMode.Compact,
+            (Vaktari.Core.Session.ViewMode.Compact, true) => Vaktari.Core.Session.ViewMode.Grid,
+            (Vaktari.Core.Session.ViewMode.Grid, false) => Vaktari.Core.Session.ViewMode.Compact,
+            (Vaktari.Core.Session.ViewMode.Compact, false) => Vaktari.Core.Session.ViewMode.Details,
+            _ => null,
+        };
+
+    /// <summary>
+    /// The icon size at which the zoom gesture leaves this layout going DOWN,
+    /// in the same pixels <see cref="IconPixelRange"/> is stated in.
+    ///
+    /// **The two halves of a handover used to be two different sizes, so a
+    /// notch out did not undo a notch in.** Stepping up happened at the
+    /// LEAVING layout's maximum and stepping back down at the ARRIVING
+    /// layout's minimum — 48 and 20 across the details/compact join, a factor
+    /// of 2.4 apart. Measured on the build before this existed: from details at
+    /// its ceiling, one notch in gave compact at 48px, and winding it back took
+    /// EIGHT notches out and landed on details at 20px. A single overshoot cost
+    /// eight clicks and still could not restore the size it started from.
+    ///
+    /// A handover is ONE size. The layout below hands up at its own maximum, so
+    /// this layout hands down at that same maximum: 48 both ways between
+    /// details and compact, 96 both ways between compact and grid. The wider
+    /// ranges above are what the typed size box may ask for; this is where the
+    /// ladder crosses.
+    ///
+    /// Null at the bottom of the ladder, where there is no layout below to hand
+    /// to. Null rather than this layout's own floor because the two behave
+    /// identically — <see cref="ViewModels.PaneViewModel.StepLayout"/> finds no
+    /// neighbour there and refuses whatever this says — and only one of them is
+    /// true.
+    /// </summary>
+    public static double? StepDownAt(Vaktari.Core.Session.ViewMode mode)
+        => Neighbour(mode, false) is { } below ? IconPixelRange(below).Max : null;
+
     private static readonly (string Key, double Value)[] IconMetrics =
     [
         // **The details row icon sets the row height, not the label.**

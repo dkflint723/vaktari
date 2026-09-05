@@ -16,13 +16,27 @@ namespace Vaktari.Windows;
 /// Search is COM. A managed walk is honest, has no dependency, and is the same
 /// thing the interface says the UI falls back to.
 ///
-/// <see cref="IsAvailable"/> is nonetheless true. It means "will this return
-/// results", not "is it fast", and returning false would send the UI to its own
-/// fallback walk — the same work, done twice as far as the user can tell.
+/// The interface used to carry an <c>IsAvailable</c> flag, which this answered
+/// true. It meant "will this return results", not "is it fast", and returning
+/// false would have sent the UI to its own fallback walk — the same work, done
+/// twice as far as the user can tell.
 /// </summary>
 public sealed class WindowsSearchProvider : ISearchProvider
 {
-    public bool IsAvailable => true;
+    /// <summary>
+    /// False for every question, and the class comment above is the whole
+    /// argument: there is no index behind this on Windows, only a managed walk
+    /// of the drives.
+    ///
+    /// **Nothing on screen ever said so.** The band's warning was hung on
+    /// IsAvailable, which this answered true and had to — so the one platform
+    /// where "there is no index on this machine" is unconditionally true was
+    /// the platform that could never show it.
+    ///
+    /// The query is ignored because the answer does not depend on it: unlike
+    /// Baloo there is no fast path here for any question to take.
+    /// </summary>
+    public bool AnswersFromIndex(SearchQuery query) => false;
 
     public string BackendName => "directory walk";
 

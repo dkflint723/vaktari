@@ -2837,10 +2837,16 @@ public partial class MainWindow : Window
 
             // Shift narrows it to the icons, which is the axis people mean when
             // they say "zoom" — the labels usually want to stay put.
+            //
+            // ZoomPane rather than ScalePane: at the end of a layout's icon
+            // range the next notch steps to the neighbouring LAYOUT, which is
+            // what makes this one gesture reach from a dense list of names to
+            // 256px tiles. ScalePane alone stopped at whatever the layout on
+            // screen could stretch to.
             if (e.KeyModifiers.HasFlag(KeyModifiers.Shift))
-                _shell.ScalePane(pane, 0, up ? 0.15 : -0.15);
+                _shell.ZoomPane(pane, 0, up ? 0.15 : -0.15);
             else
-                _shell.ScalePane(pane, up ? 0.1 : -0.1, up ? 0.15 : -0.15);
+                _shell.ZoomPane(pane, up ? 0.1 : -0.1, up ? 0.15 : -0.15);
         }
     }
 

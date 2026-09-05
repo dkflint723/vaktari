@@ -266,12 +266,17 @@ public sealed class SearchBandTests : OwnedViewModels
     }
 
     /// <summary>
-    /// **A search moves between searches**, and the band is bound to six
+    /// **A search moves between searches**, and the band is bound to eight
     /// properties that all derive from the path. Retyping the query or ticking
     /// either box changes the path from one search to another without ever
     /// leaving the listing kind — so a band that was only told when it appeared
     /// and disappeared would go on displaying the previous question over the
     /// new one's results.
+    ///
+    /// The warning and its sentence are on that list because both read the path
+    /// now: the sentence names the folder the scope box names, and the warning
+    /// asks the backend about this particular question — which on a KDE box is
+    /// the difference between a word Baloo answers and a glob it cannot.
     /// </summary>
     [AvaloniaFact]
     public async Task Moving_from_one_search_to_another_tells_the_band()
@@ -290,6 +295,8 @@ public sealed class SearchBandTests : OwnedViewModels
         Assert.Contains(nameof(PaneViewModel.CanScopeSearch), announced);
         Assert.Contains(nameof(PaneViewModel.SearchScopedHere), announced);
         Assert.Contains(nameof(PaneViewModel.SearchMatchesCase), announced);
+        Assert.Contains(nameof(PaneViewModel.SearchUnindexed), announced);
+        Assert.Contains(nameof(PaneViewModel.SearchBackendLine), announced);
     }
 
     /// <summary>
@@ -593,12 +600,213 @@ public sealed class SearchBandTests : OwnedViewModels
     public async Task With_no_backend_it_says_what_it_always_said()
         => Assert.Equal("searching everywhere", await LabelFor(null, null));
 
+    // ---- and whether anything is indexing ------------------------------------
+
+    private async Task<PaneViewModel> Asking(
+        ISearchProvider? backend, string query = "report", string? origin = null,
+        bool scoped = false)
+    {
+        var pane = Own(new PaneViewModel(new NoDisk()));
+
+        UseSearch(backend);
+
+        await pane.NavigateAsync(VirtualPaths.Search(query, origin, scoped));
+
+        return pane;
+    }
+
+    /// <summary>
+    /// **The one sentence explaining a slow search was written and never
+    /// shown.** It sat on the pane and no .axaml named the property, so it
+    /// appeared nowhere — and nothing could have reached it in any case, because
+    /// the getter chose between it and the backend's name on IsAvailable, which
+    /// both shipped providers hardcoded true. A walk of every drive therefore
+    /// looked exactly like an index answering, with the wait unaccounted for.
+    /// </summary>
+    [AvaloniaFact]
+    public async Task A_search_with_no_index_behind_it_says_why_it_is_slow()
+    {
+        var pane = await Asking(new Fake([]));
+
+        Assert.True(pane.SearchUnindexed);
+
+        Assert.Equal(
+            "every folder is read in turn — there is no index on this machine",
+            pane.SearchBackendLine);
+    }
+
+    /// <summary>
+    /// **The two halves of the band contradicted each other on a scoped
+    /// search.** The box read "Only in Documents" and the sentence directly
+    /// under it said every folder was being read — which on Windows, where
+    /// nothing is indexed, was every scoped search there has ever been. The
+    /// scope comes off the path, so it is the same string the backend is
+    /// handed.
+    ///
+    /// Both spellings of the folder, because the box and the sentence share one
+    /// naming rule and a trailing separator is what a GetFileName without a
+    /// TrimEnd answers the empty string to.
+    /// </summary>
+    [AvaloniaTheory]
+    [InlineData(@"C:\Users\me\Documents")]
+    [InlineData(@"C:\Users\me\Documents\")]
+    public async Task A_search_narrowed_to_a_folder_says_that_folder(string origin)
+    {
+        var pane = await Asking(new Fake([]), origin: origin, scoped: true);
+
+        Assert.Equal("Only in Documents", pane.SearchScopeLabel);
+
+        Assert.Equal(
+            "every folder in Documents is read in turn — there is no index on this machine",
+            pane.SearchBackendLine);
+    }
+
+    /// <summary>
+    /// **The sentence outlives the walk, so it must not claim one is running.**
+    /// It was written "searching by reading every folder", while the bar and
+    /// the Stop beside it are gated on IsLoading and go the moment the search
+    /// settles — so on Windows, where every search is a walk, the band went on
+    /// announcing a search in progress for as long as the results were on
+    /// screen. It stays deliberately: having no index is exactly what somebody
+    /// wants to read when they look up at a finished search and wonder what
+    /// took so long.
+    /// </summary>
+    [AvaloniaFact]
+    public async Task The_sentence_stays_after_the_walk_without_claiming_one()
+    {
+        var pane = await Asking(new Fake([Entry("one.txt")]));
+
+        // NavigateAsync is awaited and the backend pauses for nothing, so the
+        // search is over by here — no wait, and no proxy for one.
+        Assert.False(pane.IsLoading);
+        Assert.Single(pane.Entries);
+
+        Assert.True(pane.SearchUnindexed);
+        Assert.DoesNotContain("searching", pane.SearchBackendLine, StringComparison.Ordinal);
+    }
+
+    /// <summary>
+    /// **And an index answering neither explains itself nor names itself.** The
+    /// branch that could actually be reached read "searching with directory
+    /// walk" on Windows and "searching with baloo" on Fedora: the names of
+    /// implementation details, put in front of somebody looking for a file.
+    /// Nothing needs explaining when the answer is fast, so nothing is said.
+    /// </summary>
+    [AvaloniaFact]
+    public async Task An_index_answering_says_nothing_and_names_nothing()
+    {
+        var pane = await Asking(new Fake([]) { Indexes = _ => true });
+
+        Assert.False(pane.SearchUnindexed);
+        Assert.DoesNotContain("fake", pane.SearchBackendLine, StringComparison.Ordinal);
+    }
+
+    /// <summary>
+    /// **A backend with an index can still walk, and the band has to follow the
+    /// QUESTION rather than the backend.** LinuxSearchProvider sends anything
+    /// holding * or ? straight past Baloo to the recursive walk, because the
+    /// index stores words and not filename patterns — so an answer read off the
+    /// provider alone hid the warning for "*.pdf" on every KDE box while home
+    /// and every mounted drive were being read, which is the commonest shape of
+    /// slow search there is.
+    /// </summary>
+    [AvaloniaFact]
+    public async Task An_index_that_this_question_misses_still_warns()
+    {
+        var indexed = new Fake([]) { Indexes = q => !q.Text.Contains('*') };
+
+        Assert.False((await Asking(indexed, query: "report")).SearchUnindexed);
+        Assert.True((await Asking(indexed, query: "*.pdf")).SearchUnindexed);
+    }
+
+    /// <summary>
+    /// With no backend at all the warning stands. Nothing is indexing then
+    /// either, which is what the sentence says — and it is the arm the
+    /// interface's own default was written for, since a null cannot be asked.
+    /// </summary>
+    [AvaloniaFact]
+    public async Task With_no_backend_at_all_the_warning_stands()
+        => Assert.True((await Asking(null)).SearchUnindexed);
+
+    /// <summary>
+    /// And the band really draws it, which is the half the sentence was missing:
+    /// a phrase nothing binds to is the same silence with more code behind it.
+    ///
+    /// The dim and the small are asserted because they are the whole of its
+    /// manner: this explains a wait, it does not announce anything, and drawn
+    /// at body weight beside the question it would compete with it. The
+    /// trimming is asserted because the sentence is the longest thing in the
+    /// band and the band is as narrow as a split pane.
+    /// </summary>
+    [Fact]
+    public void The_missing_index_is_said_in_the_band()
+    {
+        var line = Named(Band(), "SearchNoIndex");
+
+        Assert.Equal("{Binding SearchBackendLine}", (string?)line.Attribute("Text"));
+        Assert.Equal("{Binding SearchUnindexed}", (string?)line.Attribute("IsVisible"));
+
+        Assert.Equal("{DynamicResource ViewDimText}", (string?)line.Attribute("Foreground"));
+        Assert.Equal("{DynamicResource FontSizeSmall}", (string?)line.Attribute("FontSize"));
+        Assert.Equal("CharacterEllipsis", (string?)line.Attribute("TextTrimming"));
+
+        // The same gap the cap row above it keeps off the row above THAT.
+        Assert.Equal("0,6,0,0", (string?)line.Attribute("Margin"));
+    }
+
+    /// <summary>
+    /// Docked under the question rather than beside it — the row above is
+    /// already carrying two boxes and a Stop — and THIRD of the three bottom
+    /// rows, so downwards from the question the band reads why this is slow,
+    /// then how much was cut off, then the bar.
+    ///
+    /// **Not gated on IsLoading, unlike the two below it.** Having no index is
+    /// still true when the walk stops, and that is the moment somebody looks up
+    /// to ask what took so long.
+    /// </summary>
+    [Fact]
+    public void The_three_rows_under_the_question_are_in_that_order()
+    {
+        Assert.Equal(
+            ["SearchWalking", "SearchCapped", "SearchNoIndex"],
+            Band().Elements()
+                .Where(e => (string?)e.Attribute("DockPanel.Dock") == "Bottom")
+                .Select(e => (string?)e.Attribute(X + "Name")));
+    }
+
+    /// <summary>
+    /// **The backend's own name is out of the pane for good.** BackendName is a
+    /// diagnostic — "directory walk", "baloo", "walk" — and the moment it is
+    /// interpolated into a property the band binds, it is UI copy again. The
+    /// whole file is scanned rather than the one property, because the next
+    /// time this happens it will be somewhere else.
+    /// </summary>
+    [Fact]
+    public void The_pane_never_puts_the_backend_s_name_in_front_of_anybody()
+        => Assert.DoesNotContain(
+            "BackendName",
+            RepoSource.Ui("ViewModels", "PaneViewModel.cs"),
+            StringComparison.Ordinal);
+
     private sealed class Fake(FileEntry[] results) : ISearchProvider
     {
-        public bool IsAvailable => true;
         public string BackendName => "fake";
         public bool SupportsContentSearch => false;
         public int PauseMs { get; init; }
+
+        /// <summary>
+        /// Whether an index answers a given question. A function rather than a
+        /// flag, because the real answer is one: LinuxSearchProvider has an
+        /// index for a word and none for a glob, and a fake that could not say
+        /// that could not describe the case the warning exists for.
+        ///
+        /// Defaulted to never, the same way round as the interface's own
+        /// default, so every test above describes the walk — which is what
+        /// every real provider on both platforms currently is.
+        /// </summary>
+        public Func<SearchQuery, bool> Indexes { get; init; } = static _ => false;
+
+        public bool AnswersFromIndex(SearchQuery query) => Indexes(query);
 
         /// <summary>
         /// What this backend claims an unscoped search covers. Defaulted to the
@@ -645,7 +853,6 @@ public sealed class SearchBandTests : OwnedViewModels
     {
         public bool Ended { get; private set; }
 
-        public bool IsAvailable => true;
         public string BackendName => "endless";
         public bool SupportsContentSearch => false;
 

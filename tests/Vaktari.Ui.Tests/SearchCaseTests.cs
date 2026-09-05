@@ -486,7 +486,6 @@ public sealed class SearchCaseTests : OwnedViewModels
     /// </summary>
     private sealed class Recording : ISearchProvider
     {
-        public bool IsAvailable => true;
         public string BackendName => "recording";
         public bool SupportsContentSearch => false;
 
@@ -523,7 +522,6 @@ public sealed class SearchCaseTests : OwnedViewModels
     /// </summary>
     private sealed class Deaf : ISearchProvider
     {
-        public bool IsAvailable => false;
         public string BackendName => "deaf";
         public bool SupportsContentSearch => false;
 

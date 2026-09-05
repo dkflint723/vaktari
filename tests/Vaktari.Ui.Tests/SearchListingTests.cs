@@ -384,7 +384,6 @@ public sealed class SearchListingTests : OwnedViewModels
     /// </summary>
     private sealed class Fake(params FileEntry[] results) : ISearchProvider
     {
-        public bool IsAvailable => true;
         public string BackendName => "fake";
         public bool SupportsContentSearch => false;
 

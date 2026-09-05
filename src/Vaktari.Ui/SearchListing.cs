@@ -38,6 +38,38 @@ public static class SearchListing
     private const int FlushMs = 200;
 
     /// <summary>
+    /// The question, built from the path and nothing else.
+    ///
+    /// **Named because the band has to ask it too.** The pane says whether an
+    /// index is answering, and the backend decides that per query — Baloo takes
+    /// a word and refuses a glob — so the sentence explaining a slow search has
+    /// to be about the same SearchQuery the search runs. A second copy built
+    /// beside the band would be a second copy of a rule that lives here, and
+    /// the two would part company the first time either moved.
+    ///
+    /// <paramref name="limit"/> is asked for plus one: the arrival of the extra
+    /// row — never shown, never counted — is what proves the answer was cut off
+    /// rather than complete.
+    /// </summary>
+    public static SearchQuery QueryFor(string path, int limit = Limit) => new()
+    {
+        Text = VirtualPaths.QueryOf(path),
+        ScopePath = VirtualPaths.ScopeOf(path),
+
+        // **Read by both walks and written by nobody.** The field is branched
+        // on in WindowsSearchProvider.Walk and in
+        // LinuxSearchProvider.WalkOneAsync, and this is the only place that
+        // builds a SearchQuery — so until this line every search in the
+        // application ran with it false, whatever anybody thought they had
+        // asked for. It comes off the path rather than off a pane so that Back,
+        // a restored tab and a hand-edited session file all get the question
+        // they name.
+        CaseSensitive = VirtualPaths.MatchesCase(path),
+
+        MaxResults = limit + 1,
+    };
+
+    /// <summary>
     /// Reads the backend into batches the pane can take.
     ///
     /// **A truncated answer was indistinguishable from a complete one.** The
@@ -75,23 +107,7 @@ public static class SearchListing
 
         if (text.Length == 0) { yield return []; yield break; }
 
-        var query = new SearchQuery
-        {
-            Text = text,
-            ScopePath = VirtualPaths.ScopeOf(path),
-
-            // **Read by both walks and written by nobody.** The field is
-            // branched on in WindowsSearchProvider.Walk and in
-            // LinuxSearchProvider.WalkOneAsync, and this is the only place that
-            // builds a SearchQuery — so until this line every search in the
-            // application ran with it false, whatever anybody thought they had
-            // asked for. It comes off the path rather than off a pane so that
-            // Back, a restored tab and a hand-edited session file all get the
-            // question they name.
-            CaseSensitive = VirtualPaths.MatchesCase(path),
-
-            MaxResults = limit + 1,
-        };
+        var query = QueryFor(path, limit);
 
         var batch = new List<FileEntry>(Batch);
 
