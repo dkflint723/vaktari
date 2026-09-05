@@ -13,6 +13,28 @@ should not be trusted for compatibility yet.
 
 ### Added
 
+- **Compress to ZIP and Extract all are Vaktari's own verbs now.** There was no
+  compress and no extract anywhere in the application: every route to a zip went
+  through the hosted Windows menu, so it depended on what the machine happened
+  to have registered there and did not exist on Linux at all. Both sit at the
+  top level of a listing's right-click menu rather than a hover away, both write
+  beside what they act on rather than in the folder the pane is pointed at — a
+  row in an expanded folder archives into that folder — and both stay off the
+  bin and Recents, where a row names where a file used to be. A file named .zip
+  that is not one is refused in words instead of "End of Central Directory
+  record could not be found."
+
+- **Properties on a folder says how much room is left, and on a drive says what
+  the drive is.** The sidebar has drawn a free-space bar and a "1 TiB free of
+  4 TiB" tooltip for a while, and the dialog somebody opens to ask that exact
+  question had no answer in it: a drive's window carried a name, a location and
+  some dates, none of which is what a drive is. A folder now shows which volume
+  it is on and how much of it is free, which is the question asked before
+  copying into one; a drive or mount point shows its label, its filesystem, its
+  capacity, and how much of that is used. A network share, which is not a drive,
+  still shows nothing rather than something plausible belonging to the local
+  disk.
+
 - **On Windows, videos, PDFs and photos Vaktari cannot decode now show a
   picture.** Thumbnails there covered six formats — PNG, JPEG, GIF, BMP, WebP —
   because those are the ones the toolkit's own decoder understands, and

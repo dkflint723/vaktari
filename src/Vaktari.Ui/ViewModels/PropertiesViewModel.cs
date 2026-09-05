@@ -249,6 +249,17 @@ public sealed partial class PropertiesViewModel : ObservableObject
 
         await LoadAccessAsync(_paths[0], details.IsDirectory).ConfigureAwait(false);
 
+        // **On the pool deliberately, not for tidiness.** The Windows provider's
+        // GetAsync returns an already-completed ValueTask, so nothing above here
+        // has yielded and the continuation is still running on the UI thread that
+        // opened the window -- and reading a volume is a stat. Volumes.MountPoints
+        // carries the measurement that made that matter: on Unix DriveInfo.IsReady
+        // is a Directory.Exists, and a stat on a hung NFS or sshfs mount does not
+        // return.
+        var volume = await Task.Run(
+            () => VolumeProperties.Describe(_paths[0], details.IsDirectory))
+            .ConfigureAwait(false);
+
         await Dispatcher.UIThread.InvokeAsync(() =>
         {
             Title = details.Name;
@@ -281,6 +292,12 @@ public sealed partial class PropertiesViewModel : ObservableObject
 
             Groups.Clear();
             if (general.Count > 0) Groups.Add(new PropertyGroup("general", general));
+
+            // Above the platform's own groups: where this sits is part of the
+            // same "what am I looking at" question the general rows answer,
+            // where permissions and ownership are about the item itself.
+            if (volume is { } room) Groups.Add(room);
+
             foreach (var group in details.Groups) Groups.Add(group);
         });
     }
