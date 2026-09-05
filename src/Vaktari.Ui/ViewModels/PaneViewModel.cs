@@ -157,6 +157,16 @@ public sealed partial class PaneViewModel : ObservableObject, IDisposable
 
         Settings.AppSettings.Changed += OnRecentPlacesChanged;
 
+        // **A pane that is BUILT at 200% has to start there**, and this was
+        // measured missing: the threshold multiplier was written only when the
+        // pane's own zoom CHANGED, and every creation path assigns that zoom
+        // the value it already holds — startup restores 1.0 over 1.0, a new tab
+        // copies its neighbour's, a new window copies the opener's. So the
+        // multiplier stayed at 1.0 while the text beside it was drawn at 200%,
+        // and a 600px pane went on reserving 500px for two metadata columns
+        // that no longer fitted, leaving 100px for the name.
+        SyncTextScale();
+
         RefreshScripts();
         RefreshTemplates();
     }
@@ -1158,10 +1168,16 @@ public sealed partial class PaneViewModel : ObservableObject, IDisposable
     /// fit while overflowing the pane.
     /// </summary>
     /// <summary>
-    /// The text scale, pushed in by the shell. Column thresholds are about how
-    /// much room *text* needs, so they follow the font axis — not the icon one.
-    /// This was left orphaned by the font/icon split and nothing assigned it,
-    /// so the thresholds silently stopped following the text size.
+    /// How wide this pane's text is, as a multiple of the size the columns were
+    /// measured at. Column thresholds are about how much room *text* needs, so
+    /// they follow the font axis — not the icon one. This was left orphaned by
+    /// the font/icon split and nothing assigned it, so the thresholds silently
+    /// stopped following the text size.
+    ///
+    /// The product of this pane's own zoom and the interface size, never either
+    /// one alone, and written from <see cref="SyncTextScale"/> only — which the
+    /// constructor calls, because a pane created at 200% is not a pane whose
+    /// zoom has changed and nothing else would have told it.
     /// </summary>
     [ObservableProperty] private double _textScale = 1.0;
 
@@ -1251,10 +1267,36 @@ public sealed partial class PaneViewModel : ObservableObject, IDisposable
         }
     }
 
+    /// <summary>
+    /// The size this pane's body text is actually drawn at, and the size typing
+    /// a number into the flyout asks for.
+    ///
+    /// **Times the interface size, because the box quotes what is on screen.**
+    /// That is the same rule the icon box below was fixed under: it multiplied
+    /// a stale private copy and read 26 beside an 18px icon. The metrics
+    /// multiply the pane's zoom by <see cref="InterfaceText.Scale"/>, so at
+    /// 125% a pane at 100% draws 17.5px type — and a box reading 14 there would
+    /// be the same fault with a different number in it.
+    ///
+    /// The setter divides the same product back out and moves the PANE's zoom,
+    /// which is the only thing this control owns — so a typed size lands where
+    /// it was typed for as long as it is inside that zoom's own 0.7–2.5, and
+    /// clamps to the nearest end when it is not. **Measured, because the range
+    /// moves with the interface size and an earlier comment here claimed it did
+    /// not**: at 250%, typing 21 lands on 24, since 0.7 x 14 x 2.5 is the
+    /// smallest type this pane can be asked for. At the combo's own top row,
+    /// 200%, the box bottoms out at 20.
+    ///
+    /// That is the honest behaviour rather than a bug to fix here: the pane's
+    /// zoom is a multiplier ON the interface size, and a pane that could be
+    /// zoomed back down to 14px at 200% would be a second control undoing the
+    /// first.
+    /// </summary>
     public double FontPoints
     {
-        get => Math.Round(FontScale * BaseFontSize);
-        set => FontScale = Math.Clamp(value / BaseFontSize, MinScale, MaxScale);
+        get => Math.Round(FontScale * BaseFontSize * InterfaceText.Scale);
+        set => FontScale = Math.Clamp(
+            value / (BaseFontSize * InterfaceText.Scale), MinScale, MaxScale);
     }
 
     public double IconPixels
@@ -1268,9 +1310,7 @@ public sealed partial class PaneViewModel : ObservableObject, IDisposable
         if (!_swappingScales) _scales[View] = (value, IconScale);
 
         OnPropertyChanged(nameof(FontPoints));
-        // Column thresholds are measured in text width, so they follow the font
-        // axis of the pane they belong to.
-        TextScale = value;
+        SyncTextScale();
         ScaleChanged?.Invoke(this, EventArgs.Empty);
     }
 
@@ -1290,6 +1330,22 @@ public sealed partial class PaneViewModel : ObservableObject, IDisposable
         ScaleChanged?.Invoke(this, EventArgs.Empty);
     }
 
+    /// <summary>
+    /// Recomputes the width every column threshold is measured against.
+    ///
+    /// Column thresholds are measured in text width, so they follow the font
+    /// axis of the pane they belong to — TIMES the interface size, which is the
+    /// other half of how wide that text is. A pane at 100% inside a window at
+    /// 200% draws 28px type, and thresholds that still said 340 would claim
+    /// every column fits while each one overflowed: the exact fault fixed
+    /// thresholds had at 2x, reintroduced by the global factor.
+    ///
+    /// **One method rather than the product written at each of the three
+    /// places that need it**, because the first cut wrote it at two of them and
+    /// the one it missed — construction — was the one every pane goes through.
+    /// </summary>
+    private void SyncTextScale() => TextScale = FontScale * InterfaceText.Scale;
+
     /// <summary>Raised so the shell can persist the change.</summary>
     public event EventHandler? ScaleChanged;
 
@@ -1300,8 +1356,21 @@ public sealed partial class PaneViewModel : ObservableObject, IDisposable
     /// the global spacing settings — and only the first of those raises a
     /// property change. Without this a spacing change would reach only the panes
     /// that happened to rescale afterwards.
+    ///
+    /// **The column thresholds are a third source and they are not resources**,
+    /// so re-raising the metrics alone left them behind: changing the interface
+    /// text size grew the text and left every threshold at the width it needed
+    /// before. Recomputed here rather than notified, because the value itself
+    /// has changed — <see cref="TextScale"/> is a product of the pane's zoom and
+    /// the interface size, and only the first half raises anything.
     /// </summary>
-    public void RefreshScale() => OnPropertyChanged(nameof(IconScale));
+    public void RefreshScale()
+    {
+        SyncTextScale();
+
+        OnPropertyChanged(nameof(FontPoints));
+        OnPropertyChanged(nameof(IconScale));
+    }
 
     /// <summary>
     /// Starts this pane looking like another one.

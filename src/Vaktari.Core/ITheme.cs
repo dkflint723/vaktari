@@ -30,6 +30,24 @@ public sealed record ThemePalette
     public string? FontFamily { get; init; }
     public double? FontSize { get; init; }
 
+    /// <summary>
+    /// The desktop's text-size setting as a MULTIPLIER of its own default:
+    /// 1.25 for Windows' "Make text bigger" at 125%.
+    ///
+    /// **A second field rather than a second reading of <see cref="FontSize"/>,
+    /// because the two desktops answer in units neither provider can convert
+    /// into the other's.** Plasma states an absolute point size in kdeglobals
+    /// and has no percentage anywhere; Windows states a percentage under
+    /// <c>Software\Microsoft\Accessibility</c> and its font SIZE is a LOGFONT
+    /// height in device units, which cannot be turned into points without the
+    /// DPI of the display the window lands on — the reason
+    /// <c>WindowsThemeProvider</c> has always left FontSize null.
+    ///
+    /// So a provider fills whichever of the two its desktop actually states,
+    /// null means the desktop did not say, and the UI layer reads both.
+    /// </summary>
+    public double? TextScale { get; init; }
+
     /// <summary>Drives which of our own derived shades read correctly.</summary>
     public bool IsDark { get; init; } = true;
 

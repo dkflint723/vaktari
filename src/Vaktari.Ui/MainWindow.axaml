@@ -596,7 +596,8 @@
                             BorderBrush="{DynamicResource SeparatorColour}"
                             Background="{DynamicResource ViewBackground}">
                       <StackPanel Orientation="Horizontal">
-                        <Button Content="&#x2212;" Width="30" Height="26" Padding="0"
+                        <Button Content="&#x2212;" Width="{DynamicResource ChromeStepWidth}"
+                                Height="{DynamicResource ChromeRowHeight}" Padding="0"
                                 Background="Transparent" BorderThickness="0"
                                 FontSize="{DynamicResource FontSizeBase}"
                                 HorizontalContentAlignment="Center"
@@ -607,12 +608,14 @@
                              would apply "1" on the way to "14". -->
                         <TextBox local:FocusBehavior.CommitOnEnter="True"
                                  Text="{Binding $parent[Window].((vm:ShellViewModel)DataContext).TargetFontPoints, Mode=TwoWay, UpdateSourceTrigger=LostFocus}"
-                                 Width="48" Height="26" Padding="0" MinHeight="0"
+                                 Width="{DynamicResource ChromeBoxWidth}"
+                                 Height="{DynamicResource ChromeRowHeight}" Padding="0" MinHeight="0"
                                  Background="Transparent" BorderThickness="0"
                                  FontSize="{DynamicResource FontSizeSmall}"
                                  AutomationProperties.Name="Text size in this pane"
                                  TextAlignment="Center" VerticalContentAlignment="Center"/>
-                        <Button Content="+" Width="30" Height="26" Padding="0"
+                        <Button Content="+" Width="{DynamicResource ChromeStepWidth}"
+                                Height="{DynamicResource ChromeRowHeight}" Padding="0"
                                 Background="Transparent" BorderThickness="0"
                                 FontSize="{DynamicResource FontSizeBase}"
                                 HorizontalContentAlignment="Center"
@@ -631,7 +634,8 @@
                             BorderBrush="{DynamicResource SeparatorColour}"
                             Background="{DynamicResource ViewBackground}">
                       <StackPanel Orientation="Horizontal">
-                        <Button Content="&#x2212;" Width="30" Height="26" Padding="0"
+                        <Button Content="&#x2212;" Width="{DynamicResource ChromeStepWidth}"
+                                Height="{DynamicResource ChromeRowHeight}" Padding="0"
                                 Background="Transparent" BorderThickness="0"
                                 FontSize="{DynamicResource FontSizeBase}"
                                 HorizontalContentAlignment="Center"
@@ -640,12 +644,14 @@
                                 Command="{Binding $parent[Window].((vm:ShellViewModel)DataContext).IconsSmallerCommand}"/>
                         <TextBox local:FocusBehavior.CommitOnEnter="True"
                                  Text="{Binding $parent[Window].((vm:ShellViewModel)DataContext).TargetIconPixels, Mode=TwoWay, UpdateSourceTrigger=LostFocus}"
-                                 Width="48" Height="26" Padding="0" MinHeight="0"
+                                 Width="{DynamicResource ChromeBoxWidth}"
+                                 Height="{DynamicResource ChromeRowHeight}" Padding="0" MinHeight="0"
                                  Background="Transparent" BorderThickness="0"
                                  FontSize="{DynamicResource FontSizeSmall}"
                                  AutomationProperties.Name="Icon size in this pane"
                                  TextAlignment="Center" VerticalContentAlignment="Center"/>
-                        <Button Content="+" Width="30" Height="26" Padding="0"
+                        <Button Content="+" Width="{DynamicResource ChromeStepWidth}"
+                                Height="{DynamicResource ChromeRowHeight}" Padding="0"
                                 Background="Transparent" BorderThickness="0"
                                 FontSize="{DynamicResource FontSizeBase}"
                                 HorizontalContentAlignment="Center"
@@ -918,9 +924,14 @@
              the search field and the filter, which is why it is a toolbar
              rather than a path strip.
 
-             Height is fixed rather than derived from Padding so the row does
-             not grow by a pixel when the search field's border is present. -->
-        <Border DockPanel.Dock="Top" Height="40" Padding="10,0"
+             Height is stated rather than derived from Padding so the row does
+             not grow by a pixel when the search field's border is present —
+             but stated as a METRIC, not as 40, because the text in it follows
+             the interface size and a row that did not would clip it. Every
+             fixed chrome height in this file was measured clipping its own
+             text at 200%. -->
+        <Border DockPanel.Dock="Top"
+                Height="{DynamicResource ChromeToolbarHeight}" Padding="10,0"
                 Background="{DynamicResource ChromeBrush}"
                 BorderThickness="0,0,0,1"
                 BorderBrush="{DynamicResource SeparatorColour}">
@@ -1108,7 +1119,8 @@
                      the icon growing rather than one control replacing another. -->
                 <Button IsVisible="{Binding !ActiveTab.IsSearchOpen}"
                         Command="{Binding ActiveTab.BeginSearchCommand}"
-                        Width="30" Height="26" Padding="0"
+                        Width="{DynamicResource ChromeStepWidth}"
+                        Height="{DynamicResource ChromeRowHeight}" Padding="0"
                         Background="Transparent" BorderThickness="0"
                         AutomationProperties.Name="Search files  (ctrl+f)"
                         ToolTip.Tip="Search files  (ctrl+f)">
@@ -1118,7 +1130,8 @@
                         StrokeLineCap="Round" Fill="Transparent"/>
                 </Button>
 
-                <Border x:Name="SearchBox" Width="230" Height="26" CornerRadius="4"
+                <Border x:Name="SearchBox" Width="{DynamicResource ChromeSearchWidth}"
+                        Height="{DynamicResource ChromeRowHeight}" CornerRadius="4"
                         IsVisible="{Binding ActiveTab.IsSearchOpen}"
                         Background="{DynamicResource ViewBackground}"
                         BorderThickness="1" BorderBrush="{DynamicResource SeparatorColour}">
@@ -1196,7 +1209,8 @@
                 </StackPanel>
               </ToggleButton>
 
-              <TextBox Width="200" Height="26" MinHeight="0" Padding="8,0" CornerRadius="4"
+              <TextBox Width="{DynamicResource ChromeFilterWidth}"
+                       Height="{DynamicResource ChromeRowHeight}" MinHeight="0" Padding="8,0" CornerRadius="4"
                        VerticalContentAlignment="Center"
                        IsVisible="{Binding ActiveTab.IsFilterVisible}"
                        Text="{Binding ActiveTab.FilterText}"
@@ -3706,7 +3720,8 @@
          Printing it in both places meant the window stated the same fact twice
          and, in split view, disagreed with itself when the two sides were on
          different drives. -->
-    <Border DockPanel.Dock="Bottom" Height="26" Padding="12,0"
+    <Border x:Name="StatusBar" DockPanel.Dock="Bottom"
+            Height="{DynamicResource ChromeRowHeight}" Padding="12,0"
             Background="{DynamicResource ChromeBrush}"
             IsVisible="{Binding ShowStatusBar}"
             BorderThickness="0,1,0,0" BorderBrush="{DynamicResource SeparatorColour}">

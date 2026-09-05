@@ -24,6 +24,16 @@ public sealed class WindowsThemeProvider : IThemeProvider, IDisposable
 
     private const string DwmKey = @"Software\Microsoft\Windows\DWM";
 
+    /// <summary>
+    /// Where Settings &gt; Accessibility &gt; Text size writes the slider:
+    /// <c>TextScaleFactor</c>, a REG_DWORD percentage from 100 to 225. The same
+    /// number WinRT's <c>UISettings.TextScaleFactor</c> reports, read from the
+    /// registry rather than through WinRT because this application is trimmed
+    /// and AOT-published and a projection assembly for one integer is a cost
+    /// nobody would defend.
+    /// </summary>
+    private const string AccessibilityKey = @"Software\Microsoft\Accessibility";
+
     private readonly CancellationTokenSource _stopping = new();
 
     public event EventHandler? Changed;
@@ -32,6 +42,22 @@ public sealed class WindowsThemeProvider : IThemeProvider, IDisposable
     {
         Watch(PersonalizeKey);
         Watch(DwmKey);
+
+        // Third watcher, one background thread like the other two. Moving the
+        // text-size slider is a scheme change as far as this window is
+        // concerned — every metric derived from the font size has to be
+        // recomputed — and it fires none of the events the other two keys do.
+        //
+        // **Armed once, here, against the key as it exists at startup**, which
+        // is the measured limit of all three: Watch returns without starting a
+        // thread when RegOpenKeyEx fails, and nothing calls it again. On the
+        // machine this was measured on the key is present with the slider
+        // untouched — HKCU\Software\Microsoft\Accessibility holds
+        // TextScaleFactor 0x64 — so the live wake-up works there. Where the key
+        // is absent this is silent, and the new size arrives at the next
+        // palette read instead: a colour-scheme change, a settings save, or the
+        // next start. It is never missed, only late.
+        Watch(AccessibilityKey);
     }
 
     public ThemePalette? Read()
@@ -59,6 +85,13 @@ public sealed class WindowsThemeProvider : IThemeProvider, IDisposable
             // Avalonia already handles by scaling.
             FontSize = null,
 
+            // **And that null is exactly why the text size needed its own
+            // field.** Windows says how big text should be as a percentage,
+            // under Accessibility, and never as a point size — so a UI layer
+            // reading only FontSize followed the desktop's text size on Plasma
+            // and ignored "Make text bigger" completely.
+            TextScale = ScaleFromPercent(Native.ReadDword(AccessibilityKey, "TextScaleFactor")),
+
             IsDark = dark,
 
             // Windows has no icon theme to name: icons come per-file from the
@@ -79,6 +112,30 @@ public sealed class WindowsThemeProvider : IThemeProvider, IDisposable
             SingleClick = ShellState.OpensOnSingleClick(),
         };
     }
+
+    /// <summary>
+    /// The slider's percentage as the multiplier the UI layer wants, or null
+    /// when the value says nothing this can act on.
+    ///
+    /// **Null for nothing read AND for a number outside 100-225**, which is the
+    /// range the setting is documented to write. Both mean the same thing here:
+    /// the desktop did not state a text size, so the application's own default
+    /// applies. Clamping an out-of-range number instead would take a value
+    /// written by something other than the slider and act on it.
+    ///
+    /// **A default machine states 100, it does not stay silent.** Measured on
+    /// the Windows 11 machine this was written on, with the slider untouched:
+    /// <c>TextScaleFactor</c> is present under
+    /// <c>HKCU\Software\Microsoft\Accessibility</c> and reads 0x64, so 1.0 is
+    /// the ordinary answer and null is the unusual one — a Windows without the
+    /// value, or a read that failed, both of which <c>Native.ReadDword</c>
+    /// hands over as null rather than as an error.
+    ///
+    /// Pure and internal so it can be tested without a registry: the conversion
+    /// is the part with a decision in it.
+    /// </summary>
+    internal static double? ScaleFromPercent(uint? percent)
+        => percent is >= 100 and <= 225 ? percent.Value / 100.0 : null;
 
     /// <summary>
     /// **The two registry values disagree about byte order**, which is worth

@@ -138,6 +138,16 @@ public partial class MainWindow : Window
 
                     ThemeApplier.Apply(this, palette);
 
+                    // **The desktop's text size arrives on that same palette**,
+                    // and every metric in the window is computed from it — so
+                    // the scheme change that carries a new one has to re-run
+                    // them. Without this, raising Plasma's general font or the
+                    // Windows text-size slider repainted the colours and left
+                    // the window at the size it started at until the next
+                    // settings save, which is indistinguishable from the
+                    // setting not being read at all.
+                    RescaleForDesktop();
+
                     // Icons follow the desktop too: the resolved paths belong to
                     // the old icon theme and every cached drawable has the old
                     // text colour baked into its currentColor.
@@ -1187,6 +1197,53 @@ public partial class MainWindow : Window
     }
 
     /// <summary>
+    /// Everything a desktop scheme change moves that is not a colour: the
+    /// application-level metrics and each pane's own.
+    ///
+    /// The desktop's text size arrives on the palette, and every size in the
+    /// window multiplies it, so the read that repaints has to be followed by
+    /// the arithmetic that resizes.
+    ///
+    /// **A method rather than two lines inside the handler**, because the
+    /// handler is built in the constructor — where <c>_shell</c> has not been
+    /// assigned yet, so the compiler rightly refuses to let a lambda defined
+    /// there dereference it.
+    /// </summary>
+    private void RescaleForDesktop()
+    {
+        ApplyScales(_shell.FontScale, _shell.IconScale);
+        _shell.RefreshPaneScales();
+    }
+
+    /// <summary>
+    /// A save, applied to every window in the family rather than to the one the
+    /// dialog was opened from.
+    ///
+    /// **A save reached only its own window, and the interface size is what
+    /// made that visible.** The application dictionary this writes is shared —
+    /// so a second window's sidebar, toolbar, tab strip and status bar took the
+    /// new size the moment it was written — while each pane keeps its OWN
+    /// dictionary, which shadows the application's and is rewritten only when
+    /// that pane is told to. So the peer window drew 28px chrome around 14px
+    /// listings, and its column thresholds went on measuring against a text
+    /// size that had been replaced. Before this setting existed a save moved
+    /// only spacing, and the two halves of a window could not visibly disagree
+    /// about type size.
+    ///
+    /// Every window, not every SHELL: the pane dictionaries hang off controls,
+    /// and it is <see cref="ShellViewModel.OnSettingsChanged"/> that makes each
+    /// pane rewrite its own.
+    /// </summary>
+    internal void SettingsChangedEverywhere()
+    {
+        // Over a copy: OnSettingsChanged reaches most of a window, and the
+        // family list is the one every window adds itself to and removes itself
+        // from — iterating it live would be trusting that none of that runs.
+        foreach (var window in _services.Windows.ToList())
+            window.Shell.OnSettingsChanged();
+    }
+
+    /// <summary>
     /// Modal, unlike properties: a rename changes the very listing behind it,
     /// so letting the window sit open over a view that is mutating underneath
     /// would show a plan built from names that no longer exist.
@@ -1476,7 +1533,7 @@ public partial class MainWindow : Window
             // Most settings are read at the moment they matter. Sorting and the
             // status bar are not — a listing already on screen was ordered under
             // the old rule, and a visibility binding needs telling.
-            _shell.OnSettingsChanged();
+            SettingsChangedEverywhere();
 
             _fullPathInTitle = model.Result.Startup.ShowFullPathInTitleBar;
             RefreshTitle();

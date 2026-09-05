@@ -407,6 +407,24 @@ public sealed record ViewSettings
     /// <summary>Null means follow the desktop font from kdeglobals.</summary>
     public string? CustomFontFamily { get; init; }
 
+    /// <summary>
+    /// How large the interface's text is drawn, before any per-pane zoom: 1.25
+    /// draws every label, row, tab and status line a quarter larger.
+    ///
+    /// **NAMED FOR ITS ZERO VALUE, like KeepWidthAfterPanelClose above and for
+    /// the same proven reason** — deserialization does not run property
+    /// initializers, so a key absent from a settings.json written before this
+    /// existed arrives as <c>default(double)</c>. Zero therefore has to mean
+    /// something wanted, and it means "follow whatever the desktop's own
+    /// text-size setting says", which is where an upgrading install should
+    /// start: the desktop has already been told how big this person needs text,
+    /// and Vaktari was the only thing on screen ignoring it.
+    ///
+    /// Read through <c>InterfaceText.Scale</c>, which clamps it — a file edited
+    /// by hand can say 40 as easily as 1.4.
+    /// </summary>
+    public double InterfaceTextScale { get; init; }
+
     public IconsViewSettings Icons { get; init; } = new();
     public CompactViewSettings Compact { get; init; } = new();
     public DetailsViewSettings Details { get; init; } = new();

@@ -106,6 +106,32 @@ public static class PaneScale
     public static IEnumerable<(string Key, double Value)> Compute(
         double fontScale, double iconScale)
     {
+        // ---- the one global type size, applied where nothing can miss it ----
+        //
+        // **Every route to a larger interface stopped inside a pane.** The
+        // per-pane zoom wrote into that pane's own dictionary — which is the
+        // point of it — and the only application-level scale was written from
+        // the restored window geometry and read back into it, so nothing a user
+        // could press moved the sidebar, the tab strip, the toolbar or the
+        // status bar off the size chosen at build time.
+        //
+        // Here rather than at the two call sites because BOTH of them are this
+        // method: MainWindow writes the application defaults from it and
+        // PaneScale.Apply writes each pane's from it, so a factor applied here
+        // reaches the chrome and the listings by the same arithmetic, and the
+        // pane's own zoom stays a multiplier ON TOP of the interface size
+        // rather than a replacement for it.
+        //
+        // It makes Compute depend on when it runs, which the icon-spacing read
+        // below already does and names — so a settings save re-applies the
+        // metrics, and both facts ride out on the same re-apply.
+        //
+        // The FONT axis only. Windows' "Make text bigger" and Plasma's general
+        // font are settings about TEXT; growing the icons with them would be
+        // this file answering a question nobody asked, and the icon axis has
+        // its own control.
+        fontScale *= InterfaceText.Scale;
+
         foreach (var (key, value) in FontMetrics)
             yield return (key, Math.Round(value * fontScale, 1));
 
@@ -220,6 +246,33 @@ public static class PaneScale
 
         // Three rows of chain, preserved at any combination of the two scales.
         yield return ("ColumnStripHeight", Math.Round(rowHeight * 3 + 6, 1));
+
+        // ---- the chrome rows -------------------------------------------------
+        //
+        // **The status bar, the toolbar and the two toolbar fields stated their
+        // heights in pixels, and the text inside them is what just started
+        // growing.** Measured on the patched tree before this block existed,
+        // with the headless font: at 200% the status line wanted 28px inside
+        // the 25 the 26px bar leaves under its border, and the search field
+        // wanted 28 inside 18. Segoe UI's line box is taller again, so the real
+        // window clipped its own status line from about 150% — the interface
+        // size promising "every label, row, tab and status line" and delivering
+        // a bar with the descenders cut off it.
+        //
+        // fontScale, not iconScale, for all of them: what they hold is text.
+        // The listing rows have always been derived this way (rowHeight above);
+        // these are the same fact for the rows that are not listings.
+        yield return ("ChromeRowHeight", Math.Round(26 * fontScale, 1));
+        yield return ("ChromeToolbarHeight", Math.Round(40 * fontScale, 1));
+
+        // The widths of the same rows' controls. A field that grew taller and
+        // stayed 200px wide would trade a clipped line for a clipped word — and
+        // the step buttons are square-ish by design, so a 30px button in a 52px
+        // row reads as a mistake rather than as a size.
+        yield return ("ChromeStepWidth", Math.Round(30 * fontScale, 1));
+        yield return ("ChromeBoxWidth", Math.Round(48 * fontScale, 1));
+        yield return ("ChromeSearchWidth", Math.Round(230 * fontScale, 1));
+        yield return ("ChromeFilterWidth", Math.Round(200 * fontScale, 1));
     }
 
     // ---- attached property ------------------------------------------------

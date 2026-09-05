@@ -187,6 +187,7 @@ public sealed partial class SettingsViewModel : ObservableObject
             Core.Settings.ThemeMode.Dark => 2,
             _ => 0,
         };
+        InterfaceTextIndex = InterfaceText.RowFor(views.InterfaceTextScale);
         AbsoluteDates = views.Details.DateStyle == Core.Settings.DateStyle.Absolute;
         ShowFolderItemCounts = views.Details.FolderSize != Core.Settings.FolderSizeMode.None;
 
@@ -1089,6 +1090,18 @@ public sealed partial class SettingsViewModel : ObservableObject
         _ => Core.Settings.ThemeMode.FollowDesktop,
     };
 
+    /// <summary>
+    /// How large the interface's text is drawn, as a ComboBox index.
+    ///
+    /// **The size of the interface was the one thing in this dialog you could
+    /// not change**, and outside it the only control was a per-pane zoom that
+    /// left the sidebar, the tabs, the toolbar and the status bar exactly where
+    /// they were. An index for the same reason ThemeModeIndex is one; the rows
+    /// are decoded in exactly one place, <see cref="InterfaceText.Steps"/>,
+    /// which the markup's labels are checked against.
+    /// </summary>
+    [ObservableProperty] private int _interfaceTextIndex;
+
     /// <summary>Marks modified, added, untracked and conflicted files in a
     /// repository. Only ever visible inside one.</summary>
     [ObservableProperty] private bool _showVcsDecorations;
@@ -1322,6 +1335,7 @@ public sealed partial class SettingsViewModel : ObservableObject
                 FollowDesktopColours = FollowDesktopColours,
                 ShowSelectionBoxes = ShowSelectionBoxes,
                 ThemeMode = ThemeModeFromIndex(),
+                InterfaceTextScale = InterfaceText.ScaleFor(InterfaceTextIndex),
 
                 Icons = _original.Views.Icons with { Spacing = Spacing(IconSpacing) },
                 Compact = _original.Views.Compact with { Spacing = Spacing(CompactSpacing) },

@@ -1332,6 +1332,32 @@ public sealed partial class ShellViewModel : ObservableObject, IDisposable
     /// </summary>
     public void SyncSidebarLocation() => Sidebar.SetCurrentPath(ActiveTab?.CurrentPath);
 
+    /// <summary>
+    /// Re-writes every pane's metrics, for a change that came from outside the
+    /// settings dialog.
+    ///
+    /// **The desktop's own text size is such a change**: it arrives on a theme
+    /// palette rather than through Save, so none of the routes that already
+    /// re-apply the metrics run. Narrower than
+    /// <see cref="OnSettingsChanged"/> on purpose — nothing about a desktop
+    /// scheme changes the sort order, the status bar or what the decorations
+    /// say, and re-raising those would be this method claiming things it does
+    /// not know.
+    /// </summary>
+    public void RefreshPaneScales()
+    {
+        foreach (var group in new[] { Left, Right })
+            if (group is not null)
+                foreach (var tab in group.Tabs)
+                    tab.RefreshScale();
+
+        // The flyout's size boxes read a pane's points and pixels THROUGH this
+        // shell, so telling the panes is not telling the numbers beside them —
+        // and this is exactly the change that moves the size a pane draws at
+        // without touching the pane's own zoom.
+        NotifyTargetSizes();
+    }
+
     public void OnSettingsChanged()
     {
         // The tile and cell metrics are computed from the pane's scale AND the
@@ -1358,6 +1384,13 @@ public sealed partial class ShellViewModel : ObservableObject, IDisposable
         // a greyed button stays greyed until the next resize.
         foreach (var group in new[] { Left, Right })
             group?.RefreshInfoFit();
+
+        // The flyout's size boxes read the PANE's points and pixels through
+        // this shell, so a pane notification does not reach them. The interface
+        // text size is what makes that matter: it moves the size a pane draws
+        // at without touching the pane's own zoom, so without this the box goes
+        // on quoting a size nothing on screen is any more.
+        NotifyTargetSizes();
 
         OnPropertyChanged(nameof(ShowStatusBar));
         OnPropertyChanged(nameof(ShowFreeSpace));

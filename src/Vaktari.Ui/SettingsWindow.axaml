@@ -855,7 +855,28 @@
                 </DataTemplate>
               </ComboBox.ItemTemplate>
             </ComboBox>
-            <TextBlock Text="The first entry uses whatever your desktop is set to. Sizes still come from the per-pane scale, so this changes the face only."
+            <TextBlock Text="The first entry uses whatever your desktop is set to. This changes the face only; the size is below."
+                       FontSize="{DynamicResource FontSizeTiny}"
+                       Foreground="{DynamicResource ViewDimText}"
+                       TextWrapping="Wrap"/>
+          </StackPanel>
+
+          <!-- The rows are decoded by index in InterfaceText.Steps, and a test
+               checks this list against it: a row added here and not there would
+               store the size of whichever row happened to share its index. -->
+          <StackPanel Spacing="6">
+            <ComboBox SelectedIndex="{Binding InterfaceTextIndex}"
+                      HorizontalAlignment="Stretch"
+                      FontSize="{DynamicResource FontSizeSmall}">
+              <ComboBoxItem Content="Follow the desktop text size"/>
+              <ComboBoxItem Content="100%"/>
+              <ComboBoxItem Content="110%"/>
+              <ComboBoxItem Content="125%"/>
+              <ComboBoxItem Content="150%"/>
+              <ComboBoxItem Content="175%"/>
+              <ComboBoxItem Content="200%"/>
+            </ComboBox>
+            <TextBlock Text="How large every label, row, tab and status line is drawn. Following the desktop is the default: on Windows that is the accessibility text size, and on Plasma the general font. Zooming a pane with ctrl and the wheel still works from wherever this leaves it."
                        FontSize="{DynamicResource FontSizeTiny}"
                        Foreground="{DynamicResource ViewDimText}"
                        TextWrapping="Wrap"/>

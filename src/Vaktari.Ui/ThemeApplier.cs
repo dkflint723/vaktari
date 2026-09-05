@@ -404,6 +404,18 @@ public static class ThemeApplier
         // settings save all reach it — so this cannot fall out of step.
         MainWindow.SystemSingleClick = palette?.SingleClick;
 
+        // The desktop's text SIZE, published the same way and for the same
+        // reason — it arrives on the same palette, in the same read.
+        //
+        // **Both fields are read here because neither desktop states both.**
+        // Plasma puts a point size in kdeglobals and Windows puts a percentage
+        // under Accessibility; a UI layer that read only one of them would
+        // follow the text size on exactly one platform, and ThemePalette.FontSize
+        // is how it managed to be read on neither — parsed out of kdeglobals
+        // since the provider was written, carried on the record, and never once
+        // looked at.
+        InterfaceText.SystemScale = InterfaceText.FromPalette(palette);
+
         // Precedence, most specific first. ApplyDesignScheme has already put the
         // reference typeface in, so the last arm is "leave it alone" rather than
         // a value — which is why this reads as two overrides and not a chain.

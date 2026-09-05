@@ -13,6 +13,16 @@ should not be trusted for compatibility yet.
 
 ### Added
 
+- **The interface text has a size, and it follows the desktop's out of the box.**
+  Vaktari drew its menus, sidebar, tabs and status bar at one fixed size and
+  ignored the system text-size setting entirely — so a desktop set to 125% for
+  readability got a file manager that stayed small, and there was no control
+  anywhere to fix it. Settings, View now carries a size, defaulting to whatever
+  the desktop asks for and overridable when you want something else. The rows
+  grow with the text they hold, and the icons stay the size you set them: text
+  size and icon size are two different questions and Ctrl+wheel still answers
+  the second one.
+
 - **Right-click menus carry underlined letters, and the Menu key opens one beside
   the row you are on.** Seventy-odd menu rows had no access key between them, so
   the keyboard could open a menu and then only walk it with arrows; and a menu
