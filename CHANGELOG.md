@@ -13,6 +13,17 @@ should not be trusted for compatibility yet.
 
 ### Added
 
+- **"Create shortcut" is on the right-click menu.** Both platforms could already
+  make one, and the only thing that ever asked was the menu a right-button drag
+  puts up — a gesture nothing in the window mentions — so there was no way to ask
+  for a shortcut beside the item it points at, and on Linux no menu route at all.
+  The row sits beside Duplicate, because it is the same shape of action: one new
+  item in the folder on screen, per selected row. It writes into the folder you
+  are looking at even for a row spliced in from an expanded subfolder, it is
+  undoable, and it says how many it made. On Windows the desktop's own Create
+  shortcut stays where it is under "Windows menu": that one lands the .lnk beside
+  the item rather than in the folder on screen, and Ctrl+Z cannot see it.
+
 - **Folders open the way you want them to.** Every new tab opened as a details
   list sorted by name, whatever you had been using all day, and the only thing
   in the application that remembered a layout was the per-folder store — which

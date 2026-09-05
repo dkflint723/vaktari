@@ -1514,6 +1514,33 @@
               <Separator IsVisible="{Binding ActiveTab.CanActOnSelection}"/>
               <MenuItem Header="Duplicate"     Command="{Binding ActiveTab.DuplicateSelectedCommand}"
                                       IsVisible="{Binding $parent[Window].((vm:ShellViewModel)DataContext).ShowDuplicateInMenu}"/>
+              <!-- **The one verb whose only route was a gesture.** Both
+                   platforms implement IShortcutMaker and nothing but a
+                   right-button drag ever called it, so a shortcut could only be
+                   made by dragging an item somewhere else with the other mouse
+                   button held down — and never beside the thing it points at.
+
+                   Beside Duplicate because it is the same shape of action: it
+                   makes one new item in the folder on screen, per selected row.
+
+                   On Windows this JOINS the desktop's own "Create shortcut",
+                   which stays where it is inside "Windows menu" below. The two
+                   are not the same row twice: this one lands the shortcut in
+                   the folder on screen and the shell's lands it beside the
+                   item, this one is undoable with Ctrl+Z and the shell's is
+                   invisible to the undo stack, and this one needs a real
+                   folder while the shell menu is offered in a search listing
+                   and in This PC as well — where it is the only one of the
+                   two. CreateShortcutAsync carries the same three.
+
+                   No settings flag gates it: the context-menu page answers one
+                   question per entry on Dolphin's Services list — eight of
+                   them, counted by NewWindowTests — rather than one per row in
+                   this menu, and Cut, Paste, Rename and New carry no flag
+                   either. -->
+              <MenuItem Header="Create shortcut"
+                                      Command="{Binding ActiveTab.CreateShortcutCommand}"
+                                      IsVisible="{Binding ActiveTab.CanCreateShortcut}"/>
               <MenuItem Header="Rename"        Command="{Binding ActiveTab.BeginRenameCommand}"
                                       InputGesture="F2"
                                       IsVisible="{Binding ActiveTab.CanActOnSelection}"/>

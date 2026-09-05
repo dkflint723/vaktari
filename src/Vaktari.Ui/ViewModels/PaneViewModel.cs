@@ -788,6 +788,7 @@ public sealed partial class PaneViewModel : ObservableObject, IDisposable
         OnPropertyChanged(nameof(Summary));
         OnPropertyChanged(nameof(HasSelection));
         OnPropertyChanged(nameof(CanActOnSelection));
+        OnPropertyChanged(nameof(CanCreateShortcut));
         OnPropertyChanged(nameof(CanPurgeFromBin));
         OnPropertyChanged(nameof(CanRenameInBulk));
         OnPropertyChanged(nameof(HasDirectorySelected));
@@ -829,6 +830,28 @@ public sealed partial class PaneViewModel : ObservableObject, IDisposable
     /// <summary>Cut, Rename and Move to bin: needs a selection, and the bin
     /// listing is a view rather than a folder.</summary>
     public bool CanActOnSelection => HasSelection && !IsTrashListing;
+
+    /// <summary>
+    /// Whether to offer "Create shortcut".
+    ///
+    /// **Three conditions, and each hides a row that could only disappoint.**
+    /// A platform with no idea of a shortcut leaves <see cref="Shortcuts"/>
+    /// null — the same gate the right-drag menu already applies before it
+    /// offers "Create shortcuts here". <see cref="IsRealFolder"/> because the
+    /// shortcut is written INTO the listing being looked at, and in the bin,
+    /// Recent, This PC and a search that destination is the literal string
+    /// "vaktari:trash" and its kin. And something has to be selected, because
+    /// the shortcut has to point at something.
+    ///
+    /// **This is narrower than <see cref="HasShellMenu"/>, which excludes only
+    /// the bin and Recent** — so on Windows a search listing and This PC still
+    /// offer the shell's own "Create shortcut", which writes beside the item
+    /// and needs no folder on screen. That is the reason the verb was left in
+    /// the hosted menu rather than filtered out of it as a native twin: doing
+    /// so would have left those two listings with no "Create shortcut" in
+    /// either menu.
+    /// </summary>
+    public bool CanCreateShortcut => Shortcuts is not null && IsRealFolder && HasSelection;
 
     /// <summary>
     /// **"Rename in bulk…" was offered for a single file.** It is the entry
@@ -2776,6 +2799,7 @@ public sealed partial class PaneViewModel : ObservableObject, IDisposable
         // it before the menu opens, and on a single-click it is all there is.
         OnPropertyChanged(nameof(HasSelection));
         OnPropertyChanged(nameof(CanActOnSelection));
+        OnPropertyChanged(nameof(CanCreateShortcut));
         OnPropertyChanged(nameof(CanPurgeFromBin));
         OnPropertyChanged(nameof(CanRenameInBulk));
         OnPropertyChanged(nameof(HasDirectorySelected));
@@ -3116,6 +3140,13 @@ public sealed partial class PaneViewModel : ObservableObject, IDisposable
             // announced for IsRealFolder is not a change announced for these.
             OnPropertyChanged(nameof(CanCompressSelection));
             OnPropertyChanged(nameof(CanExtractSelection));
+
+            // Beside CanActOnSelection because it carries the same selection
+            // half — but its OTHER half is IsRealFolder, and a change announced
+            // for IsRealFolder is not a change announced for this. Without the
+            // line the row keeps whatever visibility the previous listing left
+            // it with, the same way CanGoToLocation would above.
+            OnPropertyChanged(nameof(CanCreateShortcut));
             OnPropertyChanged(nameof(CanPurgeFromBin));
         OnPropertyChanged(nameof(CanPurgeFromBin));
         OnPropertyChanged(nameof(CanRenameInBulk));

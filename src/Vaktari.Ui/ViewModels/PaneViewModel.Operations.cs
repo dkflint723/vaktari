@@ -787,6 +787,113 @@ public sealed partial class PaneViewModel
     }
 
     /// <summary>
+    /// Explorer's "Create shortcut", and Dolphin's "Create link": one shortcut
+    /// per selected item, made in the folder being looked at.
+    ///
+    /// **The writer had exactly one caller, and it was a gesture.**
+    /// <see cref="Vaktari.Core.FileSystem.IShortcutMaker"/> is implemented on
+    /// both platforms and the only route to it was a right-button drag with a
+    /// drop menu — so making a shortcut required knowing to hold the other
+    /// mouse button down, and there was no way at all to ask for one where the
+    /// item already is. On Linux there was no menu route of any kind.
+    ///
+    /// **On Windows this JOINS the shell's own "Create shortcut" rather than
+    /// replacing it**, and the three differences were read out of the code
+    /// rather than guessed.
+    ///
+    /// Where it lands: into <see cref="PaneViewModel.CurrentPath"/>, the folder
+    /// on screen, where the shell's lands beside the item. For a row of the
+    /// folder being looked at those are the same place; for a row spliced in
+    /// from an expanded subfolder they are not, and the shortcut goes to the
+    /// folder on screen — the rule Duplicate already follows.
+    ///
+    /// Whether it can be taken back: this records the landing path, so Ctrl+Z
+    /// bins the shortcut. The shell's verb is invoked through IContextMenu and
+    /// no call site in this application hears about it — <c>RecordCreation</c>
+    /// is called from five places and all five are in this file.
+    ///
+    /// Where it is offered: this needs <see cref="IsRealFolder"/>, because it
+    /// writes into the listing being looked at, while
+    /// <see cref="HasShellMenu"/> excludes only the bin and Recent. So in a
+    /// search listing and in This PC the shell's row is the only one of the
+    /// two, which is why filtering that verb out as a native twin would have
+    /// taken the verb away from those listings rather than tidying a
+    /// duplicate.
+    ///
+    /// **Off the UI thread**, the way Compress is. Measured here against the
+    /// real writer, 200 shortcuts into one folder took 1907 ms — 9.5 ms each,
+    /// so a Ctrl+A over ten thousand rows is a minute and a half at that rate,
+    /// and this is a menu click rather than a drag. The recording comes back
+    /// before it is done, because the undo stack it pushes onto is read by the
+    /// menu. No in-flight message goes with it: at 9.5 ms a shortcut an
+    /// ordinary selection is finished before one could be read.
+    ///
+    /// Refreshed BEFORE the message, not after — a finished listing clears the
+    /// status line, so a message written first lives only until the reload
+    /// lands. Undo is recorded per shortcut because RecordCreation takes one
+    /// path and pushes one step, so three shortcuts are three presses of
+    /// Ctrl+Z — new file and new folder push one each and never meet the
+    /// question, and grouping is a rename-only facility here.
+    /// </summary>
+    [RelayCommand]
+    public async Task CreateShortcutAsync()
+    {
+        if (RefusedInBin() || RefusedVirtualDestination(CurrentPath)) return;
+
+        if (Shortcuts is not { } maker) return;
+
+        var paths = SelectionPaths();
+        if (paths.Count == 0) { Status = "select something to make a shortcut to"; return; }
+
+        // Read once, here, because the loop below is on the pool and
+        // CurrentPath is a bound property a navigation can move under it.
+        var into = CurrentPath;
+
+        var landings = new List<string>();
+        string? refused = null;
+
+        await Task.Run(() =>
+        {
+            foreach (var path in paths)
+            {
+                try
+                {
+                    landings.Add(maker.CreateShortcut(path, into));
+                }
+                catch (Exception ex)
+                {
+                    // Stops, the way the drop handler does — the first refusal
+                    // is usually about the FOLDER (read-only, full, gone)
+                    // rather than about that one row, and grinding through the
+                    // rest to collect the same answer twenty times helps
+                    // nobody. The phrase finishes Describe's "could not …" for
+                    // the permission case, which is the likeliest one here: a
+                    // folder somebody may read and not write.
+                    refused = Failures.Describe(ex, "make that shortcut");
+                    break;
+                }
+            }
+        }).ConfigureAwait(true);
+
+        // Recorded out here rather than inside the loop, for two reasons. It is
+        // undo state the menu reads on this thread. And _ops is nullable, so a
+        // null-conditional around the CREATE would have skipped the create
+        // along with the recording — `?.` short-circuits the whole invocation,
+        // arguments included — while still counting it as made.
+        foreach (var landing in landings) _ops?.RecordCreation(landing);
+
+        // One reload for both endings, and nothing already written is taken
+        // back: a refusal on the third row leaves two shortcuts on disk, and a
+        // listing that does not show them reads as though nothing happened.
+        await RefreshAsync().ConfigureAwait(true);
+
+        Status = refused
+            ?? (landings.Count == 1
+                ? "created 1 shortcut"
+                : $"created {landings.Count} shortcuts");
+    }
+
+    /// <summary>
     /// How a clash is settled: by asking, once per operation unless told to
     /// stop.
     ///
