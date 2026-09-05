@@ -243,7 +243,7 @@ public sealed class ExpandableFoldersTests : OwnedViewModels
 
         // The other half: the first file of the folder's own run still starts
         // it, rather than having lost the heading to a child above it.
-        Assert.Equal("TXT", pane.HeaderFor(In("a.txt")));
+        Assert.Equal("TXT", pane.HeaderFor(In("a.txt"))?.Label);
     }
 
     /// <summary>

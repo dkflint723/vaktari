@@ -2174,13 +2174,33 @@
                       <!-- Group header, shown only on the first row of each run.
                            Part of the row rather than a separate list item, so
                            Entries stays a flat list of FileEntry and selection,
-                           virtualization and the three layouts all keep working. -->
-                      <ContentControl th:RowGroup.Entry="{Binding}"
-                                      IsVisible="False"
-                                      Margin="12,8,8,2"
-                                      FontSize="{DynamicResource FontSizeSmall}"
-                                      FontWeight="SemiBold"
-                                      Foreground="{DynamicResource ViewDimText}"/>
+                           virtualization and the three layouts all keep working.
+
+                           **A Button, because the heading named a run of rows
+                           and gave no way to take it.** Taking a band meant
+                           clicking its first row and shift-clicking its last,
+                           which needs both ends on screen at once. Chromeless
+                           in exactly the way the four sort headings above are —
+                           transparent, no border, no padding — because it is
+                           the same kind of control as those: a heading you can
+                           click.
+
+                           The command is reached through the ListBox rather
+                           than through the row, because the row's DataContext
+                           is the FileEntry; the parameter is the path the
+                           heading sits on, which is the key the pane's header
+                           map is built with. -->
+                      <Button Classes="groupheading"
+                              th:RowGroup.Entry="{Binding}"
+                              IsVisible="False"
+                              Command="{Binding $parent[ListBox].((vm:PaneViewModel)DataContext).SelectGroupCommand}"
+                              CommandParameter="{Binding FullPath}"
+                              Margin="12,8,8,2"
+                              Background="Transparent" BorderThickness="0" Padding="0"
+                              HorizontalAlignment="Left" HorizontalContentAlignment="Left"
+                              FontSize="{DynamicResource FontSizeSmall}"
+                              FontWeight="SemiBold"
+                              Foreground="{DynamicResource ViewDimText}"/>
                     <!-- **Transparent, so the whole row can be clicked.** A Panel
                          with no Background is not hit-testable in Avalonia:
                          pointer events pass straight through it. Only the

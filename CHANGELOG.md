@@ -770,6 +770,18 @@ should not be trusted for compatibility yet.
 
 ### Fixed
 
+- **Group headings say how many, and clicking one picks the whole group.** With
+  grouping on, the band headings were labels and nothing more: no count, and
+  nothing happened when you clicked one. A heading now reads *TXT (12)* — with
+  a thousands separator, spelled the way the status bar spells its counts — and
+  clicking it selects every row in that band, replacing the selection rather
+  than adding to it.
+
+  The headings also keep up with a folder that is changing underneath you: a
+  file arriving at the top of a band takes the heading with it, and deleting a
+  band's first row hands the heading to the next, instead of leaving two
+  headings or none.
+
 - **Undoing a batch rename is one press of Ctrl+Z, not one per file.** Renaming
   forty photos put forty separate steps on the undo stack, so putting the batch
   back meant pressing Ctrl+Z forty times — and the Undo row named whichever

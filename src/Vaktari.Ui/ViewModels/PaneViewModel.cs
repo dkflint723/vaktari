@@ -4188,7 +4188,7 @@ public sealed partial class PaneViewModel : ObservableObject, IDisposable
     /// than per row: a row cannot see its predecessor, and asking each one to
     /// work it out would be O(n) lookups on every realization.
     /// </summary>
-    private readonly Dictionary<string, string> _groupHeaders = new(StringComparer.Ordinal);
+    private readonly Dictionary<string, GroupHeader> _groupHeaders = new(StringComparer.Ordinal);
 
     // Captured once per sort: asking for the time inside a comparison would
     // make the ordering depend on when each comparison happened.
@@ -4219,21 +4219,35 @@ public sealed partial class PaneViewModel : ObservableObject, IDisposable
 
         if (grouping != GroupMode.None)
         {
+            // Only the first row of a run carries the header; the rest are
+            // plain, which is what makes it read as a group rather than a
+            // repeated label.
+            //
+            // **The run's LENGTH is only knowable at its end**, which is why
+            // this indexes rather than walking entries: the header is written
+            // when the next label arrives, and the count is the distance back
+            // to where the run started. Writing it on the first row instead
+            // would have meant a second pass or a mutable header.
             string? previous = null;
+            var start = 0;
 
-            foreach (var entry in ordered)
+            for (var i = 0; i < ordered.Count; i++)
             {
-                var label = Grouping.Label(entry, grouping, _groupNow);
+                var label = Grouping.Label(ordered[i], grouping, _groupNow);
 
-                // Only the first row of a run carries the header; the rest are
-                // plain, which is what makes it read as a group rather than a
-                // repeated label.
-                if (label != previous)
-                {
-                    _groupHeaders[entry.FullPath] = label;
-                    previous = label;
-                }
+                if (label == previous) continue;
+
+                if (previous is not null)
+                    _groupHeaders[ordered[start].FullPath] = new GroupHeader(previous, i - start);
+
+                previous = label;
+                start = i;
             }
+
+            // The last run has no successor to close it.
+            if (previous is not null)
+                _groupHeaders[ordered[start].FullPath] =
+                    new GroupHeader(previous, ordered.Count - start);
         }
 
         GroupingChanged?.Invoke(this, EventArgs.Empty);

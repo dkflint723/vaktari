@@ -43,7 +43,8 @@ public sealed class GroupingAndGhostingTests : OwnedViewModels
     }
 
     private static List<string> Headers(PaneViewModel pane)
-        => pane.DetailsEntries.Select(e => pane.HeaderFor(e.FullPath)).OfType<string>().ToList();
+        => pane.DetailsEntries.Select(e => pane.HeaderFor(e.FullPath)?.Label)
+                             .OfType<string>().ToList();
 
     // ---- descending turns the bands over too --------------------------------
 
@@ -173,7 +174,7 @@ public sealed class GroupingAndGhostingTests : OwnedViewModels
         pane.ShowAsGrid();
 
         var headings = pane.GridEntries
-            .Select(e => pane.HeaderFor(e.FullPath))
+            .Select(e => pane.HeaderFor(e.FullPath)?.Label)
             .OfType<string>()
             .ToList();
 

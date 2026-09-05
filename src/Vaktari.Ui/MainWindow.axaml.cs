@@ -592,6 +592,29 @@ public partial class MainWindow : Window
                        or RepeatButton)
                 return null;
 
+            // **And the group heading lives inside a ROW**, so the walk reached
+            // the list from it and called it empty space. Measured on a real
+            // window with two files already picked out: a press in the middle
+            // of the "MD (1)" heading arrived with e.Source =
+            // Avalonia.Controls.Presenters.ContentPresenter — so the content
+            // refusal above never saw it — this walk answered with the ListBox,
+            // the selection went from "a.txt,b.txt" to empty ON THE PRESS, and
+            // _bandList came back armed.
+            //
+            // Which is worse than losing the selection for an instant, and that
+            // was measured too: press, move 40px, release, and the selection
+            // ended EMPTY — the pointer had left the button, so the click never
+            // completed and the band the heading names was never taken. The
+            // same three steps with this refusal in place leave "a.txt,b.txt"
+            // untouched throughout.
+            //
+            // Refused here rather than in the two handlers, because one refusal
+            // covers both the clearing and the arming: they read the same
+            // answer. This is the rule the box and the triangle already keep —
+            // a widget drawn inside a row is not the row's background.
+            if (visual is Control head && head.Classes.Contains(GroupHeadingClass))
+                return null;
+
             if (visual is ListBoxItem hit) { row = hit; continue; }
 
             if (visual is not ListBox found) continue;
@@ -666,6 +689,13 @@ public partial class MainWindow : Window
     /// only thing tying that markup to the handler that gives it meaning.
     /// </summary>
     internal const string ExpanderClass = "twist";
+
+    /// <summary>
+    /// The heading drawn over the first row of a group. Marked so
+    /// <see cref="EntryAt"/> can tell it from the row it is drawn inside — see
+    /// there for why that difference matters.
+    /// </summary>
+    internal const string GroupHeadingClass = "groupheading";
 
     /// <summary>
     /// The expand triangle a press landed on, or null for a press anywhere
@@ -5065,10 +5095,56 @@ public partial class MainWindow : Window
         // was added, because AccessText lives inside the template and its
         // logical chain simply ends. The visual tree always connects, which is
         // why hit-testing questions belong there.
+
+        // **A group heading is drawn INSIDE the row it stands over, and every
+        // control in it inherits that row's FileEntry as its DataContext** — so
+        // the walk below answered with the row for anything that landed on the
+        // heading, and each caller took the one for the other. Measured on this
+        // walk: a Button with the heading's class and a FileEntry DataContext
+        // came back as that entry, exactly as a cell of the row does.
+        //
+        // Three call sites, all reachable with a single press: the left drag
+        // arm is `EntryAt(e.Source) is not null`, so a twitch while pressing a
+        // heading armed a drag of the row underneath it and a drop moved a real
+        // file; and OnTapped and OnDoubleTapped open whatever this hands them,
+        // so clicking a heading opened that row — on the first click, in
+        // single-click mode.
+        //
+        // A separate walk rather than a test inside the loop below, and that is
+        // not tidiness: the press lands on the presenter INSIDE the heading,
+        // which carries the inherited FileEntry and not the class, so a check
+        // in the loop would have answered with the row before ever reaching the
+        // heading itself. Same shape and the same reason as ExpanderAt.
+        if (GroupHeadingAt(source) is not null) return null;
+
         for (var visual = source as Visual; visual is not null;
              visual = visual.GetVisualParent())
         {
             if (visual is Control { DataContext: FileEntry entry }) return entry;
+        }
+
+        return null;
+    }
+
+    /// <summary>
+    /// The group heading a press or a tap landed inside, or null for anything
+    /// else.
+    ///
+    /// Stops at the ListBoxItem for the reason <see cref="ExpanderAt"/> gives:
+    /// the walk ends inside the row it started in. That stop has NO KILLING
+    /// MUTATION, exactly as ExpanderAt's does and for the same reason — nothing
+    /// above a row carries the class, so the walk runs out either way — and it
+    /// is here because a press on any other part of any row would otherwise
+    /// climb to the window before answering null.
+    /// </summary>
+    internal static Control? GroupHeadingAt(object? source)
+    {
+        for (var visual = source as Visual; visual is not null;
+             visual = visual.GetVisualParent())
+        {
+            if (visual is ListBoxItem) return null;
+
+            if (visual is Control head && head.Classes.Contains(GroupHeadingClass)) return head;
         }
 
         return null;
