@@ -169,6 +169,16 @@ public sealed partial class PaneViewModel : ObservableObject, IDisposable
     public static IRecentStore? Recents { get; set; }
 
     /// <summary>
+    /// The recent lists, when the setting says to keep them.
+    ///
+    /// **Nothing consulted a setting: every open went in.** Read here rather
+    /// than at each of the five call sites, so a sixth cannot be added that
+    /// forgets to ask.
+    /// </summary>
+    private static IRecentStore? Recording
+        => Settings.AppSettings.Current.General.RememberRecent ? Recents : null;
+
+    /// <summary>
     /// The trash, for the `vaktari:trash` listing and its restore/empty
     /// actions. Same static convention as the others.
     /// </summary>
@@ -2186,7 +2196,7 @@ public sealed partial class PaneViewModel : ObservableObject, IDisposable
         // "recent locations" at the top of recent locations.
         if (IsLoaded && !VirtualPaths.IsVirtual(path))
         {
-            Recents?.Record(path, RecentKind.Folder);
+            Recording?.Record(path, RecentKind.Folder);
         }
     }
 
@@ -2273,7 +2283,7 @@ public sealed partial class PaneViewModel : ObservableObject, IDisposable
         // the user's act either way, which is the recency semantic that
         // matters, and a launch the desktop accepts is still no promise that
         // anything appeared — so there is no better moment than this one.
-        Recents?.Record(entry.FullPath, RecentKind.File);
+        Recording?.Record(entry.FullPath, RecentKind.File);
 
         // **This was a bare call with nothing after it**, because Open returned
         // void — the comment above used to say so and treat it as the end of
@@ -2819,7 +2829,7 @@ public sealed partial class PaneViewModel : ObservableObject, IDisposable
             // show, answers false and hands over its list instead.
             if (launcher.ChooseApplication(entry.FullPath))
             {
-                Recents?.Record(entry.FullPath, RecentKind.File);
+                Recording?.Record(entry.FullPath, RecentKind.File);
                 return;
             }
 
@@ -2837,7 +2847,7 @@ public sealed partial class PaneViewModel : ObservableObject, IDisposable
                     // opens — the same rule the branch above keeps by asking
                     // first and recording after. A chooser that was dismissed
                     // opened nothing and must not claim to.
-                    Recents?.Record(entry.FullPath, RecentKind.File);
+                    Recording?.Record(entry.FullPath, RecentKind.File);
                     launcher.OpenWith(entry.FullPath, chosen);
                 }));
 
@@ -2855,7 +2865,7 @@ public sealed partial class PaneViewModel : ObservableObject, IDisposable
             // Same act as OpenAsync, so it belongs in the recent list too.
             // Missing this would make the list quietly depend on WHICH way you
             // opened something, which nobody would guess from the UI.
-            Recents?.Record(file.FullPath, RecentKind.File);
+            Recording?.Record(file.FullPath, RecentKind.File);
 
             _launcher?.OpenWith(file.FullPath, option);
         }

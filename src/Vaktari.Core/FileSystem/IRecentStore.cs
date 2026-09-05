@@ -40,6 +40,21 @@ public interface IRecentStore
     /// nicety — a recent list you cannot edit is a log, not a tool.</summary>
     void Forget(string path);
 
+    /// <summary>How many entries are held, across both lists.</summary>
+    int Count { get; }
+
+    /// <summary>
+    /// Drops everything, and answers how many that was.
+    ///
+    /// **There was no way to empty this and no way to stop it filling.** Every
+    /// folder opened and every file opened was recorded, with no setting
+    /// consulted and no route out but the per-row "Forget" — which needs the
+    /// entry to still be on screen, and there is one row per entry. A list of
+    /// what somebody has opened is exactly the kind of thing that should be
+    /// clearable in one action.
+    /// </summary>
+    int ForgetAll();
+
     /// <summary>Raised when the lists change, so the sidebar can re-rank.</summary>
     event EventHandler? Changed;
 }

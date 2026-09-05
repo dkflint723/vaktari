@@ -442,6 +442,116 @@ public class SettingsFileTests : IDisposable
         Assert.Equal(1, asked);
     }
 
+    // ---- the recent lists nothing could stop --------------------------------
+
+    /// <summary>A store that reports a count and remembers being cleared.</summary>
+    private sealed class Opened(int held) : Vaktari.Core.FileSystem.IRecentStore
+    {
+        internal int Cleared;
+
+        public void Record(string path, Vaktari.Core.FileSystem.RecentKind kind) { }
+
+        public IReadOnlyList<Vaktari.Core.FileSystem.RecentEntry> Recent(
+            Vaktari.Core.FileSystem.RecentKind kind, int count) => [];
+
+        public void Forget(string path) { }
+
+        public int Count => held;
+
+        public int ForgetAll()
+        {
+            Cleared++;
+            return held;
+        }
+
+        public event EventHandler? Changed { add { } remove { } }
+    }
+
+    /// <summary>
+    /// **Every open was recorded, with no setting consulted.** The switch is on
+    /// by default, which is the judgement in this change: both references
+    /// record by default, and a privacy switch that ships off is a feature
+    /// nobody finds.
+    /// </summary>
+    [AvaloniaFact]
+    public void Remembering_what_was_opened_is_on_by_default()
+        => Assert.True(Model().RememberRecent);
+
+    /// <summary>And the switch reaches the file.</summary>
+    [AvaloniaFact]
+    public void The_switch_is_saved()
+    {
+        var vm = Model();
+
+        vm.RememberRecent = false;
+        vm.SaveCommand.Execute(null);
+
+        Assert.False(vm.Result.General.RememberRecent);
+    }
+
+    /// <summary>Clearing is offered when there is something to clear.</summary>
+    [AvaloniaFact]
+    public void Forgetting_what_was_opened_is_offered_when_there_is_some()
+    {
+        var vm = new SettingsViewModel(
+            new SettingsState(), settingsFile: File("settings.json"), recents: new Opened(7));
+
+        Assert.True(vm.HasRecent);
+        Assert.True(vm.ForgetRecentCommand.CanExecute(null));
+        Assert.Equal("7 entries are remembered", vm.RecentCountLabel);
+    }
+
+    /// <summary>And not when there is nothing.</summary>
+    [AvaloniaFact]
+    public void And_not_when_nothing_was_opened()
+    {
+        var vm = new SettingsViewModel(
+            new SettingsState(), settingsFile: File("settings.json"), recents: new Opened(0));
+
+        Assert.False(vm.HasRecent);
+        Assert.False(vm.ForgetRecentCommand.CanExecute(null));
+    }
+
+    /// <summary>
+    /// **Armed, not done**, and separate from the switch: turning recording off
+    /// must not silently delete what is already there, because that is not what
+    /// the checkbox says.
+    /// </summary>
+    [AvaloniaFact]
+    public void Pressing_forget_does_not_clear_anything_yet()
+    {
+        var store = new Opened(7);
+
+        var vm = new SettingsViewModel(
+            new SettingsState(), settingsFile: File("settings.json"), recents: store);
+
+        vm.ForgetRecentCommand.Execute(null);
+
+        Assert.True(vm.ForgetRecentOnSave);
+        Assert.Equal(0, store.Cleared);
+    }
+
+    /// <summary>
+    /// And turning the switch off does not arm the clearing either.
+    ///
+    /// **A GUARD, and it says so.** What it protects is an ABSENCE — that the
+    /// switch's setter does not reach the clearing — so there is no line to
+    /// remove and no compiling mutation that reddens it. It would catch
+    /// somebody later wiring the two together, which is the tempting shortcut
+    /// here and the one that would silently delete a list from a checkbox that
+    /// says only "stop recording".
+    /// </summary>
+    [AvaloniaFact]
+    public void Turning_the_switch_off_does_not_forget_anything()
+    {
+        var vm = new SettingsViewModel(
+            new SettingsState(), settingsFile: File("settings.json"), recents: new Opened(7));
+
+        vm.RememberRecent = false;
+
+        Assert.False(vm.ForgetRecentOnSave);
+    }
+
     // ---- the folder views nothing could see ---------------------------------
 
     /// <summary>A store that reports a count and remembers being cleared.</summary>

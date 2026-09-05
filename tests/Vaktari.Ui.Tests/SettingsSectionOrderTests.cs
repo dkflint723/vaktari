@@ -120,6 +120,24 @@ public class SettingsSectionOrderTests
     }
 
     /// <summary>
+    /// **And the way to empty the recent lists.** They were recorded with no
+    /// setting consulted and no route out but a per-row Forget.
+    /// </summary>
+    [Fact]
+    public void The_behaviour_section_offers_a_way_to_forget_what_was_opened()
+    {
+        var markup = XDocument.Parse(RepoSource.Ui("SettingsWindow.axaml"));
+
+        var ns = markup.Root!.GetDefaultNamespace();
+
+        var button = markup.Descendants(ns + "Button").SingleOrDefault(
+            b => (string?)b.Attribute("Command") == "{Binding ForgetRecentCommand}");
+
+        Assert.NotNull(button);
+        Assert.Equal("Forget what was opened", (string?)button.Attribute("Content"));
+    }
+
+    /// <summary>
     /// **And the way to empty the folder-view store is too.** A command nothing
     /// binds is a feature nobody can reach, and this store is otherwise
     /// invisible: it fills up by itself and its file is not named anywhere in

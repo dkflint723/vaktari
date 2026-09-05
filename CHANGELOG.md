@@ -793,6 +793,17 @@ should not be trusted for compatibility yet.
   file is left where it is. A swap comes back through the temporary name it
   went out through, and that temporary name is never what the Undo row says.
 
+- **Recently opened files and folders can be switched off, and cleared.** Every
+  folder you opened and every file you opened was recorded, with no setting
+  consulted and no way to empty the list — the only route out was *Forget* on
+  one row at a time, which needs the entry still to be on screen. There is now
+  a *Remember recently opened files and folders* switch, on by default, and a
+  *Forget what was opened* button beside it.
+
+  Turning the switch off stops new entries; it does not delete what is already
+  there. Clearing is its own button, because a checkbox that says "stop
+  recording" should not quietly empty a list as well.
+
 - **The version number in Settings is a way in rather than a dead end.** It
   showed a number, and on hover the path of the binary, and that was the whole
   of the About box: nothing said what changed in that version, nothing named

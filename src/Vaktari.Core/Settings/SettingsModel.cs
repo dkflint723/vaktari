@@ -120,6 +120,25 @@ public sealed record GeneralSettings
     /// </summary>
     public bool ClosingSplitDiscardsOtherPane { get; init; }
 
+    // ---- what gets remembered ---------------------------------------------
+
+    /// <summary>
+    /// Whether opening a file or a folder is recorded in the recent lists.
+    ///
+    /// **It was recorded unconditionally, and there was no way to stop it or
+    /// to empty it.** Every folder opened and every file opened went in, no
+    /// setting was consulted, and the only route out was a per-row "Forget"
+    /// that needs the entry still on screen.
+    ///
+    /// **Defaulted to ON, which is the one judgement here.** Both references
+    /// record by default and the recent lists are a feature people use; a
+    /// privacy switch that is off out of the box is a feature nobody finds.
+    /// Off stops new entries; it does not empty what is already there, because
+    /// silently deleting somebody's list from a checkbox is not what the
+    /// checkbox says. Emptying is its own button.
+    /// </summary>
+    public bool RememberRecent { get; init; } = true;
+
     // ---- previews ---------------------------------------------------------
 
     public bool ShowPreviews { get; init; } = true;

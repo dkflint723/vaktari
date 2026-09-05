@@ -60,9 +60,11 @@ public sealed partial class SettingsViewModel : ObservableObject
         Core.FileSystem.IFileIconProvider? desktopIcons = null,
         Core.IFileManagerService? fileManager = null,
         string? settingsFile = null,
-        Core.FileSystem.IFolderViewStore? folderViews = null)
+        Core.FileSystem.IFolderViewStore? folderViews = null,
+        Core.FileSystem.IRecentStore? recents = null)
     {
         _rememberedViews = folderViews?.Remembered ?? 0;
+        _recentCount = recents?.Count ?? 0;
 
         _settingsFile = settingsFile ?? "";
         _defaults = defaults;
@@ -103,6 +105,7 @@ public sealed partial class SettingsViewModel : ObservableObject
         CaseSensitiveSorting = general.CaseSensitiveSorting;
         RememberViewPerFolder = general.RememberViewPerFolder;
         ShowTooltips = general.ShowTooltips;
+        RememberRecent = general.RememberRecent;
         TabSwitchesSplitPanes = general.TabSwitchesSplitPanes;
         ClosingSplitDiscardsOtherPane = general.ClosingSplitDiscardsOtherPane;
         ShowStatusBar = general.ShowStatusBar;
@@ -261,6 +264,7 @@ public sealed partial class SettingsViewModel : ObservableObject
     [ObservableProperty] private bool _caseSensitiveSorting;
     [ObservableProperty] private bool _rememberViewPerFolder;
     [ObservableProperty] private bool _showTooltips;
+    [ObservableProperty] private bool _rememberRecent;
     [ObservableProperty] private bool _tabSwitchesSplitPanes;
     [ObservableProperty] private bool _closingSplitDiscardsOtherPane;
     [ObservableProperty] private bool _showStatusBar;
@@ -1281,6 +1285,7 @@ public sealed partial class SettingsViewModel : ObservableObject
                 CaseSensitiveSorting = CaseSensitiveSorting,
                 RememberViewPerFolder = RememberViewPerFolder,
                 ShowTooltips = ShowTooltips,
+                RememberRecent = RememberRecent,
                 TabSwitchesSplitPanes = TabSwitchesSplitPanes,
                 ClosingSplitDiscardsOtherPane = ClosingSplitDiscardsOtherPane,
                 ShowStatusBar = ShowStatusBar,
@@ -1463,6 +1468,41 @@ public sealed partial class SettingsViewModel : ObservableObject
     {
         OnPropertyChanged(nameof(StartupFolderProblem));
         OnPropertyChanged(nameof(HasStartupFolderProblem));
+    }
+
+    // ---- the recent lists nothing could stop ---------------------------------
+
+    /// <summary>
+    /// How many recent entries there were when this dialog opened.
+    ///
+    /// **They were recorded unconditionally and could not be emptied.** Every
+    /// folder and every file opened went in, no setting was consulted, and the
+    /// only way out was a per-row "Forget" needing the entry still on screen.
+    /// </summary>
+    private readonly int _recentCount;
+
+    public bool HasRecent => _recentCount > 0;
+
+    public string RecentCountLabel => _recentCount == 1
+        ? "One entry is remembered"
+        : $"{_recentCount:N0} entries are remembered";
+
+    /// <summary>
+    /// Armed like the folder views beside it: Save clears them, Cancel does
+    /// not. And SEPARATE from the switch, deliberately — turning recording off
+    /// does not delete what is already there, because silently emptying
+    /// somebody's list from a checkbox is not what the checkbox says.
+    /// </summary>
+    public bool ForgetRecentOnSave { get; private set; }
+
+    [RelayCommand(CanExecute = nameof(HasRecent))]
+    private void ForgetRecent()
+    {
+        ForgetRecentOnSave = true;
+
+        SettingsFileStatus = _recentCount == 1
+            ? "One remembered entry will be forgotten when you press Save."
+            : $"{_recentCount:N0} remembered entries will be forgotten when you press Save.";
     }
 
     // ---- the folder views nothing could see ---------------------------------

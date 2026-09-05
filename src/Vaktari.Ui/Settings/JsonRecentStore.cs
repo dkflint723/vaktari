@@ -112,6 +112,31 @@ public sealed class JsonRecentStore : IRecentStore
         }
     }
 
+    public int Count
+    {
+        get { lock (_gate) return _files.Count + _folders.Count; }
+    }
+
+    public int ForgetAll()
+    {
+        int had;
+
+        lock (_gate)
+        {
+            had = _files.Count + _folders.Count;
+
+            if (had == 0) return 0;
+
+            _files.Clear();
+            _folders.Clear();
+            _dirty = true;
+        }
+
+        Changed?.Invoke(this, EventArgs.Empty);
+
+        return had;
+    }
+
     public void Forget(string path)
     {
         var key = Normalise(path);

@@ -308,6 +308,39 @@
                          VerticalAlignment="Center"/>
             </StackPanel>
 
+            <!-- **Every folder and every file opened was recorded, with no
+                 setting consulted and no way to empty the list** — the only
+                 route out was a per-row "Forget", which needs the entry still
+                 on screen and there is one row per entry.
+
+                 On by default: both references record by default, and a
+                 privacy switch that ships off is a feature nobody finds. -->
+            <CheckBox FontSize="{DynamicResource FontSizeSmall}"
+                      IsChecked="{Binding RememberRecent}">
+              <StackPanel>
+                <TextBlock Text="Remember recently opened files and folders"/>
+                <TextBlock Text="Off, nothing new is recorded. What is already remembered stays until you clear it."
+                           FontSize="{DynamicResource FontSizeTiny}"
+                           Foreground="{DynamicResource ViewDimText}"
+                           TextWrapping="Wrap"/>
+              </StackPanel>
+            </CheckBox>
+
+            <!-- Separate from the switch above, and only when there is
+                 something to clear: turning recording off must not silently
+                 delete a list, because that is not what the checkbox says. -->
+            <StackPanel Orientation="Horizontal" Spacing="10" Margin="24,0,0,0"
+                        IsVisible="{Binding HasRecent}">
+              <Button Content="Forget what was opened"
+                      Padding="10,3"
+                      FontSize="{DynamicResource FontSizeSmall}"
+                      Command="{Binding ForgetRecentCommand}"/>
+              <TextBlock Text="{Binding RecentCountLabel}"
+                         FontSize="{DynamicResource FontSizeTiny}"
+                         Foreground="{DynamicResource ViewDimText}"
+                         VerticalAlignment="Center"/>
+            </StackPanel>
+
             <CheckBox Content="Show tooltips on rows"
                       FontSize="{DynamicResource FontSizeSmall}"
                       IsChecked="{Binding ShowTooltips}"/>

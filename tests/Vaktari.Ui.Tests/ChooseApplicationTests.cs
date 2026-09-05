@@ -281,6 +281,50 @@ public sealed class ChooseApplicationTests : OwnedViewModels
         }
     }
 
+    /// <summary>
+    /// **Nothing consulted a setting: every open went in.** Every folder and
+    /// every file opened was recorded, and the only route out was a per-row
+    /// "Forget" needing the entry still on screen. The switch is read where the
+    /// store is reached rather than at each of the five call sites, so a sixth
+    /// cannot be added that forgets to ask.
+    ///
+    /// Through the chooser because that is a real opening route with a harness
+    /// already here, and its sibling above proves the same fake DOES record
+    /// when the setting is on.
+    /// </summary>
+    [AvaloniaFact]
+    public void Nothing_is_recorded_when_the_setting_is_off()
+    {
+        var launcher = new FakeLauncher(ownDialog: false, Writer);
+        var pane = Pane(launcher, Path.GetTempPath());
+
+        var recents = new RecordingRecents();
+        var before = PaneViewModel.Recents;
+        var settings = Vaktari.Ui.Settings.AppSettings.Current;
+
+        PaneViewModel.Recents = recents;
+
+        Vaktari.Ui.Settings.AppSettings.Apply(settings with
+        {
+            General = settings.General with { RememberRecent = false },
+        });
+
+        try
+        {
+            var model = Asked(pane, TheChooserRow)!;
+
+            model.OpenCommand.Execute(null);
+
+            Assert.NotEmpty(launcher.Launched);
+            Assert.Empty(recents.Recorded);
+        }
+        finally
+        {
+            Vaktari.Ui.Settings.AppSettings.Apply(settings);
+            PaneViewModel.Recents = before;
+        }
+    }
+
     private sealed class RecordingRecents : IRecentStore
     {
         public List<string> Recorded { get; } = [];
@@ -289,6 +333,8 @@ public sealed class ChooseApplicationTests : OwnedViewModels
 
         public IReadOnlyList<RecentEntry> Recent(RecentKind kind, int count) => [];
         public void Forget(string path) { }
+        public int Count => Recorded.Count;
+        public int ForgetAll() { var had = Recorded.Count; Recorded.Clear(); return had; }
         public event EventHandler? Changed { add { } remove { } }
     }
 
