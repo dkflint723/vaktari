@@ -1299,9 +1299,83 @@
                              names are data, not labels, and must never be
                              parsed for mnemonics. -->
                         <Button Command="{Binding Open}"
+                                IsVisible="{Binding !IsEllipsis}"
                                 AutomationProperties.Name="{Binding Name}"
                                 Background="Transparent" BorderThickness="0"
                                 Padding="4,2" CornerRadius="3">
+                          <TextBlock Text="{Binding Name}"
+                                     FontWeight="{Binding IsLast, Converter={x:Static vm:FileConverters.CrumbWeight}}"
+                                     Foreground="{Binding IsLast, Converter={x:Static vm:FileConverters.CrumbBrush}}"
+                                     FontSize="{DynamicResource FontSizeBase}"/>
+                        </Button>
+
+                        <!-- **The "…" opened the path editor.** It is the one
+                             crumb that is not a place, and the one question it
+                             raises is "which folders are under there" — which
+                             it answered by replacing the bar with a text box,
+                             so the ancestors it stood for were named nowhere in
+                             the application. BreadcrumbPanel knew them all
+                             along; Hidden is that list, and this is the menu.
+
+                             NOT the chevron's menu beside it: that one is what
+                             is INSIDE a crumb, read off a disk on the press.
+                             These are ancestors, already in the bar, and they
+                             cost no read — so the ellipsis keeps its plain
+                             separator and offers this from its own face.
+
+                             A SECOND button rather than a Flyout on the one
+                             above: a Button with both a Command and a Flyout
+                             runs the command AND opens the menu, so the crumb
+                             that navigates must not be the crumb that offers.
+                             The two are mutually exclusive on IsEllipsis, and a
+                             control with IsVisible false is not measured — so
+                             the panel still sees one crumb's width here.
+
+                             **The mark is in the bar even when nothing is
+                             elided**, parked off-screen by the panel, so it
+                             refuses when it stands for nothing: measured with
+                             the whole path showing, this button was still a tab
+                             stop announcing "Folders in between", and opened a
+                             popup 2 by 32 with no rows — the empty menu
+                             A_crumb_menu_never_opens_empty forbids next door.
+                             Disabled rather than hidden, because the panel
+                             decides what is missing during arrange and hiding a
+                             control there invalidates measure. -->
+                        <Button IsVisible="{Binding IsEllipsis}"
+                                IsEnabled="{Binding Hidden.Count, Converter={x:Static vm:FileConverters.Any}}"
+                                AutomationProperties.Name="Folders in between"
+                                ToolTip.Tip="Folders in between"
+                                Background="Transparent" BorderThickness="0"
+                                Padding="4,2" CornerRadius="3">
+                          <!-- The row carries its own command rather than
+                               reaching out through $parent[Window]: a flyout is
+                               its own popup root, and a reach-out would resolve
+                               to the SHELL's active tab, which is the wrong
+                               pane on the quiet half of a split. -->
+                          <Button.Flyout>
+                            <MenuFlyout ItemsSource="{Binding Hidden}">
+                              <MenuFlyout.ItemContainerTheme>
+                                <ControlTheme TargetType="MenuItem" BasedOn="{StaticResource {x:Type MenuItem}}"
+                                              x:DataType="vm:PathSegment">
+                                  <Setter Property="Header" Value="{Binding Name}"/>
+                                  <!-- Drawn rather than parsed, the rule every
+                                       folder name in this window carries: a bare
+                                       Header goes through the MenuItem
+                                       template's ContentPresenter, which has
+                                       RecognizesAccessKey="True", so an ancestor
+                                       named "git_projects" would draw as
+                                       "gitprojects" with its access key on "p". -->
+                                  <Setter Property="HeaderTemplate">
+                                    <DataTemplate x:DataType="x:String">
+                                      <TextBlock Text="{Binding}"/>
+                                    </DataTemplate>
+                                  </Setter>
+                                  <Setter Property="Command" Value="{Binding Open}"/>
+                                  <Setter Property="ToolTip.Tip" Value="{Binding FullPath}"/>
+                                </ControlTheme>
+                              </MenuFlyout.ItemContainerTheme>
+                            </MenuFlyout>
+                          </Button.Flyout>
                           <TextBlock Text="{Binding Name}"
                                      FontWeight="{Binding IsLast, Converter={x:Static vm:FileConverters.CrumbWeight}}"
                                      Foreground="{Binding IsLast, Converter={x:Static vm:FileConverters.CrumbBrush}}"

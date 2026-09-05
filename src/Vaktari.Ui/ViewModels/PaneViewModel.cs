@@ -82,8 +82,75 @@ public sealed record PathSegment(string Name, string FullPath, ICommand Open, bo
     /// </summary>
     public bool IsEllipsis { get; init; }
 
-    public static PathSegment Ellipsis(ICommand open) =>
-        new("…", "", open, IsLast: false) { IsEllipsis = true };
+    /// <summary>
+    /// The ancestors this crumb is standing in for, nearest the root first.
+    /// Empty on every crumb but the ellipsis.
+    ///
+    /// **The dropped ancestors were known and never offered.** The panel works
+    /// out which crumbs come off the bar on every arrange and parks them
+    /// off-screen, and that list was thrown away — while the "…" marking their
+    /// absence opened the path EDITOR, which replaces the bar you were reading
+    /// with a text box and answers a different question. The one thing the mark
+    /// exists to say is "there are folders here", so the one thing it must be
+    /// able to do is name them.
+    ///
+    /// Not <see cref="Children"/>, which is what is INSIDE a crumb and is read
+    /// off a disk when the chevron beside it is pressed. These are ancestors,
+    /// they are already in the bar, and they cost no read at all — so the
+    /// ellipsis needs no "reading…" row and no guard against a second press.
+    ///
+    /// Filled by <see cref="BreadcrumbPanel"/> rather than by the view model,
+    /// because the width of the toolbar decides the answer and only the panel
+    /// knows it — it changes as the window and the split are dragged, with no
+    /// navigation to rebuild the crumbs.
+    /// </summary>
+    public ObservableCollection<PathSegment> Hidden { get; } = new();
+
+    /// <summary>
+    /// Records what the bar had no room for.
+    ///
+    /// **Nothing is written when the set has not changed**, because this is
+    /// called from arrange: a collection that reported a reset on every layout
+    /// pass would rebuild the menu under the pointer of somebody reading it,
+    /// and layout runs on a pointer-driven splitter drag.
+    ///
+    /// **The count alone decides it**, and comparing the names as well was dead
+    /// code. Measured: a version that THREW when the counts matched and the
+    /// paths did not ran the whole UI suite — 1911 tests, real windows arranged
+    /// at many widths — without firing once. What the panel drops is always the
+    /// run path[1..firstTail) of one unchanging list of crumbs, so two sets of
+    /// equal length off the same bar hold the same crumbs in the same order; a
+    /// navigation does not arrive here with a different run, it clears the bar
+    /// and builds a new mark whose Hidden starts empty.
+    /// </summary>
+    internal void StandsFor(IReadOnlyList<PathSegment> hidden)
+    {
+        if (Hidden.Count == hidden.Count) return;
+
+        Hidden.Clear();
+
+        foreach (var crumb in hidden) Hidden.Add(crumb);
+    }
+
+    /// <summary>
+    /// **Its command opened the path editor**, which is the fault the menu in
+    /// <see cref="Hidden"/> replaces. The mark is not a place: pressing its
+    /// face must not navigate, and must not swap the bar you were reading for
+    /// a text box.
+    ///
+    /// Refused through CanExecute rather than left as a command that quietly
+    /// does nothing — and defensively, because **no control on screen binds
+    /// this any more**. The only one that ever did is the navigating half of
+    /// the crumb template, and that half carries IsVisible="{Binding
+    /// !IsEllipsis}": measured on the mark's own crumb in a real MainWindow,
+    /// three buttons are realized and exactly one of them is effectively
+    /// visible — the one carrying the menu, which has no command at all. So
+    /// the refusal is what the command says about itself to whatever binds it
+    /// next, not something a pointer can reach today.
+    /// </summary>
+    public static PathSegment Ellipsis() =>
+        new("…", "", new RelayCommand(() => { }, () => false), IsLast: false)
+        { IsEllipsis = true };
 }
 
 public sealed partial class PaneViewModel : ObservableObject, IDisposable

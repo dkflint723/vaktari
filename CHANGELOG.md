@@ -763,6 +763,22 @@ should not be trusted for compatibility yet.
 
 ### Changed
 
+- **The "…" in the path bar lists the folders it is hiding.** When the toolbar
+  is too narrow for the whole path, ancestors are dropped from the middle and a
+  "…" is put where they were — and pressing it opened the address bar for
+  editing, so the crumbs you were reading were replaced by the path as a string
+  and the folders the mark stood for were still named nowhere. It opens a menu
+  of exactly those folders now, and picking one goes there.
+
+  The list follows the bar: widen the window and a folder that has come back
+  into view leaves the menu. Widen it far enough that the whole path fits and
+  the mark has nothing left to offer — it stops taking a Tab of its own, and a
+  menu you had open closes rather than standing there with nothing in it.
+
+  A different menu from the one behind the chevron beside each crumb, and
+  cheaper: that one lists what is inside a folder and reads a disk to answer,
+  while these are ancestors already in the bar.
+
 - **The *Windows menu* is the last row of the right-click menu, under
   *Properties*.** It sat three groups higher, above *Open file location* and
   above *Properties* — so the one row that opens onto whatever the machine's

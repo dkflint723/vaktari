@@ -271,15 +271,24 @@ public sealed partial class PaneViewModel
         // the panel knows how wide the toolbar is, and it changes as the window
         // and the split are dragged.
         //
-        // Its command opens the path editor: a person who cannot see the middle
-        // of the path is the most likely person to want to read or edit it.
+        // **It opened the path editor**, which is the wrong answer to the one
+        // question it raises. A mark saying "there are folders here" that
+        // responds by replacing the bar with a text box has swapped a list you
+        // could click for a string you have to read and edit, and the folders
+        // it stood for are still not named anywhere. It lists them now — see
+        // PathSegment.Hidden, which BreadcrumbPanel fills with whatever it
+        // actually had to drop.
+        //
+        // Not through Crumb, so it gets no chevron and no Children: those are
+        // the folders INSIDE a crumb, read off a disk, and the ellipsis is not
+        // a folder — what it hides is a run of ancestors already in this list.
+        //
         // Counted from the crumbs actually present, which now include the
         // machine at the front — inserting at a fixed index would have put the
         // ellipsis before the drive rather than after it.
         if (levels.Count > 2)
         {
-            Breadcrumbs.Insert(2, PathSegment.Ellipsis(
-                new RelayCommand(BeginEditPath)));
+            Breadcrumbs.Insert(2, PathSegment.Ellipsis());
         }
     }
 

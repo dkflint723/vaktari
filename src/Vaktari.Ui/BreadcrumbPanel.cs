@@ -1,5 +1,6 @@
 using Avalonia;
 using Avalonia.Controls;
+using Avalonia.VisualTree;
 using Vaktari.Ui.ViewModels;
 
 namespace Vaktari.Ui;
@@ -23,6 +24,11 @@ namespace Vaktari.Ui;
 /// IsVisible during arrange invalidates measure, which is how a layout loop
 /// begins; arranging them outside the panel and clipping is decided within a
 /// single pass and cannot oscillate.
+///
+/// **What was dropped is handed to the ellipsis**, into
+/// <see cref="PathSegment.Hidden"/>, which the crumb's menu lists. It was
+/// computed here and discarded, so the mark could say that ancestors were
+/// missing and nothing in the application could say which.
 /// </summary>
 public sealed class BreadcrumbPanel : Panel
 {
@@ -39,6 +45,9 @@ public sealed class BreadcrumbPanel : Panel
     /// </summary>
     private static bool IsEllipsis(Control child)
         => child.DataContext is PathSegment { IsEllipsis: true };
+
+    /// <summary>The crumb a child stands for, or null when it is not one.</summary>
+    private static PathSegment? Segment(Control? child) => child?.DataContext as PathSegment;
 
     protected override Size MeasureOverride(Size availableSize)
     {
@@ -77,6 +86,13 @@ public sealed class BreadcrumbPanel : Panel
         if (total <= finalSize.Width || path.Count <= 1)
         {
             Park(ellipsis);
+
+            // Nothing was dropped, so the ellipsis stands for nothing. Said out
+            // loud rather than left over from the last arrange: the bar is
+            // re-arranged as it widens, and a menu still offering the crumb now
+            // visible beside it would be the stale half of the old answer.
+            Segment(ellipsis)?.StandsFor([]);
+            CloseMenu(ellipsis);
 
             var x = 0.0;
             foreach (var child in path)
@@ -123,15 +139,31 @@ public sealed class BreadcrumbPanel : Panel
             cursor += gap;
         }
 
+        // **Which ancestors went is decided HERE and nowhere else**, so this is
+        // the only place that can tell the ellipsis what it is standing in for.
+        // The view model cannot: it rebuilds the crumbs on navigation, and this
+        // answer changes on a window resize or a splitter drag with the same
+        // path on screen throughout.
+        var hidden = new List<PathSegment>();
+
         for (var i = 1; i < path.Count; i++)
         {
             var child = path[i];
 
-            if (i < firstTail) { Park(child); continue; }
+            if (i < firstTail)
+            {
+                Park(child);
+
+                if (Segment(child) is { } dropped) hidden.Add(dropped);
+
+                continue;
+            }
 
             child.Arrange(new Rect(cursor, 0, child.DesiredSize.Width, finalSize.Height));
             cursor += child.DesiredSize.Width;
         }
+
+        Segment(ellipsis)?.StandsFor(hidden);
 
         return finalSize;
     }
@@ -143,4 +175,33 @@ public sealed class BreadcrumbPanel : Panel
     /// </summary>
     private static void Park(Control? child) => child?.Arrange(
         new Rect(Parked, 0, child.DesiredSize.Width, child.DesiredSize.Height));
+
+    /// <summary>
+    /// Shuts the mark's menu when the bar has just taken back every folder it
+    /// was standing for.
+    ///
+    /// **A menu emptied while it was open laid out 2 by 32 with no rows in
+    /// it.** Measured in a real window over a temp path: the flyout shown at
+    /// 480px listed eight ancestors, and arranging the same window at 3200
+    /// left it OPEN with `rows=0 bounds=0, 0, 2, 32` — the sliver
+    /// CrumbMenuTests.A_menu_with_no_rows_yet_opens_as_a_sliver records and
+    /// A_crumb_menu_never_opens_empty forbids for the chevron next door.
+    /// Disabling the button does not take down a popup that is already up, and
+    /// the button this one hangs off has just been parked 100000px away.
+    ///
+    /// Every flyout on the crumb rather than only the menu's: the mark also
+    /// carries a chevron, and measured on a real window the mark's crumb
+    /// realizes three buttons of which exactly one is effectively visible — the
+    /// one carrying this menu. Nothing else here can be open to be shut, and
+    /// Hide on a flyout that is already down is a return.
+    ///
+    /// Null-safe through the compiler rather than through a hand-written
+    /// guard, the way <see cref="Park"/> is: a bar whose path is short enough
+    /// has no mark to close.
+    /// </summary>
+    private static void CloseMenu(Control? mark)
+    {
+        foreach (var button in mark?.GetVisualDescendants().OfType<Button>() ?? [])
+            button.Flyout?.Hide();
+    }
 }

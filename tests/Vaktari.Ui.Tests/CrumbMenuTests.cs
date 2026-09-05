@@ -693,10 +693,11 @@ public sealed class CrumbMenuTests : OwnedViewModels
     /// Which is why every MenuItem theme in the window that takes its header
     /// from a name draws that name rather than handing it over as a label.
     ///
-    /// Found from the markup rather than listed here, so a fourth menu built
-    /// the same way is held to it without anybody remembering — the crumb menu
-    /// and the two history flyouts are the same mistake waiting in the same
-    /// shape, and folder names are what all three show.
+    /// Found from the markup rather than listed here, so the NEXT menu built
+    /// the same way is held to it without anybody remembering — the crumb
+    /// menu, the two history flyouts and the ellipsis's list of the ancestors
+    /// the bar dropped are the same mistake waiting in the same shape, and
+    /// folder names are what all of them show.
     /// </summary>
     [AvaloniaFact]
     public void Every_menu_that_shows_a_name_draws_it_rather_than_parsing_it()
@@ -710,10 +711,13 @@ public sealed class CrumbMenuTests : OwnedViewModels
 
         // A guard, not decoration: a new menu of this shape must fail here
         // rather than quietly drop out of the check below. It has already
-        // earned its keep once — the address bar's Recent locations flyout
+        // earned its keep twice — the address bar's Recent locations flyout
         // arrived between this test being written and being run, took a folder
-        // name as a bare Header, and this line is what said so.
-        Assert.Equal(4, themes.Count);
+        // name as a bare Header, and this line is what said so; and the
+        // ellipsis crumb's menu of the ancestors the bar dropped is the fifth,
+        // which shows folder names for the same reason and needed the same
+        // HeaderTemplate.
+        Assert.Equal(5, themes.Count);
 
         foreach (var theme in themes)
             Assert.Contains(theme.Elements(Xaml + "Setter"),
@@ -807,9 +811,12 @@ public sealed class CrumbMenuTests : OwnedViewModels
     {
         var (window, root) = await RealWindow();
 
+        // IsChevron rather than "has a MenuFlyout": the ellipsis's own menu
+        // button is a second flyout in every crumb, and it is named for what it
+        // offers — the folders in between — rather than for a folder.
         var chevrons = window.GetVisualDescendants()
             .OfType<Button>()
-            .Where(b => b.Flyout is MenuFlyout && b.DataContext is PathSegment)
+            .Where(IsChevron)
             .ToList();
 
         // The bar under a temp path is ten crumbs deep, so this is a real
@@ -931,11 +938,27 @@ public sealed class CrumbMenuTests : OwnedViewModels
         Dispatcher.UIThread.RunJobs();
     }
 
+    /// <summary>
+    /// Whether this button is the chevron that lists what is INSIDE a crumb.
+    ///
+    /// **Two buttons in the crumb template carry a MenuFlyout now**: this one,
+    /// bound to <see cref="PathSegment.Children"/>, and the ellipsis's, bound
+    /// to <see cref="PathSegment.Hidden"/> — the ancestors the bar had no room
+    /// for. Told apart by the collection the flyout lists rather than by
+    /// position or by visibility, because the ellipsis's button sits in EVERY
+    /// crumb with IsVisible false: measured, a bare "has a MenuFlyout" matched
+    /// twice per crumb and Assert.Single failed on all ten of them.
+    /// </summary>
+    private static bool IsChevron(Button button)
+        => button.DataContext is PathSegment crumb
+           && button.Flyout is MenuFlyout menu
+           && ReferenceEquals(menu.ItemsSource, crumb.Children);
+
     /// <summary>The button that opens one crumb's menu.</summary>
     private static Button Chevron(Window window, string path)
         => Assert.Single(
             window.GetVisualDescendants().OfType<Button>(),
-            b => b.Flyout is MenuFlyout && (b.DataContext as PathSegment)?.FullPath == path);
+            b => IsChevron(b) && ((PathSegment)b.DataContext!).FullPath == path);
 
     private static Avalonia.Controls.Shapes.Path Arrow(Button chevron)
         => chevron.GetVisualDescendants().OfType<Avalonia.Controls.Shapes.Path>().Single();

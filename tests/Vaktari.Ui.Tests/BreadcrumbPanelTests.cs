@@ -28,7 +28,7 @@ public class BreadcrumbPanelTests
         Width = width,
         Height = 20,
         DataContext = ellipsis
-            ? PathSegment.Ellipsis(null!)
+            ? PathSegment.Ellipsis()
             : new PathSegment("x", "/x", null!, IsLast: false),
     };
 

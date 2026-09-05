@@ -574,4 +574,26 @@ public static class FileConverters
     public static readonly IValueConverter CrumbBrush =
         new FuncValueConverter<bool, object?>(isLast =>
             Avalonia.Application.Current?.Resources[isLast ? "ViewText" : "ViewDimText"]);
+
+    /// <summary>
+    /// Whether a collection holds anything, read off its Count.
+    ///
+    /// **A menu button that stands for nothing opened an empty popup**, and an
+    /// empty popup is indistinguishable from a broken one — the rule
+    /// CrumbMenuTests.A_crumb_menu_never_opens_empty states for the chevron
+    /// beside it. The ellipsis crumb is in the bar whenever the path is deeper
+    /// than two levels, parked off-screen when it all fits, and measured there
+    /// its menu button was still enabled and still a tab stop: four Tab presses
+    /// from the first crumb reached a button announced "Folders in between"
+    /// whose flyout laid out 2 by 32 with no rows at all.
+    ///
+    /// Bound to Count rather than to IsVisible, because BreadcrumbPanel decides
+    /// what is missing during ARRANGE: hiding a control there invalidates
+    /// measure, which is how a layout loop begins, while an enabled state does
+    /// not — the mark's width, and so the elision arithmetic that depends on
+    /// it, is the same either way. ObservableCollection raises PropertyChanged
+    /// for "Count", so the binding follows the panel live.
+    /// </summary>
+    public static readonly IValueConverter Any =
+        new FuncValueConverter<int, bool>(count => count > 0);
 }
