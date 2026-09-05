@@ -13,6 +13,19 @@ should not be trusted for compatibility yet.
 
 ### Added
 
+- **Folders open the way you want them to.** Every new tab opened as a details
+  list sorted by name, whatever you had been using all day, and the only thing
+  in the application that remembered a layout was the per-folder store — which
+  answers for folders you have already given a view to, and has nothing to say
+  about a folder you have never opened. Settings, View now carries a default
+  layout, sort field, direction and grouping, and a new pane starts in them.
+  The `+` beside the tab strip carries the current tab's view across instead,
+  so the fast way to a second tab like this one stays fast. And the view flyout
+  has "Use this view for all folders": it takes the layout you are looking at,
+  makes it the default, drops the per-folder views that would have overridden
+  it, and says on the status line what folders will open as and how many folders'
+  own views it forgot — because nothing on screen moves when you press it.
+
 - **The F1 sheet prints the Menu key and the sidebar's Home and End.** Menu and
   Shift+F10 open the right-click menu from the keyboard and appeared nowhere;
   Home and End walk to the first and last place in the sidebar and appeared

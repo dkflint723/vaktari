@@ -34,7 +34,10 @@ public sealed partial class PaneViewModel
 {
     // ---- grouping ---------------------------------------------------------
 
-    [ObservableProperty] private GroupMode _groupBy = GroupMode.None;
+    /// <summary>The fourth of the pane's starting values, read from the live
+    /// preferences for the reason the other three give in PaneViewModel.cs.
+    /// Ungrouped is still what an untouched settings.json asks for.</summary>
+    [ObservableProperty] private GroupMode _groupBy = Settings.AppSettings.Current.Views.DefaultGroupBy;
 
     /// <summary>
     /// The grouping the LISTING is actually built with, which is the chosen one

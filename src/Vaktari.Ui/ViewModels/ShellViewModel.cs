@@ -1397,6 +1397,88 @@ public sealed partial class ShellViewModel : ObservableObject, IDisposable
     [RelayCommand]
     private void OpenSettings() => SettingsRequested?.Invoke(this, EventArgs.Empty);
 
+    /// <summary>
+    /// Raised once the defaults have been changed and are already in force, so
+    /// the window can write them out through the settings store it owns. The
+    /// shell has no store of its own, and leaves what it cannot do itself by an
+    /// event, the way it does for every dialog it needs opened.
+    /// </summary>
+    public event EventHandler<Core.Settings.SettingsState>? DefaultViewChanged;
+
+    /// <summary>
+    /// "Use this view for all folders".
+    ///
+    /// **A layout was a property of a tab and of nothing else.** Choosing the
+    /// large grid was a per-tab click; the session brings back the tabs that
+    /// were open, and the per-folder store answers for folders that have
+    /// already been given a layout — so between them they remember where you
+    /// have been and nothing at all about where you are going. There was no way
+    /// to say "this is how I want folders to look", which is the question both
+    /// reference file managers answer: Explorer with "Apply to Folders",
+    /// Dolphin with a common display style for all folders.
+    ///
+    /// Two halves, and the second is what makes the first true: the pane's view
+    /// becomes the default, and every folder that had been given an override is
+    /// forgotten. Without the forget, "all folders" would mean "all folders
+    /// except the ones you have already touched" — and those are precisely the
+    /// ones somebody asking this question has been touching.
+    ///
+    /// The tabs already open are left alone. This is about the folders you go
+    /// to next, not about rearranging what is on screen while you look at it.
+    /// </summary>
+    [RelayCommand]
+    private void UseThisViewEverywhere()
+    {
+        if (ActiveTab is not { } pane) return;
+
+        var settings = Settings.AppSettings.Current;
+
+        var next = settings with
+        {
+            Views = settings.Views with
+            {
+                DefaultView = pane.View,
+                DefaultSort = pane.Sort,
+                DefaultSortDescending = pane.SortDescending,
+                DefaultGroupBy = pane.GroupBy,
+            },
+        };
+
+        // Applied before it is saved, so the next tab opened in this window
+        // gets it without a restart: a pane reads these when it is constructed.
+        Settings.AppSettings.Apply(next);
+
+        var forgotten = PaneViewModel.FolderViews?.ForgetAll() ?? 0;
+
+        // **Nothing on screen moved when it was pressed.** The tabs already
+        // open are deliberately left alone, the layout controls were taken out
+        // of this flyout, and the whole effect is on folders opened later — so
+        // the button had no visible result at all, while quietly emptying the
+        // per-folder store. The status line is where this codebase says what an
+        // action you cannot see has done, and the other route to the same
+        // ForgetAll — the settings dialog's "Forget remembered views" — counts
+        // what it is about to drop, so this counts what it dropped.
+        pane.Status = forgotten switch
+        {
+            0 => $"folders will open as {LayoutName(pane.View)} from now on",
+            1 => $"folders will open as {LayoutName(pane.View)} from now on — one folder's own view forgotten",
+            _ => $"folders will open as {LayoutName(pane.View)} from now on — {forgotten:N0} folders' own views forgotten",
+        };
+
+        DefaultViewChanged?.Invoke(this, next);
+    }
+
+    /// <summary>The names the toolbar chip and the shortcut sheet already give
+    /// the three layouts, so the status line calls a layout what the button
+    /// that sets it is called rather than what its enum member is spelled.
+    /// </summary>
+    private static string LayoutName(ViewMode view) => view switch
+    {
+        ViewMode.Grid => "a large grid",
+        ViewMode.Compact => "a small grid",
+        _ => "a list",
+    };
+
     /// <summary>Raised so the window can show the shortcut list; a view model
     /// has no business owning a window.</summary>
     public event EventHandler? ShortcutsRequested;

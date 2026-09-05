@@ -1,4 +1,6 @@
 using System.Text.Json.Serialization;
+using Vaktari.Core.FileSystem;
+using Vaktari.Core.Session;
 
 namespace Vaktari.Core.Settings;
 
@@ -365,6 +367,42 @@ public sealed record ViewSettings
     /// one answer.
     /// </summary>
     public bool ShowSelectionBoxes { get; init; }
+
+    // ---- what a pane starts as --------------------------------------------
+    //
+    // **There was no default layout, so every pane began in Details sorted by
+    // name.** PaneViewModel's fields said `ViewMode.Details`, `SortField.Name`
+    // and `GroupMode.None` as literals and nothing anywhere could say
+    // otherwise: somebody who works in the large grid got Details from the tab
+    // strip's "+", from a new window and from the second half of every split,
+    // and the settings file had no key to change it. The session remembered the
+    // tabs that were open — TabState carries View, Sort, SortDescending and
+    // GroupBy — and the per-folder store answered for folders already given a
+    // layout; between them they remembered where you had been and nothing about
+    // where you were going.
+    //
+    // **All four are named for their zero value**, like ShowSelectionBoxes and
+    // KeepWidthAfterPanelClose above. RE-MEASURED HERE rather than taken from
+    // those notes: `DefaultView` was given a `= ViewMode.Grid` initializer and
+    // a settings.json carrying only `views.themeMode` was deserialized through
+    // SettingsJsonContext — it came back Details, so the initializer is not run
+    // for an absent key and `default(T)` is what every upgrading install gets.
+    //
+    // The enum declarations make that free rather than a compromise: `ViewMode`
+    // is `{ Details, Grid, Compact }`, `SortField` is `{ Name, Size, Modified,
+    // Kind }` and `GroupMode` starts at `None`, so zero already IS the
+    // behaviour every install has today.
+
+    public ViewMode DefaultView { get; init; }
+
+    public SortField DefaultSort { get; init; }
+
+    public bool DefaultSortDescending { get; init; }
+
+    /// <summary>Only the details view draws bands, but the pane keeps the
+    /// choice in all three — so this is a pane default like the other three
+    /// rather than a member of <see cref="DetailsViewSettings"/>.</summary>
+    public GroupMode DefaultGroupBy { get; init; }
 
     /// <summary>Null means follow the desktop font from kdeglobals.</summary>
     public string? CustomFontFamily { get; init; }

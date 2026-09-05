@@ -198,6 +198,12 @@ public partial class MainWindow : Window
         // the same dialog by a different route.
         _shell.ShowPropertiesRequested += (_, path) => ShowPropertiesFor(path);
         _shell.SettingsRequested += (_, _) => ShowSettings();
+
+        // "Use this view for all folders" has already applied the change and
+        // emptied the per-folder store; the file is the half only the window can
+        // write. Through the same store the settings dialog saves with, so the
+        // two routes cannot disagree about where preferences live.
+        _shell.DefaultViewChanged += (_, settings) => _services.SettingsStore.Save(settings);
         _shell.EmptyTrashRequested += (_, _) => AskConfirmEmptyTrash();
 
         // Exactly what Delete does, so the menu and the key cannot disagree

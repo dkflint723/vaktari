@@ -1025,9 +1025,20 @@ public sealed partial class PaneViewModel : ObservableObject, IDisposable
     [ObservableProperty] private FileEntry? _selectedEntry;
     [ObservableProperty] private string _filterText = "";
     [ObservableProperty] private bool _isFilterVisible;
-    [ObservableProperty] private SortField _sort = SortField.Name;
-    [ObservableProperty] private bool _sortDescending;
-    [ObservableProperty] private ViewMode _view = ViewMode.Details;
+    // **These three were the literals `SortField.Name`, `false` and
+    // `ViewMode.Details`, with no key in settings.json able to say otherwise.**
+    // So every fresh pane opened in Details sorted by name: the tab strip's
+    // "+", a new window, the second half of a split, and the very first tab of
+    // a fresh install.
+    //
+    // Read from the live preferences at CONSTRUCTION rather than in the
+    // setters, so the two things that overwrite them a moment later —
+    // RestoreFrom for a session tab and AdoptViewOf for a tab opened `like`
+    // another — still win, and the default never reaches a listing in those
+    // cases. Both run before the pane has navigated anywhere.
+    [ObservableProperty] private SortField _sort = Settings.AppSettings.Current.Views.DefaultSort;
+    [ObservableProperty] private bool _sortDescending = Settings.AppSettings.Current.Views.DefaultSortDescending;
+    [ObservableProperty] private ViewMode _view = Settings.AppSettings.Current.Views.DefaultView;
 
     /// <summary>Highlights the pane a drop would land in.</summary>
     [ObservableProperty] private bool _isDropTarget;
@@ -3161,9 +3172,24 @@ public sealed partial class PaneViewModel : ObservableObject, IDisposable
     /// Adopt persisted state without touching the filesystem. ShowHidden is set
     /// under suppression because its change handler triggers a reload, which is
     /// exactly what lazy restore is trying to avoid.
+    ///
+    /// **_restoringView as well, or restoring a session gave every folder that
+    /// was open an opinion it never had.** CurrentPath is assigned first here,
+    /// so by the time `View = tab.View` runs RememberFolderView has a folder to
+    /// write against — and _suppressReload does not gate that write, only
+    /// _restoringView does. Measured in this worktree with RememberViewPerFolder
+    /// on, a default of Grid and an empty store: restoring one Details tab left
+    /// one entry behind, and the next tab opened at that folder then came up
+    /// Details. The write itself is not new — it fires whenever a saved value
+    /// differs from the field's starting one — but while that starting value
+    /// was the literal Details it could only ever record the layout the tab was
+    /// already in. A settable default makes it record the OLD layout in
+    /// defiance of the new one, which is the thing the "use this view for all
+    /// folders" ForgetAll exists to prevent.
     /// </summary>
     public void RestoreFrom(TabState tab)
     {
+        _restoringView = true;
         _suppressReload = true;
         try
         {
@@ -3224,6 +3250,7 @@ public sealed partial class PaneViewModel : ObservableObject, IDisposable
         finally
         {
             _suppressReload = false;
+            _restoringView = false;
         }
 
         IsLoaded = false;

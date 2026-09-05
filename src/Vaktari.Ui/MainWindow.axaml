@@ -514,6 +514,19 @@
                             FontSize="{DynamicResource FontSizeSmall}"
                             IsChecked="{Binding ActiveTab.ShowHidden}"/>
 
+                  <!-- The layout, sort and grouping chosen in the bar above are
+                       per tab, and there was nothing anywhere that could make
+                       one of them the way folders open. This is that missing
+                       half, and it lives here beside the choices it copies
+                       rather than in the settings dialog, which cannot see
+                       which pane is active or what it is showing. -->
+                  <Button Content="Use this view for all folders" Padding="0" MinHeight="0"
+                          Background="Transparent" BorderThickness="0"
+                          HorizontalAlignment="Left"
+                          FontSize="{DynamicResource FontSizeSmall}"
+                          ToolTip.Tip="Makes this pane's layout, sort and grouping the default for folders you open from now on, and forgets the views individual folders were given."
+                          Command="{Binding $parent[Window].((vm:ShellViewModel)DataContext).UseThisViewEverywhereCommand}"/>
+
                   <!-- **The sidebar could only be toggled with Ctrl+B.** There
                        was no entry anywhere for it, so hiding it was something
                        you had to already know how to do — and getting it back

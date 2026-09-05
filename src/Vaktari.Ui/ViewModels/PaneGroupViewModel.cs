@@ -429,11 +429,19 @@ public sealed partial class PaneGroupViewModel : ObservableObject
     /// The "+" beside this side's tab strip. Lives on the group rather than the
     /// shell so each half opens tabs into itself, regardless of which side has
     /// focus at the time.
+    ///
+    /// **It sat beside three routes that carry the view and did not.** Ctrl+T,
+    /// Duplicate and the middle-click that opens a folder behind you all pass
+    /// `like`; this omitted it, so the same gesture kept or dropped the layout,
+    /// the sort, the grouping, the zoom and hidden files depending on whether
+    /// you reached for the key or for the button beside the tab you were
+    /// looking at.
     /// </summary>
     [RelayCommand]
     private void NewTabHere()
         => AddTab(ActiveTab?.CurrentPath
-                  ?? Environment.GetFolderPath(Environment.SpecialFolder.UserProfile));
+                  ?? Environment.GetFolderPath(Environment.SpecialFolder.UserProfile),
+                  like: ActiveTab);
 
     /// <summary>
     /// Opens a tab, optionally carrying the current one's view over and
