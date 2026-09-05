@@ -197,6 +197,108 @@ public sealed class NewWindowTests : OwnedViewModels
         Settle();
     }
 
+    /// <summary>How long a wait here may take before it is a failure.</summary>
+    private static readonly TimeSpan Ceiling = TimeSpan.FromSeconds(10);
+
+    /// <summary>
+    /// The session as session.json itself holds it.
+    ///
+    /// **Not <c>Session.Load()</c>, because Load has a SECOND answer and here
+    /// that answer is always the wrong one.** Rule 3 of its own doc is "never
+    /// let a bad session file prevent startup", so it reads
+    /// <c>session.json.bak</c> whenever session.json cannot be read — and
+    /// <c>WriteAsync</c> copies the OLD session.json to that backup one line
+    /// before it renames the new one into place. MEASURED at exactly the point
+    /// <see cref="The_last_window_still_writes_itself_into_the_session"/> reads
+    /// it, forty runs of its body: session.json held one window of 287 and
+    /// session.json.bak held the empty session <see cref="SaveAsync"/> wrote.
+    /// Load() called there with session.json held open by one other handle
+    /// answered ZERO windows and did not raise. So the reader the test asked
+    /// could hand back the state from BEFORE the write it is asserting about,
+    /// as an answer rather than as an error, and from the assertion that looks
+    /// exactly like "the collection was empty".
+    ///
+    /// The intermittent failure this was found by has not been reproduced on
+    /// this machine: 2010 Ui tests green before the change and after it, forty
+    /// runs of this test's body green, and eight runs of this class green under
+    /// manufactured CPU load. What is above is the reader's own measured
+    /// behaviour, not a reading of that failing run.
+    ///
+    /// Only the READ is retried. The flush is awaited and the store is disposed
+    /// behind it, so nothing writes again and no amount of re-reading can turn
+    /// a wrong session into a right one: a release that dropped the last window
+    /// still exhausts the ceiling and still fails.
+    /// </summary>
+    private static async Task<SessionState> WrittenSessionAsync()
+    {
+        var path = Path.Combine(TestState.Current(), "session.json");
+        var deadline = DateTime.UtcNow + Ceiling;
+        var why = "it was never there";
+
+        while (true)
+        {
+            try
+            {
+                using var stream = System.IO.File.OpenRead(path);
+                var state = System.Text.Json.JsonSerializer.Deserialize(
+                    stream, SessionJsonContext.Default.SessionState);
+
+                if (state is not null) return state;
+
+                why = "it parsed as nothing";
+            }
+            catch (Exception ex)
+            {
+                why = ex.Message;
+            }
+
+            Assert.True(DateTime.UtcNow < deadline,
+                        $"session.json never came back readable: {why}");
+
+            Settle();
+            await Task.Delay(5);
+        }
+    }
+
+    /// <summary>
+    /// One window, closed, waited for.
+    ///
+    /// **<see cref="CloseAll"/> walks the family list, and cannot close a window
+    /// that has already been released out of it.**
+    /// <see cref="The_last_window_still_writes_itself_into_the_session"/> asserts
+    /// that list is empty one line before it used to call CloseAll, so that call
+    /// iterated nothing: the window it opened was still open, still shown, and
+    /// still holding its shell's panes, watchers and timers for the rest of the
+    /// run. Nothing else would have closed it either — MEASURED by taking the
+    /// final Close() out of OnClosing, after which the wait below runs out
+    /// instead. That is the leak <see cref="OwnedViewModels"/> exists to
+    /// prevent, in the one test here that cannot hand a window to it.
+    ///
+    /// Waits on the window's own Closed event rather than on a number of
+    /// dispatcher turns: OnClosing cancels the first close, awaits the release
+    /// and only then closes for real, so the window is still open when Close()
+    /// returns.
+    /// </summary>
+    private static async Task CloseAndWaitAsync(MainWindow window)
+    {
+        var closed = false;
+
+        window.Closed += (_, _) => closed = true;
+        window.Close();
+
+        var deadline = DateTime.UtcNow + Ceiling;
+
+        while (!closed)
+        {
+            Assert.True(DateTime.UtcNow < deadline, "the window never closed");
+
+            Settle();
+            await Task.Delay(5);
+        }
+
+        Settle();
+    }
+
     // ---- one application, several windows ----------------------------------
 
     /// <summary>
@@ -338,9 +440,12 @@ public sealed class NewWindowTests : OwnedViewModels
 
         await services.ReleaseAsync(founder);
 
-        var onDisk = services.Session.Load();
+        // The file the release wrote, rather than what Session.Load() makes of
+        // the directory — WrittenSessionAsync carries the measurement.
+        var onDisk = await WrittenSessionAsync();
 
-        Assert.NotNull(onDisk);
+        Assert.Equal(SessionState.CurrentVersion, onDisk.Version);
+
         var saved = Assert.Single(onDisk.Windows);
         Assert.Equal(287d, saved.SidebarWidth);
 
@@ -348,7 +453,9 @@ public sealed class NewWindowTests : OwnedViewModels
         // has been torn down.
         Assert.Empty(services.Windows);
 
-        CloseAll(services);
+        // Which is also why CloseAll cannot end this one: it walks the list
+        // that assertion just found empty. See CloseAndWaitAsync.
+        await CloseAndWaitAsync(founder);
     }
 
     /// <summary>
