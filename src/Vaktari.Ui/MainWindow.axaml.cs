@@ -1786,6 +1786,33 @@ public partial class MainWindow : Window
 
     private void OnListingMenuClosed(object? sender, RoutedEventArgs e)
     {
+        // **Placement belongs to the menu, and ONE menu serves both routes.**
+        // OpenListingMenu sets BottomEdgeAlignedLeft for the Menu key; left
+        // set, it outlives the keystroke, and the next right-click anywhere in
+        // the listing opens with it. Measured, driving a real right-button
+        // press at a row in a headless MainWindow with that placement left
+        // behind: the popup came up BottomEdgeAlignedLeft anchored on a 30px
+        // panel inside the tab strip — not at the cursor, and not on any row.
+        // Every right-click after a keyboard one would have put the menu up
+        // there under the tabs until the next keyboard one.
+        //
+        // The same measurement is why the target is cleared rather than
+        // restored to something: the right-click route never reads
+        // PlacementTarget at all — it re-anchors on the attached control's own
+        // panel, with the menu's target still pointing at the keyboard's row —
+        // and the Menu-key route always assigns it before opening. So nulling
+        // it changes no placement; it drops the menu's reference to a
+        // ListBoxItem the virtualizing panel is free to recycle.
+        //
+        // Ahead of the pane block below, which returns early: what is being put
+        // back is a property of the menu, and it has to be put back whether or
+        // not the menu turned out to have a pane behind it.
+        if (sender is ContextMenu menu)
+        {
+            menu.Placement = PlacementMode.Pointer;
+            menu.PlacementTarget = null;
+        }
+
         if (sender is not Control { DataContext: PaneGroupViewModel { ActiveTab: { } pane } })
             return;
 
@@ -2931,11 +2958,44 @@ public partial class MainWindow : Window
     private void SelectNone() => ActiveListing()?.SelectedItems?.Clear();
 
     /// <summary>
+    /// The row the keyboard is on, or null when the listing has none.
+    ///
+    /// Focus first and selection second, because they come apart: Ctrl+arrow
+    /// moves the focused row without selecting it, and the menu belongs where
+    /// the person is looking rather than where the last selection was left.
+    /// </summary>
+    private static Control? FocusedRow(ListBox list)
+        => Rows(list).FirstOrDefault(row => row.IsKeyboardFocusWithin)
+           ?? (list.SelectedIndex >= 0 ? list.ContainerFromIndex(list.SelectedIndex) : null);
+
+    /// <summary>
     /// Opens the listing's context menu from the keyboard, at the focused row.
     ///
     /// The menu hangs off the ItemsControl that holds the tabs, so it is found
     /// by walking up from the listing rather than from the row — the row's own
     /// template has no menu of its own.
+    ///
+    /// **The Menu key did not open a menu in the wrong place — it threw.** This
+    /// called menu.Open(list), under a comment claiming that placed the menu on
+    /// the list rather than at the pointer, and Open refuses any control but
+    /// the one the menu is attached to: the menu hangs off the tab strip's
+    /// ItemsControl, the listing is a ListBox inside its item template, so
+    /// every press raised ArgumentException — "Cannot show ContentMenu on a
+    /// different control to the one it is attached to" — straight out of
+    /// OnWindowKeyDown with nothing to catch it. Restoring that one call
+    /// reddens all four tests in ContextMenuPlacementTests with that exception,
+    /// which is what The_menu_key_opens_the_menu_at_the_focused_row now pins.
+    ///
+    /// The comment's claim was wrong the other way too. Open(control) does
+    /// anchor the popup on the control it is handed — measured, with
+    /// PlacementTarget null the popup's own PlacementTarget comes back as that
+    /// control — but Placement stays whatever the menu holds, and a
+    /// ContextMenu is born Pointer. So had the call been legal it would still
+    /// have opened at the pointer, ignoring the anchor.
+    ///
+    /// Placement is set here and put back in <see cref="OnListingMenuClosed"/>,
+    /// rather than in the markup: a RIGHT-CLICK must still open at the pointer,
+    /// and the markup has one ContextMenu serving both routes.
     /// </summary>
     private void OpenListingMenu()
     {
@@ -2943,11 +3003,29 @@ public partial class MainWindow : Window
 
         for (var visual = (Visual?)list; visual is not null; visual = visual.GetVisualParent())
         {
-            if (visual is not Control { ContextMenu: { } menu }) continue;
+            if (visual is not Control { ContextMenu: { } menu } host) continue;
 
-            // Placed on the list rather than at the pointer: the pointer may be
-            // anywhere, and the keyboard user is looking at the focused row.
-            menu.Open(list);
+            // Under the focused row and left-aligned with it, which is where
+            // Explorer puts the Menu key's menu. An empty listing has no row to
+            // hang it on, so it goes in the middle of the list — still on the
+            // thing the menu is about, which the pointer's last resting place
+            // is not.
+            var row = FocusedRow(list);
+
+            menu.Placement = row is null
+                ? PlacementMode.Center
+                : PlacementMode.BottomEdgeAlignedLeft;
+
+            menu.PlacementTarget = row ?? list;
+
+            // **Open() takes the control the menu is ATTACHED to and refuses
+            // any other**, so the row cannot be handed to it — the host is.
+            // The anchor is PlacementTarget, set above, and it does reach the
+            // popup: measured on a real Menu-key press in a headless
+            // MainWindow, with the fourth row focused, the popup's own
+            // PlacementTarget came back as that ListBoxItem, bounds 0,90 by
+            // 1185x30 — the fourth 30px row.
+            menu.Open(host);
             return;
         }
     }

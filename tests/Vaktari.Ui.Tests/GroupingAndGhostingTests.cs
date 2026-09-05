@@ -346,7 +346,7 @@ public sealed class GroupingAndGhostingTests : OwnedViewModels
     {
         var entry = XDocument.Parse(RepoSource.Ui("MainWindow.axaml"))
             .Descendants(Xaml + "MenuItem")
-            .Single(m => (string?)m.Attribute("Header") == "Group by");
+            .Single(m => MenuLabels.Plain((string?)m.Attribute("Header")) == "Group by");
 
         Assert.Equal("{Binding ActiveTab.IsDetailsView}", (string?)entry.Attribute("IsVisible"));
     }

@@ -159,7 +159,7 @@ public sealed class DisconnectPlaceTests : OwnedViewModels
             XDocument.Parse(RepoSource.Ui("MainWindow.axaml")).Descendants(Avalonia + "MenuItem"),
             e => ((string?)e.Attribute("Command") ?? "").Contains("DisconnectPlaceCommand"));
 
-        Assert.Equal("Disconnect", (string?)row.Attribute("Header"));
+        Assert.Equal("Disconnect", MenuLabels.Plain((string?)row.Attribute("Header")));
         Assert.Equal("{Binding CanDisconnect}", (string?)row.Attribute("IsVisible"));
         Assert.Equal("{Binding}", (string?)row.Attribute("CommandParameter"));
     }

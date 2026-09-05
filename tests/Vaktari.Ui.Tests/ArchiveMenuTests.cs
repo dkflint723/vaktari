@@ -80,7 +80,7 @@ public sealed class ArchiveMenuTests : OwnedViewModels
     {
         var row = ListingMenu()
             .Elements(Avalonia + "MenuItem")
-            .SingleOrDefault(m => (string?)m.Attribute("Header") == header);
+            .SingleOrDefault(m => MenuLabels.Plain((string?)m.Attribute("Header")) == header);
 
         Assert.True(row is not null,
             $"\"{header}\" is not a direct child of the listing's context menu");
@@ -103,7 +103,7 @@ public sealed class ArchiveMenuTests : OwnedViewModels
         var children = ListingMenu().Elements().ToList();
 
         var compress = children.FindIndex(
-            e => (string?)e.Attribute("Header") == "Compress to ZIP");
+            e => MenuLabels.Plain((string?)e.Attribute("Header")) == "Compress to ZIP");
 
         Assert.True(compress > 0, "the compress row is not a direct child of the menu");
 

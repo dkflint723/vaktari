@@ -13,6 +13,15 @@ should not be trusted for compatibility yet.
 
 ### Added
 
+- **Right-click menus carry underlined letters, and the Menu key opens one beside
+  the row you are on.** Seventy-odd menu rows had no access key between them, so
+  the keyboard could open a menu and then only walk it with arrows; and a menu
+  raised from the keyboard appeared at the corner of the list rather than at the
+  row it was about, which for a long listing is nowhere near what you were
+  pointing at. Both keys that raise it — Menu and Shift+F10 — now put it beside
+  the focused row, and the pointer's own placement is given back the moment the
+  menu closes, so the next right-click still opens where you clicked.
+
 - **The path bar goes down as well as up.** Every crumb took you to an ancestor
   and the mark between two of them was decoration, so the commonest move in a
   file manager — from a folder to the one beside it — cost a click on the

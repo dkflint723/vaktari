@@ -1118,8 +1118,10 @@ public sealed class NewWindowTests : OwnedViewModels
         Assert.Contains("ShowOpenInNewWindowInMenu", markup, StringComparison.Ordinal);
 
         // The sidebar's row is deliberately ungated, like its twin above it.
+        // The header carries its access-key marker — "w_indow" — because this
+        // scan reads the markup as text rather than as elements.
         var sidebarRow = markup.IndexOf(
-            "Header=\"Open in new window\"\n                                            Command=",
+            "Header=\"Open in new w_indow\"\n                                            Command=",
             StringComparison.Ordinal);
 
         Assert.True(sidebarRow > 0, "the sidebar's row is not where this test looks for it");

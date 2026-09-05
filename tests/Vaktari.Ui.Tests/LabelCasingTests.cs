@@ -121,6 +121,23 @@ public sealed class LabelCasingTests
                     if (!LabelAttributes.Contains(attribute.Name.LocalName)) continue;
 
                     if (Shown(attribute.Value) is not { } shown) continue;
+
+                    // **The access-key marker is not a letter of the label**,
+                    // and leaving it in would have turned this rule off for a
+                    // third of the labels it covers rather than failing on one.
+                    // IsChecked skips anything whose first character is not a
+                    // letter — written for "/home/…" and "%ProgramFiles%" — so
+                    // the day the menus gained mnemonics, the forty-seven
+                    // headers that took their key from their first letter
+                    // ("_Open", "_Rename", "_Show settings file") began with an
+                    // underscore, every one of them was skipped, and the test
+                    // went on passing while checking nothing about any of them.
+                    // Counted, over both markup files: forty-seven of the
+                    // seventy-four labels carrying a marker start with one; the
+                    // other twenty-seven put it inside a word ("Cop_y",
+                    // "Prop_erties", "Open _with") and were still being read.
+                    shown = MenuLabels.Plain(shown);
+
                     if (!IsChecked(shown)) continue;
 
                     yield return (file, attribute.Name.LocalName, shown);
@@ -167,6 +184,18 @@ public sealed class LabelCasingTests
         // a failure rather than a smaller number. App.axaml is styles only.
         foreach (var file in RepoSource.UiMarkup().Where(f => f != "App.axaml"))
             Assert.Contains(labels, label => label.File == file);
+
+        // **A label whose access key is on its first letter has to arrive here
+        // with the marker already gone**, and the count above is far too loose
+        // to notice when it does not: IsChecked skips a string that does not
+        // begin with a letter, so the forty-seven headers written "_Open",
+        // "_Rename", "_Show settings file" would be dropped in silence rather
+        // than failing, and the rule would go on passing while saying nothing
+        // about a third of the menu labels it covers. These three exist in the
+        // markup only with a marker in front of them, so they are here only if
+        // it was taken out.
+        foreach (var word in new[] { "Delete permanently", "Copy path", "Show settings file" })
+            Assert.Contains(labels, label => label.Shown == word);
     }
 
     /// <summary>
@@ -205,7 +234,7 @@ public sealed class LabelCasingTests
             var chooser = markup.Descendants(Avalonia + "Border.ContextMenu").Single();
 
             Assert.Contains(chooser.Descendants(Avalonia + "MenuItem"),
-                            item => (string?)item.Attribute("Header") == word);
+                            item => MenuLabels.Plain((string?)item.Attribute("Header")) == word);
         }
     }
 

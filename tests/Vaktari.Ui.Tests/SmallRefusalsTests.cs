@@ -149,8 +149,8 @@ public sealed class SmallRefusalsTests : OwnedViewModels
     {
         var row = XDocument.Parse(RepoSource.Ui("MainWindow.axaml"))
             .Descendants(Avalonia + "MenuItem")
-            .Single(m => ((string?)m.Attribute("Header"))?.StartsWith(
-                "Rename in bulk", StringComparison.Ordinal) == true);
+            .Single(m => MenuLabels.Plain((string?)m.Attribute("Header")).StartsWith(
+                "Rename in bulk", StringComparison.Ordinal));
 
         Assert.Equal("{Binding ActiveTab.CanRenameInBulk}", (string?)row.Attribute("IsVisible"));
     }

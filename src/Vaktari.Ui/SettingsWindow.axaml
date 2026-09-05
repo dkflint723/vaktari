@@ -97,11 +97,11 @@
                 ToolTip.Tip="{Binding SettingsFile}">
           <Button.Flyout>
             <MenuFlyout Placement="TopEdgeAlignedLeft">
-              <MenuItem Header="Show settings file"
+              <MenuItem Header="_Show settings file"
                         Command="{Binding ShowSettingsFileCommand}"/>
-              <MenuItem Header="Save a copy…"
+              <MenuItem Header="Save a _copy…"
                         Command="{Binding ExportSettingsCommand}"/>
-              <MenuItem Header="Replace from a copy…"
+              <MenuItem Header="_Replace from a copy…"
                         Command="{Binding ImportSettingsCommand}"/>
             </MenuFlyout>
           </Button.Flyout>
@@ -154,9 +154,9 @@
                 HorizontalAlignment="Left">
           <Button.Flyout>
             <MenuFlyout Placement="TopEdgeAlignedLeft">
-              <MenuItem Header="What is new in this version"
+              <MenuItem Header="_What is new in this version"
                         Command="{Binding OpenReleasesCommand}"/>
-              <MenuItem Header="The project"
+              <MenuItem Header="_The project"
                         Command="{Binding OpenProjectCommand}"/>
             </MenuFlyout>
           </Button.Flyout>

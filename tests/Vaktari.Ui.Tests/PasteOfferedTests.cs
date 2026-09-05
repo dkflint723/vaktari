@@ -143,7 +143,7 @@ public sealed class PasteOfferedTests : OwnedViewModels
     {
         var row = XDocument.Parse(RepoSource.Ui("MainWindow.axaml"))
             .Descendants(Avalonia + "MenuItem")
-            .Single(m => (string?)m.Attribute("Header") == "Paste");
+            .Single(m => MenuLabels.Plain((string?)m.Attribute("Header")) == "Paste");
 
         Assert.Equal("{Binding ActiveTab.CanPaste}", (string?)row.Attribute("IsEnabled"));
 
