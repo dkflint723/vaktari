@@ -3529,6 +3529,22 @@ public sealed partial class PaneViewModel : ObservableObject, IDisposable
             _ => Dispatcher.UIThread.Post(() =>
             {
                 RefreshUndoState();
+
+                // **And whatever it just put here comes back selected.**
+                // Registered BEFORE the refresh is asked for, because the
+                // refresh is what drains the register — a paste, a drop, a Copy
+                // to, a Duplicate and a retry all arrive down this one wire.
+                //
+                // Unguarded, because an operation with nothing to report hands
+                // over an empty list and an empty list asks for nothing: a
+                // trash and a delete, which land nothing anywhere; a run
+                // cancelled at a clash, which reports nothing even for the
+                // items ahead of the clash; and the administrator retry, whose
+                // work happens in another process that answers with an exit
+                // code and no paths. Testing the count here as well would be a
+                // second spelling of the same answer.
+                SelectOnlyAfterLoad(handle.Landed);
+
                 _ = RefreshAsync();
             }),
             TaskScheduler.Default);
@@ -4758,12 +4774,30 @@ public sealed partial class PaneViewModel : ObservableObject, IDisposable
                 // must settle filtered.
                 ResortInPlace();
 
+                // And whatever an operation reports having just PUT here, which
+                // replaces the carried paths rather than joining them. See
+                // SelectOnlyAfterLoad.
+                //
+                // **Drained HERE, past the generation guard, rather than at the
+                // top beside the carried list — because a load that is
+                // superseded never reaches this line.** Measured: paste two
+                // files into a folder and let a second operation on the same
+                // pane finish behind it, and its RefreshAsync bumps the
+                // generation while the paste's own load is still enumerating.
+                // Read at the top, the arrivals were spent by that dead load
+                // and the surviving one got an empty list — the two files came
+                // back with nothing selected at all. Read here, the register
+                // outlives the superseded load and the next one that gets as
+                // far as the rows picks it up.
+                var arrived = _selectInsteadAfterLoad;
+                _selectInsteadAfterLoad = [];
+
                 // After the sort, not before it: Reselect walks Entries, and
                 // the rows it walks have to be the ones that will still be
                 // there. The resort above rebuilds the collection whichever
                 // route it takes, and restores only what it was holding when
                 // it started — which, on a reload, is nothing.
-                Reselect(carry);
+                Reselect(carry, arrived);
 
                 // A reload of the same folder keeps whatever was opened in
                 // place, and this is what re-reads it: the watcher watches
@@ -5014,11 +5048,48 @@ public sealed partial class PaneViewModel : ObservableObject, IDisposable
     /// timestamp and a length, so the row for a file that changed while the
     /// listing was open is not equal to the one that was selected.
     /// </summary>
-    private void Reselect(List<string> paths)
+    private void Reselect(List<string> paths, IReadOnlyList<string>? arrived = null)
     {
-        if (paths.Count == 0) return;
-
+        // Ordinal, and it stays ordinal: both ends of this set are spellings
+        // the SAME provider produced, so they cannot disagree about case.
         var wanted = new HashSet<string>(paths, StringComparer.Ordinal);
+
+        // What an operation just put here wins outright, and only when at least
+        // one of it is on screen — see SelectOnlyAfterLoad for both halves. The
+        // test is against the rows rather than against a parent path because a
+        // details listing splices an expanded folder's rows in underneath it,
+        // and because a match is exactly what the loop below is about to look
+        // for anyway.
+        //
+        // The outer test buys time and nothing else, and that is measured:
+        // widened to `arrived is not null` the whole of
+        // PastedItemsAreSelectedTests stays green, because an empty set matches
+        // no row and the probe inside already answers "none of it is here". It
+        // is here because that probe WALKS every visible row when the answer is
+        // no, and this method runs on every rebuild — a sort of a hundred
+        // thousand rows would pay for a question with one possible answer.
+        if (arrived is { Count: > 0 })
+        {
+            // **PathRules.Comparer, unlike the set above, because these two
+            // spellings came from different places and did disagree.** The
+            // engine reports the path it wrote to, built from the SOURCE's
+            // name; the rows carry what the directory actually holds. Measured
+            // on WindowsFileOperations: copying src\report.txt over an existing
+            // dst\Report.TXT with Overwrite left the folder listing Report.TXT
+            // — a copy writes through the existing entry and does not rename it
+            // — while the handle reported dst\report.txt. Ordinal called those
+            // two files two, so that arrival was silently not selected, and
+            // where it was the only one the whole paste came back with nothing
+            // picked out. This is the rule the rest of the application compares
+            // paths with.
+            var landed = new HashSet<string>(arrived, PathRules.Comparer);
+
+            if (VisibleRows.Any(e => e.FullPath is { } path && landed.Contains(path)))
+                wanted = landed;
+        }
+
+        if (wanted.Count == 0) return;
+
         var selection = SelectedEntries;
 
         selection.Clear();
@@ -5099,6 +5170,45 @@ public sealed partial class PaneViewModel : ObservableObject, IDisposable
     /// the file or moving to the next one.
     /// </summary>
     public void SelectAfterLoad(string path) => _selectAfterLoad.Add(path);
+
+    /// <inheritdoc cref="SelectOnlyAfterLoad"/>
+    private List<string> _selectInsteadAfterLoad = [];
+
+    /// <summary>
+    /// Asks the next load to select these paths INSTEAD of what is selected
+    /// now, if the listing has any of them.
+    ///
+    /// **After a paste the arrivals were nowhere to be found.** A copy of
+    /// twenty files into a folder finished, the listing came back, and the
+    /// twenty were somewhere in a thousand rows sorted by name with nothing
+    /// pointing at them — so the one thing everybody does next, look at what
+    /// they just moved, meant finding them by hand. Explorer and Dolphin both
+    /// leave the arrival selected.
+    ///
+    /// **Instead of, rather than as well as** — which is the difference from
+    /// <see cref="SelectAfterLoad"/>, and the reason this is a second door.
+    /// Pasting into a folder where a row happened to be selected would
+    /// otherwise leave that row selected alongside the twenty, and the next
+    /// Delete would take a bystander with them. A rename is the opposite case
+    /// and keeps its adding behaviour: the other rows of a selection are still
+    /// the same files, and a Tab stepping through a run relies on it.
+    ///
+    /// **Only if any of them is actually here.** A drop onto a folder ROW lands
+    /// the files inside that folder, not in this listing, and a move takes them
+    /// out of it altogether — so a request that matches nothing on screen must
+    /// leave the selection alone rather than clearing it. Decided against the
+    /// rows in <see cref="Reselect"/>, where they exist, rather than by
+    /// comparing parent paths here: a details listing splices an expanded
+    /// folder's rows in underneath it, so "in this folder" and "on screen" are
+    /// not the same question.
+    ///
+    /// Private, unlike <see cref="SelectAfterLoad"/> next door, which is public
+    /// because the caller that knows a rename's new name is MainWindow's
+    /// prompt. Nothing outside this class knows an arrival: the only registrar
+    /// is Track, which is where every operation this pane owns finishes.
+    /// </summary>
+    private void SelectOnlyAfterLoad(IReadOnlyList<string> paths)
+        => _selectInsteadAfterLoad.AddRange(paths);
 
     /// <summary>
     /// Recomputes which rows cannot be told apart by eye.

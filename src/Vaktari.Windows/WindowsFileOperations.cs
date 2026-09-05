@@ -1017,6 +1017,20 @@ public sealed class WindowsFileOperations : IFileOperations
                             Directory.Delete(directory);
                 }
 
+                // **What the pane selects when the rows come back.** The list
+                // the undo is built from is also the only honest answer to
+                // "what did this just put here": a Keep both renamed the
+                // arrival, a Skip means nothing arrived under that name at all,
+                // and destination-plus-source-name is wrong in both cases.
+                //
+                // On the undo's own control-flow line, which is what decides
+                // when it is NOT reported: past the loop, so every conflict has
+                // been settled, and inside the try, which a cancel leaves by
+                // throwing. So a run cancelled at a clash remembers no undo and
+                // reports no landings even though the items before the clash
+                // did land — see A_cancelled_copy_reports_nothing.
+                handle.Arrived(landings.Select(l => l.Target));
+
                 if (landings.Count == 0)
                 {
                     // nothing landed, nothing to take back

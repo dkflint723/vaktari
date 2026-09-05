@@ -122,6 +122,41 @@ public interface IOperationHandle
     /// </summary>
     IReadOnlyList<ItemProblem> Problems { get; }
 
+    /// <summary>
+    /// Where the items the person named actually ended up — full paths, each
+    /// the one the engine really wrote to.
+    ///
+    /// **A paste could not say what it had just put in the folder.** A handle
+    /// carried <see cref="Paths"/>, which is what was SENT: the sources and the
+    /// destination. Destination-plus-source-name is the arrival's name only
+    /// when nothing was renamed on the way in, and a conflict answered Keep
+    /// both renames it — so after copying twenty files into a folder that
+    /// already held three of them, the pane had no name it could trust for
+    /// anything and left the whole arrival unselected. The engine that resolved
+    /// the conflict is the only thing that knows.
+    ///
+    /// Only the named items, not the thousands of files inside a copied folder:
+    /// what a listing shows, and what a person would have selected by hand.
+    ///
+    /// **Only what arrived.** An item that was skipped at its conflict, or that
+    /// failed while the rest of the batch went through, is not here — selecting
+    /// a file that is not the one this operation put there would point Delete
+    /// at a bystander. Eleven of twelve landing means eleven paths, and
+    /// <see cref="Problems"/> names the twelfth.
+    ///
+    /// **Matched against a listing with <see cref="PathRules.Comparer"/>, never
+    /// as a string.** The path here is the one that was written; the row is
+    /// what the directory holds, and on a case-insensitive filesystem those two
+    /// spellings can differ. Measured on WindowsFileOperations: copying
+    /// report.txt over an existing Report.TXT with Overwrite writes through the
+    /// entry already there, so the folder goes on listing Report.TXT while this
+    /// answers report.txt.
+    ///
+    /// Empty is legal and ordinary: a trash, a delete, a copy that landed
+    /// nothing at all, and any run that was cancelled.
+    /// </summary>
+    IReadOnlyList<string> Landed { get; }
+
     void Pause();
     void Resume();
     void Cancel();

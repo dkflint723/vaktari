@@ -87,6 +87,30 @@ public sealed class OperationHandle : IOperationHandle
         lock (_problems) _problems.Add(new ItemProblem(path, error));
     }
 
+    private readonly List<string> _landed = [];
+
+    /// <inheritdoc cref="IOperationHandle.Landed" />
+    public IReadOnlyList<string> Landed
+    {
+        get { lock (_landed) return _landed.ToList(); }
+    }
+
+    /// <summary>
+    /// Records where the named items ended up. The engine calls this once, with
+    /// the same list its undo is built from — the arrival sites it worked out
+    /// item by item as each conflict was settled, not destination plus name.
+    ///
+    /// Under the same lock <see cref="Landed"/> reads under, and for the same
+    /// reason <see cref="ItemFailed"/> has one: the engine runs on the pool and
+    /// the pane reads the handle on the UI thread. <c>AddRange</c> also
+    /// materialises what it is handed on the spot, which is what makes the lazy
+    /// <c>Select</c> both engines pass safe to give it.
+    /// </summary>
+    public void Arrived(IEnumerable<string> targets)
+    {
+        lock (_landed) _landed.AddRange(targets);
+    }
+
     public IProgress<OperationProgress> Progress => ProgressReporter;
     public Progress<OperationProgress> ProgressReporter { get; } = new();
 

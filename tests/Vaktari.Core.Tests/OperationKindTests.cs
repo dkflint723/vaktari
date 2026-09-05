@@ -64,6 +64,7 @@ public sealed class OperationKindTests
         public IProgress<OperationProgress> Progress => new Progress<OperationProgress>();
         public IReadOnlyList<string> Paths => [];
         public IReadOnlyList<ItemProblem> Problems => [];
+        public IReadOnlyList<string> Landed => [];
         public Task Completion => Task.CompletedTask;
         public Exception? Error => null;
         public RetryOffer? Retry => null;

@@ -1138,6 +1138,27 @@ should not be trusted for compatibility yet.
 
 ### Fixed
 
+- **What you just pasted comes back selected.** A copy or a move finished, the
+  folder was re-read, and the arrivals were somewhere in it sorted by name with
+  nothing pointing at them — so after pasting twenty files into a folder that
+  already held a few hundred, finding what you had just moved was your problem.
+  The files that arrived are the selection when the listing comes back: Ctrl+V,
+  a drop into the folder you are in, *Duplicate*, and the retry offered after a
+  failure. *Copy to* and *Move to* light up the destination when a tab is
+  already showing it, which is the only place there is a listing to light up.
+
+  Under the names they actually arrived with. Answering *Keep both* at a clash
+  renames the arriving file, so the name that lands is not the name that was
+  sent; answering *Replace* keeps the name that was already there, down to its
+  capitals. And only what really landed is selected — an item you skipped, or
+  one that could not be copied, leaves the file sitting at that name unselected
+  rather than picking out somebody else's file for your next Delete.
+
+  A paste into a folder you are not looking at, an operation that lands nothing
+  at all, and a run you cancelled part-way all leave your selection exactly as
+  they found it. So does a retry you had to answer the administrator prompt
+  for, which comes back saying only whether it worked.
+
 - **Adding a place says what it did.** Ctrl+D and *Add to places* both wrote a
   place and said nothing at all — the only sign was a row appearing in a panel
   you may have collapsed, and Ctrl+D is the key Explorer deletes with, so a
