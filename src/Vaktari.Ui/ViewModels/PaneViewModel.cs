@@ -744,16 +744,23 @@ public sealed partial class PaneViewModel : ObservableObject, IDisposable
     /// Applied on arrival, before the listing is asked for, so the folder is
     /// enumerated and sorted once under its own rules rather than sorted twice.
     /// Silent when the preference is off or the folder has no opinion.
+    ///
+    /// **Every line here reads "or keep what the pane had".** The record used
+    /// to hold no way to say "I did not mention that", so a `.directory` naming
+    /// one Dolphin key produced an opinion about all of them and arriving in
+    /// such a folder pulled a pane out of the layout it was in. Null and zero
+    /// are the two spellings of silence, and the pane's own value is what
+    /// silence means.
     /// </summary>
     private void ApplyFolderView(string path)
     {
         if (!Settings.AppSettings.Current.General.RememberViewPerFolder) return;
         if (FolderViews?.Read(path) is not { } view) return;
 
-        View = view.View;
-        Sort = view.Sort;
-        SortDescending = view.SortDescending;
-        GroupBy = view.GroupBy;
+        View = view.View ?? View;
+        Sort = view.Sort ?? Sort;
+        SortDescending = view.SortDescending ?? SortDescending;
+        GroupBy = view.GroupBy ?? GroupBy;
 
         // Zero means the folder expressed no opinion about scale, so the pane
         // keeps whatever it had — scale is an accessibility setting and a
@@ -763,12 +770,50 @@ public sealed partial class PaneViewModel : ObservableObject, IDisposable
 
         // A folder's opinion is about the pane, not about one layout.
         if (view.FontScale > 0 || view.IconScale > 0) SeedScales(FontScale, IconScale);
+
+        // Before the listing, like everything else here: ShowHidden decides
+        // `ListingOptions.IncludeHidden` further down LoadListingAsync, so a
+        // folder that wants hidden files arrives with them rather than
+        // enumerating twice.
+        //
+        // **Except under a reveal, which turned them on to reach a concealed
+        // item.** LandOnAsync sets ShowHidden and then navigates, and this runs
+        // during that navigation — so a destination recorded as "hide them" put
+        // the item back out of sight before the listing was built, and "Show in
+        // folder" on a dotfile landed in the right folder saying it was no
+        // longer there. Measured with a store holding `ShowHidden = false`
+        // for the target: the listing came back empty and the selection with it.
+        if (!_revealingHidden) ShowHidden = view.ShowHidden ?? ShowHidden;
+
+        HideSizeColumn = view.Columns?.HideSize ?? HideSizeColumn;
+        HideModifiedColumn = view.Columns?.HideModified ?? HideModifiedColumn;
+        ShowTypeColumn = view.Columns?.ShowType ?? ShowTypeColumn;
+        ShowCreatedColumn = view.Columns?.ShowCreated ?? ShowCreatedColumn;
     }
 
     /// <summary>
     /// Records the current view against the current folder. Called when the
     /// user changes one of these, never on arrival — otherwise merely visiting
     /// a folder would give it an opinion it never had.
+    ///
+    /// **The scale was re-imposed on arrival and never re-recorded.**
+    /// ApplyFolderView above has always restored a stored FontScale/IconScale,
+    /// and this was reached only from the View, Sort, SortDescending and
+    /// GroupBy hooks — so the scale was snapshotted as a side effect of the
+    /// last layout change and then pinned. Measured: with the preference on, in
+    /// a folder whose layout had been changed once, Ctrl+wheel to 130%, walk to
+    /// the parent and back, and the folder came up at whatever the scale had
+    /// been when the layout was chosen. The zoom held while you stayed and was
+    /// undone by leaving, which reads as the application fighting you.
+    ///
+    /// **The whole pane is stamped, not merged into what the folder already
+    /// held** — which means an axis the pane inherited from somewhere else is
+    /// recorded here too. That is the shipped shape of this store and predates
+    /// the hidden-files and column fields joining it: measured on this
+    /// worktree with the change stashed, a folder recorded as Grid, walked out
+    /// of into a folder with no record at all, then merely re-GROUPED there,
+    /// left that second folder recorded as Grid. Adding a field to the record
+    /// adds it to that behaviour; it does not create it.
     /// </summary>
     public void RememberFolderView()
     {
@@ -784,10 +829,32 @@ public sealed partial class PaneViewModel : ObservableObject, IDisposable
             GroupBy = GroupBy,
             FontScale = FontScale,
             IconScale = IconScale,
+            ShowHidden = ShowHidden,
+            Columns = new FolderColumns
+            {
+                HideSize = HideSizeColumn,
+                HideModified = HideModifiedColumn,
+                ShowType = ShowTypeColumn,
+                ShowCreated = ShowCreatedColumn,
+            },
         });
     }
 
     private bool _restoringView;
+
+    /// <summary>
+    /// Held while a reveal is turning hidden files on to reach a concealed
+    /// item, which is neither folder's opinion about anything.
+    ///
+    /// **The unhide is a step on the way, not a view change.** It happens with
+    /// CurrentPath still on the folder being LEFT, so recording it stamped that
+    /// folder — and every other axis of the pane with it — on the strength of
+    /// somebody clicking a search hit somewhere else entirely. Measured against
+    /// a pane standing in a folder with no record at all: after
+    /// <c>ShowAsync</c> of a dotfile elsewhere, that folder held a full
+    /// FolderViewState it had never asked for.
+    /// </summary>
+    private bool _revealingHidden;
 
 
 
@@ -1312,6 +1379,17 @@ public sealed partial class PaneViewModel : ObservableObject, IDisposable
         OnPropertyChanged(nameof(FontPoints));
         SyncTextScale();
         ScaleChanged?.Invoke(this, EventArgs.Empty);
+
+        // Under the same flag as the bookkeeping above, and for a sharper
+        // reason than tidiness: a mode switch assigns this pair from
+        // `_scales[newValue]`, so an unguarded write here would record the
+        // INCOMING layout's font beside the OUTGOING layout's icon — the one
+        // instant in the pane's life where the two disagree. OnViewChanged
+        // records the finished pair itself, a few lines after the swap.
+        //
+        // Per wheel tick is the right frequency: the store is an in-memory map
+        // behind a debounced flush, which is what its own header says it is for.
+        if (!_swappingScales) RememberFolderView();
     }
 
     partial void OnIconScaleChanged(double value)
@@ -1328,6 +1406,8 @@ public sealed partial class PaneViewModel : ObservableObject, IDisposable
         if (_depths.Count > 0) PublishIndents();
 
         ScaleChanged?.Invoke(this, EventArgs.Empty);
+
+        if (!_swappingScales) RememberFolderView();
     }
 
     /// <summary>
@@ -1422,10 +1502,34 @@ public sealed partial class PaneViewModel : ObservableObject, IDisposable
     [ObservableProperty] private bool _showTypeColumn;
     [ObservableProperty] private bool _showCreatedColumn;
 
-    partial void OnHideSizeColumnChanged(bool value) => NotifyColumns();
-    partial void OnHideModifiedColumnChanged(bool value) => NotifyColumns();
-    partial void OnShowTypeColumnChanged(bool value) => NotifyColumns();
-    partial void OnShowCreatedColumnChanged(bool value) => NotifyColumns();
+    // Each also records the folder, because "remember the view for each folder"
+    // covers what the view options menu offers and these four are in it.
+    // RememberFolderView is inert unless the preference is on, and RestoreFrom
+    // holds `_restoringView` while it replays a session, so neither route
+    // gives a folder an opinion it never had.
+    partial void OnHideSizeColumnChanged(bool value)
+    {
+        NotifyColumns();
+        RememberFolderView();
+    }
+
+    partial void OnHideModifiedColumnChanged(bool value)
+    {
+        NotifyColumns();
+        RememberFolderView();
+    }
+
+    partial void OnShowTypeColumnChanged(bool value)
+    {
+        NotifyColumns();
+        RememberFolderView();
+    }
+
+    partial void OnShowCreatedColumnChanged(bool value)
+    {
+        NotifyColumns();
+        RememberFolderView();
+    }
 
     // The ticks in the chooser. OneWay from these, with the click going through
     // the commands below — the same shape as every other tick in the menus.
@@ -2393,9 +2497,24 @@ public sealed partial class PaneViewModel : ObservableObject, IDisposable
     {
         if (string.IsNullOrEmpty(folder)) return;
 
-        if (unhide) ShowHidden = true;
+        // Flagged for the whole navigation, not just the assignment: the flag
+        // has two jobs and the second one lands inside the load. It keeps the
+        // unhide from being recorded against the folder being LEFT, and it
+        // keeps the folder being ARRIVED AT from undoing it. Cleared in a
+        // finally so a load that throws does not leave the pane deaf to its
+        // own folders' hidden-file setting for the rest of the session.
+        _revealingHidden = unhide;
 
-        await NavigateAsync(folder).ConfigureAwait(true);
+        try
+        {
+            if (unhide) ShowHidden = true;
+
+            await NavigateAsync(folder).ConfigureAwait(true);
+        }
+        finally
+        {
+            _revealingHidden = false;
+        }
 
         var found = new List<string>();
 
@@ -3630,8 +3749,30 @@ public sealed partial class PaneViewModel : ObservableObject, IDisposable
         ForwardStack = _forward.Reverse().ToList(),
     };
 
+    /// <summary>
+    /// **Ctrl+H was one of the five view changes a folder could not keep**, the
+    /// four column ticks being the others. The reload was the whole of
+    /// this hook, so with "remember the view for each folder" on, showing the
+    /// dotfiles in a source tree survived exactly as long as you stayed in it.
+    /// Worse where the folder already had an entry: the arrival re-applies what
+    /// was last recorded, so coming back put them away again — the pane obeying
+    /// a record of an answer nobody had updated.
+    ///
+    /// Recorded before the reload rather than after, so the write happens on
+    /// the caller's thread with `CurrentPath` still the folder being looked at
+    /// — the load is detached and would otherwise race an arrival elsewhere.
+    ///
+    /// **But not when a reveal turned them on.** That assignment happens in
+    /// LandOnAsync with CurrentPath still the folder being left, and it is a
+    /// step on the way to a concealed item rather than an opinion about
+    /// anywhere. Unguarded it stamped the departing folder with the whole pane
+    /// — layout, sort, columns and scales — because somebody clicked a search
+    /// hit; measured against a pane in a folder the store had never heard of.
+    /// </summary>
     partial void OnShowHiddenChanged(bool value)
     {
+        if (!_revealingHidden) RememberFolderView();
+
         if (!_suppressReload) Detached(LoadAsync(CurrentPath), "load");
     }
 

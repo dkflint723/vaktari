@@ -9,17 +9,68 @@ namespace Vaktari.Core.FileSystem;
 /// properties of a *folder* rather than of a tab. Scroll position and history
 /// belong to the tab; whether a photo directory shows as a grid belongs to the
 /// directory.
+///
+/// **The subset used to stop at layout, sort and grouping**, so "remember the
+/// view for each folder" remembered three of the six things the view options
+/// menu offers: hidden files and the four column ticks were not in this record
+/// at all, and were therefore neither written nor restored.
 /// </summary>
 public sealed record FolderViewState
 {
-    public ViewMode View { get; init; } = ViewMode.Details;
-    public SortField Sort { get; init; } = SortField.Name;
-    public bool SortDescending { get; init; }
-    public GroupMode GroupBy { get; init; } = GroupMode.None;
+    /// <summary>
+    /// Null is "no opinion" throughout, and the pane keeps what it had.
+    ///
+    /// **These four were <c>ViewMode.Details</c>, <c>SortField.Name</c>, false
+    /// and <c>GroupMode.None</c>, and a record has no way to say it did not
+    /// mean them.** The application's own writer fills all four every time, so
+    /// this only ever showed on the Dolphin path: a <c>.directory</c> naming
+    /// nothing but <c>SortRole=size</c> came back carrying Details and
+    /// ungrouped as well, and arriving in that folder pulled a pane out of the
+    /// grid it was in. The value that means "leave it alone" now exists.
+    /// </summary>
+    public ViewMode? View { get; init; }
+    public SortField? Sort { get; init; }
+    public bool? SortDescending { get; init; }
+    public GroupMode? GroupBy { get; init; }
 
     /// <summary>Zero means "no opinion" and the pane keeps its current scale.</summary>
     public double FontScale { get; init; }
     public double IconScale { get; init; }
+
+    /// <summary>
+    /// Whether this folder shows hidden files. Null means "no opinion".
+    ///
+    /// **A plain bool could not be added here.** Every entry already in
+    /// somebody's folder-views.json was written before this key existed, and an
+    /// absent key deserialises as <c>default(bool)</c> — so on a plain bool
+    /// every one of those folders would have come back saying "hide them", and
+    /// arriving at one with Ctrl+H on would have put them away. Nullable is the
+    /// same trick the scales above play with zero, spelled the way a bool can
+    /// spell it.
+    /// </summary>
+    public bool? ShowHidden { get; init; }
+
+    /// <summary>
+    /// Which columns this folder shows, or null for "no opinion" — nested for
+    /// the reason <see cref="ShowHidden"/> is nullable, and as one object
+    /// because the four travel together: a folder has been given a set of
+    /// columns or it has not, and four independent nullables could express
+    /// three-quarters of an answer that nothing produces.
+    /// </summary>
+    public FolderColumns? Columns { get; init; }
+}
+
+/// <summary>
+/// The four column ticks, phrased exactly as the pane and the session phrase
+/// them so the mapping stays a copy rather than a translation: false is what
+/// the pane showed before there was a chooser.
+/// </summary>
+public sealed record FolderColumns
+{
+    public bool HideSize { get; init; }
+    public bool HideModified { get; init; }
+    public bool ShowType { get; init; }
+    public bool ShowCreated { get; init; }
 }
 
 /// <summary>

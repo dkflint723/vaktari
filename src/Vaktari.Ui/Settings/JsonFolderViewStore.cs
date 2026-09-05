@@ -134,9 +134,32 @@ public sealed class JsonFolderViewStore : IFolderViewStore
 
     /// <summary>
     /// Dolphin's own per-folder file. Read only — never created, never
-    /// modified. Only the two keys that map cleanly are honoured; the rest of
+    /// modified. Only the keys that map cleanly are honoured; the rest of
     /// Dolphin's schema describes features that do not exist here, and guessing
     /// at them would be worse than ignoring them.
+    ///
+    /// **The column set was NOT decoded from <c>VisibleRoles</c>.** No Dolphin
+    /// was available to this codebase to measure what that key actually holds,
+    /// and a column list guessed at from an unmeasured format would silently
+    /// blank columns the pane was showing. It is skipped, so the folder keeps
+    /// whatever columns the pane had — the same answer a file that never
+    /// mentioned columns gets.
+    ///
+    /// <c>HiddenFilesShown</c> is taken from <c>[Settings]</c> as well as
+    /// <c>[Dolphin]</c>. Which heading a given file uses was likewise not
+    /// measured here; what WAS measured is that the reader below cannot be hurt
+    /// by accepting both, because the key can only ever set the answer to true.
+    ///
+    /// **And true is the only answer it may give.** A <c>.directory</c> is
+    /// content of the folder being listed — an extracted archive, a network
+    /// share and a synced directory all carry whatever their producer put in
+    /// them — so honouring a <c>HiddenFilesShown</c> of false handed that
+    /// producer a switch that turns the reader's hidden files off. Measured:
+    /// with a pane at Ctrl+H on, arriving in a folder holding a
+    /// <c>[Dolphin]</c> group with that key set to false turned them off, and
+    /// walking back out left them off. Concealing files the reader asked to see
+    /// is the one direction with no way to notice it has happened, and revealing
+    /// is safe in a way concealing is not — so the key is read one way only.
     /// </summary>
     private static FolderViewState? ReadDotDirectory(string folder)
     {
@@ -147,8 +170,10 @@ public sealed class JsonFolderViewStore : IFolderViewStore
 
             string? mode = null;
             string? sort = null;
-            var descending = false;
+            bool? descending = null;
+            bool? hidden = null;
             var inDolphin = false;
+            var inSettings = false;
 
             foreach (var raw in File.ReadLines(file))
             {
@@ -157,10 +182,11 @@ public sealed class JsonFolderViewStore : IFolderViewStore
                 if (line.StartsWith('['))
                 {
                     inDolphin = line.Equals("[Dolphin]", StringComparison.Ordinal);
+                    inSettings = line.Equals("[Settings]", StringComparison.Ordinal);
                     continue;
                 }
 
-                if (!inDolphin) continue;
+                if (!inDolphin && !inSettings) continue;
 
                 var split = line.IndexOf('=');
                 if (split <= 0) continue;
@@ -168,19 +194,36 @@ public sealed class JsonFolderViewStore : IFolderViewStore
                 var key = line[..split].Trim();
                 var value = line[(split + 1)..].Trim();
 
+                // One direction only — see the note above.
+                if (key.Equals("HiddenFilesShown", StringComparison.Ordinal)
+                    && value is "true" or "1")
+                    hidden = true;
+
+                if (!inDolphin) continue;
+
                 if (key.Equals("ViewMode", StringComparison.Ordinal)) mode = value;
                 else if (key.Equals("SortRole", StringComparison.Ordinal)) sort = value;
+
+                // Dolphin writes SortOrder 0 for ascending, so a present key
+                // that is neither "1" nor "Descending" is still an answer, and
+                // only an absent one leaves this null.
                 else if (key.Equals("SortOrder", StringComparison.Ordinal))
                     descending = value is "1" or "Descending";
             }
 
-            if (mode is null && sort is null) return null;
+            if (mode is null && sort is null && hidden is null) return null;
 
+            // **Every field here is null unless its own key was present.** The
+            // record used to be non-nullable, so one key in the file produced
+            // an opinion about all four, and a `.directory` saying only
+            // `SortRole=size` pulled a pane out of the grid it was in on
+            // arrival. A file Dolphin wrote says what it says and nothing else.
             return new FolderViewState
             {
                 // Dolphin: 0 icons, 1 compact, 2 details.
                 View = mode switch
                 {
+                    null => null,
                     "0" => ViewMode.Grid,
                     "1" => ViewMode.Compact,
                     _ => ViewMode.Details,
@@ -188,6 +231,7 @@ public sealed class JsonFolderViewStore : IFolderViewStore
 
                 Sort = sort switch
                 {
+                    null => null,
                     "size" => SortField.Size,
                     "modificationtime" or "modified" => SortField.Modified,
                     "type" => SortField.Kind,
@@ -195,6 +239,7 @@ public sealed class JsonFolderViewStore : IFolderViewStore
                 },
 
                 SortDescending = descending,
+                ShowHidden = hidden,
             };
         }
         catch

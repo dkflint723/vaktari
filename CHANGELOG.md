@@ -13,6 +13,19 @@ should not be trusted for compatibility yet.
 
 ### Added
 
+- **A folder remembers its hidden files, its columns and its zoom, not just its
+  layout.** Per-folder view memory kept the layout, the sort and the grouping and
+  forgot everything else — so a folder you had zoomed in on came back at the old
+  size, and a Ctrl+wheel was quietly undone the next time you walked into it.
+  Showing hidden files, the column choice and both zoom axes are now part of what
+  a folder remembers.
+
+  A `.directory` file left by somebody else can ask for hidden files to be shown
+  and can no longer ask for them to be hidden. That file is content of the folder
+  you are looking at — it arrives with an extracted archive or a synced directory
+  — and concealing files you asked to see is the one direction with no way to
+  notice it has happened.
+
 - **The right-click menu can change the view.** The layouts and the hidden-files
   switch lived on the toolbar and on keys and nowhere else — and the toolbar's
   view button is hidden on the quiet half of a split window, so that pane could
