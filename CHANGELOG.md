@@ -596,6 +596,76 @@ should not be trusted for compatibility yet.
   its path the same way — two of them are easily both called Documents, one
   local and one on a share, and nothing said which was which.
 
+
+- **A mapped network drive can be disconnected.** Its row in the sidebar
+  offered Open, Open in a new tab, Pin and Properties; Eject is for media you
+  take out, so the only way to get a drive letter off the sidebar was
+  `net use /delete` in a console. Right-clicking a mapped drive now offers
+  Disconnect, the way Explorer does — and it clears the sign-in profile too, so
+  a drive mapped with *Reconnect at sign-in* stays gone rather than coming back
+  tomorrow. Any tab standing on the drive is moved away first, including tabs
+  in the other pane and behind other tabs, and the sidebar notices the letter
+  going without ever asking a network drive a question that can block.
+
+- **A copy says how fast it is going and how much longer it has.** The
+  transfer bar counted items and bytes — *34/1200  1.2 GiB/4.9 GiB* — which is
+  the one thing you can work out for yourself by looking at it twice. What it
+  never answered is whether this is a two-minute job or an hour, which is the
+  question behind *wait for it, or go and do something else*. There is now a
+  bar, a speed and an estimate: *10 MiB/s · about 4 min left*. The speed is
+  measured over the last few seconds rather than averaged across the whole
+  run, so a copy that crosses from an SSD onto a memory stick stops promising
+  a speed it will never see again — and a transfer that stalls stops claiming
+  a speed at all, rather than sitting there looking busy. A delete fills its
+  bar from the count of files, since it has no bytes to measure, and promises
+  no time it cannot know.
+
+- **Undo and Redo are in the menu, and they say what they will do.** Ctrl+Z
+  was the only route to either, so the whole feature was invisible to anyone
+  who had not read the shortcuts sheet — and pressing it told you nothing
+  about what it was going to take back, so after a copy, a rename and a delete
+  in quick succession the only way to find out which one came back was to
+  press it and look. The rows read *Undo copy of 3 items* and *Redo move of
+  readme.txt*, they are dead when there is nothing to take back rather than
+  disappearing, and afterwards the status line says what happened.
+
+- **A sidebar section can be folded away.** Places, Devices, Shares, Network,
+  Remote, Sharing and Recent do not all fit on a laptop screen, so reaching the
+  bottom of the list meant scrolling past four headings that were never going to
+  be clicked. Every heading is now a fold: click it and the section closes to
+  its title, click again and it comes back. What you folded is remembered
+  between runs, and it survives the rebuild that plugging in a drive causes —
+  which is when the sidebar is at its longest. Nothing is folded until you fold
+  it, and the keyboard walking into the sidebar still lands on a place rather
+  than on a heading.
+
+
+- **On Windows, the folders you have pinned to Quick access come across on
+  first run.** Vaktari already imported the two lists Explorer keeps as files —
+  the old Favorites folder, and the network locations you have added — but
+  Quick access, which on Windows 11 is called Home and is where most people's
+  bookmarks actually are, was skipped entirely. It is read now, the way
+  Explorer reads it. Only the folders you *pinned* are taken; the ones that
+  merely appear there because you open them often are not, since you did not
+  choose those. Folders the sidebar already shows are left alone, and a pin you
+  have already renamed in Vaktari keeps the name you gave it.
+
+- **The settings dialog can now show you its own file, save a copy of it, and
+  put one back.** Six pages of choices all end up in `settings.json`, and
+  nothing in the application could say where that is — the only path on screen
+  was the version line's tooltip, which is where the program itself is
+  installed rather than where your settings live. So the file could be found
+  by knowing where your platform keeps configuration, or by searching the disk,
+  and no other way. A *Settings file* button in the footer now opens the folder
+  it is in, saves a copy wherever you choose, or replaces your settings from a
+  copy you made earlier — for moving a set-up to another machine, or putting
+  one back after an afternoon of experimenting.
+
+  A copy holds what is on the pages at that moment, not what was last saved, so
+  you can try something, keep a copy of it, and cancel. Replacing applies
+  immediately and closes the dialog, and a file this version cannot read is
+  refused rather than quietly resetting everything to defaults.
+
 ### Changed
 
 - **Deleting on Windows no longer reads the whole Recycle Bin twice.** Working
@@ -863,78 +933,6 @@ should not be trusted for compatibility yet.
 - **The properties window is titled with what it describes.** Every one of them
   was called "properties", so opening three files side by side to compare them
   — which is the reason to open three — gave three identical taskbar buttons.
-
-### Added
-
-- **A mapped network drive can be disconnected.** Its row in the sidebar
-  offered Open, Open in a new tab, Pin and Properties; Eject is for media you
-  take out, so the only way to get a drive letter off the sidebar was
-  `net use /delete` in a console. Right-clicking a mapped drive now offers
-  Disconnect, the way Explorer does — and it clears the sign-in profile too, so
-  a drive mapped with *Reconnect at sign-in* stays gone rather than coming back
-  tomorrow. Any tab standing on the drive is moved away first, including tabs
-  in the other pane and behind other tabs, and the sidebar notices the letter
-  going without ever asking a network drive a question that can block.
-
-- **A copy says how fast it is going and how much longer it has.** The
-  transfer bar counted items and bytes — *34/1200  1.2 GiB/4.9 GiB* — which is
-  the one thing you can work out for yourself by looking at it twice. What it
-  never answered is whether this is a two-minute job or an hour, which is the
-  question behind *wait for it, or go and do something else*. There is now a
-  bar, a speed and an estimate: *10 MiB/s · about 4 min left*. The speed is
-  measured over the last few seconds rather than averaged across the whole
-  run, so a copy that crosses from an SSD onto a memory stick stops promising
-  a speed it will never see again — and a transfer that stalls stops claiming
-  a speed at all, rather than sitting there looking busy. A delete fills its
-  bar from the count of files, since it has no bytes to measure, and promises
-  no time it cannot know.
-
-- **Undo and Redo are in the menu, and they say what they will do.** Ctrl+Z
-  was the only route to either, so the whole feature was invisible to anyone
-  who had not read the shortcuts sheet — and pressing it told you nothing
-  about what it was going to take back, so after a copy, a rename and a delete
-  in quick succession the only way to find out which one came back was to
-  press it and look. The rows read *Undo copy of 3 items* and *Redo move of
-  readme.txt*, they are dead when there is nothing to take back rather than
-  disappearing, and afterwards the status line says what happened.
-
-- **A sidebar section can be folded away.** Places, Devices, Shares, Network,
-  Remote, Sharing and Recent do not all fit on a laptop screen, so reaching the
-  bottom of the list meant scrolling past four headings that were never going to
-  be clicked. Every heading is now a fold: click it and the section closes to
-  its title, click again and it comes back. What you folded is remembered
-  between runs, and it survives the rebuild that plugging in a drive causes —
-  which is when the sidebar is at its longest. Nothing is folded until you fold
-  it, and the keyboard walking into the sidebar still lands on a place rather
-  than on a heading.
-
-### Added
-
-- **On Windows, the folders you have pinned to Quick access come across on
-  first run.** Vaktari already imported the two lists Explorer keeps as files —
-  the old Favorites folder, and the network locations you have added — but
-  Quick access, which on Windows 11 is called Home and is where most people's
-  bookmarks actually are, was skipped entirely. It is read now, the way
-  Explorer reads it. Only the folders you *pinned* are taken; the ones that
-  merely appear there because you open them often are not, since you did not
-  choose those. Folders the sidebar already shows are left alone, and a pin you
-  have already renamed in Vaktari keeps the name you gave it.
-
-- **The settings dialog can now show you its own file, save a copy of it, and
-  put one back.** Six pages of choices all end up in `settings.json`, and
-  nothing in the application could say where that is — the only path on screen
-  was the version line's tooltip, which is where the program itself is
-  installed rather than where your settings live. So the file could be found
-  by knowing where your platform keeps configuration, or by searching the disk,
-  and no other way. A *Settings file* button in the footer now opens the folder
-  it is in, saves a copy wherever you choose, or replaces your settings from a
-  copy you made earlier — for moving a set-up to another machine, or putting
-  one back after an afternoon of experimenting.
-
-  A copy holds what is on the pages at that moment, not what was last saved, so
-  you can try something, keep a copy of it, and cancel. Replacing applies
-  immediately and closes the dialog, and a file this version cannot read is
-  refused rather than quietly resetting everything to defaults.
 
 ### Fixed
 
