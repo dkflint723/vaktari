@@ -770,6 +770,15 @@ should not be trusted for compatibility yet.
 
 ### Fixed
 
+- **The confirmation settings are near the top of the General page instead of
+  at the bottom of it.** *Ask me before moving to the bin*, *before deleting
+  permanently* and *before closing a window with several tabs* were the ninth
+  and last section, below the icon-theme catalogue — a list that grows with
+  every theme you install. They are the only settings on that page that decide
+  whether a keystroke can lose a file, and finding them meant scrolling past
+  everything else. They now sit directly under *Behaviour*, which is what they
+  are. Nothing else moved.
+
 - **The drive in the path bar is called what the sidebar calls it.** The tab
   above it learned to say *Windows (C:)* a while ago; the breadcrumb directly
   under it still said `C:\`, so one window showed two names for one drive three

@@ -264,6 +264,39 @@
             </CheckBox>
           </StackPanel>
 
+          <!-- **Ninth of nine, under the icon-theme catalogue.** These three
+               are the only settings on this page that decide whether a
+               keystroke can lose a file, and they sat below a section that is
+               a hundred and fifty lines long and grows with every theme
+               installed — so on a 560px window the person looking for "stop
+               asking me before the bin" scrolled past sorting, splits,
+               default-file-manager, a theme catalogue, terminals, Proton Drive,
+               the status bar and preview limits to find them.
+
+               Here instead, because these ARE behaviour: the section directly
+               above decides what a click does and this decides what a delete
+               does. Nothing else moved. -->
+
+          <Border Height="1" Background="{DynamicResource SeparatorColour}"/>
+
+          <TextBlock Text="Ask for confirmation before"
+                     FontSize="{DynamicResource FontSizeTiny}"
+                     Foreground="{DynamicResource ViewDimText}"/>
+
+          <StackPanel Spacing="8">
+            <CheckBox Content="{Binding ConfirmTrashLabel}"
+                      FontSize="{DynamicResource FontSizeSmall}"
+                      IsChecked="{Binding ConfirmMoveToTrash}"/>
+
+            <CheckBox Content="Deleting files permanently"
+                      FontSize="{DynamicResource FontSizeSmall}"
+                      IsChecked="{Binding ConfirmPermanentDelete}"/>
+
+            <CheckBox Content="Closing a window with several tabs open"
+                      FontSize="{DynamicResource FontSizeSmall}"
+                      IsChecked="{Binding ConfirmClosingMultipleTabs}"/>
+          </StackPanel>
+
           <!-- One rule, gated with the section it introduces. There were two
                here — an ungated one and this — so on every platform that can
                answer CanBeDefault, which is both of the ones we ship, the page
@@ -574,26 +607,6 @@
                        FontSize="{DynamicResource FontSizeTiny}"
                        Foreground="{DynamicResource ViewDimText}"
                        TextWrapping="Wrap" Margin="24,0,0,0"/>
-          </StackPanel>
-
-          <Border Height="1" Background="{DynamicResource SeparatorColour}"/>
-
-          <TextBlock Text="Ask for confirmation before"
-                     FontSize="{DynamicResource FontSizeTiny}"
-                     Foreground="{DynamicResource ViewDimText}"/>
-
-          <StackPanel Spacing="8">
-            <CheckBox Content="{Binding ConfirmTrashLabel}"
-                      FontSize="{DynamicResource FontSizeSmall}"
-                      IsChecked="{Binding ConfirmMoveToTrash}"/>
-
-            <CheckBox Content="Deleting files permanently"
-                      FontSize="{DynamicResource FontSizeSmall}"
-                      IsChecked="{Binding ConfirmPermanentDelete}"/>
-
-            <CheckBox Content="Closing a window with several tabs open"
-                      FontSize="{DynamicResource FontSizeSmall}"
-                      IsChecked="{Binding ConfirmClosingMultipleTabs}"/>
           </StackPanel>
 
         </StackPanel>
