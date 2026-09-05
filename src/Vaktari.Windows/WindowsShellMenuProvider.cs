@@ -15,4 +15,7 @@ public sealed class WindowsShellMenuProvider : IShellMenuProvider
 {
     public async Task<IShellMenu?> BuildAsync(IReadOnlyList<string> paths)
         => await ShellContextMenu.ForAsync(paths).ConfigureAwait(false);
+
+    public async Task<IShellMenu?> BuildBackgroundAsync(string folder)
+        => await ShellContextMenu.ForBackgroundAsync(folder).ConfigureAwait(false);
 }

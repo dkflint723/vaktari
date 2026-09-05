@@ -79,6 +79,16 @@ internal sealed partial class ShellContextMenu : IShellMenu
     private IntPtr _contextMenu;
 
     /// <summary>
+    /// The folder a background menu belongs to; null for an item menu.
+    ///
+    /// Kept for <see cref="Invoke"/> rather than for the build. A background
+    /// verb's registered command line says %V or %W, and the handler resolves
+    /// those from the directory the invoke names — not from anything the menu
+    /// object remembers about where it came from.
+    /// </summary>
+    private readonly string? _folder;
+
+    /// <summary>
     /// Whether the native handles have been given back: false while a built
     /// menu is live, true once the apartment thread has run the release
     /// <see cref="Dispose"/> queues.
@@ -96,6 +106,27 @@ internal sealed partial class ShellContextMenu : IShellMenu
         && Volatile.Read(ref _contextMenu) == IntPtr.Zero;
 
     /// <summary>
+    /// What Marshal.Release left on the folder <see cref="BindBackgroundMenu"/>
+    /// borrowed, and null until that release has run.
+    ///
+    /// **A seam, for the same reason <see cref="HandlesReleased"/> is one.**
+    /// The bound folder is a local in a private method, so nothing outside
+    /// could tell whether the reference was ever given back. Recording the
+    /// count Release itself returns is what gives that line a killing
+    /// mutation, since the number cannot be written without the release
+    /// happening: measured, inverting it to `if (bound == IntPtr.Zero)`
+    /// reddens exactly one test in this project —
+    /// ShellContextMenuTests.Binding_a_background_gives_the_folder_back — and
+    /// the other 458 pass while every right-click on empty space leaks a COM
+    /// reference to an IShellFolder.
+    ///
+    /// Read plainly rather than volatilely: it is written on the apartment
+    /// thread before the build task completes, and every reader gets there by
+    /// awaiting that task.
+    /// </summary>
+    internal int? FolderReleasedAt { get; private set; }
+
+    /// <summary>
     /// The entries, which are the one thing here that does cross a thread — and
     /// they cross as <see cref="_built"/>'s result, assigned once in
     /// <see cref="ForAsync"/> before this object is handed to anybody.
@@ -110,8 +141,16 @@ internal sealed partial class ShellContextMenu : IShellMenu
 
     private ShellContextMenu(
         IReadOnlyList<string> paths,
-        Func<IReadOnlyList<string>, IReadOnlyList<ShellMenuEntry>>? build)
-        => _built = _worker.RunAsync(() => (build ?? BuildOnThisThread)(paths));
+        Func<IReadOnlyList<string>, IReadOnlyList<ShellMenuEntry>>? build,
+        bool background)
+    {
+        // Never empty: ForAsync answers null for an empty list before anything
+        // is constructed, so paths[0] is the folder ForBackgroundAsync wrapped.
+        _folder = background ? paths[0] : null;
+
+        _built = _worker.RunAsync(
+            () => (build ?? (p => BuildOnThisThread(p, background)))(paths));
+    }
 
     /// <summary>
     /// The menu for these paths, or null when the shell offers nothing.
@@ -137,9 +176,17 @@ internal sealed partial class ShellContextMenu : IShellMenu
     /// deadline it is trying to notice. A build this test holds open IS a slow
     /// machine, on demand.
     /// </param>
+    /// <param name="background">
+    /// Which of a folder's two menus to read, and — because a background verb's
+    /// command line has to be told which folder it is about — which folder
+    /// <see cref="Invoke"/> names. True only from
+    /// <see cref="ForBackgroundAsync"/>, which is where the difference is
+    /// explained.
+    /// </param>
     public static async Task<ShellContextMenu?> ForAsync(
         IReadOnlyList<string> paths,
-        Func<IReadOnlyList<string>, IReadOnlyList<ShellMenuEntry>>? build = null)
+        Func<IReadOnlyList<string>, IReadOnlyList<ShellMenuEntry>>? build = null,
+        bool background = false)
     {
         if (paths.Count == 0) return null;
 
@@ -147,7 +194,7 @@ internal sealed partial class ShellContextMenu : IShellMenu
 
         try
         {
-            menu = new ShellContextMenu(paths, build);
+            menu = new ShellContextMenu(paths, build, background);
 
             // The one place the entries cross threads, and they cross as a task
             // result rather than as a field somebody hopes was written by now.
@@ -166,9 +213,42 @@ internal sealed partial class ShellContextMenu : IShellMenu
         return null;
     }
 
-    private IReadOnlyList<ShellMenuEntry> BuildOnThisThread(IReadOnlyList<string> paths)
+    /// <summary>
+    /// The menu for the empty space INSIDE a folder, which is a different menu
+    /// from the folder's own.
+    ///
+    /// **A right-click on nothing is not a right-click on the folder.** The
+    /// menu <see cref="ForAsync"/> builds for a directory is the one its row
+    /// carries in the parent listing — it acts on the folder from outside — and
+    /// handing that to a click on empty space is what this file used to do,
+    /// because it had only one way to bind. Measured on this machine, on one
+    /// temporary directory: the item menu carried Pin to Quick access, Restore
+    /// previous versions, Send to and Create shortcut and the background menu
+    /// none of those, while the background menu carried the New submenu and the
+    /// item menu had no equivalent — and the background menu was much the
+    /// shorter of the two. They do overlap, because this machine's "open a
+    /// shell here" handlers register for both, which is why
+    /// ShellContextMenuTests.The_background_of_a_folder_is_not_the_folders_own_menu
+    /// asserts a difference rather than a disjoint pair.
+    ///
+    /// The two are bound differently at the COM level: the item menu is the UI
+    /// object of a shell item array built from the paths, and this one is
+    /// IShellFolder::CreateViewObject on the folder bound as a folder.
+    ///
+    /// One folder, never a list. A background belongs to the place being looked
+    /// at, and there is only ever one of those.
+    /// </summary>
+    public static Task<ShellContextMenu?> ForBackgroundAsync(string folder)
+        => ForAsync([folder], background: true);
+
+    private IReadOnlyList<ShellMenuEntry> BuildOnThisThread(
+        IReadOnlyList<string> paths, bool background)
     {
-        if (BindContextMenu(paths) is not { } com) return [];
+        // Never empty: ForAsync answers null for an empty list before anything
+        // is constructed, so paths[0] is the folder ForBackgroundAsync wrapped.
+        var bound = background ? BindBackgroundMenu(paths[0]) : BindContextMenu(paths);
+
+        if (bound is not { } com) return [];
 
         _contextMenu = com;
         _menu = Native.CreatePopupMenu();
@@ -184,7 +264,7 @@ internal sealed partial class ShellContextMenu : IShellMenu
         var hr = contextMenu.QueryContextMenu(_menu, 0, FirstId, LastId, CmfNormal | CmfExtendedVerbs);
         if (hr < 0) return [];
 
-        return Read(_menu, VerbResolver(contextMenu));
+        return Read(_menu, VerbResolver(contextMenu), PopupFiller(Wrap<IContextMenu2>(com)));
     }
 
     /// <summary>
@@ -222,6 +302,41 @@ internal sealed partial class ShellContextMenu : IShellMenu
                 Marshal.FreeHGlobal(buffer);
             }
         };
+
+    private const uint WmInitMenuPopup = 0x0117;
+
+    /// <summary>
+    /// Tells a handler its submenu is about to be shown, which for some of them
+    /// is the only moment they fill it.
+    ///
+    /// **A menu that is read rather than displayed never gets that message, and
+    /// the shell's own New menu is a single dead row without it.** Windows
+    /// sends WM_INITMENUPOPUP just before a popup opens; a handler is entitled
+    /// to put nothing in the menu until then. Measured on this machine, on a
+    /// temporary folder's background menu with this forwarding taken out: New
+    /// came back holding one child, itself labelled New and drawn enabled, and
+    /// invoking that child left the folder empty. With the message forwarded
+    /// the same call returns nine rows — Folder, Shortcut, a rule, and six
+    /// document types — and Text Document then makes a file.
+    ///
+    /// Null when the handler has no IContextMenu2, which most do not: the
+    /// message is an offer rather than a requirement, and the item menu's
+    /// submenus here — 7-Zip's and Send to's — were already full without it.
+    ///
+    /// The arguments are the message's own: the submenu's handle in wParam, and
+    /// its position in the menu holding it in lParam.
+    /// </summary>
+    private static Action<IntPtr, int>? PopupFiller(IContextMenu2? menu2)
+        => menu2 is null
+            ? null
+            : (sub, index) =>
+            {
+                // Other people's code, on a message they may not expect: a
+                // handler that throws keeps its rows rather than taking the
+                // whole menu down.
+                try { menu2.HandleMenuMsg(WmInitMenuPopup, sub, (IntPtr)index); }
+                catch (Exception ex) { Quiet.Swallowed("shell-menu", ex); }
+            };
 
     /// <summary>
     /// The verbs Vaktari already answers natively, filtered out of the hosted
@@ -325,6 +440,62 @@ internal sealed partial class ShellContextMenu : IShellMenu
     }
 
     /// <summary>
+    /// IContextMenu for a folder's background.
+    ///
+    /// **CreateViewObject on the folder, not GetUIObjectOf on its id.** The
+    /// neighbouring binder asks the folder's PARENT about an item it contains,
+    /// which is the question a click on a row asks; this one binds the folder
+    /// itself as an IShellFolder and asks it for the object its view would use,
+    /// which is the question a click on empty space asks. Measured on this
+    /// machine: the two produce different menus for the same directory, and
+    /// ShellContextMenuTests prints both.
+    ///
+    /// The pidl is freed here and the folder released here, because both are
+    /// finished with the moment the menu object exists — that object is the one
+    /// thing that has to outlive this call, and Release gives it back.
+    /// </summary>
+    private IntPtr? BindBackgroundMenu(string folder)
+    {
+        // A path the shell cannot parse — a folder that has just gone — is no
+        // menu rather than a menu for somewhere else. **Measured with this
+        // check taken out**: the null id a failed parse leaves behind is what
+        // SHBindToObject reads as "the desktop", and a deleted folder's empty
+        // space then came back offering Next desktop background, Display
+        // settings and Personalize.
+        if (Native.SHParseDisplayName(folder, IntPtr.Zero, out var pidl, 0, out _) < 0) return null;
+
+        try
+        {
+            // A null IShellFolder means "relative to the desktop", which is
+            // what an absolute pidl from SHParseDisplayName is relative to.
+            if (Native.SHBindToObject(
+                    IntPtr.Zero, pidl, IntPtr.Zero, in ShellFolderId, out var bound) < 0)
+                return null;
+
+            try
+            {
+                if (Wrap<IShellFolder>(bound) is not { } shellFolder) return null;
+
+                return shellFolder.CreateViewObject(IntPtr.Zero, in ContextMenuId, out var com) < 0
+                    ? null
+                    : com;
+            }
+            finally
+            {
+                // The count Release hands back is kept because it is the only
+                // trace the release leaves — see FolderReleasedAt.
+                if (bound != IntPtr.Zero) FolderReleasedAt = Marshal.Release(bound);
+            }
+        }
+        finally
+        {
+            // The shell allocated it, and frees it the way it frees the ones
+            // the item binder makes.
+            Native.CoTaskMemFree(pidl);
+        }
+    }
+
+    /// <summary>
     /// Walks a native menu into records.
     ///
     /// Recursive because submenus are real menus — 7-Zip's is where its actual
@@ -333,7 +504,8 @@ internal sealed partial class ShellContextMenu : IShellMenu
     /// that refers to itself would otherwise recurse until the stack goes.
     /// </summary>
     private static IReadOnlyList<ShellMenuEntry> Read(
-        IntPtr menu, Func<uint, string?>? verbOf = null, int depth = 0)
+        IntPtr menu, Func<uint, string?>? verbOf = null,
+        Action<IntPtr, int>? fillPopup = null, int depth = 0)
     {
         if (depth > 4) return [];
 
@@ -385,7 +557,12 @@ internal sealed partial class ShellContextMenu : IShellMenu
                 continue;
 
             var opensSubmenu = info.hSubMenu != IntPtr.Zero;
-            var children = opensSubmenu ? Read(info.hSubMenu, verbOf, depth + 1) : [];
+
+            // Before it is walked, not after: this is the handler's cue to put
+            // rows in it, and reading first reads the placeholder.
+            if (opensSubmenu) fillPopup?.Invoke(info.hSubMenu, i);
+
+            var children = opensSubmenu ? Read(info.hSubMenu, verbOf, fillPopup, depth + 1) : [];
 
             // **A row that opens a submenu has no command of its own.** Windows
             // puts the submenu's identity in wID for a popup, not a command id,
@@ -393,11 +570,11 @@ internal sealed partial class ShellContextMenu : IShellMenu
             // looking clickable — invoking it would hand the shell a number
             // that belongs to some other extension entirely.
             //
-            // These exist. An extension may fill its submenu only when Windows
-            // sends WM_INITMENUPOPUP, which never arrives here because this menu
-            // is read rather than shown, and one past the depth limit is empty
-            // for our own reasons. Either way the row is shown and greyed: it
-            // says the entry is there without pretending it can be used.
+            // These exist. One past the depth limit is empty for our own
+            // reasons, and a handler that answers <see cref="PopupFiller"/>'s
+            // message with nothing leaves an empty popup behind. Either way the
+            // row is shown and greyed: it says the entry is there without
+            // pretending it can be used.
             var enabled = (info.fState & (MfsDisabled | MfsGrayed)) == 0
                 && (!opensSubmenu || children.Count > 0);
 
@@ -446,19 +623,46 @@ internal sealed partial class ShellContextMenu : IShellMenu
         {
             if (Wrap<IContextMenu>(_contextMenu) is not { } contextMenu) return;
 
-            // The verb is passed as the id in the LOW WORD of a pointer-sized
-            // value, which is what MAKEINTRESOURCE does in C. Anything else and
-            // the handler looks for a verb name at that address.
-            var invoke = new InvokeCommandInfoEx
+            unsafe
             {
-                cbSize = (uint)Marshal.SizeOf<InvokeCommandInfoEx>(),
-                fMask = UnicodeFlag,
-                lpVerb = (IntPtr)id,
-                lpVerbW = (IntPtr)id,
-                nShow = ShowNormal,
-            };
+                // **Where the command is to run, which is the only way a
+                // background verb learns where it is.** A command registered
+                // under Directory\Background writes the folder into its
+                // command line as %V or %W, and the shell resolves both from
+                // this field. Measured here on scratch verbs of exactly that
+                // shape: with the field left null, %V, "%V" and %W all came
+                // back ERROR_NO_APPLICATION_ASSOCIATED — 0x80070483 — and the
+                // command never ran, while a background verb whose command
+                // carried no substitution ran fine; with the folder supplied
+                // all three run and report this folder. Every background verb
+                // registered on this machine is one or the other — six write
+                // "%V" and WizTree writes "%W" — so without this the menu drew
+                // rows that did nothing at all.
+                //
+                // Null for an item menu, where <see cref="_folder"/> is null,
+                // and that menu never needed it: measured, an item verb's %V
+                // is the item and resolved without this field. Fixed on a null
+                // string is a null pointer, which is what this field held
+                // before.
+                fixed (char* directory = _folder)
+                {
+                    // The verb is passed as the id in the LOW WORD of a
+                    // pointer-sized value, which is what MAKEINTRESOURCE does
+                    // in C. Anything else and the handler looks for a verb name
+                    // at that address.
+                    var invoke = new InvokeCommandInfoEx
+                    {
+                        cbSize = (uint)Marshal.SizeOf<InvokeCommandInfoEx>(),
+                        fMask = UnicodeFlag,
+                        lpVerb = (IntPtr)id,
+                        lpVerbW = (IntPtr)id,
+                        lpDirectoryW = (IntPtr)directory,
+                        nShow = ShowNormal,
+                    };
 
-            contextMenu.InvokeCommand(ref invoke);
+                    contextMenu.InvokeCommand(ref invoke);
+                }
+            }
         });
     }
 
@@ -521,6 +725,7 @@ internal sealed partial class ShellContextMenu : IShellMenu
 
     private static readonly Guid ShellItemId = new("43826D1E-E718-42EE-BC55-A1E261C37BFE");
     private static readonly Guid ShellItemArrayId = new("B63EA76D-1F85-456F-A19C-48159EFA858B");
+    private static readonly Guid ShellFolderId = new("000214E6-0000-0000-C000-000000000046");
     private static readonly Guid ContextMenuId = new("000214E4-0000-0000-C000-000000000046");
     private static readonly Guid UiObjectId = new("3981E225-F559-11D3-8E3A-00C04F6837D5");
 
@@ -576,6 +781,76 @@ internal sealed partial class ShellContextMenu : IShellMenu
         int GetCommandString(IntPtr idCmd, uint uType, IntPtr pReserved, IntPtr pszName, uint cchMax);
     }
 
+    /// <summary>
+    /// IContextMenu plus the one method that makes a submenu fill itself.
+    ///
+    /// **The three declarations above HandleMenuMsg are its inherited ones, and
+    /// they are here because a COM vtable is positional.** IContextMenu2 IS an
+    /// IContextMenu with a fourth method, so redeclaring the first three is
+    /// what puts HandleMenuMsg where the shell keeps it. Read out of the shim
+    /// the generator emits for this interface: HandleMenuMsg compiles to a call
+    /// through `__vtable[6]`, IUnknown's three slots plus the three above it —
+    /// so dropping one of those three would send WM_INITMENUPOPUP to
+    /// GetCommandString.
+    /// </summary>
+    [GeneratedComInterface]
+    [Guid("000214F4-0000-0000-C000-000000000046")]
+    internal partial interface IContextMenu2
+    {
+        [PreserveSig]
+        int QueryContextMenu(IntPtr hmenu, uint indexMenu, uint idCmdFirst, uint idCmdLast, uint uFlags);
+
+        [PreserveSig]
+        int InvokeCommand(ref InvokeCommandInfoEx pici);
+
+        [PreserveSig]
+        int GetCommandString(IntPtr idCmd, uint uType, IntPtr pReserved, IntPtr pszName, uint cchMax);
+
+        [PreserveSig]
+        int HandleMenuMsg(uint uMsg, IntPtr wParam, IntPtr lParam);
+    }
+
+    /// <summary>
+    /// The folder itself, for the one method this file calls on it —
+    /// CreateViewObject, which hands back the background menu.
+    ///
+    /// **Every method is declared because a COM vtable is positional, and the
+    /// generator counts declarations.** Read out of the shim it emits for this
+    /// interface: CreateViewObject compiles to a call through `__vtable[8]`,
+    /// which is IUnknown's three slots plus the five declarations above it. So
+    /// the nine methods nothing here calls are not decoration — deleting one of
+    /// the five would move this call down a slot and hand the shell's
+    /// CompareIDs a Guid where it expects an id list. Their pointer arguments
+    /// are IntPtr for the same reason a declaration nobody calls should be as
+    /// dull as possible.
+    /// </summary>
+    [GeneratedComInterface]
+    [Guid("000214E6-0000-0000-C000-000000000046")]
+    internal partial interface IShellFolder
+    {
+        [PreserveSig]
+        int ParseDisplayName(
+            IntPtr hwnd, IntPtr pbc, IntPtr pszDisplayName, out uint pchEaten,
+            out IntPtr ppidl, ref uint pdwAttributes);
+
+        [PreserveSig] int EnumObjects(IntPtr hwnd, uint grfFlags, out IntPtr ppenumIDList);
+        [PreserveSig] int BindToObject(IntPtr pidl, IntPtr pbc, in Guid riid, out IntPtr ppv);
+        [PreserveSig] int BindToStorage(IntPtr pidl, IntPtr pbc, in Guid riid, out IntPtr ppv);
+        [PreserveSig] int CompareIDs(IntPtr lParam, IntPtr pidl1, IntPtr pidl2);
+        [PreserveSig] int CreateViewObject(IntPtr hwndOwner, in Guid riid, out IntPtr ppv);
+        [PreserveSig] int GetAttributesOf(uint cidl, IntPtr apidl, ref uint rgfInOut);
+
+        [PreserveSig]
+        int GetUIObjectOf(
+            IntPtr hwndOwner, uint cidl, IntPtr apidl, in Guid riid, IntPtr rgfReserved,
+            out IntPtr ppv);
+
+        [PreserveSig] int GetDisplayNameOf(IntPtr pidl, uint uFlags, IntPtr pName);
+
+        [PreserveSig]
+        int SetNameOf(IntPtr hwnd, IntPtr pidl, IntPtr pszName, uint uFlags, out IntPtr ppidlOut);
+    }
+
     [GeneratedComInterface]
     [Guid("B63EA76D-1F85-456F-A19C-48159EFA858B")]
     internal partial interface IShellItemArray
@@ -610,6 +885,10 @@ internal sealed partial class ShellContextMenu : IShellMenu
         [LibraryImport("shell32.dll", StringMarshalling = StringMarshalling.Utf16)]
         internal static partial int SHParseDisplayName(
             string pszName, IntPtr pbc, out IntPtr ppidl, uint sfgaoIn, out uint psfgaoOut);
+
+        [LibraryImport("shell32.dll")]
+        internal static partial int SHBindToObject(
+            IntPtr psf, IntPtr pidl, IntPtr pbc, in Guid riid, out IntPtr ppv);
 
         [LibraryImport("shell32.dll")]
         internal static partial int SHCreateShellItemArrayFromIDLists(

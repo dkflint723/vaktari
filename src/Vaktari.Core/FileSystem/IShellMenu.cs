@@ -86,4 +86,24 @@ public interface IShellMenuProvider
     /// not worth failing to open because one of them is unhappy.
     /// </summary>
     Task<IShellMenu?> BuildAsync(IReadOnlyList<string> paths);
+
+    /// <summary>
+    /// The menu for a folder's BACKGROUND — what a right-click on the empty
+    /// space inside it asks for.
+    ///
+    /// **Not <see cref="BuildAsync"/> with the folder in the list, which is a
+    /// different menu about a different thing.** That one is the menu the
+    /// folder's row carries in its parent's listing: it acts on the folder from
+    /// outside. This one is what the folder offers about itself as a place.
+    /// Measured on Windows, on one temporary directory: the folder's own menu
+    /// offered Pin to Quick access, Send to and Create shortcut, none of which
+    /// its background menu had, and the background menu offered a New submenu
+    /// the other had no equivalent of.
+    ///
+    /// Same rules as <see cref="BuildAsync"/> — null when there is no menu to
+    /// give, never faults, and no deadline.
+    /// </summary>
+    /// <param name="folder">One folder, never a list: a background belongs to
+    /// the place being looked at, and there is only ever one of those.</param>
+    Task<IShellMenu?> BuildBackgroundAsync(string folder);
 }

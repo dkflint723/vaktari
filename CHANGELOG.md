@@ -793,6 +793,26 @@ should not be trusted for compatibility yet.
   accept is explained under the box you are typing in. The bottom bar goes back
   to what it was built for — confirmations, and asking for a server address.
 
+- **Right-clicking empty space offers the *Windows menu* for the folder you are
+  in, not the one for the folder as an item.** Windows keeps two separate menus
+  for every folder: the one its row carries in the folder above — *Pin to Quick
+  access*, *Send to*, *Create shortcut*, the entries that act on it from
+  outside — and the one it offers as a place you are inside, which is where
+  *New* lives along with whatever "open a shell here" commands you have
+  installed. Vaktari asked for the first of those whichever you clicked, so a
+  right-click on nothing came back with a menu about the folder instead of a
+  menu for being in it. It asks for the background menu now.
+
+  Two things had to be got right for that menu to be worth showing. *New*
+  opens with the whole list — *Folder*, *Shortcut*, *Text Document* and
+  whatever else is registered — rather than the one dead row a menu that is
+  read rather than displayed comes back with; and a command that opens a shell
+  is told which folder it is opening in, without which every one of them did
+  nothing when clicked. What is not there is Explorer's own rather than the
+  folder's: *Sort by*, *Refresh* and *Paste* belong to the window, and
+  Vaktari's menu has had its own all along. A right-click on a row is
+  unchanged.
+
 - **Group headings say how many, and clicking one picks the whole group.** With
   grouping on, the band headings were labels and nothing more: no count, and
   nothing happened when you clicked one. A heading now reads *TXT (12)* — with

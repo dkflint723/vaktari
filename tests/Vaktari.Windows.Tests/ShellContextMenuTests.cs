@@ -1,4 +1,5 @@
 using System.Runtime.Versioning;
+using Microsoft.Win32;
 using Vaktari.Windows;
 using Xunit;
 using Xunit.Abstractions;
@@ -208,6 +209,228 @@ public sealed class ShellContextMenuTests : IDisposable
         Assert.True(
             SpinWait.SpinUntil(() => menu.HandlesReleased, Patience),
             "the menu handle and the COM reference were never given back");
+    }
+
+    /// <summary>
+    /// **The fault, at the line it lived on.** A right-click on the empty space
+    /// inside a folder was handed that folder's ITEM menu — the menu its row
+    /// carries in the parent listing — because this file had exactly one way to
+    /// bind a menu: SHParseDisplayName into a shell item array, asked for the
+    /// items' UI object. The background menu comes from somewhere else
+    /// entirely, IShellFolder::CreateViewObject, and nothing here reached it.
+    ///
+    /// **Asserted as a difference, because the contents are the machine's.**
+    /// What each menu holds depends on what is installed, so naming an entry
+    /// would pin this test to this desktop. What cannot be a coincidence is
+    /// that the two differ: measured with the background bound the item way,
+    /// the two label lists came back equal and this test failed on that.
+    ///
+    /// Measured here, on that temporary directory: the item menu offered Pin to
+    /// Quick access, Restore previous versions, Send to and Create shortcut and
+    /// the background menu none of those four; the background menu offered the
+    /// New submenu and the item menu had no equivalent; and the background menu
+    /// was much the shorter of the two. They overlap — both carry this
+    /// machine's "open a shell here" handlers — so this asserts they are not
+    /// the same menu rather than that they share nothing.
+    /// </summary>
+    [Fact]
+    public async Task The_background_of_a_folder_is_not_the_folders_own_menu()
+    {
+        using var item = await ShellContextMenu.ForAsync([_folder]);
+        using var background = await ShellContextMenu.ForBackgroundAsync(_folder);
+
+        Assert.NotNull(item);
+
+        // Not null is already "the shell offered something": ForAsync answers
+        // null when the entries come back empty.
+        Assert.NotNull(background);
+
+        Assert.NotEqual(
+            item!.Entries.Select(e => e.Label).ToList(),
+            background!.Entries.Select(e => e.Label).ToList());
+
+        // And in the direction that says the background is a menu of its own
+        // rather than a subset that happened to lose rows.
+        Assert.NotEmpty(background.Entries
+            .Select(e => e.Label)
+            .Except(item.Entries.Select(e => e.Label)));
+    }
+
+    /// <summary>Where a per-user verb for a folder's empty space is
+    /// registered. The scratch key below is written under the current user
+    /// only, and removed again whatever the test does.</summary>
+    private const string BackgroundVerbs = @"Software\Classes\Directory\Background\shell";
+
+    /// <summary>
+    /// **An entry on the background menu has to RUN, and none of them did.**
+    /// A verb registered under Directory\Background writes the folder into its
+    /// command line as %V or %W, and the shell resolves both from the directory
+    /// the invoke names. Measured with that field left null: %V, "%V" and %W
+    /// all came back ERROR_NO_APPLICATION_ASSOCIATED, which is 0x80070483, and
+    /// the command never ran — while a background verb whose command carried no
+    /// substitution ran fine, which is what said the folder was the missing
+    /// piece. Every background verb registered on this machine is one or the
+    /// other, six writing "%V" and WizTree "%W", so the menu was drawing seven
+    /// rows that did nothing. The item menu never had the fault: measured, an
+    /// item verb's %V is the item, and the item is in that menu's own binding.
+    ///
+    /// **Its own verb rather than one of the machine's**, for the reason the
+    /// class comment gives — asserting that Open PowerShell window here works
+    /// would pin this test to a machine that has it. A scratch key under the
+    /// current user's classes, written here and deleted in the finally, is a
+    /// background verb of exactly the shape that failed, on any machine.
+    /// </summary>
+    [Fact]
+    public async Task A_background_verb_is_told_which_folder_it_is_in()
+    {
+        const string Verb = "Vaktari.Test.RunsHere";
+
+        var marker = Path.Combine(_folder, "ran.txt");
+
+        using (var key = Registry.CurrentUser.CreateSubKey($@"{BackgroundVerbs}\{Verb}\command"))
+            key!.SetValue(null, $"cmd.exe /c echo %V> \"{marker}\"");
+
+        try
+        {
+            using var menu = await ShellContextMenu.ForBackgroundAsync(_folder);
+            Assert.NotNull(menu);
+
+            var entry = Assert.Single(menu!.Entries, e => e.Label == Verb);
+
+            menu.Invoke(entry.Id);
+
+            Assert.True(
+                SpinWait.SpinUntil(() => File.Exists(marker), Patience),
+                "the background entry was clicked and nothing happened");
+
+            // And it ran in THIS folder, which is what %V was asking for.
+            Assert.Equal(_folder, File.ReadAllText(marker).Trim());
+        }
+        finally
+        {
+            Registry.CurrentUser.DeleteSubKeyTree(
+                $@"{BackgroundVerbs}\{Verb}", throwOnMissingSubKey: false);
+        }
+    }
+
+    /// <summary>
+    /// **A submenu the shell fills only when it is about to be shown.** The
+    /// walk reads a menu handle rather than displaying one, so an extension
+    /// that populates itself on WM_INITMENUPOPUP had never been asked to.
+    /// Measured on this machine with the forwarding taken out: the background
+    /// menu's New came back holding exactly one row, itself labelled New and
+    /// drawn enabled, and invoking that row left the folder empty — an entry
+    /// the user can see, open and click to no effect, which is what
+    /// <see cref="Every_entry_has_something_to_draw_and_something_to_invoke"/>
+    /// says this feature must not do. Forwarding the message through
+    /// IContextMenu2 fills it with nine rows — Folder, Shortcut, a rule and six
+    /// document types — and Text Document then makes a file.
+    ///
+    /// **Counted rather than named.** What is in New depends on what is
+    /// installed, so what is asserted is the thing that cannot be a
+    /// coincidence: a submenu holding more than the one placeholder row.
+    /// </summary>
+    [Fact]
+    public async Task A_submenu_the_shell_fills_on_demand_is_asked_to_fill()
+    {
+        using var menu = await ShellContextMenu.ForBackgroundAsync(_folder);
+        Assert.NotNull(menu);
+
+        var submenus = menu!.Entries
+            .Where(e => e.HasChildren)
+            .Select(e => e.Items.Count(c => !c.IsSeparator))
+            .ToList();
+
+        Assert.NotEmpty(submenus);
+        Assert.Contains(submenus, rows => rows > 1);
+    }
+
+    /// <summary>
+    /// **The folder the background binder borrows, given back.** SHBindToObject
+    /// hands out a reference this code owns, and nothing outside the binder can
+    /// see a local pointer — the same blindness
+    /// <see cref="Closing_the_menu_gives_the_native_handles_back"/> exists for.
+    /// Measured: inverting that one line to `if (bound == IntPtr.Zero)` reddens
+    /// this test and nothing else — the other 458 pass while each right-click
+    /// on empty space leaks a COM reference to an IShellFolder.
+    ///
+    /// Reads the count Release itself returned, because that number cannot be
+    /// there unless the release ran.
+    /// </summary>
+    [Fact]
+    public async Task Binding_a_background_gives_the_folder_back()
+    {
+        using var menu = await ShellContextMenu.ForBackgroundAsync(_folder);
+
+        Assert.NotNull(menu);
+        Assert.NotNull(menu!.FolderReleasedAt);
+    }
+
+    /// <summary>
+    /// The seam the view model actually calls, one line wide: "ask for a
+    /// background" has to arrive at the code that reads one.
+    ///
+    /// **Nothing in this project covered <see cref="WindowsShellMenuProvider"/>
+    /// at all**, so a provider that forwarded both of the shell's questions to
+    /// the same place would leave every other test here green with the fault
+    /// back in the product.
+    /// </summary>
+    [Fact]
+    public async Task The_provider_forwards_a_background_as_a_background()
+    {
+        var provider = new WindowsShellMenuProvider();
+
+        using var item = await provider.BuildAsync([_folder]);
+        using var background = await provider.BuildBackgroundAsync(_folder);
+
+        Assert.NotNull(item);
+        Assert.NotNull(background);
+
+        Assert.NotEqual(
+            item!.Entries.Select(e => e.Label).ToList(),
+            background!.Entries.Select(e => e.Label).ToList());
+    }
+
+    /// <summary>
+    /// A path with no folder behind it is no menu — never a menu for somewhere
+    /// else. Both kinds reach here: a pane on This PC has `vaktari:computer`
+    /// for a CurrentPath and still has empty space to right-click on, and a
+    /// folder can be deleted while its pane is open.
+    ///
+    /// **Two cases because the shell refuses them in two different places, and
+    /// only measuring said which.** SHParseDisplayName answers S_OK for
+    /// `vaktari:computer` — it reads the colon as a protocol and hands back an
+    /// id whose ITEM menu is a lone "Create shortcut" — so what refuses there
+    /// is the bind, one step later. A path that is simply not on the disk fails
+    /// the parse itself, 0x80070002, and that is the case the HRESULT check
+    /// exists for.
+    /// </summary>
+    [Fact]
+    public async Task A_path_with_no_folder_behind_it_offers_no_background_menu()
+    {
+        Assert.Null(await ShellContextMenu.ForBackgroundAsync("vaktari:computer"));
+        Assert.Null(await ShellContextMenu.ForBackgroundAsync(Path.Combine(_folder, "gone")));
+    }
+
+    /// <summary>
+    /// The same readout as below, for the other menu: what this machine offers
+    /// on empty space. Run with the test output visible.
+    /// </summary>
+    [Fact]
+    public async Task What_this_machine_offers_on_empty_space()
+    {
+        using var menu = await ShellContextMenu.ForBackgroundAsync(_folder);
+        Assert.NotNull(menu);
+
+        foreach (var entry in menu!.Entries)
+        {
+            _output.WriteLine(entry.IsSeparator
+                ? "  ---"
+                : $"  [{entry.Id,3}] {entry.Label}{(entry.HasChildren ? " >" : "")}");
+
+            foreach (var child in entry.Items)
+                _output.WriteLine($"          [{child.Id,3}] {child.Label}");
+        }
     }
 
     /// <summary>

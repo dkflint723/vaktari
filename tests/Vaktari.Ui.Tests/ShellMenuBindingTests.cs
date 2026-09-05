@@ -50,6 +50,16 @@ public sealed class ShellMenuBindingTests : OwnedViewModels
         public int Builds { get; private set; }
         public IReadOnlyList<string> AskedFor { get; private set; } = [];
 
+        /// <summary>
+        /// Which of the shell's two questions the last build asked.
+        ///
+        /// **They are different menus, not one menu reached two ways** — a
+        /// folder's own menu acts on it from outside, its background menu is
+        /// what it offers as a place — so recording only the paths would let a
+        /// pane ask the wrong one of them and still look right here.
+        /// </summary>
+        public bool AskedForBackground { get; private set; }
+
         /// <summary>Whether the build stays in flight until told otherwise.</summary>
         public bool Slow { get; set; }
 
@@ -58,9 +68,16 @@ public sealed class ShellMenuBindingTests : OwnedViewModels
         public bool OffersNothing { get; set; }
 
         public Task<IShellMenu?> BuildAsync(IReadOnlyList<string> paths)
+            => Build(paths, background: false);
+
+        public Task<IShellMenu?> BuildBackgroundAsync(string folder)
+            => Build([folder], background: true);
+
+        private Task<IShellMenu?> Build(IReadOnlyList<string> paths, bool background)
         {
             Builds++;
             AskedFor = paths;
+            AskedForBackground = background;
 
             Last = new FakeShellMenu(
             [
@@ -424,18 +441,49 @@ public sealed class ShellMenuBindingTests : OwnedViewModels
     }
 
     /// <summary>
-    /// With nothing selected the click was on empty space, so the folder itself
-    /// is what the shell should be asked about — the same rule the rest of the
-    /// menu follows.
+    /// With nothing selected the click was on empty space, so the folder's
+    /// BACKGROUND is what the shell should be asked for — the menu the folder
+    /// offers about itself as a place.
+    ///
+    /// **This is the fault.** The pane asked for the folder's own menu, which
+    /// is the one its row carries in the parent listing: the entries that act
+    /// on the folder from outside — Pin to Quick access, Send to, Create
+    /// shortcut — offered for a click that was on nothing. The two menus are
+    /// separately bound in the shell and measurably different; the difference
+    /// is pinned against the real shell in Vaktari.Windows.Tests, and what is
+    /// pinned here is that the pane asks the right one.
     /// </summary>
     [AvaloniaFact]
-    public async Task With_no_selection_the_folder_is_what_gets_asked_about()
+    public async Task With_no_selection_the_folders_background_is_what_gets_asked_for()
     {
         var pane = Pane();
 
         await pane.OpenShellMenuAsync();
 
+        Assert.True(_provider.AskedForBackground, "the folder's own menu was asked for");
         Assert.Equal([Path.GetTempPath()], _provider.AskedFor);
+    }
+
+    /// <summary>
+    /// The other half of the same choice: a click that landed on a row wants
+    /// that row's own menu. A background is a question about a place you are
+    /// inside, and a selected file is not one, so this half of the branch has
+    /// to be pinned too — a pane that asked for a background whatever was
+    /// selected would still pass the test above.
+    /// </summary>
+    [AvaloniaFact]
+    public async Task With_a_selection_the_selections_own_menu_is_what_gets_asked_for()
+    {
+        var pane = Pane();
+        var file = Path.Combine(Path.GetTempPath(), "notes.txt");
+
+        pane.SelectedEntry = new FileEntry(
+            "notes.txt", file, 0, DateTimeOffset.UnixEpoch, EntryFlags.None);
+
+        await pane.OpenShellMenuAsync();
+
+        Assert.False(_provider.AskedForBackground, "a selected file was treated as empty space");
+        Assert.Equal([file], _provider.AskedFor);
     }
 
     /// <summary>The bin and Recent hold rows whose paths are not where the file

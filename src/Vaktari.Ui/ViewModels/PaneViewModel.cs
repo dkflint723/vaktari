@@ -323,8 +323,17 @@ public sealed partial class PaneViewModel : ObservableObject, IDisposable
 
         // The selection, or the folder when the click was on empty space — the
         // same rule the rest of the menu follows.
+        //
+        // **Empty means a different QUESTION, not the same question about the
+        // folder.** A click on nothing wants what the folder offers about
+        // itself as a place; asking for the folder's own menu answers with what
+        // its row in the parent listing offers, which acts on it from outside.
+        // The shell keeps those as two separately bound menus and this used to
+        // ask for the first one either way.
         var paths = SelectionPaths();
-        if (paths.Count == 0) paths = [CurrentPath];
+        var background = paths.Count == 0;
+
+        if (background) paths = [CurrentPath];
 
         // **Built once for a given selection, and never rebuilt underneath
         // itself.** The caller guards its own event, but this is the property
@@ -344,7 +353,9 @@ public sealed partial class PaneViewModel : ObservableObject, IDisposable
 
         var generation = _shellGeneration;
 
-        var menu = await provider.BuildAsync(paths).ConfigureAwait(false);
+        var menu = await (background
+            ? provider.BuildBackgroundAsync(paths[0])
+            : provider.BuildAsync(paths)).ConfigureAwait(false);
 
         await Dispatcher.UIThread.InvokeAsync(() =>
         {
