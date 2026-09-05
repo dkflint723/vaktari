@@ -22,10 +22,12 @@ namespace Vaktari.Ui.Tests;
 /// thirty-nine rows long. Avalonia does not offer a type-to-select fallback in
 /// menus: with no marker in the header there is no key at all, and "Properties"
 /// — the last row in that menu — was reachable only by walking to it. (The two
-/// counts are measured: ninety-one is the number of rows with a literal header
-/// that <see cref="Menus"/> reaches across both markup files, the same at the
-/// commit before this change as at this one, and thirty-nine is the listing
-/// menu's own row count.)
+/// counts are measured: ninety-one was the number of rows with a literal header
+/// that <see cref="Menus"/> reached across both markup files, the same at the
+/// commit before that change as at it, and thirty-nine is the listing menu's
+/// own row count. The first has moved since — ninety-eight rows over fifteen
+/// menus today, the column chooser having gained a second copy in Arrange —
+/// which is why the floors below are floors rather than counts.)
 ///
 /// Measured rather than assumed, on Avalonia 12.1 in a headless window: a
 /// MenuItem whose Header is "_Open" realizes an AccessText reporting AccessKey
@@ -253,12 +255,15 @@ public sealed class ContextMenuKeysTests
 
         Assert.True(dead.Count == 0, string.Join("\n  ", dead.Prepend("")));
 
-        // A rule with nothing to rule on would pass on an empty file. Four
-        // rows: two placeholders in the Share submenu, and in the column
-        // chooser the Name tick that is on and cannot be turned off plus the
-        // sentence under the rule that explains why a ticked column can still
-        // be off screen.
-        Assert.Equal(4, Menus().SelectMany(m => m.Rows).Count(NeverPickable));
+        // A rule with nothing to rule on would pass on an empty file. Six
+        // rows: two placeholders in the Share submenu, and then the same pair
+        // twice over, once in each column chooser — the Name tick that is on
+        // and cannot be turned off, and the sentence under the rule that
+        // explains why a ticked column can still be off screen. Twice because
+        // there are now two choosers, the header's and Arrange > Columns, and
+        // The_two_chooser_menus_offer_the_same_columns requires them to hold
+        // the same rows.
+        Assert.Equal(6, Menus().SelectMany(m => m.Rows).Count(NeverPickable));
     }
 
     /// <summary>
@@ -277,7 +282,7 @@ public sealed class ContextMenuKeysTests
         Assert.Contains(menus, m => m.File == "MainWindow.axaml");
         Assert.Contains(menus, m => m.File == "SettingsWindow.axaml");
 
-        // Fourteen menus and ninety-one rows with a literal header, measured
+        // Fifteen menus and ninety-eight rows with a literal header, measured
         // today. The floors are written well under those so that adding or
         // dropping a row is not a test failure, and high enough that only a
         // scan which has broken can go under them.

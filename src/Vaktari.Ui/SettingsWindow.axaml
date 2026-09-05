@@ -1114,14 +1114,16 @@
                       IsChecked="{Binding MenuCopyLocation}"/>
             <CheckBox Content="Duplicate" FontSize="{DynamicResource FontSizeSmall}"
                       IsChecked="{Binding MenuDuplicate}"/>
-            <!-- **Named for what it hides, which is now both halves of Arrange.**
-                 Sort by and Group by were folded into one submenu, and this gate
-                 moved up onto the parent — so as "Sort by" the label understated
-                 it by half and left people wondering where grouping had gone.
+            <!-- **Named for what it hides, which is now all three parts of
+                 Arrange.** Sort by and Group by were folded into one submenu and
+                 this gate moved up onto the parent, so as "Sort by" the label
+                 understated it by half and left people wondering where grouping
+                 had gone; Columns then joined them, because the chooser had no
+                 home a keyboard could reach, and the label understated it again.
                  MenuSortBy stays MenuSortBy: it is the key the setting is stored
                  under, and renaming it would silently reset the preference on
                  every install that already has one. -->
-            <CheckBox Content="Arrange (sort and group)" FontSize="{DynamicResource FontSizeSmall}"
+            <CheckBox Content="Arrange (sort, group and columns)" FontSize="{DynamicResource FontSizeSmall}"
                       IsChecked="{Binding MenuSortBy}"/>
           </StackPanel>
 
@@ -1137,14 +1139,26 @@
                Add to places gates two entries, and the second of them is Ctrl+D
                — PinCurrentCommand, the folder you are in, not the selection —
                which is a real binding and goes on working while the entries are
-               hidden. Arrange keeps the sort half through the list view's
-               column headers.
+               hidden. Arrange keeps two of its three parts through the list
+               view's column headers: left-clicking one sorts by it, and
+               right-clicking them opens the same column chooser Arrange holds.
+
+               **In Details, and only there. The band those headings live in
+               carries IsVisible="{Binding IsDetailsView}" and the menu's Sort
+               by carries no gate at all**, so in Grid and Compact there is
+               nothing to click and hiding Arrange takes sorting away along with
+               grouping — it is the grouping half alone only in the layout that
+               draws columns. The sentence below is scoped to "the list view's
+               column headers" for that reason and is true as it stands;
+               Hiding_arrange_leaves_the_headings_only_in_details is what keeps
+               the escape route and this claim about it together, because the
+               route is a control in another file.
 
                Adding the missing gestures instead, so the original sentence
                came true, was rejected here: the bindings live in MainWindow and
                need free keys chosen for each, and until that happens this page
                would still be the thing telling the lie. -->
-          <TextBlock Text="Hiding an entry takes it off the menu without removing the command — but for most of these the menu is the only route. Ctrl+D still adds the current folder to places while Add to places is hidden, and the list view's column headers still sort by name, type, size or modified while Arrange is. Copy as path still works on ctrl+shift+c. Nothing else here has a shortcut."
+          <TextBlock Text="Hiding an entry takes it off the menu without removing the command — but for most of these the menu is the only route. Ctrl+D still adds the current folder to places while Add to places is hidden. While Arrange is hidden, the list view's column headers still sort by name, type, size or modified, and right-clicking those headers still chooses which columns to show. Copy as path still works on ctrl+shift+c. Nothing else here has a shortcut."
                      FontSize="{DynamicResource FontSizeTiny}"
                      Foreground="{DynamicResource ViewDimText}"
                      TextWrapping="Wrap"/>

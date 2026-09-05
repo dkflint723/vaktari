@@ -1940,6 +1940,47 @@
                                           IsChecked="{Binding ActiveTab.IsGroupedByKind, Mode=OneWay}"
                                           Command="{Binding ActiveTab.GroupByKindCommand}"/>
                               </MenuItem>
+                <!-- **Choosing a column needed a mouse: the chooser was on the
+                     header's right-click and nowhere else.** Shift+F10 and the
+                     Menu key run OpenListingMenu, which walks up from the
+                     focused row to the first control carrying a ContextMenu —
+                     that is THIS menu, never the header's — and the header band
+                     is a Border, which takes no focus, so no key press could
+                     ever land on it and reach the one place the four toggles
+                     lived.
+
+                     Beside Sort by and Group by because it is the third
+                     question about how this listing reads, and gated on Details
+                     for Group by's reason: the other two layouts draw no
+                     columns, so every row here would tick and none of them
+                     would do anything.
+
+                     The header menu stays where Explorer and Dolphin put it.
+                     Two routes, one setting: both bind OneWay to the same four
+                     properties on the same pane and click through the same four
+                     commands, so a tick moved in either shows in both —
+                     The_two_chooser_menus_offer_the_same_columns keeps the two
+                     lists from drifting apart, access keys and all. -->
+                <MenuItem Header="_Columns"
+                                      IsVisible="{Binding ActiveTab.IsDetailsView}">
+                                <MenuItem Header="Name" ToggleType="CheckBox"
+                                          IsChecked="True" IsEnabled="False"/>
+                                <MenuItem Header="_Type" ToggleType="CheckBox"
+                                          IsChecked="{Binding ActiveTab.IsTypeColumnShown, Mode=OneWay}"
+                                          Command="{Binding ActiveTab.ToggleTypeColumnCommand}"/>
+                                <MenuItem Header="_Size" ToggleType="CheckBox"
+                                          IsChecked="{Binding ActiveTab.IsSizeColumnShown, Mode=OneWay}"
+                                          Command="{Binding ActiveTab.ToggleSizeColumnCommand}"/>
+                                <MenuItem Header="_Modified" ToggleType="CheckBox"
+                                          IsChecked="{Binding ActiveTab.IsModifiedColumnShown, Mode=OneWay}"
+                                          Command="{Binding ActiveTab.ToggleModifiedColumnCommand}"/>
+                                <MenuItem Header="_Created" ToggleType="CheckBox"
+                                          IsChecked="{Binding ActiveTab.IsCreatedColumnShown, Mode=OneWay}"
+                                          Command="{Binding ActiveTab.ToggleCreatedColumnCommand}"/>
+                                <Separator/>
+                                <MenuItem Header="A narrow pane drops columns to keep the name readable."
+                                          IsEnabled="False"/>
+                              </MenuItem>
               </MenuItem>
               <!-- **Two entries for one action, and only one is ever shown.**
                    Most machines have a single terminal, where a submenu holding
