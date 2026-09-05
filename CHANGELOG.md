@@ -13,6 +13,16 @@ should not be trusted for compatibility yet.
 
 ### Added
 
+- **A folder dropped on the sidebar's empty space becomes a place.** It is how
+  both Explorer and Dolphin add a bookmark, and here the drag was simply
+  refused: only the place rows themselves accepted a drop, and those take one
+  INTO the folder rather than pinning it. The panel's own ground and its section
+  headings now take the drop, and the cursor says so on the way in. A file
+  dropped there pins nothing and is not quietly turned into its folder — that
+  would be guessing at something you did not point at — and the status line
+  says what happened, including the folders already in the list and the files
+  left alone, because nothing on screen moves for either.
+
 - **Search can be told to mind the capitals.** Every search Vaktari had ever run
   was case-insensitive, and not by choice: the query object carried a
   `CaseSensitive` flag that both search backends read and nothing anywhere ever

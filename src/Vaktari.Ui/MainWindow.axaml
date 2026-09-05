@@ -3696,8 +3696,29 @@
          workspace layout is that the things you organise by — places,
          devices — are never behind a panel toggle. -->
     <!-- Named so F6 can tell whether the keyboard is already inside it, and
-         so the first place row can be found to put the keyboard on. -->
+         so the first place row can be found to put the keyboard on. The name
+         is also what a drag looks for: the walk in the window stops here to
+         decide that the pointer is on the sidebar's own ground. -->
+    <!-- **A folder dropped on the blank strip under the list, or on a section
+         heading, was refused.** Only the place ROW carried AllowDrop, and the
+         sidebar is mostly not rows — so the gesture both references offer for
+         adding a place, dropping a folder on the panel, reached nothing that
+         could take it and OnDragOver answered DragDropEffects.None.
+
+         DragDrop.AllowDrop inherits, so one attribute on the panel arms
+         everything inside it. Measured in a real window: the point in the blank
+         strip below the last section hit-tests to the ScrollViewer's own
+         PART_ContentPresenter — not to this Border's background — and that
+         presenter reports AllowDrop true through the Grid, ScrollViewer and
+         DockPanel between them. See
+         SidebarPinDropTests.The_blank_strip_under_the_sections_can_take_a_drop.
+
+         On the Border because the Border IS the panel, so nothing it holds is
+         left out; the scroller is one child of one DockPanel inside it. The
+         place row keeps its own True for the reader; what decides between a
+         place drop and a pin is the walk in OnDragOver, not the attribute. -->
     <Border x:Name="SidebarPanel"
+            DragDrop.AllowDrop="True"
             DockPanel.Dock="Left" Background="{DynamicResource PanelBackground}"
             BorderThickness="0,0,1,0" BorderBrush="{DynamicResource SeparatorColour}"
             Width="{Binding Sidebar.Width}"
@@ -4041,7 +4062,17 @@
                                  and only that row knows it leads the sidebar.
                                  Bindings reach out through the Window, since
                                  the DataContext here is the place. -->
-                            <Button IsVisible="{Binding LeadsTheSidebar}"
+                            <!-- Named so a drag can tell it apart from the row
+                                 it is drawn inside. It sits in the Home row's
+                                 template and so inherits Home's place as its
+                                 DataContext, and the walk that finds the place
+                                 under the pointer reads exactly that — so with
+                                 the sidebar taking drops, a folder released on
+                                 This PC was copied into the home folder.
+                                 PlaceAt stops on this name, and This PC then
+                                 names nowhere and refuses the drop. -->
+                            <Button x:Name="ComputerRow"
+                                    IsVisible="{Binding LeadsTheSidebar}"
                                     AutomationProperties.Name="{Binding $parent[Window].((vm:ShellViewModel)DataContext).Sidebar.ComputerLabel}"
                                     Command="{Binding $parent[Window].((vm:ShellViewModel)DataContext).Sidebar.OpenComputerCommand}"
                                     Background="Transparent" BorderThickness="0"

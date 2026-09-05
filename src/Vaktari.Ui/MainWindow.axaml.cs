@@ -2244,9 +2244,15 @@ public partial class MainWindow : Window
     ///
     /// Only where the place is a real folder: a share that is not mounted has
     /// nowhere to put anything, and its own row already says so.
+    ///
+    /// This PC is not one of them, though it is drawn inside Home's row and
+    /// carries Home's place — see <see cref="ComputerRowAt"/>. Without that
+    /// line, a folder released on This PC went into the home folder.
     /// </summary>
     private static string? PlaceAt(object? source)
     {
+        if (ComputerRowAt(source)) return null;
+
         for (var visual = source as Visual; visual is not null;
              visual = visual.GetVisualParent())
         {
@@ -2281,6 +2287,79 @@ public partial class MainWindow : Window
     }
 
     /// <summary>
+    /// Whether the pointer is on the sidebar's own GROUND — the blank strip
+    /// under the sections, the gaps between them, a section heading — rather
+    /// than on any of its rows.
+    ///
+    /// **Dropping a folder there was refused.** AllowDrop was on the place row
+    /// and nowhere else, so the drag died over everything else in the panel;
+    /// both references pin a folder dropped on the navigation pane, and here it
+    /// was the one way of adding a place that did not exist.
+    ///
+    /// **Every row keeps what it does, including refusing.** The first draft of
+    /// this answered true for anything in the panel that was not a place row.
+    /// Measured on the real templated tree, that made the panel's ground of
+    /// Scan, Share, "Connect to a server…" and both Recent rows, and the
+    /// remote-mount, discovered-server and share rows are the same shape — so a
+    /// folder released on a remote mount, a row a pointer is aimed at BECAUSE
+    /// it looks like somewhere a folder goes, would have been pinned rather
+    /// than refused. A refusal turning into a different action is worse than
+    /// the refusal; those rows keep theirs until they are given one of their
+    /// own.
+    ///
+    /// The two lines below are the whole rule. Every row and every action in
+    /// this panel is a <see cref="Button"/> — a place row, This PC, a remote
+    /// mount, a discovered server, Scan, Share, Connect, both Recent rows —
+    /// while the ground is panels and text; a section heading is the one button
+    /// that is part of the ground, and it says so with its style class. The
+    /// second line is for the rows that are NOT buttons: a served share and a
+    /// shared link are Borders in the markup, and would fall through the first.
+    /// </summary>
+    private static bool SidebarAt(object? source)
+    {
+        for (var visual = source as Visual; visual is not null;
+             visual = visual.GetVisualParent())
+        {
+            if (visual is not Control control) continue;
+
+            if (control is Button && !control.Classes.Contains("section")) return false;
+
+            if (control.DataContext is PlaceItemViewModel or RemoteMount or DiscoveredService
+                or Core.Sharing.ShareSession or Core.Sharing.DriveLink) return false;
+
+            if (control.Name == "SidebarPanel") return true;
+        }
+
+        return false;
+    }
+
+    /// <summary>
+    /// Whether the pointer is on the This PC row.
+    ///
+    /// **Asked over the whole chain rather than as a step inside
+    /// <see cref="PlaceAt"/>**, and that is forced: DataContext inherits, so
+    /// every control inside the Home row's template — This PC's own label and
+    /// icon included — answers `DataContext is PlaceItemViewModel` with Home. A
+    /// walk that stopped at the first such control would decide "this is the
+    /// Home row" one or two levels below the name and never reach it. Measured:
+    /// with the panel armed and without this, a folder released on This PC was
+    /// copied into the home folder.
+    ///
+    /// The row is drawn there because a DataTemplate cannot ask where it sits,
+    /// and only the first place row knows it leads the sidebar.
+    /// </summary>
+    private static bool ComputerRowAt(object? source)
+    {
+        for (var visual = source as Visual; visual is not null;
+             visual = visual.GetVisualParent())
+        {
+            if (visual is Control { Name: "ComputerRow" }) return true;
+        }
+
+        return false;
+    }
+
+    /// <summary>
     /// Everything a drag needs to know about what is under the pointer.
     ///
     /// **Drag-over and drop used to work this out separately, and disagreed.**
@@ -2292,10 +2371,11 @@ public partial class MainWindow : Window
     /// cannot drift apart again.
     /// </summary>
     private readonly record struct DropTarget(
-        bool IsBin, string? Place, string? Crumb, string? Folder, PaneViewModel? Pane)
+        bool IsBin, bool IsSidebar, string? Place, string? Crumb, string? Folder, PaneViewModel? Pane)
     {
         /// <summary>Somewhere a drop could land. False refuses the drag.</summary>
-        public bool Exists => IsBin || Place is not null || Crumb is not null || Pane is not null;
+        public bool Exists =>
+            IsBin || IsSidebar || Place is not null || Crumb is not null || Pane is not null;
 
         /// <summary>
         /// The folder a drop goes into. Empty for the bin, which is a verb
@@ -2317,7 +2397,7 @@ public partial class MainWindow : Window
     }
 
     private static DropTarget TargetAt(object? source) => new(
-        TrashRowAt(source), PlaceAt(source), CrumbAt(source),
+        TrashRowAt(source), SidebarAt(source), PlaceAt(source), CrumbAt(source),
         FolderRowAt(source), PaneAt(source));
 
     /// <summary>
@@ -3447,6 +3527,23 @@ public partial class MainWindow : Window
             return;
         }
 
+        // **The sidebar's own ground pins**, and like the bin it is answered
+        // before the destination rules, which name no folder for it: measured
+        // by letting a drag over the blank strip fall through to them, the
+        // cursor came back Copy with a destination of "" — so the toolkit would
+        // deliver the drop and the copy path would be handed nowhere to put it.
+        // What the cursor says here is PinPlan.Effect's rule instead, and the
+        // Link it answers is what tells the two apart.
+        if (spot.IsSidebar)
+        {
+            e.DragEffects =
+                Input.PinnableDrop.For(Input.DroppedFileReader.Offered(e.DataTransfer)).Effect;
+
+            HighlightDropTarget(null);
+            StopDragScroll();
+            return;
+        }
+
         // Near an edge of the listing, keep it moving — checked on every
         // drag-over rather than only where the drop would be accepted, because
         // scrolling is how you REACH somewhere that would accept it.
@@ -3719,6 +3816,16 @@ public partial class MainWindow : Window
             var offered = Input.DroppedFileReader.Offered(e.DataTransfer);
 
             if (offered.Count > 0) binPane.TrashPaths(offered);
+            return;
+        }
+
+        // **A folder dropped on the panel becomes a place.** Not awaited: the
+        // pin writes a file, and a drag must not hold the UI thread while it
+        // does. The shell reports what happened on the active tab's status
+        // line, including the files it left alone.
+        if (spot.IsSidebar)
+        {
+            _ = _shell.PinDroppedAsync(Input.DroppedFileReader.Offered(e.DataTransfer));
             return;
         }
 

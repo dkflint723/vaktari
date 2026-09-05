@@ -2578,6 +2578,62 @@ public sealed partial class ShellViewModel : ObservableObject, IDisposable
     }
 
     /// <summary>
+    /// Pins what a drop onto the sidebar's own ground was carrying.
+    ///
+    /// **The gesture had no path into the application at all**: the only way to
+    /// add a place was Ctrl+D or the menu, both of which pin the folder you are
+    /// already in, so a folder you can see in the listing had to be opened
+    /// before it could be pinned. Dropping it on the panel is what both
+    /// references offer instead, and the sidebar refused every drop that was
+    /// not on a row.
+    ///
+    /// The same <c>Sidebar.PinAsync</c> the Ctrl+D command calls, once per
+    /// folder that is not already on the panel.
+    ///
+    /// **The panel's own rows are what "already" is asked of, not the pins
+    /// file**, and that is measured rather than tidy. The provider dedupes a
+    /// pin against the built-in places while BUILDING the list — Windows drops
+    /// one whose path is already Home, Desktop, Downloads, Documents, Pictures,
+    /// Music or Videos — and drives are added afterwards without being deduped
+    /// at all. So a dropped Downloads was written to places.json and never
+    /// drawn, and a dropped <c>D:\</c> appeared a second time as a bookmark
+    /// labelled <c>D:\</c> beside its own device row. Asking PinAsync would
+    /// have answered "not pinned yet" to both. The rendered rows are the only
+    /// thing that knows what is on screen, so they are what is asked.
+    ///
+    /// Awaited rather than fired and forgotten, so a caller can say when it is
+    /// done; the drop handler does not wait, because a drag must not hold the
+    /// UI thread while a file is written.
+    /// </summary>
+    public async Task PinDroppedAsync(IReadOnlyList<string> dropped)
+    {
+        var plan = Input.PinnableDrop.For(dropped);
+
+        // Snapshotted before the first pin: pinning reloads the panel, and a
+        // list read again halfway through would start counting this drop's own
+        // new rows as ones that were "already there".
+        var shown = Sidebar.Groups.SelectMany(g => g.Places).Select(p => p.Path).ToList();
+
+        var already = 0;
+
+        foreach (var folder in plan.Folders)
+        {
+            if (shown.Any(path => Core.FileSystem.PathRules.Same(path, folder)))
+            {
+                already++;
+                continue;
+            }
+
+            await Sidebar.PinAsync(folder).ConfigureAwait(true);
+        }
+
+        // On the active tab because that is where this window says things. The
+        // sidebar has no line of its own, and a pin that reported nothing would
+        // be as silent as the refusal this replaced.
+        if (ActiveTab is { } pane) pane.Status = plan.Report(already);
+    }
+
+    /// <summary>
     /// The way back out, which did not exist: places could be added from two
     /// places and removed from none.
     ///
