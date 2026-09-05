@@ -9,7 +9,7 @@ Newest first. Dates are the day the tag was cut. Versions follow
 [Status](README.md#status): there has been no stable release, and the numbers
 should not be trusted for compatibility yet.
 
-## [Unreleased]
+## [0.10.0] — 2026-09-05
 
 ### Added
 
@@ -3012,7 +3012,25 @@ should not be trusted for compatibility yet.
 
 First tagged releases. Linux tarball and RPM.
 
-[Unreleased]: https://github.com/dkflint723/vaktari/compare/v0.8.1...HEAD
+[Unreleased]: https://github.com/dkflint723/vaktari/compare/v0.10.0...HEAD
+[0.10.0]: https://github.com/dkflint723/vaktari/compare/v0.9.16...v0.10.0
+[0.9.16]: https://github.com/dkflint723/vaktari/compare/v0.9.15...v0.9.16
+[0.9.15]: https://github.com/dkflint723/vaktari/compare/v0.9.14...v0.9.15
+[0.9.14]: https://github.com/dkflint723/vaktari/compare/v0.9.13...v0.9.14
+[0.9.13]: https://github.com/dkflint723/vaktari/compare/v0.9.12...v0.9.13
+[0.9.12]: https://github.com/dkflint723/vaktari/compare/v0.9.11...v0.9.12
+[0.9.11]: https://github.com/dkflint723/vaktari/compare/v0.9.10...v0.9.11
+[0.9.10]: https://github.com/dkflint723/vaktari/compare/v0.9.9...v0.9.10
+[0.9.9]: https://github.com/dkflint723/vaktari/compare/v0.9.8...v0.9.9
+[0.9.8]: https://github.com/dkflint723/vaktari/compare/v0.9.7...v0.9.8
+[0.9.7]: https://github.com/dkflint723/vaktari/compare/v0.9.6...v0.9.7
+[0.9.6]: https://github.com/dkflint723/vaktari/compare/v0.9.5...v0.9.6
+[0.9.5]: https://github.com/dkflint723/vaktari/compare/v0.9.4...v0.9.5
+[0.9.4]: https://github.com/dkflint723/vaktari/compare/v0.9.3...v0.9.4
+[0.9.3]: https://github.com/dkflint723/vaktari/compare/v0.9.2...v0.9.3
+[0.9.2]: https://github.com/dkflint723/vaktari/compare/v0.9.1...v0.9.2
+[0.9.1]: https://github.com/dkflint723/vaktari/compare/v0.9.0...v0.9.1
+[0.9.0]: https://github.com/dkflint723/vaktari/compare/v0.8.1...v0.9.0
 [0.8.1]: https://github.com/dkflint723/vaktari/compare/v0.8.0...v0.8.1
 [0.8.0]: https://github.com/dkflint723/vaktari/compare/v0.7.1...v0.8.0
 [0.7.1]: https://github.com/dkflint723/vaktari/compare/v0.7.0...v0.7.1
