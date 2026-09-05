@@ -29,9 +29,11 @@ level, so you can compare two folders without either side forgetting where it wa
 Copy or move between them from the right-click menu.
 
 **A path bar that works both ways.** Click any part of the breadcrumb to jump to
-that folder, or press `Ctrl+L` to type a path. Typing offers completions as you
-go, and `Tab` cycles through them. `%ProgramFiles%`, `%SystemDrive%`, `~` and
-`$HOME` are understood, along with `%Documents%` and its neighbours.
+that folder, or press the separator after it to list that folder's subfolders and
+go straight into one — sideways and downwards, not only up. `Ctrl+L` types a path
+instead. Typing offers completions as you go, and `Tab` cycles through them.
+`%ProgramFiles%`, `%SystemDrive%`, `~` and `$HOME` are understood, along with
+`%Documents%` and its neighbours.
 
 **Type to jump.** Start typing in any listing and the selection moves to the first
 matching name — no dialog, no search box.

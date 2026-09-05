@@ -31,6 +31,47 @@ public sealed record PathSegment(string Name, string FullPath, ICommand Open, bo
     public bool ShowSeparator => !IsLast && !PathRules.IsRoot(FullPath);
 
     /// <summary>
+    /// What is inside this crumb, as menu rows — filled by <see cref="Menu"/>
+    /// when the press that opens the flyout arrives, and refilled on every
+    /// later press.
+    ///
+    /// **The bar only went UP.** Every crumb navigated to an ancestor and
+    /// nothing anywhere enumerated one, so reaching a SIBLING of the folder you
+    /// are in — the commonest move there is — meant clicking the parent, waiting
+    /// for its listing, and finding the row. Explorer puts that folder's
+    /// contents behind the chevron after each crumb and Dolphin behind the same
+    /// spot; this is that menu.
+    ///
+    /// An ObservableCollection rather than a list handed over whole, because
+    /// the flyout is already open by the time the directory read answers: the
+    /// press opens the popup and starts the read in the same gesture, so the
+    /// rows have to be able to arrive into a menu that is on screen.
+    /// </summary>
+    public ObservableCollection<PathSegment> Children { get; init; } = new();
+
+    /// <summary>
+    /// Fills <see cref="Children"/>. Null for a crumb with nothing to list — the
+    /// ellipsis, which stands for several folders rather than one, and a virtual
+    /// listing that is not This PC.
+    /// </summary>
+    public ICommand? Menu { get; init; }
+
+    /// <summary>Whether this crumb offers the menu of what is inside it, which
+    /// is exactly whether it was given the command that fills one.</summary>
+    public bool HasMenu => Menu is not null;
+
+    /// <summary>
+    /// The separator drawn as plain text rather than as the button that opens
+    /// the menu.
+    ///
+    /// **A crumb with no menu still needs its separator.** The button carries
+    /// the glyph now, so hanging the whole thing off <see cref="HasMenu"/>
+    /// would have dropped the mark after the ellipsis — leaving `C:\ … Vaktari`
+    /// with the two halves of an elided path run together.
+    /// </summary>
+    public bool ShowPlainSeparator => ShowSeparator && !HasMenu;
+
+    /// <summary>
     /// The stand-in for the ancestors there is no room to show.
     ///
     /// **A real crumb rather than something the panel draws**, because

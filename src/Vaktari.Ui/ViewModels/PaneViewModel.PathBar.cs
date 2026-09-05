@@ -229,10 +229,11 @@ public sealed partial class PaneViewModel
         // "C:\" with nothing above it, which is where Explorer shows This PC —
         // and it is the one crumb that makes the other drives reachable without
         // going to the sidebar.
-        Breadcrumbs.Add(new PathSegment(
-            Core.Naming.ComputerTitle, VirtualPaths.Computer,
-            new RelayCommand(() => Detached(NavigateAsync(VirtualPaths.Computer), "navigate")),
-            false));
+        //
+        // Built by Crumb like every other one, so it carries the menu too: This
+        // PC's is the machine's drives, which is what makes the OTHER drive
+        // reachable from the bar rather than only from the sidebar.
+        Breadcrumbs.Add(Crumb(Core.Naming.ComputerTitle, VirtualPaths.Computer, isLast: false));
 
         for (var i = 0; i < levels.Count; i++)
         {
@@ -255,9 +256,12 @@ public sealed partial class PaneViewModel
             // LeafName underneath, unchanged: it gives a root back as itself,
             // so a crumb with no better name reads "/" or "C:\" rather than
             // blank.
-            Breadcrumbs.Add(new PathSegment(
+            // Through Crumb, which hangs the "what is inside this" menu off the
+            // separator after it — the LAST crumb included, where that menu is
+            // the folders of the listing you are looking at, and pressing one
+            // goes in without touching the rows.
+            Breadcrumbs.Add(Crumb(
                 Places?.NameFor(target) ?? PathRules.LeafName(target), target,
-                new RelayCommand(() => Detached(NavigateAsync(target), "navigate")),
                 i == levels.Count - 1));
         }
 

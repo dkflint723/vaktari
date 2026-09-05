@@ -13,6 +13,32 @@ should not be trusted for compatibility yet.
 
 ### Added
 
+- **The path bar goes down as well as up.** Every crumb took you to an ancestor
+  and the mark between two of them was decoration, so the commonest move in a
+  file manager — from a folder to the one beside it — cost a click on the
+  parent, a wait for its whole listing, and a hunt down the rows for a name the
+  bar was already showing. Press the separator after a crumb now and it lists
+  that folder's own subfolders; pick one and you are there. Explorer's chevron
+  and Dolphin's crumb menu are the same gesture in the same place.
+
+  Every crumb carries one, including the two with no separator to press, which
+  get a small chevron instead: the drive at the front of the path, whose menu is
+  the rest of what is on that drive, and the folder you are in, whose menu takes
+  you a level down without touching the listing. This PC's menu is the machine's
+  drives, so the other drive is one press from the bar rather than a trip to the
+  sidebar. The ellipsis standing in for an elided middle has no menu — it is
+  several folders at once rather than one — and keeps its plain separator.
+
+  The menu is the listing's own answer asked from somewhere else: the same
+  order, the same hidden-file rule — turn hidden files off and the menu stops
+  offering them — and folders only, because a menu row that launched a program
+  is not what pressing a separator asks for. It shows at most a hundred, since a
+  row per subfolder of WinSxS is a listing drawn in a popup rather than a menu,
+  and it says at the bottom how many of how many you are looking at, because a
+  menu that stopped at a hundred would otherwise read exactly like a folder
+  that held a hundred. A folder with nothing in it says so, and a folder you
+  have no rights to says that rather than reading as empty.
+
 - **The address bar suggests as you type, and remembers where you have been.**
   It was a bare text box whose tooltip promised that Tab completes and Enter
   goes — true, and everything the bar had: no list of what you might mean, and
@@ -902,6 +928,14 @@ should not be trusted for compatibility yet.
   refused rather than quietly resetting everything to defaults.
 
 ### Fixed
+
+- **A folder with an underscore in its name keeps it in the Back and Forward
+  menus.** A menu row treats the name it is given as a label, and a label's
+  underscore means "the letter after this one is the keyboard shortcut" — so
+  `git_projects` in the history menus was drawn `gitprojects` with the `p`
+  underlined, and picking it took you to the right folder under a name that was
+  not its name. The rows draw their names now instead of reading them for
+  shortcuts, which is what the new crumb menus beside them do too.
 
 - **A *Date created* column, for the folders where that is the thing you sort
   by.** Details had four columns and no way to add a fifth, so a folder of

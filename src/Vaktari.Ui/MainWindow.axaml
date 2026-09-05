@@ -950,6 +950,19 @@
                     <ControlTheme TargetType="MenuItem" BasedOn="{StaticResource {x:Type MenuItem}}"
                                   x:DataType="vm:HistoryStep">
                       <Setter Property="Header" Value="{Binding Name}"/>
+                      <!-- Drawn rather than parsed, the rule the crumbs carry
+                           two hundred lines down and for the same measured
+                           reason: a bare Header goes through the MenuItem
+                           template's ContentPresenter with
+                           RecognizesAccessKey="True", so a step named
+                           "git_projects" drew as an AccessText wanting the
+                           154px of "gitprojects" with its access key set to
+                           "p". A folder name is data, not a label. -->
+                      <Setter Property="HeaderTemplate">
+                        <DataTemplate x:DataType="x:String">
+                          <TextBlock Text="{Binding}"/>
+                        </DataTemplate>
+                      </Setter>
                       <Setter Property="Command" Value="{Binding Open}"/>
                       <Setter Property="ToolTip.Tip" Value="{Binding FullPath}"/>
                     </ControlTheme>
@@ -981,6 +994,19 @@
                     <ControlTheme TargetType="MenuItem" BasedOn="{StaticResource {x:Type MenuItem}}"
                                   x:DataType="vm:HistoryStep">
                       <Setter Property="Header" Value="{Binding Name}"/>
+                      <!-- Drawn rather than parsed, the rule the crumbs carry
+                           two hundred lines down and for the same measured
+                           reason: a bare Header goes through the MenuItem
+                           template's ContentPresenter with
+                           RecognizesAccessKey="True", so a step named
+                           "git_projects" drew as an AccessText wanting the
+                           154px of "gitprojects" with its access key set to
+                           "p". A folder name is data, not a label. -->
+                      <Setter Property="HeaderTemplate">
+                        <DataTemplate x:DataType="x:String">
+                          <TextBlock Text="{Binding}"/>
+                        </DataTemplate>
+                      </Setter>
                       <Setter Property="Command" Value="{Binding Open}"/>
                       <Setter Property="ToolTip.Tip" Value="{Binding FullPath}"/>
                     </ControlTheme>
@@ -1022,6 +1048,24 @@
                     <ControlTheme TargetType="MenuItem" BasedOn="{StaticResource {x:Type MenuItem}}"
                                   x:DataType="vm:RecentPlace">
                       <Setter Property="Header" Value="{Binding Name}"/>
+                      <!-- Drawn rather than parsed, the same rule the two
+                           history flyouts above carry and for the same measured
+                           reason: a bare Header goes through the MenuItem
+                           template's ContentPresenter with
+                           RecognizesAccessKey="True", so a folder named
+                           "git_projects" drew as "gitprojects" with its access
+                           key set to "p". A folder name is data, not a label.
+
+                           This menu shipped without it and the crumb menu's own
+                           theme test is what caught it: that test counts the
+                           menus of this shape and refuses to pass when a new one
+                           appears, precisely so a fourth cannot quietly skip the
+                           check. -->
+                      <Setter Property="HeaderTemplate">
+                        <DataTemplate x:DataType="x:String">
+                          <TextBlock Text="{Binding}"/>
+                        </DataTemplate>
+                      </Setter>
                       <Setter Property="Command" Value="{Binding Open}"/>
                       <Setter Property="ToolTip.Tip" Value="{Binding FullPath}"/>
                     </ControlTheme>
@@ -1238,11 +1282,90 @@
                                      Foreground="{Binding IsLast, Converter={x:Static vm:FileConverters.CrumbBrush}}"
                                      FontSize="{DynamicResource FontSizeBase}"/>
                         </Button>
+                        <!-- **The separator is the way DOWN.** It was a
+                             TextBlock, so a crumb could only take you to an
+                             ancestor and the sibling of the folder you are in —
+                             the commonest move there is — cost a click on the
+                             parent, a full listing of it, and a hunt down the
+                             rows. Explorer hangs that folder's subfolders off
+                             the chevron here and Dolphin off the same spot.
+
+                             The GLYPH is the separator where the crumb has one
+                             and a chevron where it does not: a root carries its
+                             own separator in its name and the folder you are in
+                             has none after it, and those are exactly the two
+                             crumbs whose menu is most worth pressing — the
+                             drive's other folders, and this folder's own.
+
+                             **Every chevron in the bar said the same thing.**
+                             The name beside it is bound, and this was the
+                             literal "What is inside this folder" on all ten
+                             buttons of an ordinary path, so a screen reader
+                             walking the bar heard one sentence ten times with
+                             nothing in it naming which folder it would open. -->
+                        <Button IsVisible="{Binding HasMenu}"
+                                Command="{Binding Menu}"
+                                Background="Transparent" BorderThickness="0"
+                                MinWidth="0" Padding="2,2" Margin="1,0" CornerRadius="3"
+                                VerticalAlignment="Center"
+                                AutomationProperties.Name="{Binding Name, StringFormat='What is inside {0}'}"
+                                ToolTip.Tip="{Binding Name, StringFormat='What is inside {0}'}">
+                          <Panel>
+                            <TextBlock Text="{x:Static vm:PathSegment.Separator}"
+                                       VerticalAlignment="Center"
+                                       IsVisible="{Binding ShowSeparator}"
+                                       Foreground="{DynamicResource ViewDimText}"
+                                       FontSize="{DynamicResource FontSizeSmall}"/>
+                            <Path Data="M9 5 L14 12 L9 19"
+                                  Stroke="{DynamicResource ViewDimText}" StrokeThickness="1.4"
+                                  StrokeLineCap="Round" StrokeJoin="Round" Fill="Transparent"
+                                  Width="9" Height="9" Stretch="Uniform"
+                                  VerticalAlignment="Center"
+                                  IsVisible="{Binding !ShowSeparator}"/>
+                          </Panel>
+                          <!-- The row carries its own command rather than
+                               reaching out through $parent[Window]: a flyout is
+                               its own popup root, and a reach-out would resolve
+                               to the SHELL's active tab, which is the wrong
+                               pane on the quiet half of a split. -->
+                          <Button.Flyout>
+                            <MenuFlyout ItemsSource="{Binding Children}">
+                              <MenuFlyout.ItemContainerTheme>
+                                <ControlTheme TargetType="MenuItem" BasedOn="{StaticResource {x:Type MenuItem}}"
+                                              x:DataType="vm:PathSegment">
+                                  <Setter Property="Header" Value="{Binding Name}"/>
+                                  <!-- The same rule the crumb's own name button
+                                       carries, and for the same reason: a bare
+                                       Header goes through the MenuItem
+                                       template's ContentPresenter, which has
+                                       RecognizesAccessKey="True". Measured in
+                                       the real window: the row for a folder
+                                       named "git_projects" drew through an
+                                       AccessText wanting 154px — the width of
+                                       "gitprojects" — with its access key set
+                                       to "p", against 168px for the name as
+                                       written. A HeaderTemplate is drawn
+                                       instead of parsed, so the underscore
+                                       survives. -->
+                                  <Setter Property="HeaderTemplate">
+                                    <DataTemplate x:DataType="x:String">
+                                      <TextBlock Text="{Binding}"/>
+                                    </DataTemplate>
+                                  </Setter>
+                                  <Setter Property="Command" Value="{Binding Open}"/>
+                                  <Setter Property="ToolTip.Tip" Value="{Binding FullPath}"/>
+                                </ControlTheme>
+                              </MenuFlyout.ItemContainerTheme>
+                            </MenuFlyout>
+                          </Button.Flyout>
+                        </Button>
                         <!-- No trailing separator after the current folder, and
-                             none after a root, which carries its own. -->
+                             none after a root, which carries its own — and the
+                             plain mark only where there is no menu behind it,
+                             which is the ellipsis. -->
                         <TextBlock Text="{x:Static vm:PathSegment.Separator}"
                                    VerticalAlignment="Center" Margin="1,0"
-                                   IsVisible="{Binding ShowSeparator}"
+                                   IsVisible="{Binding ShowPlainSeparator}"
                                    Foreground="{DynamicResource ViewDimText}"
                                    FontSize="{DynamicResource FontSizeSmall}"/>
                       </StackPanel>
