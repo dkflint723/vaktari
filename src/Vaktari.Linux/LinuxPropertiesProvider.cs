@@ -4,8 +4,21 @@ using Vaktari.Core.FileSystem;
 
 namespace Vaktari.Linux;
 
-public sealed class LinuxPropertiesProvider : IPropertiesProvider, IAccessEditor
+public sealed partial class LinuxPropertiesProvider : IPropertiesProvider, IAccessEditor
 {
+    [System.Runtime.InteropServices.LibraryImport("libc", EntryPoint = "geteuid")]
+    private static partial uint GetEuid();
+
+    // Stand-ins for the machine, null in the application. Ownership is four
+    // machine facts -- two files, a uid and a chown -- and a test that had to
+    // arrange all four for real could only run as root on Linux.
+    internal Func<IEnumerable<string>>? PasswdLines { get; init; }
+    internal Func<IEnumerable<string>>? GroupLines { get; init; }
+    internal Func<uint>? Euid { get; init; }
+    internal Func<IReadOnlyList<string>, CancellationToken, Task<(int Code, string Error)>>?
+        RunOverride { get; init; }
+    internal Func<string, string, CancellationToken, ValueTask<string?>>? StatOverride { get; init; }
+
     public async ValueTask<FileDetails> GetAsync(string path, CancellationToken ct)
     {
         var isDirectory = Directory.Exists(path);
@@ -125,9 +138,36 @@ public sealed class LinuxPropertiesProvider : IPropertiesProvider, IAccessEditor
     /// and group *names* — and resolving a uid to a name means nsswitch, which
     /// is not something to reimplement.
     /// </summary>
-    private static async ValueTask<PropertyGroup?> BuildOwnershipAsync(
+    private async ValueTask<PropertyGroup?> BuildOwnershipAsync(
         string path, CancellationToken ct)
     {
+        if (await StatAsync(path, "%U|%G|%i|%h", ct).ConfigureAwait(false) is not { } output)
+            return null;
+
+        var parts = output.Split('|');
+        if (parts.Length < 4) return null;
+
+        return new PropertyGroup("ownership",
+        [
+            new PropertyRow("owner", parts[0]),
+            new PropertyRow("group", parts[1]),
+            new PropertyRow("inode", parts[2]),
+            new PropertyRow("links", parts[3]),
+        ]);
+    }
+
+    /// <summary>
+    /// One stat, in whatever format is asked for, or null when it could not be
+    /// run at all.
+    ///
+    /// **One spawn shared by two callers rather than two spellings of it.** The
+    /// ownership rows and the ownership CHOOSER want the same two names, and
+    /// the second copy of this was the obvious way to get them.
+    /// </summary>
+    private async ValueTask<string?> StatAsync(string path, string format, CancellationToken ct)
+    {
+        if (StatOverride is { } fake) return await fake(path, format, ct).ConfigureAwait(false);
+
         try
         {
             var info = new ProcessStartInfo("stat")
@@ -135,26 +175,18 @@ public sealed class LinuxPropertiesProvider : IPropertiesProvider, IAccessEditor
                 RedirectStandardOutput = true,
                 UseShellExecute = false,
             };
+
             info.ArgumentList.Add("-c");
-            info.ArgumentList.Add("%U|%G|%i|%h");
+            info.ArgumentList.Add(format);
             info.ArgumentList.Add(path);
 
             using var process = Process.Start(info);
             if (process is null) return null;
 
-            var output = (await process.StandardOutput.ReadToEndAsync(ct).ConfigureAwait(false)).Trim();
+            var output = await process.StandardOutput.ReadToEndAsync(ct).ConfigureAwait(false);
             await process.WaitForExitAsync(ct).ConfigureAwait(false);
 
-            var parts = output.Split('|');
-            if (parts.Length < 4) return null;
-
-            return new PropertyGroup("ownership",
-            [
-                new PropertyRow("owner", parts[0]),
-                new PropertyRow("group", parts[1]),
-                new PropertyRow("inode", parts[2]),
-                new PropertyRow("links", parts[3]),
-            ]);
+            return output.Trim();
         }
         catch
         {
@@ -179,21 +211,169 @@ public sealed class LinuxPropertiesProvider : IPropertiesProvider, IAccessEditor
         ("ox", "others", "execute", UnixFileMode.OtherExecute),
     ];
 
-    public ValueTask<AccessState?> GetAccessAsync(string path, CancellationToken ct)
+    public async ValueTask<AccessState?> GetAccessAsync(string path, CancellationToken ct)
     {
+        UnixFileMode mode;
+
         try
         {
-            var mode = File.GetUnixFileMode(path);
-
-            var toggles = Bits
-                .Select(b => new AccessToggle(b.Key, b.Group, b.Label, mode.HasFlag(b.Flag)))
-                .ToList();
-
-            return ValueTask.FromResult<AccessState?>(new AccessState(toggles, Octal(mode)));
+            mode = File.GetUnixFileMode(path);
         }
         catch
         {
-            return ValueTask.FromResult<AccessState?>(null);
+            return null;
+        }
+
+        var toggles = Bits
+            .Select(b => new AccessToggle(b.Key, b.Group, b.Label, mode.HasFlag(b.Flag)))
+            .ToList();
+
+        // **Never allowed to cost the toggles.** Reading the owner is a `stat`
+        // and reading the candidates is two files in /etc; any of those can be
+        // missing on a machine whose accounts come from a directory service,
+        // and a permissions sheet that refused to open because it could not
+        // list the groups would be a worse dialog than the one that opened
+        // without them.
+        Ownership? ownership = null;
+
+        try
+        {
+            if (await ReadOwnerGroupAsync(path, ct).ConfigureAwait(false) is var (owner, group))
+                ownership = Decide(
+                    owner, group,
+                    PasswdLines?.Invoke() ?? ReadLines("/etc/passwd"),
+                    GroupLines?.Invoke() ?? ReadLines("/etc/group"),
+                    Environment.UserName,
+                    root: (Euid?.Invoke() ?? GetEuid()) == 0);
+        }
+        catch
+        {
+            ownership = null;
+        }
+
+        return new AccessState(toggles, Octal(mode)) { Ownership = ownership };
+    }
+
+    /// <summary>
+    /// What the two choosers may offer, which is not everything that exists.
+    ///
+    /// **Only root may give a file away.** chown(2) is root-only precisely so
+    /// somebody cannot dodge a quota by handing their files to a stranger, and
+    /// the owner list is therefore empty for everybody else -- an editable box
+    /// listing every account on the machine, every entry of which is refused,
+    /// is worse than a line of text.
+    ///
+    /// The group is the half an ordinary person can change, and only to a group
+    /// they are IN. Root may pick any of them.
+    ///
+    /// The name already on the file is always in its own list even when it is
+    /// in neither /etc file, which is the NSS case: a chooser that could not
+    /// display the current value would silently propose changing it.
+    /// </summary>
+    internal static Ownership Decide(
+        string owner, string group,
+        IEnumerable<string> passwd, IEnumerable<string> groups,
+        string me, bool root)
+    {
+        var groupLines = groups as IReadOnlyList<string> ?? [.. groups];
+
+        var owners = root ? UnixAccounts.UsersIn(passwd) : [];
+
+        var mine = root
+            ? UnixAccounts.GroupsIn(groupLines)
+            : UnixAccounts.GroupsFor(passwd, groupLines, me);
+
+        // Ordinary people may change the group of files they own, and of
+        // nothing else. Root is not stopped by the check because root never
+        // fails it in a way that matters -- and a root session looking at
+        // somebody else's file is exactly when this is being used.
+        var canChangeGroup = (root || owner == me) && mine.Count > 0;
+
+        return new Ownership(
+            owner, group,
+            With(owners, owner),
+            With(mine, group),
+            CanChangeOwner: root && owners.Count > 0,
+            CanChangeGroup: canChangeGroup);
+    }
+
+    /// <summary>The current value belongs in its own list, once, first.</summary>
+    private static IReadOnlyList<string> With(IReadOnlyList<string> names, string current)
+    {
+        if (current.Length == 0) return names;
+        if (names.Count == 0) return [current];
+
+        return names.Contains(current, StringComparer.Ordinal)
+            ? names
+            : [current, .. names];
+    }
+
+    private static IEnumerable<string> ReadLines(string path)
+        => File.Exists(path) ? File.ReadLines(path) : [];
+
+    /// <summary>The owner and group by name, from the same stat the ownership
+    /// rows are built from.</summary>
+    private async ValueTask<(string Owner, string Group)> ReadOwnerGroupAsync(
+        string path, CancellationToken ct)
+    {
+        if (await StatAsync(path, "%U|%G", ct).ConfigureAwait(false) is not { } output)
+            return ("", "");
+
+        var parts = output.Split('|');
+
+        return parts.Length >= 2 ? (parts[0], parts[1]) : ("", "");
+    }
+
+    public async ValueTask<string?> SetOwnershipAsync(
+        string path, string owner, string group, bool recursive, CancellationToken ct)
+    {
+        // chown takes both at once and this passes both at once: two calls
+        // would leave a file half moved when the second was refused.
+        var argv = new List<string>();
+
+        if (recursive) argv.Add("-R");
+
+        argv.Add(owner + ":" + group);
+        argv.Add(path);
+
+        var (code, error) = await RunAsync(argv, ct).ConfigureAwait(false);
+
+        if (code == 0) return null;
+
+        // chown's own words where it gave any -- "invalid group", "Operation
+        // not permitted" -- because they name which of the two halves was the
+        // problem and a sentence of ours would not.
+        return error.Trim() is { Length: > 0 } said
+            ? said.Replace("chown: ", "", StringComparison.Ordinal)
+            : "that could not be changed";
+    }
+
+    private async Task<(int Code, string Error)> RunAsync(
+        IReadOnlyList<string> argv, CancellationToken ct)
+    {
+        if (RunOverride is { } fake) return await fake(argv, ct).ConfigureAwait(false);
+
+        try
+        {
+            var info = new ProcessStartInfo("chown")
+            {
+                RedirectStandardError = true,
+                UseShellExecute = false,
+            };
+
+            foreach (var arg in argv) info.ArgumentList.Add(arg);
+
+            using var process = Process.Start(info);
+            if (process is null) return (-1, "chown could not be started");
+
+            var error = await process.StandardError.ReadToEndAsync(ct).ConfigureAwait(false);
+            await process.WaitForExitAsync(ct).ConfigureAwait(false);
+
+            return (process.ExitCode, error);
+        }
+        catch (Exception ex)
+        {
+            return (-1, ex.Message);
         }
     }
 

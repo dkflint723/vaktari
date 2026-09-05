@@ -55,6 +55,40 @@
           <TextBlock Text="Permissions" FontSize="{DynamicResource FontSizeSmall}" Opacity="0.45"/>
         </DockPanel>
 
+        <!-- **Owner and group were two lines of text.** They are two thirds of
+             what a mode MEANS - "group: read, write" says nothing until you
+             know which group - and a sheet that set the bits and not the
+             principals answered a third of the question.
+
+             Above the bits deliberately: the bits are read as belonging to
+             these two names, so the names have to be on screen first.
+
+             Each box is enabled only where the change would be allowed.
+             chown(2) is root-only, so the owner box is dead for everybody
+             else, and the group box is live only for a file you own and only
+             over groups you are in - which is what the provider puts in the
+             lists. -->
+        <Grid ColumnDefinitions="Auto,*,Auto,*" RowDefinitions="Auto"
+              IsVisible="{Binding HasOwnership}" Margin="0,2,0,2">
+          <TextBlock Grid.Column="0" Text="Owner" VerticalAlignment="Center"
+                     FontSize="{DynamicResource FontSizeSmall}" Opacity="0.55"
+                     Margin="0,0,8,0"/>
+          <ComboBox Grid.Column="1" ItemsSource="{Binding OwnerChoices}"
+                    SelectedItem="{Binding Owner}"
+                    IsEnabled="{Binding CanEditOwner}"
+                    HorizontalAlignment="Stretch"
+                    FontSize="{DynamicResource FontSizeSmall}"/>
+
+          <TextBlock Grid.Column="2" Text="Group" VerticalAlignment="Center"
+                     FontSize="{DynamicResource FontSizeSmall}" Opacity="0.55"
+                     Margin="14,0,8,0"/>
+          <ComboBox Grid.Column="3" ItemsSource="{Binding GroupChoices}"
+                    SelectedItem="{Binding Group}"
+                    IsEnabled="{Binding CanEditGroup}"
+                    HorizontalAlignment="Stretch"
+                    FontSize="{DynamicResource FontSizeSmall}"/>
+        </Grid>
+
         <ItemsControl ItemsSource="{Binding Access}">
           <ItemsControl.ItemsPanel>
             <ItemsPanelTemplate>

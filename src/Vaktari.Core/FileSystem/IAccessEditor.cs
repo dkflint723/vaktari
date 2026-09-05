@@ -8,7 +8,39 @@ namespace Vaktari.Core.FileSystem;
 /// </summary>
 public sealed record AccessToggle(string Key, string Group, string Label, bool Value);
 
-public sealed record AccessState(IReadOnlyList<AccessToggle> Toggles, string Summary);
+/// <summary>
+/// Who a file belongs to, and who it could belong to.
+///
+/// **Owner and group reached the window as two lines of text.** They are two
+/// thirds of what a POSIX mode MEANS -- "group: read, write" says nothing until
+/// you know which group -- and a dialog that lets you set the bits and not the
+/// principals answers half the question. Dolphin and Nautilus both offer them.
+///
+/// <paramref name="Owners"/> and <paramref name="Groups"/> are what a chooser
+/// may offer, which is not the same as everything that exists: a person who is
+/// not root may only hand a file to a group they are in, so the list is theirs
+/// rather than the machine's.
+/// </summary>
+public sealed record Ownership(
+    string Owner,
+    string Group,
+    IReadOnlyList<string> Owners,
+    IReadOnlyList<string> Groups,
+    bool CanChangeOwner,
+    bool CanChangeGroup);
+
+public sealed record AccessState(IReadOnlyList<AccessToggle> Toggles, string Summary)
+{
+    /// <summary>
+    /// Null where the platform has no such notion, which is how the window
+    /// decides whether to draw the two choosers at all.
+    ///
+    /// An init-only member rather than a fourth positional one: every existing
+    /// construction of this record is a platform's own, and adding a required
+    /// parameter would have made "no ownership" impossible to say.
+    /// </summary>
+    public Ownership? Ownership { get; init; }
+}
 
 public interface IAccessEditor
 {
@@ -39,6 +71,28 @@ public interface IAccessEditor
         bool recursive,
         IProgress<int>? progress,
         CancellationToken ct);
+
+    /// <summary>
+    /// Hands the file to somebody else.
+    ///
+    /// Both at once, because the tool underneath takes both at once and two
+    /// calls would leave a file half moved when the second was refused.
+    /// </summary>
+    /// <returns>
+    /// Null when it took, and the reason in words when it did not.
+    ///
+    /// **Words rather than a bool**, for the reason the recursive apply above
+    /// already gives: "changing the owner needs root" and "there is no such
+    /// group" are different problems with different answers, and a dialog that
+    /// says only "failed" sends somebody to a terminal to find out which.
+    ///
+    /// Defaulted to a refusal so a platform with no notion of ownership does
+    /// not have to write one -- the window never asks, because
+    /// <see cref="AccessState.Ownership"/> is null there.
+    /// </returns>
+    ValueTask<string?> SetOwnershipAsync(
+        string path, string owner, string group, bool recursive, CancellationToken ct)
+        => ValueTask.FromResult<string?>("this platform does not have file owners");
 }
 
 /// <summary>

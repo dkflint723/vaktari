@@ -52,6 +52,33 @@ public sealed partial class PropertiesViewModel : ObservableObject
     [ObservableProperty] private string _accessSummary = "";
     [ObservableProperty] private string _accessStatus = "";
 
+    // ---- who it belongs to ------------------------------------------------
+    //
+    // **The two names were text.** A mode is three sets of bits and two
+    // principals, and a sheet that let you set the bits and not the principals
+    // answered two thirds of the question -- "group: read, write" says nothing
+    // until you know WHICH group. Both desktops offer them.
+
+    [ObservableProperty] private bool _hasOwnership;
+    [ObservableProperty] private bool _canEditOwner;
+    [ObservableProperty] private bool _canEditGroup;
+    [ObservableProperty] private string _owner = "";
+    [ObservableProperty] private string _group = "";
+
+    public ObservableCollection<string> OwnerChoices { get; } = new();
+    public ObservableCollection<string> GroupChoices { get; } = new();
+
+    /// <summary>
+    /// What was on the file when the window opened.
+    ///
+    /// **Compared rather than sent unconditionally.** chown is refused for
+    /// everybody but root, so a sheet that ran it on every Apply would report a
+    /// permission failure to somebody who only ticked a box -- and it would be
+    /// telling the truth about a change they never asked for.
+    /// </summary>
+    private string _loadedOwner = "";
+    private string _loadedGroup = "";
+
     private async Task LoadAccessAsync(string path, bool isDirectory)
     {
         if (_access is not { CanEdit: true }) return;
@@ -67,7 +94,65 @@ public sealed partial class PropertiesViewModel : ObservableObject
             AccessSummary = state.Summary;
             CanEditAccess = true;
             CanRecurse = isDirectory;
+
+            HasOwnership = state.Ownership is not null;
+
+            if (state.Ownership is { } owned)
+            {
+                _loadedOwner = Owner = owned.Owner;
+                _loadedGroup = Group = owned.Group;
+
+                Fill(OwnerChoices, owned.Owners);
+                Fill(GroupChoices, owned.Groups);
+
+                CanEditOwner = owned.CanChangeOwner;
+                CanEditGroup = owned.CanChangeGroup;
+            }
         });
+    }
+
+    /// <summary>
+    /// Hands the files to whoever the two boxes now name, if anybody changed
+    /// them.
+    ///
+    /// <returns>Null when there was nothing to do or it took; the reason in
+    /// words when it did not.</returns>
+    ///
+    /// **Nothing sent when nothing moved.** chown is refused for everybody but
+    /// root, so running it on every Apply would report a permission failure to
+    /// somebody who only ticked a box — and it would be telling the truth about
+    /// a change they had not asked for.
+    ///
+    /// The first refusal ends it, and that is the same rule the recursive apply
+    /// follows: the reason is almost always about the caller rather than about
+    /// the file, so carrying on collects the same sentence once per path.
+    /// </summary>
+    private async ValueTask<string?> HandOverAsync()
+    {
+        if (_access is null || !HasOwnership) return null;
+        if (Owner == _loadedOwner && Group == _loadedGroup) return null;
+
+        foreach (var path in _paths)
+        {
+            var refused = await _access
+                .SetOwnershipAsync(path, Owner, Group, ApplyRecursively, CancellationToken.None)
+                .ConfigureAwait(false);
+
+            if (refused is not null) return refused;
+        }
+
+        return null;
+    }
+
+    /// <summary>
+    /// Replaces the contents in place. The collections are bound, so assigning
+    /// a new one would leave the box pointed at the old list.
+    /// </summary>
+    private static void Fill(ObservableCollection<string> into, IReadOnlyList<string> names)
+    {
+        into.Clear();
+
+        foreach (var name in names) into.Add(name);
     }
 
     [RelayCommand]
@@ -95,10 +180,22 @@ public sealed partial class PropertiesViewModel : ObservableObject
                 first ??= outcome.FirstFailure;
             }
 
+            // **The names before the read-back, or the read-back reports the
+            // old ones.** LoadAccessAsync re-reads the owner from the file, so
+            // a chown applied after it would show as having done nothing until
+            // the window was reopened.
+            var handover = await HandOverAsync().ConfigureAwait(false);
+
             // Read back rather than trusting what we sent — the filesystem may
             // have refused part of it, and showing the request as if it were
             // the result would be a lie.
             await LoadAccessAsync(_paths[0], CanRecurse).ConfigureAwait(false);
+
+            if (handover is { } refused)
+            {
+                await Dispatcher.UIThread.InvokeAsync(() => AccessStatus = refused);
+                return;
+            }
 
             // **"applied" only when it was.** A recursive apply skips whatever
             // it cannot write, and saying so is the whole point of a

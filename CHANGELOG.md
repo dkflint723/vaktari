@@ -13,6 +13,18 @@ should not be trusted for compatibility yet.
 
 ### Added
 
+- **On Linux, owner and group can be changed from Properties.** They were two
+  lines of text on a sheet whose whole job is permissions — and they are two
+  thirds of what a permission means, because "group: read, write" says nothing
+  until you know which group. Both are choosers now, each live only where the
+  change would actually be allowed: handing a file to somebody else needs root,
+  which is a kernel rule and not one Vaktari invented, and moving a file into a
+  different group needs you to own it and to be in that group. The lists follow
+  the same rule, so they offer what will work rather than everything that
+  exists. "Apply to contents" carries through to both. A refusal is reported in
+  the words the system gave — "invalid group" and "operation not permitted" send
+  you to two different places, and "failed" sends you to a terminal.
+
 - **The transfer bar stops reporting sizes it does not have, and stops offering
   buttons that do nothing.** Sending five files to the bin read "0/5  0 B/0 B"
   from beginning to end: nothing measures files on their way to the recycle bin,
