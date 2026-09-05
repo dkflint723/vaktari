@@ -112,6 +112,15 @@ internal static class KeyBindingSites
         {
             var line = raw.Trim();
 
+            // **A comment is not a binding, and one of them said it was.**
+            // MEASURED: the sidebar's step chain carries a comment reading
+            // "it reads those claims from `e.Key == Key.X`", and the guard
+            // pattern below matched it -- so a bare X came back as a handled
+            // gesture, alongside the real Ctrl+X. Nothing noticed while this
+            // set was only used to check that PRINTED keys are bound; it
+            // surfaced the moment the set was also used the other way round.
+            if (line.StartsWith("//", StringComparison.Ordinal)) continue;
+
             var label = Regex.Match(line, CaseLabel);
 
             if (label.Success)

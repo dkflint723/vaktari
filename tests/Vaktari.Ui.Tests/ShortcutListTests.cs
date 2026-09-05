@@ -33,12 +33,24 @@ public sealed class ShortcutListTests
         throw new FileNotFoundException("could not find MainWindow.axaml");
     }
 
-    /// <summary>Every Gesture="..." the window binds.</summary>
+    /// <summary>
+    /// Every gesture the window answers, from BOTH places it can answer one.
+    ///
+    /// **It read the markup alone, and that let a whole class of key go
+    /// unprinted.** A markup KeyBinding is claimed before the focused control
+    /// sees the key, which is right for F5 and catastrophic for Ctrl+V, so
+    /// every gesture a text cursor owns is handled in the code-behind instead
+    /// -- and by harvesting only <c>Gesture="..."</c>, nothing forced any of
+    /// those onto the sheet. The Menu key showed it: it has opened the context
+    /// menu since the background menu landed, and no test minded that the
+    /// sheet never said so.
+    /// </summary>
     public static TheoryData<string> Bound
     {
         get
         {
             var data = new TheoryData<string>();
+            var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
 
             foreach (var line in Markup().Split('\n'))
             {
@@ -50,12 +62,24 @@ public sealed class ShortcutListTests
                 var from = at + "Gesture=\"".Length;
                 var to = line.IndexOf('"', from);
 
-                if (to > from) data.Add(line[from..to]);
+                if (to > from && seen.Add(line[from..to])) data.Add(line[from..to]);
             }
+
+            foreach (var gesture in KeyBindingSites.CodeBehindHandled())
+                if (!Sheetless.Contains(gesture) && seen.Add(gesture)) data.Add(gesture);
 
             return data;
         }
     }
+
+    /// <summary>
+    /// Keys the code-behind answers that have no business on a sheet of
+    /// shortcuts. Kept deliberately short: anything named here stops being
+    /// checked, so the bar is "printing it would be wrong", not "printing it
+    /// is awkward".
+    /// </summary>
+    private static readonly HashSet<string> Sheetless =
+        new(StringComparer.OrdinalIgnoreCase) { "Escape", "Enter" };
 
     /// <summary>
     /// The same gesture written the way somebody reads it. The markup spells
@@ -101,6 +125,15 @@ public sealed class ShortcutListTests
             "Up" => "↑",
             "Down" => "↓",
 
+            // Avalonia's name for it; every keyboard that has the key
+            // prints "Menu" on it, and nobody looking it up would search
+            // for "Apps".
+            "Apps" => "Menu",
+
+            // Avalonia's Key.Back IS Backspace -- Key.BrowserBack is the other
+            // one -- and the sheet prints the word on the keycap.
+            "Back" => "Backspace",
+
             // The top row's digits: Avalonia calls them D0..D9 and a keyboard
             // is printed with the number alone. Asked of the whole segment, so
             // it cannot reach the D of a modifier — Alt+D is a key of its own,
@@ -145,7 +178,13 @@ public sealed class ShortcutListTests
             // Pointer gestures and ranges are real entries that no key table
             // can hold: "ctrl+drag" is a mouse gesture, "ctrl+1…9" is nine
             // bindings written as one line, and the side buttons are not keys.
-            string[] notKeys = ["drag", "click", "wheel", "forward", "back", "…"];
+            // **"back" was in here and did not need to be**, and it cost a
+            // check: the only row it was for is "Mouse back / forward", whose
+            // first half has a space in it and is dropped a line below either
+            // way -- while "Backspace" contains it, so the one key on this
+            // sheet whose meaning is a preference was never checked as bound
+            // at all.
+            string[] notKeys = ["drag", "click", "wheel", "forward", "…"];
 
             foreach (var key in Shortcuts.All
                          .SelectMany(g => g.Keys)

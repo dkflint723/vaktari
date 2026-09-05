@@ -90,7 +90,11 @@ public static class Shortcuts
             // The other half of F6: it delivered you to a panel with no way to
             // move in it, so the key that got you there was the only one that
             // worked once you had arrived.
-            new("↑", "Move up the sidebar, once F6 has taken you there"),
+            // All four, not just the one. Home and End walk to the first and
+            // last place and were printed nowhere -- and the drift test could
+            // not have said so, because it read only the markup and every key
+            // in the sidebar is answered in the code-behind.
+            new("↑ / ↓ / Home / End", "Move in the sidebar, once F6 has taken you there"),
             new("Ctrl+Tab", "Next tab"),
             new("Ctrl+Page Down", "Next tab"),
             new("Ctrl+Page Up", "Previous tab"),
@@ -159,6 +163,12 @@ public static class Shortcuts
             new("Ctrl+Shift+N", "New folder"),
             new("Ctrl+Shift+C", "Copy as path"),
             new("Alt+Enter", "Properties"),
+            // **The keyboard route to the right-click menu, printed nowhere.**
+            // Both spellings have worked since the menu learnt to answer empty
+            // space, and the sheet checked itself against the markup only --
+            // where neither of these lives, because a menu that must open at
+            // the focused row needs the row, not a command.
+            new("Menu / Shift+F10", "The right-click menu, where the keyboard is"),
             new("Space", "Quick preview"),
             new("F4", "Open a terminal here"),
         ]),

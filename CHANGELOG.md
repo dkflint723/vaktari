@@ -13,6 +13,15 @@ should not be trusted for compatibility yet.
 
 ### Added
 
+- **The F1 sheet prints the Menu key and the sidebar's Home and End.** Menu and
+  Shift+F10 open the right-click menu from the keyboard and appeared nowhere;
+  Home and End walk to the first and last place in the sidebar and appeared
+  nowhere either. The list is cross-checked against the application so it cannot
+  fall behind, and the check was reading only the keys bound in the window's
+  markup — which is the half a text cursor does not own. Every key the window
+  answers from either place is checked now, so a key that works and is not
+  printed fails a test rather than going unnoticed.
+
 - **Compress to ZIP and Extract all are Vaktari's own verbs now.** There was no
   compress and no extract anywhere in the application: every route to a zip went
   through the hosted Windows menu, so it depended on what the machine happened
