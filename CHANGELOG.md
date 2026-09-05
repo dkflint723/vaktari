@@ -760,6 +760,13 @@ should not be trusted for compatibility yet.
 
 ### Fixed
 
+- **The drive in the path bar is called what the sidebar calls it.** The tab
+  above it learned to say *Windows (C:)* a while ago; the breadcrumb directly
+  under it still said `C:\`, so one window showed two names for one drive three
+  inches apart — with the raw one in the bar you read to know where you are. A
+  network share above the folder you are in gets its own name the same way.
+  Ordinary folders are unaffected.
+
 - **A new bin policy is acted on when you save it, not up to an hour later.**
   Setting *delete after 7 days* over a bin full of three-week-old files and
   pressing Save changed nothing you could see — the clear-out ran once when

@@ -119,10 +119,25 @@ public sealed partial class PaneViewModel
         {
             var target = levels[i];
 
-            // LeafName, not the raw segment: it gives a root back as itself, so
-            // the first crumb reads "/" or "C:\" rather than blank.
+            // **The root crumb read "C:\".** The tab above it was taught the
+            // sidebar's name for a drive; the crumb directly under it was not,
+            // so one window showed "Windows (C:)" and "C:\" for one drive,
+            // three inches apart, with the raw one in the bar you read to know
+            // where you are.
+            //
+            // Asked for every crumb rather than only the first, because the
+            // dictionary behind it holds drive roots and network share roots
+            // and nothing else — measured: it is built from the devices and
+            // shares groups only, never from the user's pinned places — so an
+            // ordinary folder gets null and falls through. A share root that
+            // happens to be an ANCESTOR is named too, which is the same
+            // improvement one level down.
+            //
+            // LeafName underneath, unchanged: it gives a root back as itself,
+            // so a crumb with no better name reads "/" or "C:\" rather than
+            // blank.
             Breadcrumbs.Add(new PathSegment(
-                PathRules.LeafName(target), target,
+                Places?.NameFor(target) ?? PathRules.LeafName(target), target,
                 new RelayCommand(() => Detached(NavigateAsync(target), "navigate")),
                 i == levels.Count - 1));
         }

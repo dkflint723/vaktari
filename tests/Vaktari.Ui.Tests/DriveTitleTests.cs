@@ -103,6 +103,91 @@ public sealed class DriveTitleTests : OwnedViewModels
         Assert.Equal(PathRules.LeafName(Root), pane.Title);
     }
 
+    // ---- and the crumb under it ---------------------------------------------
+
+    /// <summary>The crumbs as they read, top to bottom.</summary>
+    private static List<string> Crumbs(PaneViewModel pane)
+        => [.. pane.Breadcrumbs.Select(c => c.Name)];
+
+    /// <summary>
+    /// **The other half of the same finding.** The tab was taught the
+    /// sidebar's name for a drive and the crumb directly under it was not, so
+    /// one window showed "Windows (C:)" and "C:\" for one drive, three inches
+    /// apart — with the raw one in the bar you read to know where you are.
+    /// </summary>
+    [AvaloniaFact]
+    public async Task The_root_crumb_is_named_the_way_the_sidebar_names_it()
+    {
+        var pane = Pane(new Names { [Root] = "Windows (C:)" });
+
+        await pane.NavigateAsync(Root);
+
+        Assert.Contains("Windows (C:)", Crumbs(pane));
+        Assert.DoesNotContain(PathRules.LeafName(Root), Crumbs(pane));
+    }
+
+    /// <summary>
+    /// **Every crumb asks, not only the first**, so a network share sitting
+    /// above the folder you are in gets the sidebar's name for it too.
+    ///
+    /// The fake here deliberately answers for an ordinary folder, which the
+    /// real providers never do — measured: both build that dictionary from the
+    /// devices and shares groups only, never from the user's pinned places. So
+    /// this separates "asks for every crumb" from "asks and then throws the
+    /// answer away", which nothing else here can tell apart. What happens on a
+    /// real machine, where the provider has nothing to say about a folder, is
+    /// the test below.
+    /// </summary>
+    [AvaloniaFact]
+    public async Task Every_crumb_asks_for_a_better_name()
+    {
+        var folder = Path.Combine(Path.GetTempPath(), "vaktari-crumb-" + Guid.NewGuid().ToString("N")[..8]);
+
+        Directory.CreateDirectory(folder);
+
+        try
+        {
+            var pane = Pane(new Names { [Root] = "Windows (C:)", [folder] = "Named by the sidebar" });
+
+            await pane.NavigateAsync(folder);
+
+            Assert.Contains("Named by the sidebar", Crumbs(pane));
+            Assert.DoesNotContain(Path.GetFileName(folder), Crumbs(pane));
+        }
+        finally
+        {
+            Directory.Delete(folder);
+        }
+    }
+
+    /// <summary>
+    /// **And a crumb the provider has nothing to say about is untouched** —
+    /// both the root and the folder under it, which is every crumb an ordinary
+    /// folder on a real machine produces. This is what all of them did until
+    /// now, and the half that must not change.
+    /// </summary>
+    [AvaloniaFact]
+    public async Task A_provider_with_nothing_to_add_leaves_the_crumbs_alone()
+    {
+        var folder = Path.Combine(Path.GetTempPath(), "vaktari-crumb-" + Guid.NewGuid().ToString("N")[..8]);
+
+        Directory.CreateDirectory(folder);
+
+        try
+        {
+            var pane = Pane(new Names());
+
+            await pane.NavigateAsync(folder);
+
+            Assert.Contains(PathRules.LeafName(Root), Crumbs(pane));
+            Assert.Contains(Path.GetFileName(folder), Crumbs(pane));
+        }
+        finally
+        {
+            Directory.Delete(folder);
+        }
+    }
+
     /// <summary>
     /// Names only what it was told about, so a place list that has not loaded
     /// yet cannot make a tab wait or mis-title one.
