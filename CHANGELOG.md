@@ -13,6 +13,17 @@ should not be trusted for compatibility yet.
 
 ### Added
 
+- **On Windows, the New menu offers what Explorer offers.** It was fed from
+  `%APPDATA%\Microsoft\Windows\Templates`, which nothing populates — measured at
+  0 files on a machine where Office, VMware and Proton Drive had each registered
+  a new-file type. It reads the `ShellNew` keys now, which is where Explorer's
+  own New submenu comes from, so the rows are the ones you already expect.
+
+  Rows Vaktari cannot honour are left off rather than shown and then failing: a
+  type whose New runs a wizard (a shortcut, for one) belongs to that wizard, and
+  offering it would have put an unopenable 0-byte file in the folder under the
+  wizard's name.
+
 - **On Linux, application launchers are listed by their name and their icon.**
   A folder of `.desktop` files — the desktop itself, `~/.local/share/applications`,
   the folder every KDE application ships its entry into — read as a column of

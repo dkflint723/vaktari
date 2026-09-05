@@ -108,6 +108,80 @@ public sealed class NewItemNamingTests : OwnedViewModels
                     "made: " + string.Join(", ", Directory.GetFiles(_root).Select(Path.GetFileName)));
     }
 
+    /// <summary>
+    /// **A template with no file behind it had nowhere to come from.** This
+    /// route was a bare File.Copy, and Explorer's New menu is the ShellNew
+    /// registry keys — where the one row Windows itself ships, "Compressed
+    /// (zipped) Folder", carries its 22 bytes inline. That is the
+    /// end-of-central-directory record of an empty archive, and no file on the
+    /// machine holds it: measured, the six rows this provider offers are five
+    /// Office seed files and that one, so a copy-only route lost exactly the
+    /// row nobody had to install anything to get.
+    ///
+    /// The name still comes from Path, which for these is a leaf and not a
+    /// place on disk.
+    /// </summary>
+    [AvaloniaFact]
+    public async Task A_template_that_carries_its_bytes_is_written_rather_than_copied()
+    {
+        byte[] emptyZip =
+            [0x50, 0x4B, 0x05, 0x06, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0];
+
+        var pane = Pane();
+
+        await pane.NewFromTemplateAsync(
+            new FileTemplate("Compressed (zipped) Folder", "Compressed (zipped) Folder.zip")
+            {
+                Content = emptyZip,
+            });
+
+        var made = At("Compressed (zipped) Folder.zip");
+
+        Assert.True(File.Exists(made), pane.Status);
+        Assert.Equal(emptyZip, File.ReadAllBytes(made));
+    }
+
+    /// <summary>
+    /// **The copy used to be called whatever the seed was called.** Measured on
+    /// Windows 11 26200: the Access row's ShellNew key points at
+    /// <c>…\Office16\1033\ACCESS12.ACC</c>, so "New &gt; Microsoft Access
+    /// Database" made a file called ACCESS12.ACC — not the row's name, and not
+    /// even the .accdb the row is for. Word, Excel, PowerPoint and Publisher
+    /// were the same, which is five of the six rows the Windows provider
+    /// offers. Explorer's answer to that key is
+    /// "New Microsoft Access Database.accdb".
+    ///
+    /// Leaf is the row's answer to "what is it called"; Path stays the file to
+    /// copy the bytes out of. A Linux template sets no Leaf, because the user
+    /// named the file themselves — which is what
+    /// <see cref="A_template_whose_name_starts_with_a_dot_keeps_it"/> holds.
+    /// </summary>
+    [AvaloniaFact]
+    public async Task A_copied_template_is_called_what_the_row_says_not_what_the_seed_is_called()
+    {
+        var seeds = Directory.CreateDirectory(Path.Combine(_root, "office")).FullName;
+        var seed = Path.Combine(seeds, "ACCESS12.ACC");
+
+        File.WriteAllText(seed, "an Access seed file");
+
+        var pane = Pane();
+
+        await pane.NewFromTemplateAsync(
+            new FileTemplate("Microsoft Access Database", seed)
+            {
+                Leaf = "Microsoft Access Database.accdb",
+            });
+
+        var made = At("Microsoft Access Database.accdb");
+
+        Assert.True(File.Exists(made),
+                    "made: " + string.Join(", ", Directory.GetFiles(_root).Select(Path.GetFileName)));
+
+        // Path is still where the bytes come from — renaming the destination
+        // must not turn the copy into an empty file.
+        Assert.Equal("an Access seed file", File.ReadAllText(made));
+    }
+
     private sealed class Inert : IFileSystemProvider
     {
         public async IAsyncEnumerable<IReadOnlyList<FileEntry>> EnumerateAsync(

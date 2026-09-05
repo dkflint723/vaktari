@@ -128,7 +128,11 @@ are path assumptions, not APIs — see §5.
   `UseShellExecute = true`. Easier than the Linux `.desktop` parsing.
 - **`ISearchProvider`** — a directory walk. The Linux one shells out to `find`;
   a managed walk is fine and more portable.
-- **`ITemplateProvider`** — Windows has `%APPDATA%\Microsoft\Windows\Templates`.
+- **`ITemplateProvider`** — the per-extension `ShellNew` keys under
+  `HKEY_CLASSES_ROOT`, which is what Explorer's own New submenu is built from.
+  `%APPDATA%\Microsoft\Windows\Templates` looks like the ~/Templates analogue and
+  was tried first; nothing populates it, and it measured 0 files on a machine
+  where Office, VMware and Proton Drive had each registered a ShellNew key.
 - **`IScriptRunner`** — same shape, different interpreter conventions.
 
 ### Moderate — real work but well-trodden
