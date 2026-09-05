@@ -770,6 +770,17 @@ should not be trusted for compatibility yet.
 
 ### Fixed
 
+- **Undoing a batch rename is one press of Ctrl+Z, not one per file.** Renaming
+  forty photos put forty separate steps on the undo stack, so putting the batch
+  back meant pressing Ctrl+Z forty times — and the Undo row named whichever
+  single file happened to be on top rather than the rename you had done. The
+  whole batch is now one step, named for the batch.
+
+  If one name cannot be given back — because something else has taken it in
+  the meantime — the rest of the batch is still put back, and only that one
+  file is left where it is. A swap comes back through the temporary name it
+  went out through, and that temporary name is never what the Undo row says.
+
 - **Settings has a *Restore defaults* button.** There was no way back. Nine
   sections on the General page and five more pages, every one of them
   remembering what it was last set to, and the only route to the defaults was

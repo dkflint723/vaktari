@@ -177,4 +177,55 @@ public interface IFileOperations
     /// <summary>What the next redo would put back, or null when there is
     /// nothing to put back.</summary>
     string? RedoDescription { get; }
+
+    /// <summary>
+    /// Gathers every rename performed until the group is disposed into ONE undo
+    /// step. Null from a provider that keeps no history to gather.
+    ///
+    /// **A batch rename was one undo step per file.** Renumbering forty
+    /// photographs pushed forty entries, so taking the dialog back meant forty
+    /// presses of Ctrl+Z, each naming a single file — and a swap pushed MORE
+    /// entries than there were files, because breaking a cycle costs a staging
+    /// rename and that landed on the stack too. The dialog performs one act, so
+    /// the history should hold one act.
+    ///
+    /// **Renames only, deliberately.** Copy, move and trash all record from
+    /// inside the Task.Run that carries out the work, so a group that caught
+    /// everything would swallow a copy that merely happened to finish while it
+    /// was open — a copy started beforehand goes on running in its own task.
+    /// <see cref="RenameAsync"/> records on the thread that called it, so what
+    /// joins the group is exactly what the caller asked for.
+    /// </summary>
+    IUndoGroup? BeginRenameGroup();
+}
+
+/// <summary>
+/// Several operations being gathered into one undo step, closed by disposing
+/// it.
+///
+/// The steps inside are taken back in the reverse of the order they were
+/// performed, which is the only order that works: a renumber is drained from
+/// the far end of its chain, so going forward puts img004 back to img003 before
+/// the old img002 has left that name. A swap refuses one step later — going
+/// forward reaches the staging move, finds the staging name vacant because the
+/// parked file has already gone on to b, skips it, and then asks the file now
+/// called a to go back to b, which the parked file is sitting on.
+///
+/// A name that will not come back — taken again in the meantime — is skipped
+/// rather than abandoning the rest of the batch, because the per-file history
+/// this replaces lost only the press it was on.
+/// </summary>
+public interface IUndoGroup : IDisposable
+{
+    /// <summary>
+    /// What the finished step is called in the Undo row — this and nothing
+    /// else, however many renames the group ended up holding.
+    ///
+    /// Settable, and set as the work proceeds rather than when the group opens,
+    /// because a batch that stops halfway has to be named for what it actually
+    /// did: only the renames that went through are in the group, and a name
+    /// fixed up front would offer "rename of 40 items" for the three that
+    /// landed.
+    /// </summary>
+    string Description { get; set; }
 }

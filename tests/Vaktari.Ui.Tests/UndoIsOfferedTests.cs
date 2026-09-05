@@ -260,6 +260,10 @@ public sealed class UndoIsOfferedTests : OwnedViewModels
             => ValueTask.CompletedTask;
 
         public void RecordCreation(string path) { }
+
+        /// <summary>The history here is whatever the test says it is, and no
+        /// test says anything about grouping.</summary>
+        public IUndoGroup? BeginRenameGroup() => null;
     }
 
     private sealed class Silent : IFileSystemProvider

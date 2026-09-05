@@ -161,6 +161,9 @@ public sealed class NewItemNamingTests : OwnedViewModels
 
         public void RecordCreation(string path) { }
 
+        /// <summary>No history, so nothing to gather into a step.</summary>
+        public IUndoGroup? BeginRenameGroup() => null;
+
         public bool CanUndo => false;
         public bool CanRedo => false;
         public string? UndoDescription => null;

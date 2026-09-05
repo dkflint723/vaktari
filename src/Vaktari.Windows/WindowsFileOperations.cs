@@ -32,6 +32,10 @@ public sealed class WindowsFileOperations : IFileOperations
     private readonly ConcurrentStack<IUndoable> _undo = new();
     private readonly ConcurrentStack<IUndoable> _redo = new();
 
+    /// <summary>The open rename group, when a batch rename is running. See
+    /// <see cref="BeginRenameGroup"/>.</summary>
+    private UndoGroup? _group;
+
     public bool CanUndo => !_undo.IsEmpty;
 
     public IOperationHandle Copy(
@@ -521,7 +525,13 @@ public sealed class WindowsFileOperations : IFileOperations
         // Before the undo entry, so a rename that is immediately undone leaves
         // the index where it started rather than one step behind.
 
-        Remember(new UndoRename(target, path));
+        var back = new UndoRename(target, path);
+
+        // A batch rename holds a group open, and its renames belong to it
+        // rather than each becoming a press of Ctrl+Z of its own.
+        if (_group is { } group) group.Add(back);
+        else Remember(back);
+
         return ValueTask.CompletedTask;
     }
 
@@ -584,6 +594,21 @@ public sealed class WindowsFileOperations : IFileOperations
     {
         _redo.Clear();
         _undo.Push(action);
+    }
+
+    /// <summary>
+    /// One undo step for however many renames follow. See
+    /// <see cref="IFileOperations.BeginRenameGroup"/> for why renames and
+    /// nothing else.
+    /// </summary>
+    public IUndoGroup BeginRenameGroup()
+    {
+        // Groups do not nest: a rename inside two open groups would have to
+        // pick a batch to belong to. Closing whatever is still open pushes its
+        // renames rather than dropping them on the floor.
+        _group?.Dispose();
+
+        return _group = new UndoGroup(this);
     }
 
     public bool CanRedo => !_redo.IsEmpty;
@@ -1492,6 +1517,117 @@ public sealed class WindowsFileOperations : IFileOperations
             await trash([created]).Completion.ConfigureAwait(false);
 
             return null;
+        }
+    }
+
+    /// <summary>
+    /// Several steps taken back as one.
+    ///
+    /// **In reverse, and that is not a detail.** A plain renumber is drained
+    /// from the far end of its chain — img003 to img004 first — so undoing in
+    /// the order the renames happened puts img004 back to img003 before the old
+    /// img002 has left that name, and File.Move refuses with "Cannot create a
+    /// file when that file already exists". Measured by walking the list
+    /// forward and running <c>A_group_of_renames_is_one_undo_step</c>.
+    ///
+    /// A swap refuses one step later rather than at the first. It is performed
+    /// as a to a staging name, b to a, the staged file to b, so going forward
+    /// reaches the staging move first and skips it silently — measured, the
+    /// staging name is vacant by then (the parked file has gone on to b), so
+    /// <see cref="UndoRename"/> takes neither of its branches and moves
+    /// nothing. The refusal is the step after: the file now called a is asked
+    /// to go back to b, which the parked file is sitting on.
+    ///
+    /// The list is therefore always walked from its end, in both directions:
+    /// the inverses come back in the order the undo ran them, which is already
+    /// the reverse of the order a redo has to run them in, so they are kept
+    /// exactly as they arrive rather than being turned round again.
+    ///
+    /// **One name that will not come back does not cost the other thirty-nine.**
+    /// The per-file history this replaces lost only the press it was on:
+    /// measured on three independent renames with one old name re-taken in the
+    /// meantime, the ungrouped stack put two of the three files back and still
+    /// offered a redo, while a composite that let the IOException out left
+    /// `names=c.txt,x.txt,y.txt,z.txt undo=- redo=-` — <see cref="UndoAsync"/>
+    /// pops before it awaits, so the batch was gone as well.
+    /// </summary>
+    private sealed class UndoBatch(string describe, IReadOnlyList<IUndoable> steps) : IUndoable
+    {
+        public string Describe => describe;
+
+        public async ValueTask<IUndoable?> UndoAsync(CancellationToken ct)
+        {
+            var back = new List<IUndoable>(steps.Count);
+
+            for (var i = steps.Count - 1; i >= 0; i--)
+            {
+                try
+                {
+                    if (await steps[i].UndoAsync(ct).ConfigureAwait(false) is { } again)
+                        back.Add(again);
+                }
+                catch (IOException) { /* this one name, and only this one */ }
+            }
+
+            if (back.Count == 0) return null;
+
+            // A batch of one is not a batch. Unwrapped, the inverse carries its
+            // own name — the name the file has now — where a composite would go
+            // on offering the name the batch was given, which after the undo is
+            // a name nothing is called any more.
+            return back.Count == 1 ? back[0] : new UndoBatch(describe, back);
+        }
+    }
+
+    /// <summary>
+    /// The open group. Renames land here instead of on the stack until it is
+    /// disposed, and then the whole lot goes on as one step.
+    /// </summary>
+    private sealed class UndoGroup(WindowsFileOperations owner) : IUndoGroup
+    {
+        private readonly List<IUndoable> _steps = [];
+
+        public string Description { get; set; } = "";
+
+        /// <summary>
+        /// The redo goes here rather than waiting for <see cref="Dispose"/>: a
+        /// rename that has only joined a group has departed from the history
+        /// just as much as one that went straight on the stack. Measured
+        /// without this line — a rename, an undo, then a group performing two
+        /// renames — RedoDescription still answered "rename of old.txt" with
+        /// both of the group's files already renamed on disk, and the engine is
+        /// one instance for the whole application while the dialog is modal
+        /// only to its own window.
+        /// </summary>
+        public void Add(IUndoable step)
+        {
+            owner._redo.Clear();
+            _steps.Add(step);
+        }
+
+        public void Dispose()
+        {
+            // Already closed. Not a `using` running twice — that calls Dispose
+            // exactly once whether or not the body threw. Opening a second
+            // group force-closes this one, and the caller that owns it then
+            // disposes it again on the way out of its own `using`.
+            if (owner._group != this) return;
+
+            owner._group = null;
+
+            // Nothing was renamed, so the history has not been departed from
+            // and the redo stack keeps what it had — a dialog opened and
+            // cancelled must not cost a Ctrl+Y.
+            if (_steps.Count == 0) return;
+
+            // Wrapped even when it holds one step, so the row is the name the
+            // caller gave rather than the step's own. A batch rename that stops
+            // on the rename after the staging move that breaks a swap leaves
+            // exactly that one move behind, and unwrapping it made the parked
+            // file's machine name the whole Undo row — measured as
+            // "rename of .vaktari-rename-0123456789abcdef". A lone rename still
+            // gets its own name back on the way out, in UndoBatch.
+            owner.Remember(new UndoBatch(Description, _steps));
         }
     }
 

@@ -1135,9 +1135,14 @@ public partial class MainWindow : Window
 
         // The throwing one: the dialog counts what it renamed and stops at the
         // first refusal, which it can only do if a refusal reaches it.
+        //
+        // The group is what makes the whole dialog one press of Ctrl+Z: without
+        // it the engine recorded a step per file, and a swap recorded more
+        // steps than there were files.
         var model = new BatchRenameViewModel(entries,
             (entry, name) => pane.RenameOrThrowAsync(entry, name),
-            pane.Entries);
+            pane.Entries,
+            pane.BeginRenameGroup);
 
         new BatchRenameWindow(model).ShowDialog(this);
     }

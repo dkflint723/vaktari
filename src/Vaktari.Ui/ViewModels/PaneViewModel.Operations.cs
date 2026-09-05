@@ -459,6 +459,17 @@ public sealed partial class PaneViewModel
     }
 
     /// <summary>
+    /// One undo step for a whole batch rename, or null when this pane has no
+    /// engine behind it.
+    ///
+    /// **A batch rename was one undo step per file**, so renumbering forty
+    /// photographs took forty presses of Ctrl+Z. The engine owns the history —
+    /// one history shared by every pane and every tab — so the group has to
+    /// come from it, and the pane only hands it on to the dialog.
+    /// </summary>
+    public IUndoGroup? BeginRenameGroup() => _ops?.BeginRenameGroup();
+
+    /// <summary>
     /// The same, for callers with nowhere to report a failure — the inline
     /// rename in the listing is fire-and-forget and needs the status line.
     /// </summary>

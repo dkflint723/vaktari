@@ -20,13 +20,19 @@ public sealed partial class BatchRenameViewModel : ObservableObject
     /// NOT being renamed and would be collided with.</summary>
     private readonly IReadOnlyList<FileEntry>? _folder;
 
+    /// <summary>Opens the engine's one-step-for-the-whole-batch undo group.
+    /// Null in a test that is not exercising the history.</summary>
+    private readonly Func<IUndoGroup?>? _group;
+
     public BatchRenameViewModel(
         IReadOnlyList<FileEntry> entries, Func<FileEntry, string, Task> rename,
-        IReadOnlyList<FileEntry>? folder = null)
+        IReadOnlyList<FileEntry>? folder = null,
+        Func<IUndoGroup?>? undoGroup = null)
     {
         _entries = entries;
         _rename = rename;
         _folder = folder;
+        _group = undoGroup;
 
         Pattern = entries.Count > 0
             ? Path.GetFileNameWithoutExtension(entries[0].Name) + " ###"
@@ -104,39 +110,75 @@ public sealed partial class BatchRenameViewModel : ObservableObject
 
         var done = 0;
 
-        // **In an order the file system will accept, not the order shown.**
-        // Renumbering asks for img001 to become img002 while img002 still holds
-        // that name, and applying the rows top to bottom failed on the first
-        // one — so the commonest batch rename there is reported "stopped after
-        // 0". Sequence walks each chain from its far end and pays for a staging
-        // move only where there is a genuine cycle.
-        foreach (var step in Core.BatchRename.Sequence(Preview))
+        // What the whole batch cost, for the Undo row. Grown as the renames
+        // land rather than taken from the plan, so a run that stops halfway is
+        // offered back as the three files it managed and not as the forty it
+        // set out to do.
+        var renamed = new List<string>();
+
+        // **One Ctrl+Z for the dialog, not one per file.** Every rename below
+        // used to push its own undo entry, so taking back a renumbered folder
+        // of forty photographs meant forty presses — and a swap pushed more
+        // entries than there were files, because the staging move landed on the
+        // stack too. The group closes on the way out of this block, including
+        // the failure return below.
+        using (var group = _group?.Invoke())
         {
-            var entry = _entries.FirstOrDefault(e => e.FullPath == step.FullPath);
-            if (entry.FullPath is null) continue;
-
-            // Where the file is NOW, which a staging move has changed.
-            var moving = entry with
+            // **In an order the file system will accept, not the order shown.**
+            // Renumbering asks for img001 to become img002 while img002 still
+            // holds that name, and applying the rows top to bottom failed on
+            // the first one — so the commonest batch rename there is reported
+            // "stopped after 0". Sequence walks each chain from its far end and
+            // pays for a staging move only where there is a genuine cycle.
+            foreach (var step in Core.BatchRename.Sequence(Preview))
             {
-                FullPath = step.FromPath,
-                Name = Path.GetFileName(step.FromPath),
-            };
+                var entry = _entries.FirstOrDefault(e => e.FullPath == step.FullPath);
+                if (entry.FullPath is null) continue;
 
-            try
-            {
-                await _rename(moving, step.NewName).ConfigureAwait(true);
+                // Where the file is NOW, which a staging move has changed.
+                var moving = entry with
+                {
+                    FullPath = step.FromPath,
+                    Name = Path.GetFileName(step.FromPath),
+                };
 
-                // A staging move is machinery, not a name anybody asked for.
-                if (!step.IsTemporary) done++;
-            }
-            catch (Exception ex)
-            {
-                // Worded the way the status bar words a failure, rather than
-                // handing back a .NET exception message.
-                Summary = $"stopped after {done}: "
-                    + Core.FileSystem.Failures.Describe(ex, "rename that");
-                CanApply = true;
-                return;
+                try
+                {
+                    await _rename(moving, step.NewName).ConfigureAwait(true);
+
+                    // A staging move is machinery, not a name anybody asked
+                    // for: it is not counted.
+                    //
+                    // It is named all the same when it is the first thing to
+                    // land, because the very next rename can refuse and leave
+                    // the group holding nothing else — and then the Undo row
+                    // was "rename of .vaktari-rename-0123456789abcdef", the
+                    // name the file is parked under, rather than the name
+                    // Ctrl+Z would bring back. Overwritten by every real rename
+                    // after it.
+                    if (step.IsTemporary)
+                    {
+                        if (group is not null && renamed.Count == 0)
+                            group.Description = UndoNames.Of("rename", [step.FromPath]);
+
+                        continue;
+                    }
+
+                    done++;
+                    renamed.Add(step.ToPath);
+
+                    if (group is not null)
+                        group.Description = UndoNames.Of("rename", renamed);
+                }
+                catch (Exception ex)
+                {
+                    // Worded the way the status bar words a failure, rather than
+                    // handing back a .NET exception message.
+                    Summary = $"stopped after {done}: "
+                        + Core.FileSystem.Failures.Describe(ex, "rename that");
+                    CanApply = true;
+                    return;
+                }
             }
         }
 

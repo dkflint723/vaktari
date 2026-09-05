@@ -262,6 +262,9 @@ public sealed class SelectionSurvivesReloadTests : OwnedViewModels
         public IOperationHandle Delete(IReadOnlyList<string> paths) => Done();
         public void RecordCreation(string path) { }
 
+        /// <summary>No history, so nothing to gather into a step.</summary>
+        public IUndoGroup? BeginRenameGroup() => null;
+
         public bool CanUndo => false;
         public bool CanRedo => false;
         public string? UndoDescription => null;

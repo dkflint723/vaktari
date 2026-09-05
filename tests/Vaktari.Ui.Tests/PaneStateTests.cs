@@ -202,6 +202,9 @@ public sealed class PaneStateTests : OwnedViewModels
 
         public void RecordCreation(string path) { }
 
+        /// <summary>No history, so nothing to gather into a step.</summary>
+        public IUndoGroup? BeginRenameGroup() => null;
+
         public bool CanUndo => false;
         public ValueTask UndoAsync(CancellationToken ct) => ValueTask.CompletedTask;
         public bool CanRedo => false;
