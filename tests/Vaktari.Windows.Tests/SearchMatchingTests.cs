@@ -75,4 +75,72 @@ public class SearchMatchingTests
     [InlineData("a")]
     public void A_bare_star_matches_everything(string name)
         => Assert.True(Match(name, "*"));
+
+    /// <summary>
+    /// The link the search band's box now depends on: the flag on the QUERY,
+    /// not the argument to <see cref="Match"/>, is what the walk branches on.
+    ///
+    /// Everything above calls the matcher directly, so all of it stays green if
+    /// <c>Walk</c> stops passing <c>query.CaseSensitive</c> down and hard-codes
+    /// the insensitive comparison — which is exactly the behaviour the
+    /// application had until something started setting the field.
+    ///
+    /// One name, asked for twice: NTFS is case-insensitive about names, so
+    /// "Report.txt" and "report.txt" cannot both exist in a folder and the
+    /// difference has to be made by the query.
+    /// </summary>
+    [WindowsFact]
+    public async Task The_query_flag_reaches_the_walk_rather_than_only_the_matcher()
+    {
+        using var tree = new TempTree();
+
+        var scope = tree.Dir("tree");
+        var report = tree.Write("tree/Report.txt");
+
+        Assert.Equal(report, Assert.Single(await Walk(scope, "report", false)).FullPath);
+
+        Assert.Empty(await Walk(scope, "report", true));
+
+        // And the capital spelling still comes back, so the sensitive walk is
+        // matching rather than merely failing.
+        Assert.Equal(report, Assert.Single(await Walk(scope, "Report", true)).FullPath);
+
+        // Both arms, because Walk reads the flag twice: once for the
+        // comparison above and once for the pattern's ignoreCase. A glob is the
+        // only way to reach the second read.
+        Assert.Empty(await Walk(scope, "*.TXT", true));
+        Assert.Equal(report, Assert.Single(await Walk(scope, "*.txt", true)).FullPath);
+    }
+
+    private static async Task<List<Vaktari.Core.FileSystem.FileEntry>> Walk(
+        string scope, string text, bool caseSensitive)
+    {
+        var query = new Vaktari.Core.Search.SearchQuery
+        {
+            Text = text,
+            ScopePath = scope,
+            CaseSensitive = caseSensitive,
+            MaxResults = 50,
+        };
+
+        // A bound rather than an assertion: a mistake here should report as a
+        // failed test rather than as a run that never returns.
+        using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(60));
+
+        var found = new List<Vaktari.Core.FileSystem.FileEntry>();
+
+        await foreach (var entry in new WindowsSearchProvider().SearchAsync(query, cts.Token))
+            found.Add(entry);
+
+        return found;
+    }
+
+    /// <summary>
+    /// The claim the band reads before it draws the box. False here would hide
+    /// a control over a backend that has honoured the flag since it was
+    /// written.
+    /// </summary>
+    [WindowsFact]
+    public void The_walk_says_it_honours_the_flag()
+        => Assert.True(new WindowsSearchProvider().SupportsCaseSensitivity);
 }

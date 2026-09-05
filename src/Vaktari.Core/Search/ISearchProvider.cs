@@ -34,6 +34,30 @@ public interface ISearchProvider
     bool SupportsContentSearch { get; }
 
     /// <summary>
+    /// Whether <see cref="SearchQuery.CaseSensitive"/> reaches anything here.
+    ///
+    /// **The flag had two readers and no writer, so nothing ever asked.** Both
+    /// walks branch on it — <c>WindowsSearchProvider.Walk</c> picks the
+    /// StringComparison and the glob's ignoreCase from it, and
+    /// <c>LinuxSearchProvider.WalkOneAsync</c> does the same — and no caller
+    /// has ever set it, so every search in the application has run with it
+    /// false since the record was written.
+    ///
+    /// The box that sets it is drawn from this rather than unconditionally,
+    /// because an index answers however it answers: on a KDE box
+    /// <c>SearchWithBalooAsync</c> hands the query to baloosearch and filters
+    /// its answers by scope alone, so a tick there would change nothing at all
+    /// — which is the same silence this whole finding is about, moved from a
+    /// field to a checkbox.
+    ///
+    /// Defaulted to FALSE, the opposite way round from <see cref="Everywhere"/>
+    /// below: a phrase that has not been thought about is merely vague, while a
+    /// control that has not been thought about makes a promise the backend does
+    /// not keep. A provider that honours the flag says so.
+    /// </summary>
+    bool SupportsCaseSensitivity => false;
+
+    /// <summary>
     /// What an unscoped search actually covers, as a phrase that finishes
     /// "searching …".
     ///

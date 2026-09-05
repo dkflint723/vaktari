@@ -266,9 +266,9 @@ public sealed class SearchBandTests : OwnedViewModels
     }
 
     /// <summary>
-    /// **A search moves between searches**, and the band is bound to five
+    /// **A search moves between searches**, and the band is bound to six
     /// properties that all derive from the path. Retyping the query or ticking
-    /// the scope changes the path from one search to another without ever
+    /// either box changes the path from one search to another without ever
     /// leaving the listing kind — so a band that was only told when it appeared
     /// and disappeared would go on displaying the previous question over the
     /// new one's results.
@@ -289,6 +289,7 @@ public sealed class SearchBandTests : OwnedViewModels
         Assert.Contains(nameof(PaneViewModel.SearchQueryText), announced);
         Assert.Contains(nameof(PaneViewModel.CanScopeSearch), announced);
         Assert.Contains(nameof(PaneViewModel.SearchScopedHere), announced);
+        Assert.Contains(nameof(PaneViewModel.SearchMatchesCase), announced);
     }
 
     /// <summary>

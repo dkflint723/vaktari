@@ -13,6 +13,17 @@ should not be trusted for compatibility yet.
 
 ### Added
 
+- **Search can be told to mind the capitals.** Every search Vaktari had ever run
+  was case-insensitive, and not by choice: the query object carried a
+  `CaseSensitive` flag that both search backends read and nothing anywhere ever
+  wrote. A "Match case" box sits beside the scope box now, and like that one it
+  is part of where you are rather than a switch on the side — so Back returns to
+  the looser question instead of re-running it, a restored tab comes back asking
+  what it was asking, and a search you left open in a previous version still
+  opens. The box appears only for a backend that honours it, which today means
+  Windows Search; Baloo hands the question to `baloosearch` and filters by scope
+  alone, so a box there would have been the same dead wiring one layer up.
+
 - **On Linux, owner and group can be changed from Properties.** They were two
   lines of text on a sheet whose whole job is permissions — and they are two
   thirds of what a permission means, because "group: read, write" says nothing

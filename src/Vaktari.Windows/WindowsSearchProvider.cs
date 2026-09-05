@@ -34,6 +34,14 @@ public sealed class WindowsSearchProvider : ISearchProvider
     public bool SupportsContentSearch => false;
 
     /// <summary>
+    /// True, and it always was — <see cref="Walk"/> has read
+    /// <c>query.CaseSensitive</c> for both the substring comparison and the
+    /// glob's ignoreCase since it was written. Saying so is what puts the box
+    /// in the search band; the walk needs no change to honour it.
+    /// </summary>
+    public bool SupportsCaseSensitivity => true;
+
+    /// <summary>
     /// **The walk runs on the thread pool, not on the caller's thread.**
     ///
     /// This is the whole reason for the channel. An async iterator runs

@@ -1984,6 +1984,23 @@
                             IsEnabled="{Binding CanScopeSearch}"
                             IsChecked="{Binding SearchScopedHere}"
                             FontSize="{DynamicResource FontSizeSmall}"/>
+                  <!-- **SearchQuery.CaseSensitive had two readers and no
+                       writer.** Both walks branch on it and nothing in the
+                       application ever set it, so every search ever run was
+                       case-insensitive whatever anybody meant. This is the
+                       writer, and like the scope box it navigates: the
+                       question includes how it is being asked.
+
+                       Hidden rather than disabled where the backend cannot
+                       honour it — an index answers its own way, and a tick
+                       that changes nothing is the same silence one layer up. -->
+                  <CheckBox x:Name="SearchCase" DockPanel.Dock="Right" Margin="12,0,0,0"
+                            Content="Match case"
+                            IsVisible="{Binding CanMatchCase}"
+                            IsChecked="{Binding SearchMatchesCase}"
+                            FontSize="{DynamicResource FontSizeSmall}"
+                            AutomationProperties.Name="Match the capitals in the question"
+                            ToolTip.Tip="Match the capitals in the question"/>
                   <!-- Last child, so a long question takes the rest of the row
                        rather than pushing the controls off the edge. -->
                   <TextBlock VerticalAlignment="Center" TextTrimming="CharacterEllipsis"

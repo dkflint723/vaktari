@@ -1415,8 +1415,54 @@ public sealed partial class PaneViewModel : ObservableObject, IDisposable
             // lands; without the guard that write starts a second navigation.
             if (!IsSearchListing || value == SearchScopedHere) return;
 
+            // The case flag is carried, not defaulted: narrowing a search you
+            // had asked to match capitals must not quietly widen it back.
             _ = NavigateAsync(VirtualPaths.Search(
-                SearchQueryText, VirtualPaths.OriginOf(CurrentPath), value));
+                SearchQueryText, VirtualPaths.OriginOf(CurrentPath), value, SearchMatchesCase));
+        }
+    }
+
+    /// <summary>
+    /// Whether this backend can be asked to mind the capitals, which is what
+    /// decides whether the box is drawn at all.
+    ///
+    /// **A box that cannot be honoured is the bug this came from wearing a
+    /// tick.** SearchQuery.CaseSensitive had two readers and no writer; a
+    /// control offered over a backend that ignores it — an index answering its
+    /// own way — would be the same silence one layer up. Drawn rather than
+    /// disabled, because unlike the scope box there is nothing search-specific
+    /// to explain: the answer is a property of the backend, not of where you
+    /// are.
+    ///
+    /// **No change notification, and that is an ordering rather than a hope.**
+    /// <see cref="Search"/> is assigned by <c>WindowServices.Create</c>, which
+    /// the first MainWindow's constructor calls BEFORE it builds the
+    /// ShellViewModel whose panes this band binds to and before it assigns
+    /// DataContext — three statements of one constructor, in that order, and a
+    /// binding is not read until its DataContext attaches. Every later window
+    /// is handed those same services, so by then it is already assigned.
+    /// </summary>
+    public bool CanMatchCase => Search?.SupportsCaseSensitivity ?? false;
+
+    /// <summary>
+    /// Whether the capitals in the question are part of it.
+    ///
+    /// Shaped exactly like <see cref="SearchScopedHere"/> — read off the path,
+    /// written by navigating — so asking the same words two ways is being in
+    /// two places and Back returns to the previous answer rather than re-running
+    /// it.
+    /// </summary>
+    public bool SearchMatchesCase
+    {
+        get => VirtualPaths.MatchesCase(CurrentPath);
+        set
+        {
+            // The navigation below raises this property again as the path
+            // lands; without the guard that write starts a second navigation.
+            if (!IsSearchListing || value == SearchMatchesCase) return;
+
+            _ = NavigateAsync(VirtualPaths.Search(
+                SearchQueryText, VirtualPaths.OriginOf(CurrentPath), SearchScopedHere, value));
         }
     }
 
@@ -1535,7 +1581,11 @@ public sealed partial class PaneViewModel : ObservableObject, IDisposable
         // nothing left to show and the crumbs can have their width back.
         IsSearchOpen = false;
 
-        _ = NavigateAsync(VirtualPaths.Search(text, origin, scoped));
+        // Case carries the same way the scope does, and needs no IsSearchListing
+        // clause of its own: MatchesCase answers false for a folder path, so a
+        // search begun from a folder starts case-insensitive and one refined
+        // from a search keeps what it was set to.
+        _ = NavigateAsync(VirtualPaths.Search(text, origin, scoped, SearchMatchesCase));
     }
 
     /// <summary>
@@ -2242,14 +2292,16 @@ public sealed partial class PaneViewModel : ObservableObject, IDisposable
         // settled. Clicking a place you are already viewing looked like the
         // folder briefly changed. Refreshing on purpose is F5's job; a
         // navigation to where you already are is not a request to refresh.
-        // PathRules.Same, not Ordinal: CurrentPath is normalised on load, so a
-        // navigation spelled with a trailing separator or the other case is the
-        // same place — compared ordinally it reloaded anyway AND pushed a
-        // history entry whose Back went nowhere.
-        if (IsLoaded && !IsLoading && PathRules.Same(CurrentPath, path))
+        // VirtualPaths.SamePlace, not Ordinal: CurrentPath is normalised on
+        // load, so a navigation spelled with a trailing separator or the other
+        // case is the same place — compared ordinally it reloaded anyway AND
+        // pushed a history entry whose Back went nowhere. It is PathRules.Same
+        // for a folder and Ordinal for a search, because a search path carries
+        // a question and the case box makes its capitals part of it.
+        if (IsLoaded && !IsLoading && VirtualPaths.SamePlace(CurrentPath, path))
             return;
 
-        if (!string.IsNullOrEmpty(CurrentPath) && !PathRules.Same(CurrentPath, path))
+        if (!string.IsNullOrEmpty(CurrentPath) && !VirtualPaths.SamePlace(CurrentPath, path))
         {
             _back.Push(CurrentPath);
             _forward.Clear();
@@ -3104,8 +3156,8 @@ public sealed partial class PaneViewModel : ObservableObject, IDisposable
             OnPropertyChanged(nameof(IsRecentListing));
             OnPropertyChanged(nameof(IsTrashListing));
 
-            // All five, because a search moves between searches: retyping the
-            // query or ticking the scope box changes the path from one search
+            // All six, because a search moves between searches: retyping the
+            // query or ticking either box changes the path from one search
             // to another, and a band that only appeared and disappeared would
             // go on showing the previous question.
             OnPropertyChanged(nameof(IsSearchListing));
@@ -3119,6 +3171,7 @@ public sealed partial class PaneViewModel : ObservableObject, IDisposable
             OnPropertyChanged(nameof(CanScopeSearch));
             OnPropertyChanged(nameof(SearchScopedHere));
             OnPropertyChanged(nameof(SearchScopeLabel));
+            OnPropertyChanged(nameof(SearchMatchesCase));
 
             OnPropertyChanged(nameof(IsRealFolder));
 
@@ -3789,7 +3842,7 @@ public sealed partial class PaneViewModel : ObservableObject, IDisposable
         // with ConfigureAwait(false)), so this read is off the UI thread there.
         // It only reads, and the clear a few lines down has always run in the
         // same place, so it is no worse than what shipped before.
-        List<string> carry = PathRules.Same(CurrentPath, path) ? SelectedPaths() : [];
+        List<string> carry = VirtualPaths.SamePlace(CurrentPath, path) ? SelectedPaths() : [];
 
         // Whatever an operation has asked for by name joins them: the row it
         // means does not exist yet, and the one it replaces is already stale.
@@ -3828,7 +3881,7 @@ public sealed partial class PaneViewModel : ObservableObject, IDisposable
         // came up filtered by a word that has nothing to do with it — reading
         // as an empty folder. Explorer and Dolphin both drop the filter when
         // you leave. Cleared before the load so nothing renders through it.
-        if (!PathRules.Same(CurrentPath, path))
+        if (!VirtualPaths.SamePlace(CurrentPath, path))
         {
             FilterText = "";
 
@@ -3836,7 +3889,7 @@ public sealed partial class PaneViewModel : ObservableObject, IDisposable
             // belongs to the question that was cut off; carried into the next
             // one it would quietly make an unrelated search twice as expensive,
             // and more with every press, with nothing on screen saying why.
-            // Same() rather than equality, so a refresh — which is what Keep
+            // SamePlace rather than equality, so a refresh — which is what Keep
             // looking performs — keeps the budget it just raised.
             SearchLimit = SearchListing.Limit;
 

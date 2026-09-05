@@ -79,6 +79,17 @@ public static class SearchListing
         {
             Text = text,
             ScopePath = VirtualPaths.ScopeOf(path),
+
+            // **Read by both walks and written by nobody.** The field is
+            // branched on in WindowsSearchProvider.Walk and in
+            // LinuxSearchProvider.WalkOneAsync, and this is the only place that
+            // builds a SearchQuery — so until this line every search in the
+            // application ran with it false, whatever anybody thought they had
+            // asked for. It comes off the path rather than off a pane so that
+            // Back, a restored tab and a hand-edited session file all get the
+            // question they name.
+            CaseSensitive = VirtualPaths.MatchesCase(path),
+
             MaxResults = limit + 1,
         };
 

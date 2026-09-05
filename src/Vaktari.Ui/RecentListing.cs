@@ -50,10 +50,22 @@ public static class VirtualPaths
     /// the whole selection machinery need to know nothing about where they
     /// came from.
     ///
-    /// **Shape: prefix, query, origin, scope — three fields, two colons.**
+    /// **Shape: prefix, query, origin, scope, case — four fields, three colons.**
     ///
-    ///   vaktari:search:report:C%3A%5CUsers%5Cme:here
-    ///   vaktari:search:%2A.cs::everywhere
+    ///   vaktari:search:report:C%3A%5CUsers%5Cme:here:any
+    ///   vaktari:search:%2A.cs::everywhere:case
+    ///
+    /// The CASE field is what makes <see cref="Core.Search.SearchQuery.CaseSensitive"/>
+    /// reachable. It is a field of the path for the same reason the scope is:
+    /// asking the same question two ways is being in two places, so Back
+    /// returns to the answer you had instead of re-running it, and a tab
+    /// restored from the session file comes back asking what it was asking.
+    ///
+    /// **Three fields still parse, and that is not politeness.** Every path
+    /// here goes into session.json verbatim — <c>PaneViewModel.ToTabState</c>
+    /// writes <c>Path = CurrentPath</c> — so every search tab left open by a
+    /// build older than this one comes back with three. Rejecting those would
+    /// turn them into empty searches at the next start.
     ///
     /// The ORIGIN is carried even when the search is unscoped, and that is the
     /// whole reason there is a separate flag rather than just an empty scope:
@@ -75,6 +87,14 @@ public static class VirtualPaths
     private const string Everywhere = "everywhere";
 
     /// <summary>
+    /// The case field's two words. Spelled out rather than left as "present or
+    /// absent", so a three-field path is unambiguously an OLD path rather than
+    /// a new one that happens to be case-insensitive.
+    /// </summary>
+    private const string Cased = "case";
+    private const string AnyCase = "any";
+
+    /// <summary>
     /// One key for every search, so a view is remembered as "how I like
     /// searches to look" rather than once per query ever typed — which would
     /// grow the per-folder view store by one record for every search anybody
@@ -82,11 +102,12 @@ public static class VirtualPaths
     /// </summary>
     public const string SearchViewKey = SearchPrefix + "*";
 
-    public static string Search(string query, string? origin, bool scoped)
+    public static string Search(string query, string? origin, bool scoped, bool matchCase = false)
         => SearchPrefix
            + Uri.EscapeDataString(query) + ":"
            + Uri.EscapeDataString(origin ?? "") + ":"
-           + (scoped && !string.IsNullOrEmpty(origin) ? Here : Everywhere);
+           + (scoped && !string.IsNullOrEmpty(origin) ? Here : Everywhere) + ":"
+           + (matchCase ? Cased : AnyCase);
 
     public static bool IsSearch(string? path)
         => path is not null && path.StartsWith(SearchPrefix, StringComparison.Ordinal);
@@ -122,11 +143,61 @@ public static class VirtualPaths
     public static string? ScopeOf(string path) => IsScoped(path) ? OriginOf(path) : null;
 
     /// <summary>
+    /// Whether the capitals in the question are part of it.
+    ///
+    /// **Absent means no**, which is what carries a three-field path written by
+    /// an older build: it has no case field, so it means what it has always
+    /// meant. Read here rather than at the checkbox for the same reason
+    /// <see cref="IsScoped"/> is: the box, the query handed to the backend and
+    /// a session file edited by hand all have to get one answer.
+    /// </summary>
+    public static bool MatchesCase(string path) => Part(path, 3) == Cased;
+
+    /// <summary>
+    /// Whether two places are the same place, for the pane's "you are already
+    /// here" rule.
+    ///
+    /// **<c>PathRules.Same</c> is OrdinalIgnoreCase on Windows, and a search
+    /// path carries a question rather than a filename.** With the case box
+    /// ticked "readme" and "README" are two questions with two different
+    /// answers — and the pane would not go from one to the other:
+    /// <c>NavigateAsync</c>'s already-here guard read the two paths as one and
+    /// returned without loading anything, so Enter did nothing at all. Measured
+    /// here as a red test on Windows, where <c>PathRules.Comparison</c> is
+    /// OrdinalIgnoreCase; on Linux it is Ordinal and the guard already told
+    /// them apart.
+    ///
+    /// Ordinal only for a search, because that rule is right for a folder:
+    /// C:\Users and C:\users ARE one directory, and comparing them ordinally
+    /// reloaded the listing and pushed a Back that went nowhere.
+    ///
+    /// **The ORIGIN field is not immune to that, and it is worth being exact
+    /// about why it does not bite.** Percent-escaping leaves letters alone —
+    /// measured here, C:\Users\Me\Docs and c:\users\me\docs escape to two
+    /// different strings — so two searches asking one question of one folder
+    /// reached by its two spellings do compare as two places under this rule.
+    /// Nothing in the pane can produce that pair: all three roads that build a
+    /// search path (<c>PaneViewModel</c>'s two box setters and
+    /// <c>RunSearch</c>) rebuild it from the origin of the path the pane is
+    /// already on, and Back and Forward only pop paths the pane itself pushed.
+    /// </summary>
+    public static bool SamePlace(string? a, string? b)
+        => IsSearch(a) || IsSearch(b)
+            ? string.Equals(a, b, StringComparison.Ordinal)
+            : PathRules.Same(a, b);
+
+    /// <summary>
     /// One field of a search path.
     ///
     /// **Malformed returns empty rather than throwing.** These strings go into
     /// the session file and come back at startup; a hand-edited or truncated
     /// one must give an empty search, not stop the window opening.
+    ///
+    /// **Three OR four, because the case field arrived after the other three.**
+    /// A tab left open on a search by an older build is in session.json with
+    /// three, and a parser that demanded four would reopen it as an empty
+    /// search. The missing field reads as "" and so as
+    /// <see cref="AnyCase"/> — the behaviour those paths were written under.
     /// </summary>
     private static string Part(string path, int index)
     {
@@ -134,7 +205,9 @@ public static class VirtualPaths
 
         var parts = path[SearchPrefix.Length..].Split(':');
 
-        if (parts.Length != 3) return "";
+        if (parts.Length is not (3 or 4)) return "";
+
+        if (index >= parts.Length) return "";
 
         return index == 2 ? parts[2] : Uri.UnescapeDataString(parts[index]);
     }
