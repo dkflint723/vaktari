@@ -11,7 +11,20 @@ should not be trusted for compatibility yet.
 
 ## [Unreleased]
 
-Nothing yet.
+### Fixed
+
+- **A settings file that leaves a section out is read as one that means the
+  defaults, rather than crashing the dialog that read it.** *Replace from a
+  copy* accepts any file this version can read, and a `settings.json` missing a
+  section is one of those — hand-edited, trimmed by something else, or simply
+  written before that section existed. The version is right; the sections are
+  absent. Vaktari read those absent sections as nothing at all rather than as
+  their defaults, and closing the dialog on such a file then took the
+  application down. The same gap reached Save: on an install whose file predated
+  the Proton Drive folder setting, opening Settings and pressing Save crashed.
+  A section a file does not mention now arrives holding that section's defaults,
+  which is what an absent key has always been documented to mean, and a section
+  the file does name is untouched.
 
 ## [0.10.0] — 2026-09-05
 
@@ -1204,6 +1217,7 @@ Nothing yet.
   wanted. Both meanings stay — Ctrl+B is also Firefox's bookmarks sidebar, and
   F9, Dolphin's own key for that panel, sits beside it — and the line now points
   at Ctrl+D.
+
 
 - **A drag that goes nowhere gives you your selection back.** Pressing one of
   several selected rows is how a drag starts, and the press narrowed the

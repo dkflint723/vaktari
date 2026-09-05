@@ -31,7 +31,17 @@ public static class AppSettings
 
     public static void Apply(SettingsState settings)
     {
-        _current = Normalise(settings);
+        // Completed on the way in, by the same rule the settings store applies
+        // to a file it read.
+        //
+        // **The rule used to live here, as a private `Normalise`, and that was
+        // one door too few.** It repaired Current and nothing else — so the
+        // record a caller handed in stayed exactly as deserialized, and
+        // MainWindow's Closed handler, which reads `model.Result` rather than
+        // Current, still dereferenced the nulls when that result came from
+        // Import. Moved to SettingsRepair in Core, beside the model it repairs,
+        // so there is one answer and both doors call it.
+        _current = SettingsRepair.Complete(settings);
 
         // **The one preference a row needs that Core cannot read for itself.**
         // FileKind.DisplayName decides what the name column draws and lives in
@@ -65,7 +75,7 @@ public static class AppSettings
                 + $" · vcs={(ReferenceEquals(settings.Vcs, null) ? "NULL" : "present")}");
 
             Console.Error.WriteLine(
-                "[vaktari] settings: after normalise -> "
+                "[vaktari] settings: after completing -> "
                 + $"views.narrowPanel={_current.Views.NarrowDetailsPanel} "
                 + $"views.keepWidth={_current.Views.KeepWidthAfterPanelClose} "
                 + $"vcs.show={_current.Vcs.ShowDecorations}");
@@ -79,73 +89,5 @@ public static class AppSettings
         }
 
         Changed?.Invoke(null, EventArgs.Empty);
-    }
-
-    /// <summary>
-    /// Guarantees every group is present, because the summary above promises it
-    /// and deserialization does not deliver it.
-    ///
-    /// **Observed, not theoretical:** a `settings.json` written before
-    /// `VcsSettings` existed produced `Current.Vcs == null` despite
-    /// `SettingsState` declaring `Vcs { get; init; } = new()`. That crashed the
-    /// listing, then the settings dialog, and would have crashed the save. Every
-    /// group is equally exposed the next time one is added, so this is fixed at
-    /// the boundary rather than at each of the dozens of read sites.
-    ///
-    /// **`ReferenceEquals(x, null)` rather than `x is null` or `x ?? new()`:**
-    /// these properties are non-nullable reference types, so the nullable
-    /// analyser may call the comparison redundant — and this project builds with
-    /// warnings as errors. A method call cannot be warned about.
-    /// </summary>
-    private static SettingsState Normalise(SettingsState settings) => settings with
-    {
-        General = NormaliseGeneral(settings.General),
-        Startup = ReferenceEquals(settings.Startup, null) ? new() : settings.Startup,
-        Views = NormaliseViews(settings.Views),
-        Vcs = ReferenceEquals(settings.Vcs, null) ? new() : settings.Vcs,
-        Navigation = ReferenceEquals(settings.Navigation, null) ? new() : settings.Navigation,
-        ContextMenu = ReferenceEquals(settings.ContextMenu, null) ? new() : settings.ContextMenu,
-        Trash = ReferenceEquals(settings.Trash, null) ? new() : settings.Trash,
-    };
-
-    /// <summary>
-    /// The same hazard one level down, on STRINGS rather than groups.
-    ///
-    /// **A missing key arrives as null, not as the declared default**, and the
-    /// note above says so — but the guard only ever covered whole groups. A
-    /// string property added in a later version is null for every settings file
-    /// written before it existed, which is every upgrade, and 0.8.0 shipped a
-    /// NullReferenceException out of the MainWindow constructor because of
-    /// exactly that: the application would not start.
-    ///
-    /// Coerced here rather than at each use, because "each use" is every future
-    /// caller of a property somebody adds next year.
-    /// </summary>
-    private static GeneralSettings NormaliseGeneral(GeneralSettings general)
-    {
-        if (ReferenceEquals(general, null)) return new GeneralSettings();
-
-        return general with
-        {
-            IconThemeFolder = general.IconThemeFolder ?? "",
-            PreferredTerminal = general.PreferredTerminal ?? "",
-        };
-    }
-
-    /// <summary>
-    /// `ViewSettings` nests three groups of its own, and they are exposed to
-    /// exactly the same problem. Normalising the outer one and stopping there
-    /// would look handled while `views.Icons.Spacing` still threw.
-    /// </summary>
-    private static ViewSettings NormaliseViews(ViewSettings views)
-    {
-        if (ReferenceEquals(views, null)) return new ViewSettings();
-
-        return views with
-        {
-            Icons = ReferenceEquals(views.Icons, null) ? new() : views.Icons,
-            Compact = ReferenceEquals(views.Compact, null) ? new() : views.Compact,
-            Details = ReferenceEquals(views.Details, null) ? new() : views.Details,
-        };
     }
 }

@@ -57,7 +57,21 @@ public sealed class JsonSettingsStore : ISettingsStore
         {
             if (!File.Exists(path)) return null;
             using var stream = File.OpenRead(path);
-            return JsonSerializer.Deserialize(stream, SettingsJsonContext.Default.SettingsState);
+
+            var state = JsonSerializer.Deserialize(
+                stream, SettingsJsonContext.Default.SettingsState);
+
+            // **The one place a file becomes a record, so the one place the
+            // groups it never mentioned are put back.** MEASURED 5 September
+            // 2026: `{"version":1}` — a valid v1 document naming no section —
+            // deserialized into a state whose General, Views, Vcs and the rest
+            // were all null, and 1 IS the current version, so the gate below
+            // passed it through untouched. Load's own summary promises there is
+            // always a valid set of preferences; before this it kept that
+            // promise only because AppSettings.Apply happened to repair what it
+            // returned, which covered startup and left Import — and therefore
+            // the settings dialog's Result — holding the nulls.
+            return state is null ? null : SettingsRepair.Complete(state);
         }
         catch
         {

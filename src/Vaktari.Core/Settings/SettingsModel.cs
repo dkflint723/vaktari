@@ -638,6 +638,109 @@ public sealed record SettingsState
 }
 
 /// <summary>
+/// Puts back what deserialization leaves out.
+///
+/// **MEASURED 5 September 2026, through the real source-generated context:
+/// `Deserialize("{\"version\":1}", SettingsJsonContext.Default.SettingsState)`
+/// returns a state whose every group is null.** The context does not run
+/// property initializers, so a key absent from settings.json arrives as
+/// `default(T)` rather than as the declared default — and `{"version":1}` is a
+/// valid v1 document that simply names no section, so the version gate in
+/// <c>JsonSettingsStore.Load</c> passes it and hands the nulls straight on.
+///
+/// For a SCALAR that is survivable, and the note on
+/// <see cref="ViewSettings.ShowSelectionBoxes"/> says how: `false` and `0` have
+/// to BE the wanted behaviour, and each such property is named for its zero
+/// value. For a reference-typed GROUP `default(T)` is null, and nothing
+/// downstream survives it — `settings.Views.HideFileExtensions` throws,
+/// <c>SettingsViewModel.Collect</c>'s `_original.General with { … }` throws,
+/// and the settings dialog's Closed handler reading
+/// `Result.General.ProtonDriveFolder` throws, that last one reachable by
+/// pointing Replace-from-a-copy at a hand-edited file.
+///
+/// Here rather than at each read site, because "each read site" is every future
+/// caller of a property somebody adds next year. Called from the two doors a
+/// state comes through: <c>JsonSettingsStore.TryLoad</c>, the one place a file
+/// becomes a record, and <c>AppSettings.Apply</c>, the one place a record
+/// becomes the live preferences. Load promises in its own summary that there is
+/// always a valid set of preferences, and before this it did not keep that
+/// promise on its own — it relied on a different type in a different assembly
+/// remembering to repair what it returned.
+///
+/// **`ReferenceEquals(x, null)` rather than `x is null` or `x ?? new()`:** these
+/// properties are non-nullable reference types, so the nullable analyser may
+/// call the comparison redundant — and this project builds with warnings as
+/// errors. A method call cannot be warned about.
+/// </summary>
+public static class SettingsRepair
+{
+    public static SettingsState Complete(SettingsState settings) => settings with
+    {
+        General = Complete(settings.General),
+        Startup = ReferenceEquals(settings.Startup, null) ? new() : settings.Startup,
+        Views = Complete(settings.Views),
+        Vcs = ReferenceEquals(settings.Vcs, null) ? new() : settings.Vcs,
+        Navigation = ReferenceEquals(settings.Navigation, null) ? new() : settings.Navigation,
+        ContextMenu = ReferenceEquals(settings.ContextMenu, null) ? new() : settings.ContextMenu,
+        Trash = ReferenceEquals(settings.Trash, null) ? new() : settings.Trash,
+    };
+
+    /// <summary>
+    /// The same hazard one level down, on STRINGS rather than groups.
+    ///
+    /// **A missing key arrives as null, not as the declared default**, and 0.8.0
+    /// shipped a NullReferenceException out of the MainWindow constructor
+    /// because of exactly that: the application would not start.
+    ///
+    /// **`ProtonDriveFolder` was still missing from this list on 5 September
+    /// 2026.** A `general` object written before that property existed reached
+    /// `Collect()`'s `ProtonDriveFolder.Trim()`, so opening Settings on an
+    /// upgrading install and pressing Save threw — the same shape of failure
+    /// the two lines above were added to stop, one property later.
+    ///
+    /// Every non-nullable string in the model is listed.
+    /// <see cref="StartupSettings.StartupFolder"/> and
+    /// <see cref="ViewSettings.CustomFontFamily"/> are not, because they are
+    /// declared `string?` and null is what they mean.
+    /// </summary>
+    private static GeneralSettings Complete(GeneralSettings general)
+    {
+        if (ReferenceEquals(general, null)) return new GeneralSettings();
+
+        return general with
+        {
+            IconThemeFolder = general.IconThemeFolder ?? "",
+            PreferredTerminal = general.PreferredTerminal ?? "",
+            ProtonDriveFolder = general.ProtonDriveFolder ?? "",
+        };
+    }
+
+    /// <summary>
+    /// <see cref="ViewSettings"/> nests three groups of its own, exposed to
+    /// exactly the same thing. Completing the outer one and stopping there would
+    /// look handled while `Views.Icons.Spacing` still threw.
+    ///
+    /// **The three lines below are only reachable when the file names `views`
+    /// and not the layouts inside it**, which cost a revert-check: with `views`
+    /// absent the guard above hands back a freshly constructed record, and a
+    /// constructor DOES run the initializers, so the layouts are already there
+    /// and deleting any of the three lines changed nothing. A test that reaches
+    /// them has to load `{"version":1,"views":{}}` rather than `{"version":1}`.
+    /// </summary>
+    private static ViewSettings Complete(ViewSettings views)
+    {
+        if (ReferenceEquals(views, null)) return new ViewSettings();
+
+        return views with
+        {
+            Icons = ReferenceEquals(views.Icons, null) ? new() : views.Icons,
+            Compact = ReferenceEquals(views.Compact, null) ? new() : views.Compact,
+            Details = ReferenceEquals(views.Details, null) ? new() : views.Details,
+        };
+    }
+}
+
+/// <summary>
 /// Persistence contract. Unlike the session there is no debounce: settings
 /// change only when a person changes one, so a write per change is both rare
 /// and what they expect. Atomicity and the fall-back-to-defaults rule are the
