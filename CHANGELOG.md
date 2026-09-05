@@ -742,6 +742,16 @@ should not be trusted for compatibility yet.
 
 ### Added
 
+- **On Windows, the folders you have pinned to Quick access come across on
+  first run.** Vaktari already imported the two lists Explorer keeps as files —
+  the old Favorites folder, and the network locations you have added — but
+  Quick access, which on Windows 11 is called Home and is where most people's
+  bookmarks actually are, was skipped entirely. It is read now, the way
+  Explorer reads it. Only the folders you *pinned* are taken; the ones that
+  merely appear there because you open them often are not, since you did not
+  choose those. Folders the sidebar already shows are left alone, and a pin you
+  have already renamed in Vaktari keeps the name you gave it.
+
 - **The settings dialog can now show you its own file, save a copy of it, and
   put one back.** Six pages of choices all end up in `settings.json`, and
   nothing in the application could say where that is — the only path on screen

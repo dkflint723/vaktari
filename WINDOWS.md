@@ -588,6 +588,15 @@ it does not mean one file.
    assumption held four features hostage for a release, and testing it cost an
    afternoon.
 
+   **And then one of the three stayed blocked anyway, for a whole release.**
+   The Quick access import kept a comment saying it was "waiting on the same
+   COM decision as the Trash view and the open-with list" — written before this
+   section existed and never re-read after it. Nothing was waiting on anything:
+   the shell walk it needed took an afternoon once somebody looked. A stale
+   reason is worse than no reason, because it answers the question "why is this
+   not done?" convincingly enough that nobody asks again. Quick access is
+   imported now; see `QuickAccess`.
+
    **The Trash view shipped without COM anyway, and that is not a contradiction.**
    Having proved the shell was available, it turned out to be the wrong tool for
    this particular interface. `ITrashMaintenance` wants a size and a deletion

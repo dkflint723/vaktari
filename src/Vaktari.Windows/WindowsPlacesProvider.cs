@@ -398,22 +398,25 @@ public sealed class WindowsPlacesProvider : IPlacesProvider, IDisposable
         => BuildDrives().Devices.FirstOrDefault(p => p.Id == id);
 
     /// <summary>
-    /// Imports the shortcut folders Explorer keeps as files.
+    /// Imports the three places Explorer keeps somebody's own folders.
     ///
-    /// **Quick Access is still not among them, and that is the honest half of
-    /// this.** It is where a Windows user's real bookmarks live, and it is not
-    /// a file — it is a shell namespace extension whose backing store is an OLE
-    /// compound jumplist, readable in practice only through COM. So this reads
-    /// the two places that ARE files: the Links folder, which is where Explorer
-    /// kept Favorites before Quick Access replaced it and which many profiles
-    /// still carry, and Network Shortcuts, which is where "Add a network
-    /// location" puts things.
+    /// **Quick access was not among them, and it is the one that matters.** It
+    /// is where a Windows user's real bookmarks live, and the comment that used
+    /// to stand here said reading it was "waiting on the same COM decision as
+    /// the Trash view and the open-with list". That decision was made a release
+    /// ago — WINDOWS.md §7c records the spike proving source-generated COM works
+    /// in a published NativeAOT binary, and four files in the Windows assembly
+    /// have used it since. The reason outlived itself, and the feature it was
+    /// blocking stayed blocked because nobody re-read it.
     ///
-    /// Partial beats nothing here because the alternative was returning 0 at
-    /// every startup while Linux imported its user's bookmarks — but it is
-    /// worth being clear that a user whose pins are all in Quick Access will
-    /// still see no change, and that is waiting on the same COM decision as the
-    /// Trash view and the open-with list.
+    /// The other two are files, and were always read: the Links folder, which
+    /// is where Explorer kept Favorites before Quick access replaced it and
+    /// which many profiles still carry, and Network Shortcuts, which is where
+    /// "Add a network location" puts things.
+    ///
+    /// Quick access LAST, so a folder that appears in both keeps the name its
+    /// .lnk gave it — that name was typed by a person, and Quick access has
+    /// only the folder's own.
     /// </summary>
     public ValueTask<int> ImportExistingAsync(CancellationToken ct)
     {
@@ -428,8 +431,14 @@ public sealed class WindowsPlacesProvider : IPlacesProvider, IDisposable
                 "Microsoft", "Windows", "Network Shortcuts"),
             builtIn);
 
-        // Anything previously imported that duplicates a built-in is dropped
-        // too, so an existing places.json is repaired rather than preserved.
+        ImportPinned(QuickAccess.Pinned());
+
+        // Anything that duplicates a built-in is dropped: an existing
+        // places.json is repaired rather than preserved, and a Quick access pin
+        // on a folder the sidebar already shows never reaches the file. On a
+        // default profile that second job is the common case rather than the
+        // edge one — measured on the machine this was written on, all six
+        // pinned folders with a real path were built-in user folders.
         _pins = _pins
             .Where(pin => !builtIn.Contains(PathRules.Normalise(pin.Path)))
             .ToList();
@@ -474,6 +483,40 @@ public sealed class WindowsPlacesProvider : IPlacesProvider, IDisposable
             // A shortcuts folder that cannot be read is not worth failing
             // startup over; the rest of the sidebar is unaffected.
             Quiet.Swallowed("places", e);
+        }
+    }
+
+    /// <summary>
+    /// Folders pinned to Quick access, under their own names.
+    ///
+    /// The same three rules the .lnk import applies, and deliberately not a
+    /// fourth: still a folder, not already shown, not already pinned. What
+    /// differs is only where the list came from.
+    ///
+    /// **Measured on the machine this was written on**: Quick access held ten
+    /// items, seven pinned, and all six of the pinned ones with a real path
+    /// were built-in user folders — so this profile imports nothing and the
+    /// sidebar is unchanged. That is the expected outcome for a default
+    /// profile and is why the rules above matter more than the reading does.
+    /// </summary>
+    private void ImportPinned(IReadOnlyList<string> pinned)
+    {
+        foreach (var target in pinned)
+        {
+            if (string.IsNullOrEmpty(target) || !Directory.Exists(target)) continue;
+
+            // No built-in check here, unlike ImportShortcuts, and that is
+            // measured rather than an oversight: the repair pass in the caller
+            // drops every pin whose path a built-in occupies, immediately
+            // after this runs. Adding the check made no observable difference
+            // — inverted, so that ONLY built-ins were imported, the import still
+            // reported nothing added and places.json still held nothing, on
+            // every test that could see either. A branch nothing can tell apart
+            // from its own absence is not a safeguard, it is a second place to
+            // keep the rule.
+            if (_pins.Any(p => PathRules.Same(p.Path, target))) continue;
+
+            _pins = [.. _pins, new PinnedPlace(target, PathRules.LeafName(target))];
         }
     }
 
