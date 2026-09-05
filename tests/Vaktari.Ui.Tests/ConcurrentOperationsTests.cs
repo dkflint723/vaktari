@@ -64,10 +64,14 @@ public sealed class ConcurrentOperationsTests : OwnedViewModels
         foreach (var handle in handles)
             if (InFlight.Unfinished(handle.State)) handle.Complete();
 
-        for (var i = 0; i < 50 && shell.ActiveOperation is not null; i++)
+        // Wall-clock rather than a number of turns, for the reason
+        // OperationProgressTests.A_running_copy_drives_the_bar records: the
+        // completion goes through a pool continuation before it posts, and
+        // fifty immediate yields did not outlast one on a loaded CI runner.
+        for (var i = 0; i < 400 && shell.ActiveOperation is not null; i++)
         {
             Dispatcher.UIThread.RunJobs();
-            await Task.Yield();
+            await Task.Delay(5);
         }
 
         Dispatcher.UIThread.RunJobs();
@@ -169,10 +173,14 @@ public sealed class ConcurrentOperationsTests : OwnedViewModels
 
         second.Complete();
 
-        for (var i = 0; i < 50 && shell.ConcurrentOperations.Length > 0; i++)
+        // Wall-clock rather than a number of turns, for the reason
+        // OperationProgressTests.A_running_copy_drives_the_bar records: the
+        // completion goes through a pool continuation before it posts, and
+        // fifty immediate yields did not outlast one on a loaded CI runner.
+        for (var i = 0; i < 400 && shell.ConcurrentOperations.Length > 0; i++)
         {
             Dispatcher.UIThread.RunJobs();
-            await Task.Yield();
+            await Task.Delay(5);
         }
 
         Assert.Equal("", shell.ConcurrentOperations);

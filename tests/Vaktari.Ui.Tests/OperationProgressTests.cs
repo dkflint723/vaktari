@@ -193,10 +193,19 @@ public sealed class OperationProgressTests : OwnedViewModels
         // live rate tick behind for whatever runs next.
         handle.Complete();
 
-        for (var i = 0; i < 50 && shell.ActiveOperation is not null; i++)
+        // **The completion reaches the window through the pool.** Completing
+        // sets the task, a continuation observes it on a pool thread, and that
+        // posts to the dispatcher -- so fifty immediate yields are microseconds
+        // on an idle machine and were nowhere near a hop on a loaded one.
+        // MEASURED: GitHub Actions windows-latest, run 33943253246, this
+        // assertion read back a handle whose own Completion said
+        // RanToCompletion. The operation HAD finished; the window had not been
+        // told. The ceiling is wall-clock now rather than a number of turns, so
+        // a slow machine takes longer and a broken one still fails.
+        for (var i = 0; i < 400 && shell.ActiveOperation is not null; i++)
         {
             Dispatcher.UIThread.RunJobs();
-            await Task.Yield();
+            await Task.Delay(5);
         }
 
         Assert.Null(shell.ActiveOperation);
