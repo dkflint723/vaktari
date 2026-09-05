@@ -464,9 +464,20 @@ public partial class MainWindow : Window
 
             // A configured folder that no longer exists falls back to home
             // rather than opening nothing — an unremovable empty window would
-            // be a worse failure than quietly ignoring a stale path.
+            // be a worse failure than ignoring a stale path.
             _ => null,
         };
+
+        // **But not QUIETLY, which is what it used to be.** A typo, or a path
+        // on a drive that has been repartitioned, opened home and said nothing
+        // — indistinguishable from the setting not working at all. The window
+        // still opens where it can; it just admits that it is not where it was
+        // asked to be.
+        var startupFolderGone =
+            openAt is null
+            && startup.ShowOnStartup == StartupLocation.SpecificFolder
+            && !string.IsNullOrWhiteSpace(startup.StartupFolder)
+            && !Directory.Exists(startup.StartupFolder);
 
         // **A window opened from another one is not a launch.** The startup
         // preference answers "where does a LAUNCH begin"; this one was asked
@@ -480,6 +491,15 @@ public partial class MainWindow : Window
             : restore ? state : null;
 
         _shell.Start(from, openFolder, seed is not null ? 0 : restoreIndex);
+
+        // After Start, so the line is not written into a shell that is about to
+        // build its first pane over it.
+        if (startupFolderGone)
+        {
+            _shell.OperationStatus =
+                $"{PathRules.LeafName(startup.StartupFolder!)} is not there — opened your "
+                + "home folder instead. Settings still has the folder you chose.";
+        }
 
         ApplyStartupPreferences(startup);
 
@@ -1222,6 +1242,25 @@ public partial class MainWindow : Window
                 return null;
             }
         }
+
+        model.StartupFolderBrowseRequested += async (_, _) =>
+        {
+            // Starting at whatever is already typed, when that is somewhere:
+            // correcting a path is more common than choosing one from scratch.
+            var start = await Suggested(window, model.StartupFolder.Trim());
+
+            var picked = await window.StorageProvider.OpenFolderPickerAsync(
+                new Avalonia.Platform.Storage.FolderPickerOpenOptions
+                {
+                    Title = "Choose the folder Vaktari opens in",
+                    AllowMultiple = false,
+                    SuggestedStartLocation = start,
+                });
+
+            if (picked.Count == 0 || picked[0].TryGetLocalPath() is not { } folder) return;
+
+            model.StartupFolder = folder;
+        };
 
         model.SettingsExportRequested += async (_, _) =>
         {

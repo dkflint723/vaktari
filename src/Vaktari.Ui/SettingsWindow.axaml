@@ -678,11 +678,34 @@
                          IsChecked="{Binding StartInSpecificFolder}"/>
           </StackPanel>
 
-          <TextBox Text="{Binding StartupFolder}"
-                   PlaceholderText="/home/…"
-                   IsEnabled="{Binding CanEditStartupFolder}"
-                   FontSize="{DynamicResource FontSizeSmall}"
-                   Margin="24,0,0,0"/>
+          <!-- **The placeholder said "/home/…" on Windows** — a hardcoded
+               Linux path in the one control whose whole job is to be given a
+               path on THIS machine. And there was no Browse, so the only way
+               to set it was to type a path correctly from memory. -->
+          <DockPanel Margin="24,0,0,0">
+            <Button DockPanel.Dock="Right"
+                    Content="Browse…"
+                    Padding="10,3"
+                    Margin="8,0,0,0"
+                    FontSize="{DynamicResource FontSizeSmall}"
+                    IsEnabled="{Binding CanEditStartupFolder}"
+                    Command="{Binding BrowseForStartupFolderCommand}"/>
+
+            <TextBox Text="{Binding StartupFolder}"
+                     PlaceholderText="{Binding StartupFolderHint}"
+                     IsEnabled="{Binding CanEditStartupFolder}"
+                     FontSize="{DynamicResource FontSizeSmall}"/>
+          </DockPanel>
+
+          <!-- Said, not refused: the folder may be on a stick that is out or a
+               share that is down, and refusing to save it would make the
+               setting unusable for exactly the people who need it most. -->
+          <TextBlock Text="{Binding StartupFolderProblem}"
+                     IsVisible="{Binding HasStartupFolderProblem}"
+                     FontSize="{DynamicResource FontSizeTiny}"
+                     Foreground="{DynamicResource ViewDimText}"
+                     TextWrapping="Wrap"
+                     Margin="24,0,0,0"/>
 
           <Border Height="1" Background="{DynamicResource SeparatorColour}"/>
 

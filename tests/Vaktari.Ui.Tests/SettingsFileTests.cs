@@ -257,6 +257,135 @@ public class SettingsFileTests : IDisposable
         Assert.Contains(nameof(vm.NaturalSorting), told);
     }
 
+    // ---- the startup folder box ---------------------------------------------
+
+    /// <summary>
+    /// **The placeholder was "/home/…" on Windows** — a hardcoded Linux path in
+    /// the one control whose whole job is to be given a path on THIS machine.
+    /// </summary>
+    [AvaloniaFact]
+    public void The_startup_box_suggests_a_folder_on_this_machine()
+    {
+        var hint = SettingsViewModel.StartupFolderHint;
+
+        Assert.NotEqual("/home/\u2026", hint);
+        Assert.True(Directory.Exists(hint), $"the hint {hint} is not a folder on this machine");
+    }
+
+    /// <summary>
+    /// **A folder that is not there is said, not refused.** The dialog saved
+    /// whatever was typed and the next launch opened home instead, in silence —
+    /// so a typo looked exactly like the setting not working. Saying it beats
+    /// refusing it: the folder may be on a stick that is out.
+    /// </summary>
+    [AvaloniaFact]
+    public void A_startup_folder_that_is_not_there_is_said()
+    {
+        var vm = Model();
+
+        vm.StartInSpecificFolder = true;
+        vm.StartupFolder = Path.Combine(_root, "went-away");
+
+        Assert.True(vm.HasStartupFolderProblem);
+        Assert.NotEqual("", vm.StartupFolderProblem);
+
+        // And still saved, which is the half a refusal would have got wrong.
+        vm.SaveCommand.Execute(null);
+
+        Assert.Equal(Path.Combine(_root, "went-away"), vm.Result.Startup.StartupFolder);
+    }
+
+    /// <summary>A folder that IS there says nothing.</summary>
+    [AvaloniaFact]
+    public void A_startup_folder_that_is_there_says_nothing()
+    {
+        var vm = Model();
+
+        vm.StartInSpecificFolder = true;
+        vm.StartupFolder = _root;
+
+        Assert.False(vm.HasStartupFolderProblem);
+    }
+
+    /// <summary>
+    /// And the warning is about a folder only one choice consults, so choosing
+    /// something else takes it away rather than leaving a complaint on screen
+    /// about a box that no longer matters.
+    ///
+    /// **Asserted on the NOTIFICATION as well as the value, and that cost a
+    /// revert-check.** StartupFolderProblem is computed, so reading it always
+    /// gives the fresh answer whether or not anything was announced — a test
+    /// that only read it passed with the announcement deleted, while the
+    /// warning stayed on screen under a radio button nobody had chosen.
+    /// </summary>
+    [AvaloniaFact]
+    public void And_it_goes_away_with_the_choice_that_uses_it()
+    {
+        var vm = Model();
+
+        vm.StartInSpecificFolder = true;
+        vm.StartupFolder = Path.Combine(_root, "went-away");
+
+        Assert.True(vm.HasStartupFolderProblem);
+
+        var told = new List<string?>();
+
+        vm.PropertyChanged += (_, e) => told.Add(e.PropertyName);
+        vm.StartInSpecificFolder = false;
+
+        Assert.False(vm.HasStartupFolderProblem);
+        Assert.Contains(nameof(vm.HasStartupFolderProblem), told);
+    }
+
+    /// <summary>
+    /// And typing announces it too, for the same reason: the box is what is
+    /// being typed into, so that is when the warning has to appear.
+    /// </summary>
+    [AvaloniaFact]
+    public void Typing_a_folder_that_is_not_there_announces_the_warning()
+    {
+        var vm = Model();
+
+        vm.StartInSpecificFolder = true;
+
+        var told = new List<string?>();
+
+        vm.PropertyChanged += (_, e) => told.Add(e.PropertyName);
+        vm.StartupFolder = Path.Combine(_root, "went-away");
+
+        Assert.Contains(nameof(vm.StartupFolderProblem), told);
+        Assert.Contains(nameof(vm.HasStartupFolderProblem), told);
+    }
+
+    /// <summary>An empty box is not a complaint; it is a box nobody has filled in.</summary>
+    [AvaloniaFact]
+    public void An_empty_startup_box_says_nothing()
+    {
+        var vm = Model();
+
+        vm.StartInSpecificFolder = true;
+        vm.StartupFolder = "";
+
+        Assert.False(vm.HasStartupFolderProblem);
+    }
+
+    /// <summary>
+    /// The Browse button asks the window for a picker, since a view model that
+    /// opened one could not be built in a test — the same shape as the icon
+    /// theme browse beside it.
+    /// </summary>
+    [AvaloniaFact]
+    public void Browse_asks_the_window_for_a_picker()
+    {
+        var vm = Model();
+        var asked = 0;
+
+        vm.StartupFolderBrowseRequested += (_, _) => asked++;
+        vm.BrowseForStartupFolderCommand.Execute(null);
+
+        Assert.Equal(1, asked);
+    }
+
     // ---- the folder views nothing could see ---------------------------------
 
     /// <summary>A store that reports a count and remembers being cleared.</summary>

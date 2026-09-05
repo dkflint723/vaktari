@@ -82,6 +82,25 @@ public class SettingsSectionOrderTests
     }
 
     /// <summary>
+    /// **And the startup folder can be browsed for.** Before this the only way
+    /// to set it was to type a path correctly from memory, into a box whose
+    /// placeholder suggested a Linux one.
+    /// </summary>
+    [Fact]
+    public void The_startup_box_offers_a_browse_button()
+    {
+        var markup = XDocument.Parse(RepoSource.Ui("SettingsWindow.axaml"));
+
+        var ns = markup.Root!.GetDefaultNamespace();
+
+        var button = markup.Descendants(ns + "Button").SingleOrDefault(
+            b => (string?)b.Attribute("Command") == "{Binding BrowseForStartupFolderCommand}");
+
+        Assert.NotNull(button);
+        Assert.Equal("Browse…", (string?)button.Attribute("Content"));
+    }
+
+    /// <summary>
     /// **And the way to empty the folder-view store is too.** A command nothing
     /// binds is a feature nobody can reach, and this store is otherwise
     /// invisible: it fills up by itself and its file is not named anywhere in

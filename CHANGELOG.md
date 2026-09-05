@@ -793,6 +793,18 @@ should not be trusted for compatibility yet.
   file is left where it is. A swap comes back through the temporary name it
   went out through, and that temporary name is never what the Undo row says.
 
+- **The startup folder can be browsed for, and a folder that is not there says
+  so.** The box for *Open a specific folder* was a bare text field whose
+  placeholder suggested `/home/…` — a Linux path, on Windows too — with no way
+  to pick a folder except typing it correctly from memory. It also accepted a
+  folder that did not exist without comment, and the next launch quietly opened
+  your home folder instead, so a typo was indistinguishable from the setting
+  not working. There is a *Browse…* button now, the placeholder is a real
+  folder on your machine, and a folder that is not there is called out in the
+  dialog — while still being saved, since it may be on a drive that is
+  currently unplugged. If it is still missing at launch, Vaktari opens your
+  home folder and says why.
+
 - **The remembered folder views can be forgotten.** With *Remember the view for
   each folder* on, Vaktari records a folder the moment you change its layout —
   and turning the setting back off only stopped it recording new ones. Every

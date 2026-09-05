@@ -1204,7 +1204,13 @@ public sealed partial class SettingsViewModel : ObservableObject
     public bool CanEditStartupFolder => StartInSpecificFolder;
 
     partial void OnStartInSpecificFolderChanged(bool value)
-        => OnPropertyChanged(nameof(CanEditStartupFolder));
+    {
+        OnPropertyChanged(nameof(CanEditStartupFolder));
+
+        // The warning under the box is about a folder that is only consulted
+        // for this one choice, so turning the choice off takes it away.
+        StartupFolderChecked();
+    }
 
     [RelayCommand]
     private void Save()
@@ -1372,6 +1378,60 @@ public sealed partial class SettingsViewModel : ObservableObject
     /// `with`, so replacing it is what makes "every setting" true rather than
     /// "every setting you can see".
     /// </summary>
+    // ---- the startup folder box ---------------------------------------------
+
+    /// <summary>
+    /// What an empty box suggests typing.
+    ///
+    /// **It said "/home/…" on Windows.** A hardcoded Linux path, in the one
+    /// control whose whole job is to be given a path on THIS machine. Built
+    /// from the profile directory instead, so it is both platform-correct and
+    /// a real folder rather than a shape.
+    /// </summary>
+    public static string StartupFolderHint
+        => Environment.GetFolderPath(Environment.SpecialFolder.UserProfile) is { Length: > 0 } home
+            ? home
+            : "";
+
+    /// <summary>A folder picker, so the path does not have to be typed.</summary>
+    public event EventHandler? StartupFolderBrowseRequested;
+
+    [RelayCommand]
+    private void BrowseForStartupFolder()
+        => StartupFolderBrowseRequested?.Invoke(this, EventArgs.Empty);
+
+    /// <summary>
+    /// Said under the box when the folder typed there is not there.
+    ///
+    /// **A folder that does not exist was accepted in silence and then ignored
+    /// in silence.** The dialog saved whatever was typed, and the next launch
+    /// found no such directory and opened home instead — so a typo, or a path
+    /// on a drive that had been repartitioned, looked exactly like the setting
+    /// not working.
+    ///
+    /// A WARNING rather than a refusal, and that is the whole judgement here:
+    /// the folder may be on a stick that is out, or a share that is down, and
+    /// refusing to save it would make the setting unusable for exactly the
+    /// people who need it most. So it is saved, and said.
+    /// </summary>
+    public string StartupFolderProblem
+        => !StartInSpecificFolder || StartupFolder.Trim().Length == 0
+            ? ""
+            : Directory.Exists(StartupFolder.Trim())
+                ? ""
+                : "That folder is not there at the moment. It will be saved, and "
+                  + "Vaktari will open your home folder until it comes back.";
+
+    public bool HasStartupFolderProblem => StartupFolderProblem.Length > 0;
+
+    partial void OnStartupFolderChanged(string value) => StartupFolderChecked();
+
+    private void StartupFolderChecked()
+    {
+        OnPropertyChanged(nameof(StartupFolderProblem));
+        OnPropertyChanged(nameof(HasStartupFolderProblem));
+    }
+
     // ---- the folder views nothing could see ---------------------------------
 
     /// <summary>
