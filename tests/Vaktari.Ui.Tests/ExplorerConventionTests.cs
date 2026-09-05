@@ -115,6 +115,7 @@ public sealed class ExplorerConventionTests : OwnedViewModels
     [InlineData(SortField.Size, true)]
     [InlineData(SortField.Name, false)]
     [InlineData(SortField.Kind, false)]
+    [InlineData(SortField.Created, true)]
     public void A_column_knows_which_way_it_sorts_first(SortField field, bool descending)
         => Assert.Equal(descending, SortDefaults.DescendingFirst(field));
 

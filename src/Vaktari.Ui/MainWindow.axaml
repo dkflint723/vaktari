@@ -1604,6 +1604,9 @@
                                 <MenuItem Header="Type" ToggleType="Radio"
                                           IsChecked="{Binding ActiveTab.IsSortedByKind, Mode=OneWay}"
                                           Command="{Binding ActiveTab.SortByKindCommand}"/>
+                                <MenuItem Header="Created" ToggleType="Radio"
+                                          IsChecked="{Binding ActiveTab.IsSortedByCreated, Mode=OneWay}"
+                                          Command="{Binding ActiveTab.SortByCreatedCommand}"/>
                                 <Separator/>
                                 <MenuItem Header="Descending" ToggleType="CheckBox"
                                           IsChecked="{Binding ActiveTab.SortDescending, Mode=OneWay}"
@@ -1967,6 +1970,10 @@
                               ToggleType="CheckBox"
                               IsChecked="{Binding IsModifiedColumnShown, Mode=OneWay}"
                               Command="{Binding ToggleModifiedColumnCommand}"/>
+                    <MenuItem Header="Created"
+                              ToggleType="CheckBox"
+                              IsChecked="{Binding IsCreatedColumnShown, Mode=OneWay}"
+                              Command="{Binding ToggleCreatedColumnCommand}"/>
                     <Separator/>
                     <!-- Says the other half out loud. A ticked column that is
                          not on screen looks like a bug, and this is the one
@@ -1981,14 +1988,15 @@
                 <!-- **These read "name", "type", "size" and "modified" while
                      the column chooser — the context menu declared just
                      above, which opens ON these headings — read "Name",
-                     "Type", "Size" and "Modified".** The same four words,
-                     two spellings, in the one control you open to decide
+                     "Type", "Size" and "Modified".** The same words, two
+                     spellings, in the one control you open to decide
                      which of these headings you see, so they are read
                      together by the only person who compares them. The
                      lower-case chrome voice was deliberate once and is
                      abandoned: sentence case is the one rule for every
                      label in the application, and LabelCasingTests holds
-                     it — both the casing and these four words. -->
+                     it — both the casing and the words themselves, Created
+                     included. -->
                 <Grid Margin="12,0,18,0">
                       <Grid.ColumnDefinitions>
                         <ColumnDefinition Width="Auto"/>
@@ -1997,10 +2005,15 @@
                         <ColumnDefinition Width="Auto"/>
                         <ColumnDefinition Width="Auto"/>
                         <ColumnDefinition Width="Auto"/>
+                        <!-- Created. APPENDED rather than inserted beside the
+                             other date, which renumbers nothing: inserting is
+                             the edit the row template below warns goes wrong
+                             quietly. -->
+                        <ColumnDefinition Width="Auto"/>
                       </Grid.ColumnDefinitions>
                   <!-- The icon slot, with the select-all box docked ahead of it
-                       when the boxes are on. A DockPanel rather than a seventh
-                       column: inserting one would renumber every element after
+                       when the boxes are on. A DockPanel rather than a column
+                       of its own: inserting one would renumber every element after
                        it in BOTH grids, which is the edit the row template
                        below warns goes wrong quietly.
 
@@ -2119,6 +2132,21 @@
                     <TextBlock FontSize="{DynamicResource FontSizeSmall}"
                                Foreground="{DynamicResource ViewDimText}">
                       <Run Text="Modified"/><Run Text="{Binding ModifiedSortGlyph}"/>
+                    </TextBlock>
+                  </Button>
+                  <!-- **When the file was made, which nothing in the window
+                       could say.** A heading rather than a label, because every
+                       other heading in this band sorts and one that did not
+                       would be the odd one out — and "which of these did I make
+                       first" is most of the reason to turn the column on. -->
+                  <Button Grid.Column="6" Width="{DynamicResource ColCreated}" Command="{Binding SortByCommand}" CommandParameter="created"
+                          AutomationProperties.Name="Sort by date created"
+                          IsVisible="{Binding ShowCreated}"
+                          Background="Transparent" BorderThickness="0" Padding="0"
+                          HorizontalContentAlignment="Right">
+                    <TextBlock FontSize="{DynamicResource FontSizeSmall}"
+                               Foreground="{DynamicResource ViewDimText}">
+                      <Run Text="Created"/><Run Text="{Binding CreatedSortGlyph}"/>
                     </TextBlock>
                   </Button>
                 </Grid>
@@ -2279,6 +2307,7 @@
                              file manager does it. Truncation is handled in the
                              cell itself, not by capping the column. -->
                         <ColumnDefinition Width="*"/>
+                        <ColumnDefinition Width="Auto"/>
                         <ColumnDefinition Width="Auto"/>
                         <ColumnDefinition Width="Auto"/>
                         <ColumnDefinition Width="Auto"/>
@@ -2579,6 +2608,21 @@
                                    Foreground="{Binding LastWriteTime, Converter={x:Static vm:AgeConverters.Brush}}"
                                    ToolTip.Tip="{Binding LastWriteTime, Converter={x:Static vm:AgeConverters.Description}}"
                                    FontSize="{DynamicResource FontSizeSmall}" FontFamily="{DynamicResource AppMonoFamily}"
+                                   VerticalAlignment="Center"/>
+                        <!-- The same converter as the cell above, so the two
+                             dates are written the same way and the absolute /
+                             relative preference reaches both.
+
+                             NOT age-shaded, and that is the difference between
+                             them: the ramp beside it says how stale a file's
+                             CONTENTS are, which is one signal, and a second
+                             ramp in the same row would be two. A row with no
+                             creation date — a drive, a Recent entry — carries
+                             default, which the converter already renders as an
+                             empty cell rather than as a date in year one. -->
+                        <TextBlock Grid.Column="6" Width="{DynamicResource ColCreated}" Classes="meta" Text="{Binding CreationTime, Converter={x:Static vm:FileConverters.Modified}}" TextAlignment="Right"
+                                   IsVisible="{Binding $parent[ListBox].((vm:PaneViewModel)DataContext).ShowCreated}"
+                                   FontSize="{DynamicResource FontSizeSmall}" FontFamily="{DynamicResource AppMonoFamily}" Foreground="{DynamicResource ViewDimText}"
                                    VerticalAlignment="Center"/>
                       </Grid>
                       <!-- **Where the drop lands.** The pane took an outline while a drag

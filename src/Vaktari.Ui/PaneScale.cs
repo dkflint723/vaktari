@@ -211,6 +211,9 @@ public static class PaneScale
         yield return ("ColType", Math.Round(110 * fontScale, 1));
         yield return ("ColSize", Math.Round(100 * fontScale, 1));
         yield return ("ColModified", Math.Round(150 * fontScale, 1));
+        // The same width as Modified: it holds the same converter's output, in
+        // the same three shapes.
+        yield return ("ColCreated", Math.Round(150 * fontScale, 1));
 
         yield return ("CompactIconSize", compactIcon);
         yield return ("CompactRowHeight", compactRow);

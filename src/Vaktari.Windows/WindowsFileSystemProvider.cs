@@ -85,7 +85,11 @@ public sealed class WindowsFileSystemProvider : IFileSystemProvider
                 FullPath: entry.ToFullPath(),
                 Length: entry.IsDirectory ? 0 : entry.Length,
                 LastWriteTime: entry.LastWriteTimeUtc,
-                Flags: WindowsEntryFlags.For(entry.FileName, entry.Attributes, entry.IsDirectory)),
+                Flags: WindowsEntryFlags.For(entry.FileName, entry.Attributes, entry.IsDirectory),
+                // Out of the same FIND_DATA the two lines above read, so no
+                // second look at the file — see FileEntry for what asking for
+                // it costs and what asking for it later would have cost.
+                CreationTime: entry.CreationTimeUtc),
             new EnumerationOptions
             {
                 RecurseSubdirectories = false,
@@ -146,7 +150,8 @@ public sealed class WindowsFileSystemProvider : IFileSystemProvider
                 path,
                 isDir ? 0 : info.Length,
                 info.LastWriteTimeUtc,
-                flags));
+                flags,
+                info.CreationTimeUtc));
         }
         catch (Exception e) when (e is IOException or UnauthorizedAccessException)
         {

@@ -770,6 +770,13 @@ should not be trusted for compatibility yet.
 
 ### Fixed
 
+- **A *Date created* column, for the folders where that is the thing you sort
+  by.** Details had four columns and no way to add a fifth, so a folder of
+  camera imports or downloads could only be ordered by the date they were last
+  written. The column chooser on the header now offers *Date created*: it is
+  off until you ask for it, it sorts, it remembers its place per tab across a
+  restart, and it steps aside on a narrow pane like the columns beside it.
+
 - **The transfer bar says when more than one thing is running.** It described
   whichever operation had started most recently and gave no sign the others
   existed — so a copy started during another copy replaced it on screen, and

@@ -1220,6 +1220,7 @@ public sealed partial class PaneViewModel : ObservableObject, IDisposable
             HideSizeColumn = other.HideSizeColumn;
             HideModifiedColumn = other.HideModifiedColumn;
             ShowTypeColumn = other.ShowTypeColumn;
+            ShowCreatedColumn = other.ShowCreatedColumn;
         }
         finally
         {
@@ -1238,20 +1239,24 @@ public sealed partial class PaneViewModel : ObservableObject, IDisposable
     [ObservableProperty] private bool _hideSizeColumn;
     [ObservableProperty] private bool _hideModifiedColumn;
     [ObservableProperty] private bool _showTypeColumn;
+    [ObservableProperty] private bool _showCreatedColumn;
 
     partial void OnHideSizeColumnChanged(bool value) => NotifyColumns();
     partial void OnHideModifiedColumnChanged(bool value) => NotifyColumns();
     partial void OnShowTypeColumnChanged(bool value) => NotifyColumns();
+    partial void OnShowCreatedColumnChanged(bool value) => NotifyColumns();
 
     // The ticks in the chooser. OneWay from these, with the click going through
     // the commands below — the same shape as every other tick in the menus.
     public bool IsSizeColumnShown => !HideSizeColumn;
     public bool IsModifiedColumnShown => !HideModifiedColumn;
     public bool IsTypeColumnShown => ShowTypeColumn;
+    public bool IsCreatedColumnShown => ShowCreatedColumn;
 
     [RelayCommand] private void ToggleSizeColumn() => HideSizeColumn = !HideSizeColumn;
     [RelayCommand] private void ToggleModifiedColumn() => HideModifiedColumn = !HideModifiedColumn;
     [RelayCommand] private void ToggleTypeColumn() => ShowTypeColumn = !ShowTypeColumn;
+    [RelayCommand] private void ToggleCreatedColumn() => ShowCreatedColumn = !ShowCreatedColumn;
 
     // **Two questions, both of which have to say yes.** The width rule was here
     // first and stays: a column that no longer fits is dropped whatever the
@@ -1270,6 +1275,20 @@ public sealed partial class PaneViewModel : ObservableObject, IDisposable
     /// already trimming and there is nothing left to give.
     /// </summary>
     public bool ShowType => ShowTypeColumn && ViewportWidth >= 620 * TextScale;
+
+    /// <summary>
+    /// When the file was made, off until it is asked for — the same shape as
+    /// the type column, and off for the same reason: most listings are read by
+    /// modified date and a second date column beside it is noise until somebody
+    /// wants it.
+    ///
+    /// **The highest of the four thresholds the chooser can be held to (340,
+    /// 520, 620, this), because it is the last column in the row.** It is the
+    /// type column's 620 plus its own 150 (ColCreated at scale 1), which is the
+    /// width a pane needs before this one can appear without taking back what
+    /// that arithmetic already granted the columns to its left.
+    /// </summary>
+    public bool ShowCreated => ShowCreatedColumn && ViewportWidth >= 770 * TextScale;
     public bool ShowPermissions => ViewportWidth >= 680 * TextScale;
     public bool ShowMetadata =>
         ViewportWidth >= 840 * TextScale && !IsRecentListing && !IsTrashListing;
@@ -1651,7 +1670,7 @@ public sealed partial class PaneViewModel : ObservableObject, IDisposable
     /// filename says nothing about which of four `config.toml` files you are
     /// looking at.
     ///
-    /// Shares column 2 with the metadata column rather than adding a seventh:
+    /// Shares column 2 with the metadata column rather than adding one of its own:
     /// the two are mutually exclusive by construction (ShowMetadata is false
     /// here), and inserting a column would renumber every element after it in
     /// two separate grids — the kind of edit that goes wrong quietly.
@@ -1667,9 +1686,11 @@ public sealed partial class PaneViewModel : ObservableObject, IDisposable
         OnPropertyChanged(nameof(ShowSize));
         OnPropertyChanged(nameof(ShowModified));
         OnPropertyChanged(nameof(ShowType));
+        OnPropertyChanged(nameof(ShowCreated));
         OnPropertyChanged(nameof(IsSizeColumnShown));
         OnPropertyChanged(nameof(IsModifiedColumnShown));
         OnPropertyChanged(nameof(IsTypeColumnShown));
+        OnPropertyChanged(nameof(IsCreatedColumnShown));
         OnPropertyChanged(nameof(ShowPermissions));
         OnPropertyChanged(nameof(ShowMetadata));
         OnPropertyChanged(nameof(ShowParentPath));
@@ -3135,6 +3156,7 @@ public sealed partial class PaneViewModel : ObservableObject, IDisposable
             HideSizeColumn = tab.HideSize;
             HideModifiedColumn = tab.HideModified;
             ShowTypeColumn = tab.ShowType;
+            ShowCreatedColumn = tab.ShowCreated;
 
             // Guarded: a session written before these existed deserialises as
             // 0, which would restore an invisible pane.
@@ -3319,6 +3341,7 @@ public sealed partial class PaneViewModel : ObservableObject, IDisposable
         HideSize = HideSizeColumn,
         HideModified = HideModifiedColumn,
         ShowType = ShowTypeColumn,
+        ShowCreated = ShowCreatedColumn,
         // **All three read from `_scales`, including details.** The live
         // `FontScale`/`IconScale` hold whichever layout is ON SCREEN, so writing
         // them into the details slot would have saved the grid's size as the

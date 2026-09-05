@@ -170,11 +170,11 @@ public sealed class LabelCasingTests
     }
 
     /// <summary>
-    /// The four headings by value, not just by casing. The rule above is
-    /// satisfied by any capitalised word, and these four are the ones the
+    /// The headings by value, not just by casing. The rule above is
+    /// satisfied by any capitalised word, and these are the ones the
     /// chooser — the context menu that opens on these headings — names:
-    /// "Name", "Type", "Size", "Modified". The two lists have to keep
-    /// saying the same thing.
+    /// "Name", "Type", "Size", "Modified", "Created". The two lists have to
+    /// keep saying the same thing.
     /// </summary>
     [Fact]
     public void The_column_headings_match_the_chooser_word_for_word()
@@ -185,6 +185,7 @@ public sealed class LabelCasingTests
                  {
                      ("name", "Name"), ("kind", "Type"),
                      ("size", "Size"), ("modified", "Modified"),
+                     ("created", "Created"),
                  })
         {
             var heading = markup.Descendants(Avalonia + "Button")

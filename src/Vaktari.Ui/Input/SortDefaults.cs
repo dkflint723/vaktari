@@ -14,8 +14,9 @@ namespace Vaktari.Ui.Input;
 /// Explorer settles this per column rather than globally: its property schema
 /// gives every date and every size a default sort direction of descending, and
 /// Finder agrees, so "sort by modified" has meant newest-first everywhere
-/// people learned it. Name and type stay ascending, because A to Z is what
-/// those two mean.
+/// people learned it. Created is a date and joins them for the same reason —
+/// the newest download is what somebody clicking it is looking for. Name and
+/// type stay ascending, because A to Z is what those two mean.
 ///
 /// Only about the first click. Clicking the same heading again still reverses
 /// whatever is there, which is the other half of the same convention.
@@ -23,5 +24,5 @@ namespace Vaktari.Ui.Input;
 public static class SortDefaults
 {
     public static bool DescendingFirst(SortField field)
-        => field is SortField.Size or SortField.Modified;
+        => field is SortField.Size or SortField.Modified or SortField.Created;
 }

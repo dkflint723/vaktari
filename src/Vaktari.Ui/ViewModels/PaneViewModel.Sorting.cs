@@ -24,6 +24,7 @@ public sealed partial class PaneViewModel
             "size" => SortField.Size,
             "modified" => SortField.Modified,
             "kind" => SortField.Kind,
+            "created" => SortField.Created,
             _ => SortField.Name,
         };
 
@@ -72,17 +73,21 @@ public sealed partial class PaneViewModel
     /// sit on until there was a type column.</summary>
     public string KindSortGlyph => Glyph(SortField.Kind);
 
+    public string CreatedSortGlyph => Glyph(SortField.Created);
+
     private void NotifySortGlyphs()
     {
         OnPropertyChanged(nameof(IsSortedByName));
         OnPropertyChanged(nameof(IsSortedBySize));
         OnPropertyChanged(nameof(IsSortedByModified));
         OnPropertyChanged(nameof(IsSortedByKind));
+        OnPropertyChanged(nameof(IsSortedByCreated));
 
         OnPropertyChanged(nameof(NameSortGlyph));
         OnPropertyChanged(nameof(SizeSortGlyph));
         OnPropertyChanged(nameof(ModifiedSortGlyph));
         OnPropertyChanged(nameof(KindSortGlyph));
+        OnPropertyChanged(nameof(CreatedSortGlyph));
     }
 
     // ---- sorting, reachable from the menu as well as the headers ----------
@@ -95,6 +100,8 @@ public sealed partial class PaneViewModel
 
     public bool IsSortedByKind => Sort == SortField.Kind;
 
+    public bool IsSortedByCreated => Sort == SortField.Created;
+
     /// <summary>Sorting by type was implemented from the start and had no way
     /// to be reached — there is no type column to click.</summary>
     [RelayCommand]
@@ -103,6 +110,11 @@ public sealed partial class PaneViewModel
     // menu's Sort by > Type resetting to ascending while the heading it mirrors
     // had learned better.
     private void SortByKind() => SortBy("kind");
+
+    // One line rather than a second copy of SortBy's body, for the reason
+    // given above the line before it.
+    [RelayCommand]
+    private void SortByCreated() => SortBy("created");
 
     [RelayCommand]
     private void ToggleSortDirection() => SortDescending = !SortDescending;
@@ -170,6 +182,9 @@ public sealed partial class PaneViewModel
         {
             SortField.Size     => a.Length.CompareTo(b.Length),
             SortField.Modified => a.LastWriteTime.CompareTo(b.LastWriteTime),
+            // A row with no creation date — a drive, a Recent entry — carries
+            // default, which is year one and so sorts below every real date.
+            SortField.Created  => a.CreationTime.CompareTo(b.CreationTime),
             SortField.Kind     => a.Extension.CompareTo(b.Extension, StringComparison.OrdinalIgnoreCase),
             _                  => 0,
         };

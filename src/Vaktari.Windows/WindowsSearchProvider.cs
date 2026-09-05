@@ -280,5 +280,9 @@ public sealed class WindowsSearchProvider : ISearchProvider
         FullPath: entry.ToFullPath(),
         Length: entry.IsDirectory ? 0 : entry.Length,
         LastWriteTime: entry.LastWriteTimeUtc,
-        Flags: WindowsEntryFlags.For(entry.FileName, entry.Attributes, entry.IsDirectory));
+        Flags: WindowsEntryFlags.For(entry.FileName, entry.Attributes, entry.IsDirectory),
+        // The third path a row arrives by, and it draws in the same details
+        // columns as the other two. Out of the same directory read, so the
+        // "no follow-up stat per entry" rule above is intact.
+        CreationTime: entry.CreationTimeUtc);
 }

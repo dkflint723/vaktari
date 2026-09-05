@@ -204,7 +204,7 @@ public sealed class ColumnChooserTests : OwnedViewModels
     /// <summary>
     /// **The header and the rows are two separate grids kept in step by hand.**
     /// Nothing couples them: the headings sit over their columns only because
-    /// both declare the same six columns, the same widths and the same margin.
+    /// both declare the same columns, the same widths and the same margin.
     /// Adding a column is precisely the edit that breaks that, and it breaks it
     /// silently — headings sliding one column left is the kind of thing that
     /// ships.
@@ -254,7 +254,7 @@ public sealed class ColumnChooserTests : OwnedViewModels
             .Where(m => ((string?)m.Attribute("Command") ?? "").Contains("ColumnCommand", StringComparison.Ordinal))
             .ToList();
 
-        Assert.Equal(3, rows.Count);
+        Assert.Equal(4, rows.Count);
 
         foreach (var row in rows)
         {

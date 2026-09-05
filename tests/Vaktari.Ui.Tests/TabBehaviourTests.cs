@@ -42,6 +42,7 @@ public sealed class TabBehaviourTests : OwnedViewModels
         first.SortDescending = true;
         first.GroupBy = GroupMode.Kind;
         first.ShowTypeColumn = true;
+        first.ShowCreatedColumn = true;
 
         shell.NewTabCommand.Execute(null);
 
@@ -54,6 +55,7 @@ public sealed class TabBehaviourTests : OwnedViewModels
         Assert.True(second.SortDescending);
         Assert.Equal(GroupMode.Kind, second.GroupBy);
         Assert.True(second.ShowTypeColumn);
+        Assert.True(second.ShowCreatedColumn);
     }
 
     // ---- opening in the background ------------------------------------------

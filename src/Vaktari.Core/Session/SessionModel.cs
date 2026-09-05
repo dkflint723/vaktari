@@ -3,7 +3,11 @@ using System.Text.Json.Serialization;
 
 namespace Vaktari.Core.Session;
 
-public enum SortField { Name, Size, Modified, Kind }
+/// <summary>
+/// Appended to, never reordered: this persists as a number, so moving a member
+/// would reinterpret every saved session — the same rule ViewMode states below.
+/// </summary>
+public enum SortField { Name, Size, Modified, Kind, Created }
 
 /// <summary>
 /// How the listing itself is laid out. The Miller chain is deliberately NOT a
@@ -80,6 +84,7 @@ public sealed record TabState
     public bool HideSize { get; init; }
     public bool HideModified { get; init; }
     public bool ShowType { get; init; }
+    public bool ShowCreated { get; init; }
 
     /// <summary>
     /// Back/forward stacks, oldest first. Nobody restores navigation history —

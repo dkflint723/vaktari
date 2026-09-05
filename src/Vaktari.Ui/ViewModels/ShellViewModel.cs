@@ -3311,6 +3311,7 @@ public sealed partial class ShellViewModel : ObservableObject, IDisposable
             case nameof(PaneViewModel.HideSizeColumn):
             case nameof(PaneViewModel.HideModifiedColumn):
             case nameof(PaneViewModel.ShowTypeColumn):
+            case nameof(PaneViewModel.ShowCreatedColumn):
                 MarkDirty();
                 break;
 
