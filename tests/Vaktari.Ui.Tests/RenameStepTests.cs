@@ -107,6 +107,29 @@ public sealed class RenameStepTests : OwnedViewModels
     private static string Typed(Rig rig)
         => Editing(rig) ? Box(rig).Text ?? "" : "";
 
+    /// <summary>
+    /// Waits for something to become true, rather than for a number of turns.
+    ///
+    /// **A fixed count is a guess about how busy the machine is.** Measured:
+    /// The_next_one_is_the_row_that_was_next_when_you_pressed failed in a full
+    /// run and once alone on a clean tree, then passed three times alone — the
+    /// rename is a real file operation followed by a re-list, and under load
+    /// neither had finished when the assertion read the box, so it still held
+    /// the name that had just been typed. Waiting on the ANSWER cannot go the
+    /// same way: a slow machine takes longer, and a broken one still fails,
+    /// because the assertion afterwards is unchanged.
+    /// </summary>
+    private static async Task Until(Func<bool> done)
+    {
+        for (var i = 0; i < 400 && !done(); i++)
+        {
+            Settle();
+            await Task.Delay(5);
+        }
+
+        Settle();
+    }
+
     /// <summary>The reload a rename starts is not awaited, so a test has to
     /// wait the way the window does.</summary>
     private static async Task Drain()
@@ -120,7 +143,7 @@ public sealed class RenameStepTests : OwnedViewModels
         Settle();
     }
 
-    private static void Rename(Rig rig, FileEntry row, string to)
+    private static async Task Rename(Rig rig, FileEntry row, string to)
     {
         rig.Shell.ActiveTab!.SelectedEntry = row;
         rig.Shell.ActiveTab.BeginRenameCommand.Execute(null);
@@ -140,7 +163,12 @@ public sealed class RenameStepTests : OwnedViewModels
         Settle();
 
         rig.Window.KeyPress(Key.Tab, RawInputModifiers.None, PhysicalKey.Tab, null);
-        Settle();
+
+        // Until the box stops offering the name just typed, which is what
+        // "the rename landed and the run stepped on" looks like from here.
+        // A run that legitimately stops leaves no box at all, and that ends
+        // the wait too - the assertions afterwards decide which happened.
+        await Until(() => Typed(rig) != to);
     }
 
     /// <summary>The whole gesture: rename one, land on the next.</summary>
@@ -150,7 +178,7 @@ public sealed class RenameStepTests : OwnedViewModels
         using var rig = await BuildAsync();
         var pane = rig.Shell.ActiveTab!;
 
-        Rename(rig, pane.Entries.Single(e => e.Name == "a.txt"), "one.txt");
+        await Rename(rig, pane.Entries.Single(e => e.Name == "a.txt"), "one.txt");
 
         Assert.True(File.Exists(Path.Combine(rig.Root, "one.txt")));
         Assert.Equal("b.txt", Typed(rig));
@@ -169,7 +197,7 @@ public sealed class RenameStepTests : OwnedViewModels
         using var rig = await BuildAsync();
         var pane = rig.Shell.ActiveTab!;
 
-        Rename(rig, pane.Entries.Single(e => e.Name == "a.txt"), "one.txt");
+        await Rename(rig, pane.Entries.Single(e => e.Name == "a.txt"), "one.txt");
 
         Assert.Equal("b.txt", Typed(rig));
         Assert.NotEqual("c.txt", Typed(rig));
@@ -188,7 +216,7 @@ public sealed class RenameStepTests : OwnedViewModels
         using var rig = await BuildAsync();
         var pane = rig.Shell.ActiveTab!;
 
-        Rename(rig, pane.Entries.Single(e => e.Name == "a.txt"), "c.txt");
+        await Rename(rig, pane.Entries.Single(e => e.Name == "a.txt"), "c.txt");
 
         // Still a.txt on disk, and the editor has not moved on to anything.
         Assert.True(File.Exists(Path.Combine(rig.Root, "a.txt")));
@@ -206,7 +234,7 @@ public sealed class RenameStepTests : OwnedViewModels
         using var rig = await BuildAsync();
         var pane = rig.Shell.ActiveTab!;
 
-        Rename(rig, pane.Entries.Single(e => e.Name == "a.txt"), "   ");
+        await Rename(rig, pane.Entries.Single(e => e.Name == "a.txt"), "   ");
 
         // The premise: the box really is still open on the row with the refused
         // text in it. Without this the test would pass just as well if the box
@@ -289,7 +317,7 @@ public sealed class RenameStepTests : OwnedViewModels
         using var rig = await BuildAsync();
         var pane = rig.Shell.ActiveTab!;
 
-        Rename(rig, pane.Entries.Single(e => e.Name == "a.txt"), "one.txt");
+        await Rename(rig, pane.Entries.Single(e => e.Name == "a.txt"), "one.txt");
 
         await Drain();
 
