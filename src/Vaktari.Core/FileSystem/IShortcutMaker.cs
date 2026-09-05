@@ -5,9 +5,9 @@ namespace Vaktari.Core.FileSystem;
 ///
 /// **A platform fact, like the trash and the shell menu.** On Windows a
 /// shortcut is a <c>.lnk</c> file the shell resolves; on Linux it is a symbolic
-/// link the filesystem follows. Explorer offers both Ctrl+Shift+drag and
-/// "Create shortcuts here" on the right-drag menu, and Vaktari had neither —
-/// the gesture did whatever the modifier fell through to instead.
+/// link the filesystem follows. Explorer offers Alt+drag, Ctrl+Shift+drag and
+/// "Create shortcuts here" on the right-drag menu, and Vaktari had none of them
+/// — the gesture did whatever the modifier fell through to instead.
 /// </summary>
 public interface IShortcutMaker
 {

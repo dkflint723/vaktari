@@ -181,20 +181,20 @@ public sealed class ExplorerConventionTests : OwnedViewModels
     {
         Assert.Equal(
             DragIntent.Link,
-            DragEffect.For(control: true, shift: true, internalDrag: true, [OnC], AlsoC));
+            DragEffect.For(control: true, shift: true, alt: false, internalDrag: true, [OnC], AlsoC));
 
         Assert.Equal(
             DragIntent.Link,
-            DragEffect.For(control: true, shift: true, internalDrag: false, [OnC], OnD));
+            DragEffect.For(control: true, shift: true, alt: false, internalDrag: false, [OnC], OnD));
 
         // And the chord's halves keep their own meanings.
         Assert.Equal(
             DragIntent.Copy,
-            DragEffect.For(control: true, shift: false, internalDrag: true, [OnC], AlsoC));
+            DragEffect.For(control: true, shift: false, alt: false, internalDrag: true, [OnC], AlsoC));
 
         Assert.Equal(
             DragIntent.Move,
-            DragEffect.For(control: false, shift: true, internalDrag: true, [OnC], OnD));
+            DragEffect.For(control: false, shift: true, alt: false, internalDrag: true, [OnC], OnD));
     }
 
     [WindowsFact]
@@ -202,19 +202,22 @@ public sealed class ExplorerConventionTests : OwnedViewModels
     {
         Assert.Equal(
             DragIntent.Move,
-            DragEffect.For(false, false, internalDrag: true, [OnC], AlsoC));
+            DragEffect.For(false, false, alt: false, internalDrag: true, [OnC], AlsoC));
 
         Assert.Equal(
             DragIntent.Copy,
-            DragEffect.For(false, false, internalDrag: true, [OnC], OnD));
+            DragEffect.For(false, false, alt: false, internalDrag: true, [OnC], OnD));
     }
 
     /// <summary>A key held down wins outright, as it does everywhere.</summary>
     [Fact]
     public void A_modifier_decides_regardless_of_volume()
     {
-        Assert.Equal(DragIntent.Copy, DragEffect.For(true, false, true, [OnC], AlsoC));
-        Assert.Equal(DragIntent.Move, DragEffect.For(false, true, true, [OnC], OnD));
+        Assert.Equal(
+            DragIntent.Copy, DragEffect.For(true, false, false, true, [OnC], AlsoC));
+
+        Assert.Equal(
+            DragIntent.Move, DragEffect.For(false, true, false, true, [OnC], OnD));
     }
 
     /// <summary>
@@ -224,7 +227,9 @@ public sealed class ExplorerConventionTests : OwnedViewModels
     [Fact]
     public void A_drag_from_outside_the_application_copies()
     {
-        Assert.Equal(DragIntent.Copy, DragEffect.For(false, false, internalDrag: false, [OnC], AlsoC));
+        Assert.Equal(
+            DragIntent.Copy,
+            DragEffect.For(false, false, alt: false, internalDrag: false, [OnC], AlsoC));
     }
 
     /// <summary>
@@ -237,14 +242,14 @@ public sealed class ExplorerConventionTests : OwnedViewModels
     {
         Assert.Equal(
             DragIntent.Copy,
-            DragEffect.For(false, false, true, [OnC, @"D:\other.txt"], AlsoC));
+            DragEffect.For(false, false, false, true, [OnC, @"D:\other.txt"], AlsoC));
     }
 
     /// <summary>Nothing to reason about is not a licence to move.</summary>
     [Fact]
     public void An_empty_drag_copies()
     {
-        Assert.Equal(DragIntent.Copy, DragEffect.For(false, false, true, [], AlsoC));
+        Assert.Equal(DragIntent.Copy, DragEffect.For(false, false, false, true, [], AlsoC));
     }
 
     // ---- the keyboard ------------------------------------------------------

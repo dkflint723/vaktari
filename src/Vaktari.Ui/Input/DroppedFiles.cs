@@ -89,6 +89,12 @@ public static class DroppedFileReader
         // A would have been harmless. This is told copy-or-move and never that
         // the intent was "create shortcut here", so telling the two apart is a
         // change to what the handlers ask rather than to what is decided here.
+        //
+        // The already-here filter below is the one the handlers HAVE been
+        // changed for: both now pass `copying` for a Link, so a shortcut asked
+        // for beside its own original is kept. This containment refusal is
+        // still not told apart, and a folder linked into itself is still
+        // refused along with the copy and the move.
         if (offered.Any(p => Core.FileSystem.PathRules.Contains(p, destination)))
             return new DroppedFiles([], copying
                 ? "a folder cannot be copied into itself"

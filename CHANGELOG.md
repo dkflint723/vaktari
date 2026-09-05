@@ -13,6 +13,15 @@ should not be trusted for compatibility yet.
 
 ### Added
 
+- **Alt+drag now makes a shortcut, the way Ctrl+Shift+drag already did.** Explorer
+  has two ways to ask for one and Vaktari knew only the longer of them. Holding
+  Alt did nothing whatever, so the drag fell through to the plain one and moved
+  the file within a drive — the gesture whose whole point is that the original
+  stays put was the one most likely to take it away. Both spellings now leave a
+  shortcut, including when you drop onto the folder the file already lives in,
+  which is how a shortcut comes to sit beside its original. The keyboard sheet
+  behind F1 names both, on the Dragging list where it had named neither.
+
 - **Vaktari remembers what you searched for.** Nothing recorded a search at
   all: a question was typed, answered, and gone the moment the tab moved on —
   the only copy of it was the pane's own path. Asking it again meant retyping

@@ -191,6 +191,17 @@ public static class Shortcuts
             new("Drag", "Move within a drive, copy between drives"),
             new("Ctrl+drag", "Copy — onto the same folder, duplicate"),
             new("Shift+drag", "Move"),
+
+            // **Both spellings, because Alt+drag was the one that did not
+            // work.** The sheet named neither, and the gesture that WAS
+            // implemented was the two-key one; Alt+drag fell through to the
+            // volume rule and moved the file. Printed on one line the way
+            // "Menu / Shift+F10" is — two habits for one verb, not two verbs.
+            //
+            // The key cross-checks cannot reach this line: the listed side
+            // drops anything containing "drag", and the bound side is built
+            // from KeyBindings, which a pointer gesture is not.
+            new("Alt+drag / Ctrl+Shift+drag", "Create a shortcut"),
         ]),
 
         new("Looking at things",

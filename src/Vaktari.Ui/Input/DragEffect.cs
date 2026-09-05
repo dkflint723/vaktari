@@ -14,15 +14,35 @@ public enum DragIntent { Copy, Move, Link }
 /// materially different from what Windows would have done, without saying so.
 ///
 /// Holding a key still wins outright, as it does everywhere.
+///
+/// **Explorer has two gestures for "create shortcut here" and this had one.**
+/// Ctrl+Shift was read; Alt was not a parameter at all, so Alt+drag — the
+/// one-key spelling of the two — arrived with no modifier set and fell through
+/// to the volume rule, which MOVED the file within a drive. The gesture that is
+/// supposed to leave the original where it is was the gesture most likely to
+/// take it away.
 /// </summary>
 public static class DragEffect
 {
     public static DragIntent For(
-        bool control, bool shift, bool internalDrag, IReadOnlyList<string> sources, string destination)
+        bool control, bool shift, bool alt, bool internalDrag,
+        IReadOnlyList<string> sources, string destination)
     {
-        // Both together is Explorer's "create shortcut here", and it has to be
-        // read before either alone — a chord is not a pair of fallbacks.
-        if (control && shift) return DragIntent.Link;
+        // Explorer's two spellings of "create shortcut here", read before every
+        // single modifier below — a chord is not a pair of fallbacks, and Alt
+        // is not a key that falls through to what the other two would have said.
+        //
+        // **Alt held WITH one of the others is a decision, not a measurement.**
+        // What is known is the shape of the four gestures Explorer documents:
+        // Ctrl+Shift or Alt means link, Ctrl alone copy, Shift alone move. What
+        // the shell does with Ctrl+Alt was not checked from here — running it
+        // is the only way to find out and this machine does not run the shell —
+        // so `alt || (control && shift)` reads alt as the deliberate key and
+        // lets it decide. Pinned by
+        // AltDragShortcutTests.Alt_outranks_the_modifiers_held_with_it, which
+        // is the record of the choice; if the shell is ever measured saying
+        // otherwise, that test is the one line to change.
+        if (alt || (control && shift)) return DragIntent.Link;
 
         if (control) return DragIntent.Copy;
         if (shift) return DragIntent.Move;

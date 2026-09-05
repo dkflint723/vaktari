@@ -3906,11 +3906,21 @@ public partial class MainWindow : Window
         // Copying keeps a file dropped into its own folder — that is Explorer's
         // duplicate gesture — while moving discards it as a no-op, so the
         // filtering cannot be decided before the intent is.
+        //
+        // **Not Copy: everything that is not a Move.** The reader is told
+        // copy-or-move and only a MOVE has a reason to strip a path already
+        // living in the destination. Asking it `== Copy` put Link on the move
+        // side, so Alt+drag onto the folder a file is already in — Explorer's
+        // way of putting "X - Shortcut" beside the original — was filtered down
+        // to nothing and answered None. Measured: OnDrop asks the same reader
+        // `!move` and made the shortcut, so the drop handler was already right
+        // and unreachable, because a real OLE drag obeys the cursor. See
+        // Alt_onto_the_folder_the_file_already_lives_in_still_makes_a_shortcut.
         var offered = Input.DroppedFileReader.Offered(e.DataTransfer);
         var effect = EffectFor(e.KeyModifiers, offered, destination);
 
         var takeable = Input.DroppedFileReader
-            .Read(e.DataTransfer, destination, effect == DragDropEffects.Copy).Any;
+            .Read(e.DataTransfer, destination, effect != DragDropEffects.Move).Any;
 
         // Files that live inside an archive have no paths yet, so nothing above
         // sees them — but they can be had, and the cursor has to say so before
@@ -3940,8 +3950,13 @@ public partial class MainWindow : Window
     }
 
     /// <summary>
-    /// Copy or move. See <see cref="Input.DragEffect"/> for the rule — which is
-    /// Windows's, by volume, rather than the one this used to apply.
+    /// Copy, move or link. See <see cref="Input.DragEffect"/> for the rule —
+    /// which is Windows's, by volume, rather than the one this used to apply.
+    ///
+    /// **Alt was read nowhere on this path.** Only Control and Shift were
+    /// taken off the modifiers, so Alt+drag reached the rule as an unmodified
+    /// drag and was answered by volume — a move inside a drive, where Explorer
+    /// would have left a shortcut and the original untouched.
     /// </summary>
     private Input.DragIntent IntentFor(
         KeyModifiers modifiers, IReadOnlyList<string> sources, string destination)
@@ -3949,6 +3964,7 @@ public partial class MainWindow : Window
         var intent = Input.DragEffect.For(
             modifiers.HasFlag(KeyModifiers.Control),
             modifiers.HasFlag(KeyModifiers.Shift),
+            modifiers.HasFlag(KeyModifiers.Alt),
             _internalDrag, sources, destination);
 
         // A platform with no idea of a shortcut must not advertise one on the

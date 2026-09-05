@@ -73,7 +73,8 @@ public interface IPlatform
     /// <summary>
     /// Makes this platform's kind of shortcut — a .lnk on Windows, a symlink on
     /// Linux. Null on a platform with no such idea, and the gestures that use
-    /// it (Ctrl+Shift+drag, the right-drag menu) simply do not offer it there.
+    /// it (Alt+drag, Ctrl+Shift+drag, the right-drag menu, the row's own menu
+    /// entry) simply do not offer it there.
     /// </summary>
     Vaktari.Core.FileSystem.IShortcutMaker? Shortcuts => null;
 
