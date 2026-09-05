@@ -50,9 +50,11 @@ public sealed partial class SettingsViewModel : ObservableObject
         SettingsState current,
         Core.IDefaultFileManager? defaults = null,
         Core.FileSystem.IFileIconProvider? desktopIcons = null,
-        Core.IFileManagerService? fileManager = null)
+        Core.IFileManagerService? fileManager = null,
+        string? settingsFile = null)
     {
         _original = current;
+        _settingsFile = settingsFile ?? "";
         _defaults = defaults;
         _desktopIcons = desktopIcons;
         _fileManager = fileManager;
@@ -510,6 +512,106 @@ public sealed partial class SettingsViewModel : ObservableObject
 
     [RelayCommand]
     private void GetMoreIcons() => OpenUrlRequested?.Invoke(this, IconThemesUrl);
+
+    // ---- the file all of this ends up in -----------------------------------
+
+    /// <summary>
+    /// settings.json, or empty in a view model built without one.
+    ///
+    /// **No page in this dialog could say where the choices go.** The footer
+    /// shows a path on hover and it is the path of the BINARY; the file itself
+    /// could only be found by knowing where a platform keeps config, or by
+    /// searching the disk. Which also meant there was no way to keep a copy of
+    /// a set-up, or to put one back.
+    /// </summary>
+    private readonly string _settingsFile;
+
+    public string SettingsFile => _settingsFile;
+
+    /// <summary>
+    /// What the three commands below are allowed to do. False in a view model
+    /// built without a file — the unit tests build dozens of those, and a
+    /// "show me the file" that opens somebody else's is worse than a disabled
+    /// one.
+    /// </summary>
+    public bool HasSettingsFile => _settingsFile.Length > 0;
+
+    /// <summary>Said next to the button rather than in a dialog: none of the
+    /// three is worth interrupting for, and a refusal has to be readable.</summary>
+    [ObservableProperty]
+    private string _settingsFileStatus = "";
+
+    /// <summary>A save-file picker, for somewhere to put a copy.</summary>
+    public event EventHandler? SettingsExportRequested;
+
+    /// <summary>And an open-file picker, for a copy to put back.</summary>
+    public event EventHandler? SettingsImportRequested;
+
+    /// <summary>
+    /// Opens the folder the file is in, rather than the file.
+    ///
+    /// Opening settings.json itself would hand it to whatever the desktop has
+    /// registered for .json, which on a machine with a development environment
+    /// installed is an IDE taking twenty seconds to start. The folder is what
+    /// the question "where is it?" actually asks.
+    /// </summary>
+    [RelayCommand(CanExecute = nameof(HasSettingsFile))]
+    private void ShowSettingsFile()
+    {
+        if (Path.GetDirectoryName(_settingsFile) is not { Length: > 0 } folder) return;
+
+        OpenUrlRequested?.Invoke(this, folder);
+    }
+
+    [RelayCommand(CanExecute = nameof(HasSettingsFile))]
+    private void ExportSettings() => SettingsExportRequested?.Invoke(this, EventArgs.Empty);
+
+    [RelayCommand(CanExecute = nameof(HasSettingsFile))]
+    private void ImportSettings() => SettingsImportRequested?.Invoke(this, EventArgs.Empty);
+
+    /// <summary>
+    /// Writes what is on screen to a chosen path. Not the file on disk: see
+    /// the comment on Collect.
+    /// </summary>
+    internal bool ExportTo(string path)
+    {
+        var written = Settings.JsonSettingsStore.Export(path, Collect());
+
+        SettingsFileStatus = written
+            ? $"Saved a copy as {Path.GetFileName(path)}."
+            : "That file could not be written.";
+
+        return written;
+    }
+
+    /// <summary>
+    /// Puts a chosen file back, and leaves through the same door Save uses.
+    ///
+    /// **Closing is the point, not a shortcut.** Every control on these six
+    /// pages was seeded from the state this dialog opened with, so a file read
+    /// in behind them would leave forty boxes showing the old values over the
+    /// new ones — and pressing Save would then write the old values straight
+    /// back over the import. Handing the imported state out as the result is
+    /// the one shape where what the person sees next is what they imported.
+    ///
+    /// A file this version cannot read is refused rather than partially
+    /// applied, which is why <see cref="Settings.JsonSettingsStore.Import"/>
+    /// answers null instead of defaults.
+    /// </summary>
+    internal bool ImportFrom(string path)
+    {
+        if (Settings.JsonSettingsStore.Import(path) is not { } state)
+        {
+            SettingsFileStatus = "That is not a settings file this version can read.";
+            return false;
+        }
+
+        Result = state;
+        Saved = true;
+        CloseRequested?.Invoke(this, EventArgs.Empty);
+
+        return true;
+    }
 
     // ---- fetching one ------------------------------------------------------
 
@@ -1052,6 +1154,23 @@ public sealed partial class SettingsViewModel : ObservableObject
     [RelayCommand]
     private void Save()
     {
+        Result = Collect();
+        Saved = true;
+        CloseRequested?.Invoke(this, EventArgs.Empty);
+    }
+
+    /// <summary>
+    /// Everything on the six pages, as the record that gets written.
+    ///
+    /// Lifted out of Save so that exporting writes what is ON SCREEN rather
+    /// than what is on disk. Exporting the file would have been simpler and
+    /// wrong: the dialog is where the choices are made, so the interesting
+    /// moment for "save a copy of this" is after changing something and before
+    /// pressing Save — and a file copy at that moment silently exports the
+    /// state the person is in the middle of replacing.
+    /// </summary>
+    private SettingsState Collect()
+    {
         var location = StartInSpecificFolder ? StartupLocation.SpecificFolder
             : StartInHome ? StartupLocation.HomeFolder
             : StartupLocation.RestoreSession;
@@ -1060,7 +1179,7 @@ public sealed partial class SettingsViewModel : ObservableObject
         // `with` on the whole state, so pages that are not built yet keep
         // whatever is already in the file rather than being reset to defaults
         // by a dialog that never showed them.
-        Result = _original with
+        return _original with
         {
             General = _original.General with
             {
@@ -1176,9 +1295,6 @@ public sealed partial class SettingsViewModel : ObservableObject
                 ShowFullPathInTitleBar = ShowFullPathInTitleBar,
             },
         };
-
-        Saved = true;
-        CloseRequested?.Invoke(this, EventArgs.Empty);
     }
 
     [RelayCommand]

@@ -1155,7 +1155,12 @@ public partial class MainWindow : Window
     private void ShowSettings()
     {
         var model = new SettingsViewModel(
-            AppSettings.Current, _defaultFileManager, _platform.FileIcons, _fileManager);
+            AppSettings.Current, _defaultFileManager, _platform.FileIcons, _fileManager,
+            // From the store rather than rebuilt from the same two pieces: the
+            // dialog now shows this path and writes copies of that file, and a
+            // second spelling of where it is would be wrong in exactly the
+            // cases that matter — a portable install, a test directory.
+            _services.SettingsStore.FilePath);
 
         // The pane already holds the detected list, ordered and cached, so the
         // dialog borrows it rather than probing the disk again as it opens.
@@ -1181,6 +1186,59 @@ public partial class MainWindow : Window
                 return null;
             }
         }
+
+        model.SettingsExportRequested += async (_, _) =>
+        {
+            var target = await window.StorageProvider.SaveFilePickerAsync(
+                new Avalonia.Platform.Storage.FilePickerSaveOptions
+                {
+                    Title = "Save a copy of these settings",
+                    SuggestedFileName = "vaktari-settings.json",
+                    DefaultExtension = "json",
+                    FileTypeChoices =
+                    [
+                        new Avalonia.Platform.Storage.FilePickerFileType("Vaktari settings")
+                        {
+                            Patterns = ["*.json"],
+                        },
+                    ],
+                });
+
+            if (target?.TryGetLocalPath() is not { } path) return;
+
+            model.ExportTo(path);
+        };
+
+        model.SettingsImportRequested += async (_, _) =>
+        {
+            // Starting where the real one lives, since a copy of it is most
+            // often kept beside it.
+            var start = await Suggested(
+                window, Path.GetDirectoryName(_services.SettingsStore.FilePath) ?? "");
+
+            var picked = await window.StorageProvider.OpenFilePickerAsync(
+                new Avalonia.Platform.Storage.FilePickerOpenOptions
+                {
+                    Title = "Replace these settings from a copy",
+                    AllowMultiple = false,
+                    SuggestedStartLocation = start,
+                    FileTypeFilter =
+                    [
+                        new Avalonia.Platform.Storage.FilePickerFileType("Vaktari settings")
+                        {
+                            Patterns = ["*.json"],
+                        },
+                    ],
+                });
+
+            if (picked.Count == 0 || picked[0].TryGetLocalPath() is not { } file) return;
+
+            // Closes the dialog on success, and the Closed handler below then
+            // applies and saves the imported state exactly as it applies a
+            // Save — so an import lands everywhere a normal save lands, with no
+            // second path to keep in step.
+            model.ImportFrom(file);
+        };
 
         // A file somebody downloaded themselves, unpacked exactly as a fetched
         // one is — same containment, same whitelist, same size caps.

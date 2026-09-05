@@ -75,6 +75,51 @@
           <Button Content="Save" Padding="14,4" IsDefault="True" Command="{Binding SaveCommand}"/>
         </StackPanel>
 
+        <!-- **Nothing in this dialog could say where the choices go.** The
+             version line beside this shows a path on hover and it is the path
+             of the BINARY; settings.json could only be found by knowing where
+             the platform keeps config, or by searching for it. Which also
+             meant there was no way to keep a copy of a set-up, or to put one
+             back on another machine.
+
+             In the footer with the version rather than on a page, because it
+             is about the file rather than about anything in it — the same kind
+             of thing as the build number it sits next to.
+
+             One button with a menu rather than three buttons: three would push
+             the version line off a narrow window, and these are rare actions
+             next to Save and Cancel, which are not. -->
+        <Button DockPanel.Dock="Left"
+                Content="Settings file"
+                Padding="10,4"
+                Margin="0,0,12,0"
+                IsEnabled="{Binding HasSettingsFile}"
+                ToolTip.Tip="{Binding SettingsFile}">
+          <Button.Flyout>
+            <MenuFlyout Placement="TopEdgeAlignedLeft">
+              <MenuItem Header="Show settings file"
+                        Command="{Binding ShowSettingsFileCommand}"/>
+              <MenuItem Header="Save a copy…"
+                        Command="{Binding ExportSettingsCommand}"/>
+              <MenuItem Header="Replace from a copy…"
+                        Command="{Binding ImportSettingsCommand}"/>
+            </MenuFlyout>
+          </Button.Flyout>
+        </Button>
+
+        <!-- Takes the space the version line would have had, and only when
+             there is something to say. A refusal — a file this version cannot
+             read — has to be readable somewhere, and none of these three is
+             worth a dialog of its own. -->
+        <SelectableTextBlock DockPanel.Dock="Left"
+                             Text="{Binding SettingsFileStatus}"
+                             IsVisible="{Binding SettingsFileStatus, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"
+                             FontSize="{DynamicResource FontSizeTiny}"
+                             Foreground="{DynamicResource ViewDimText}"
+                             VerticalAlignment="Center"
+                             Margin="0,0,12,0"
+                             TextTrimming="CharacterEllipsis"/>
+
         <!-- Selectable, because the reason anyone reads a version is to quote
              it somewhere — an issue, a message. A number you can see and not
              copy makes them type it out and get it wrong. -->

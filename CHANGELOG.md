@@ -740,6 +740,24 @@ should not be trusted for compatibility yet.
   it, and the keyboard walking into the sidebar still lands on a place rather
   than on a heading.
 
+### Added
+
+- **The settings dialog can now show you its own file, save a copy of it, and
+  put one back.** Six pages of choices all end up in `settings.json`, and
+  nothing in the application could say where that is — the only path on screen
+  was the version line's tooltip, which is where the program itself is
+  installed rather than where your settings live. So the file could be found
+  by knowing where your platform keeps configuration, or by searching the disk,
+  and no other way. A *Settings file* button in the footer now opens the folder
+  it is in, saves a copy wherever you choose, or replaces your settings from a
+  copy you made earlier — for moving a set-up to another machine, or putting
+  one back after an afternoon of experimenting.
+
+  A copy holds what is on the pages at that moment, not what was last saved, so
+  you can try something, keep a copy of it, and cancel. Replacing applies
+  immediately and closes the dialog, and a file this version cannot read is
+  refused rather than quietly resetting everything to defaults.
+
 ### Fixed
 
 - **On Linux, an application you have un-chosen for a file type stops being
