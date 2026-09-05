@@ -17,6 +17,35 @@ public readonly record struct FileConflict(string Source, string Target);
 public enum OperationState { Queued, Running, Paused, Completed, Failed, Cancelled }
 
 /// <summary>
+/// What an operation is DOING, as opposed to where it is doing it.
+///
+/// **A handle said what it was touching and never what it was for.** It carried
+/// an id, a state, its paths and its problems, so the only sentence anything
+/// could build about a running operation was the progress line the engine
+/// reports — and only one operation at a time gets that line. With several
+/// going there was no way to write a row per operation, because there was
+/// nothing to write on it: two handles copying and binning the same folder were
+/// indistinguishable.
+///
+/// A verb and not a sentence. The words belong to the window, which is where
+/// they can be spelled the way the rest of the labels are; the engine knows
+/// only which of these four calls it is serving.
+///
+/// <see cref="Other"/> is the default, and it is honest rather than lazy: a
+/// handle nobody named must not be given a verb it did not earn, because the
+/// wrong verb on a row is worse than no verb — "Deleting" over a copy.
+///
+/// **Measured: every one of the seven <c>new OperationHandle</c> sites in this
+/// repository sets it** — three in each engine, and ElevatedRun, which maps the
+/// request's verb in the same object initialiser. So nothing in the shipping
+/// application answers <see cref="Other"/>. It is reached by handles built in
+/// tests, and by an implementor written outside this assembly, which is the
+/// point of the interface default beside it: adding a member to a published
+/// interface must break nobody.
+/// </summary>
+public enum OperationKind { Other, Copy, Move, Trash, Delete }
+
+/// <summary>
 /// One item an operation could not do, and why — so the rest of the batch can
 /// carry on and the person still learns which files were left behind.
 /// </summary>
@@ -59,6 +88,32 @@ public interface IOperationHandle
     /// something that is not one of the file engines.
     /// </summary>
     IReadOnlyList<string> Paths { get; }
+
+    /// <summary>
+    /// Which of the four calls made this handle, so a row of its own can name
+    /// it. See <see cref="OperationKind"/> for what could not be said without
+    /// it.
+    ///
+    /// **For a copy and a move, the destination is the LAST of
+    /// <see cref="Paths"/>** — all three builders spell the list
+    /// <c>[.. sources, destination]</c>, and a row that says where the bytes
+    /// are going has to be able to find it. A trash and a delete have no second
+    /// place, so every path they carry is a source.
+    ///
+    /// The third builder is <see cref="ElevatedRun"/>, which appends the
+    /// destination only where the request carries one — and a copy or a move
+    /// that reaches it always does: the only two producers of an
+    /// <see cref="ElevatedRequest"/> are <c>RetryRoots.Administrator</c>, which
+    /// hands the failed run's own destination across and passes null only for a
+    /// delete, and <see cref="ElevatedRequest.Parse"/>, which reads a
+    /// destination for every verb but delete and refuses one that is not
+    /// rooted. ElevatedRun's own note records the same thing from that side.
+    ///
+    /// Default <see cref="OperationKind.Other"/>, for the same reason
+    /// <see cref="Paths"/> defaults to empty: handles built by things that are
+    /// not file engines still have to construct.
+    /// </summary>
+    OperationKind Kind => OperationKind.Other;
 
     /// <summary>
     /// Items that failed while the rest of the batch went through. Empty on a

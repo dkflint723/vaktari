@@ -52,6 +52,16 @@ public sealed class OperationHandle : IOperationHandle
     /// </summary>
     public IReadOnlyList<string> Paths { get; init; } = [];
 
+    /// <summary>
+    /// Which call this is serving, set by the engine at construction beside
+    /// <see cref="Paths"/> and for the same reason: it is known to the method
+    /// that makes the handle and to nothing afterwards.
+    ///
+    /// See <see cref="IOperationHandle.Kind"/> for why a row could not be
+    /// written without it.
+    /// </summary>
+    public OperationKind Kind { get; init; } = OperationKind.Other;
+
     private readonly List<ItemProblem> _problems = [];
 
     /// <summary>

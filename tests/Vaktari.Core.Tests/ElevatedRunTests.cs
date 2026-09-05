@@ -224,4 +224,94 @@ public sealed class ElevatedRunTests
             "the administrator run would not act on what it was given",
             handle.Error?.Message);
     }
+
+    /// <summary>
+    /// **An administrator run wears the same clothes as every other operation**,
+    /// and that now includes the verb: it takes a row in the list of running
+    /// operations like an ordinary copy, and a row with no kind on it reads
+    /// "Working" — which says less than the bar said before the list existed.
+    ///
+    /// The elevated verb is a closed set of three and the row's is a set of
+    /// four, so this is a mapping and not a cast; getting it wrong would put
+    /// "Copying" on the row of a delete.
+    /// </summary>
+    [Fact]
+    public void An_elevated_run_says_which_verb_it_is_serving()
+    {
+        Assert.Equal(
+            OperationKind.Copy,
+            ElevatedRun.Start(new Answers(null), Copying(1)).Kind);
+
+        Assert.Equal(
+            OperationKind.Delete,
+            ElevatedRun.Start(new Answers(null), Deleting(1)).Kind);
+
+        Assert.Equal(
+            OperationKind.Move,
+            ElevatedRun.Start(
+                new Answers(null),
+                new ElevatedRequest(ElevatedVerb.Move, At("into"), [At("f0.txt")])).Kind);
+    }
+
+    /// <summary>
+    /// **And the destination goes LAST**, which is the arrangement
+    /// <see cref="IOperationHandle.Kind"/> states and a row reads to say where
+    /// the bytes are going. Get it the other way round and an administrator
+    /// copy's row names the last SOURCE as the place they are landing.
+    ///
+    /// A delete has no second place, so its paths are its sources and nothing
+    /// else — which is the branch that appends nothing.
+    /// </summary>
+    [Fact]
+    public void An_elevated_transfer_puts_its_destination_last()
+    {
+        var copy = ElevatedRun.Start(new Answers(null), Copying(3));
+
+        Assert.Equal(At("into"), copy.Paths[^1]);
+        Assert.Equal([At("f0.txt"), At("f1.txt"), At("f2.txt"), At("into")], copy.Paths);
+
+        var delete = ElevatedRun.Start(new Answers(null), Deleting(2));
+
+        Assert.Equal([At("f0.txt"), At("f1.txt")], delete.Paths);
+    }
+
+    /// <summary>
+    /// **And a copy or a move never arrives here without one**, which is what
+    /// keeps the rule above from being a promise the row cannot rely on. Only
+    /// two things build an ElevatedRequest, and this is the one the elevated
+    /// process itself uses: <see cref="ElevatedRequest.Parse"/> reads
+    /// arguments[2] as the destination for every verb but delete, and refuses
+    /// the line outright when what it finds there is not a rooted path.
+    ///
+    /// So the shape that would make a row say "Copying a.txt to b.txt" — a Copy
+    /// carrying only sources — cannot be read off a command line at all. The
+    /// other producer, <c>RetryRoots.Administrator</c>, passes null only for
+    /// <see cref="ElevatedVerb.Delete"/>, and hands its result through this
+    /// same Parse before offering it.
+    /// </summary>
+    [Fact]
+    public void A_copy_with_no_destination_is_not_a_request_at_all()
+    {
+        // The verb, then straight into sources: whatever sits where the
+        // destination belongs is read as the destination, and a relative one is
+        // refused.
+        Assert.Null(ElevatedRequest.Parse([ElevatedRequest.Flag, "copy", "f0.txt", At("f1.txt")]));
+
+        // And a copy with nothing after the destination has nothing to copy.
+        Assert.Null(ElevatedRequest.Parse([ElevatedRequest.Flag, "copy", At("into")]));
+
+        // A delete is the verb that legitimately carries none, and it is
+        // accepted — so the refusals above are about the destination and not
+        // about the arity.
+        var delete = ElevatedRequest.Parse([ElevatedRequest.Flag, "delete", At("f0.txt")]);
+
+        Assert.NotNull(delete);
+        Assert.Null(delete.Destination);
+
+        var copy = ElevatedRequest.Parse(
+            [ElevatedRequest.Flag, "copy", At("into"), At("f0.txt")]);
+
+        Assert.NotNull(copy);
+        Assert.Equal(At("into"), copy.Destination);
+    }
 }

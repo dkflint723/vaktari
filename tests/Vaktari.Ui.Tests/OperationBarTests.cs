@@ -222,6 +222,14 @@ public sealed class OperationBarTests : OwnedViewModels
     /// same argument one step on: of the two ways to go again, the one that
     /// asks the system for rights is not the one a habitual hand should find
     /// first.
+    ///
+    /// **The bar's own row of buttons, not every button under the bar.** This
+    /// read Descendants, which was the same set until the operations flyout
+    /// arrived: each of its rows carries a Cancel of its own, bound to the ROW's
+    /// command rather than to the shell's, and those are descendants of this
+    /// Border too. Scoped to the DockPanel's direct children — the same scope
+    /// the spacing test above already uses — so it asserts the thing it is
+    /// named for. All five are still here, still in order.
     /// </summary>
     [AvaloniaFact]
     public void Pause_sits_to_the_left_of_cancel()
@@ -231,7 +239,8 @@ public sealed class OperationBarTests : OwnedViewModels
         var bar = markup.Descendants(Avalonia + "Border")
             .Single(b => (string?)b.Attribute("IsVisible") == "{Binding ShowOperationBar}");
 
-        var commands = bar.Descendants(Avalonia + "Button")
+        var commands = bar.Elements(Avalonia + "DockPanel").Single()
+            .Elements(Avalonia + "Button")
             .Select(b => (string?)b.Attribute("Command"))
             .OfType<string>()
             .ToList();

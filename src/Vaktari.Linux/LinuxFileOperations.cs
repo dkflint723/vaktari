@@ -35,7 +35,7 @@ public sealed class LinuxFileOperations : IFileOperations
 
     public IOperationHandle Trash(IReadOnlyList<string> paths)
     {
-        var handle = new OperationHandle { Paths = paths };
+        var handle = new OperationHandle { Paths = paths, Kind = OperationKind.Trash };
 
         _ = Task.Run(async () =>
         {
@@ -92,7 +92,7 @@ public sealed class LinuxFileOperations : IFileOperations
     /// </summary>
     public IOperationHandle Delete(IReadOnlyList<string> paths)
     {
-        var handle = new OperationHandle { Paths = paths };
+        var handle = new OperationHandle { Paths = paths, Kind = OperationKind.Delete };
 
         _ = Task.Run(async () =>
         {
@@ -244,7 +244,16 @@ public sealed class LinuxFileOperations : IFileOperations
         // Sources and destination together: a copy ONTO a stick claims it
         // through the destination, a move OFF one claims it through the
         // sources, and the eject guard has to see both.
-        var handle = new OperationHandle { Paths = [.. sources, destination] };
+        //
+        // **Destination LAST**, which is what a row of its own reads to say
+        // where the bytes are going; IOperationHandle.Kind records that
+        // arrangement as the contract it now is rather than an accident of how
+        // the list was spelled.
+        var handle = new OperationHandle
+        {
+            Paths = [.. sources, destination],
+            Kind = move ? OperationKind.Move : OperationKind.Copy,
+        };
 
         _ = Task.Run(async () =>
         {

@@ -13,6 +13,17 @@ should not be trusted for compatibility yet.
 
 ### Added
 
+- **Several transfers at once are a list now, and each one can be stopped on its
+  own.** Nothing makes file operations wait for each other, but the transfer bar
+  only ever showed the newest of them: the progress line, the fraction, the
+  speed, Pause and Cancel all belonged to that one, and "2 running" said there
+  were others without naming any. Cancel reached the operation on the bar and no
+  other, so the way to stop a copy that a later transfer had covered over was to
+  wait for the later one to finish. An *Operations* button beside the count opens
+  the list — "Copying 12 items to Photos", "Moving 3 items to the bin" — with a
+  Cancel on each row. A row leaves its Cancel off where pressing it would do
+  nothing: a Windows recycle goes through one call that cannot be interrupted.
+
 - **On Linux, double-clicking a program offers to run it.** Every file went to
   the desktop's opener, and that opener never runs anything: a shell script
   opened in a text editor, and a binary or an AppImage opened nothing at all —

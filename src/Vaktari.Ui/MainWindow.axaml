@@ -4247,6 +4247,106 @@
                      VerticalAlignment="Center"
                      Value="{Binding OperationPercent}" Maximum="1"
                      IsVisible="{Binding HasOperationProgress}"/>
+        <!-- **The count said how many and named none of them, and there was one
+             Cancel in the whole application.** CancelOperation is
+             ActiveOperation?.Cancel(), and the bar follows the NEWEST handle —
+             so the way to stop the copy underneath was to wait for the one on
+             top to finish. This opens the list the count counts: a row per
+             operation, each saying what it is doing, each with a cancel that
+             reaches that one.
+
+             No Command, like the problems button beside it: this is the
+             button's own popup, so it takes no verb — which is also what keeps
+             the bar's asserted order of COMMANDS reading exactly as it did.
+
+             Declared before the count and after the progress bar, so it lands
+             immediately to the count's right: right-docked children fill from
+             the right in declaration order, and the pair reads "2 running" then
+             the way in to them. -->
+        <Button DockPanel.Dock="Right" Content="Operations" Margin="8,0,0,0"
+                FontSize="{DynamicResource FontSizeSmall}" Padding="8,2"
+                IsVisible="{Binding CanShowRunningOperations}"
+                ToolTip.Tip="Everything running, and a cancel for each">
+          <Button.Flyout>
+            <!-- Opening upward, and stated rather than left to the positioner,
+                 for the reason the problems flyout records above: this bar is
+                 docked to the BOTTOM of the window, so a Flyout's default
+                 Bottom placement is always constrained, and Avalonia's default
+                 PlacementConstraintAdjustment is All — it would be flipped, slid
+                 or RESIZED back into view.
+
+                 **Left-aligned because the room on that side is the only room
+                 that does not depend on how wide the window is.** Everything
+                 docked to this button's right sizes to itself — the progress
+                 bar, the speed, Pause and Cancel — and the status line, the
+                 fill child, is what absorbs the rest. Measured on a headless
+                 window with two operations running, at 600, 800, 1000 and 1920
+                 wide: from this button's LEFT edge to the right of the window
+                 is 553px at every one of them, while from its RIGHT edge
+                 leftward is the window width less 410 — 190px at 600. The list
+                 is 320 wide and MinWidth on this window is 560, so
+                 TopEdgeAlignedRight would hand the constraint solver a popup it
+                 could not fit on any window narrower than 730, which is exactly
+                 the rescue this Placement is here to avoid.
+
+                 The problems flyout above aligns the other way because it sits
+                 the other way round: it is declared fourth from the right of
+                 this run — Cancel and Pause are to its LEFT — so its right edge
+                 is up against the window's and the whole of the bar is to its
+                 left.
+
+                 Not "because this button is leftmost": it is not. The count is
+                 declared after it, so the count is the left-hand end of the
+                 docked run and this sits immediately to its right — measured at
+                 x=326 and x=447 on a 1000-wide window. -->
+            <Flyout Placement="TopEdgeAlignedLeft">
+              <!-- An ItemsControl rather than the virtualising ListBox the
+                   problems list uses: that one is occasionally thousands of
+                   rows — a folder that could not be created reports every one
+                   of its planned descendants — and this one is the number of
+                   file operations a person has started at once. Nothing here is
+                   selectable either; the row's own button is the only thing on
+                   it to press. -->
+              <ItemsControl ItemsSource="{Binding RunningOperations}" Width="320">
+                <ItemsControl.ItemTemplate>
+                  <DataTemplate x:DataType="vm:RunningOperationRow">
+                    <DockPanel LastChildFill="True" Margin="0,2">
+                      <!-- Docked, so the sentence beside it ellipsizes instead
+                           of pushing the cancel out of the popup: the same
+                           fault, and the same fix, as the bar's own buttons.
+
+                           IsVisible asks the ROW whether its cancel means
+                           anything, rather than assuming it does: a Windows
+                           recycle is one blocking SHFileOperation with no loop
+                           to read a token in, and a button that accepts the
+                           press and does nothing reads as a broken application
+                           rather than as an uninterruptible operation. -->
+                      <Button DockPanel.Dock="Right" Content="Cancel" Margin="8,0,0,0"
+                              FontSize="{DynamicResource FontSizeSmall}" Padding="8,2"
+                              IsVisible="{Binding CanCancel}"
+                              Command="{Binding CancelCommand}"/>
+                      <!-- The fill child, so it takes what the cancel left, and
+                           trimmed rather than wrapped for the reason the bar's
+                           own status line records: a row that grew taller would
+                           push the rows under it down the popup. What was
+                           trimmed can still be read, the same way the problems
+                           rows answer with their whole path.
+
+                           Centred because LastChildFill stretches the fill
+                           child to the row's height, which is the cancel
+                           button's — and a stretched TextBlock draws its text
+                           at the TOP, beside the middle of the button. -->
+                      <TextBlock Text="{Binding Description}" VerticalAlignment="Center"
+                                 FontSize="{DynamicResource FontSizeSmall}"
+                                 TextTrimming="CharacterEllipsis"
+                                 ToolTip.Tip="{Binding Description}" ToolTip.ShowDelay="600"/>
+                    </DockPanel>
+                  </DataTemplate>
+                </ItemsControl.ItemTemplate>
+              </ItemsControl>
+            </Flyout>
+          </Button.Flyout>
+        </Button>
         <!-- **Only one operation was ever on this bar, and it did not say so.**
              Nothing serialises them: the shell keeps a LIST of running handles
              — its comment records why, a second operation used to take the

@@ -40,11 +40,30 @@ public static class ElevatedRun
     public static IOperationHandle Start(
         IApplicationLauncher launcher, ElevatedRequest request)
     {
+        // The verb travels too, so an administrator copy gets the same row as
+        // an ordinary one, and the destination goes LAST — the arrangement
+        // IOperationHandle.Kind documents and the row reads to say where the
+        // bytes are going.
+        //
+        // **The null arm is the delete's, not a copy without a destination.**
+        // Only two things build an ElevatedRequest: RetryRoots.Administrator,
+        // which passes the failed run's own destination for a copy or a move
+        // and null only for ElevatedVerb.Delete, and Parse, which reads
+        // arguments[2] as the destination for every verb but delete and refuses
+        // one that is not rooted. So a Copy or a Move reaching here carries a
+        // destination, and Paths[^1] is it — which is what keeps the row from
+        // reading the last SOURCE as the place the bytes are going.
         var handle = new OperationHandle
         {
             Paths = request.Destination is { } into
                 ? [.. request.Sources, into]
                 : [.. request.Sources],
+            Kind = request.Verb switch
+            {
+                ElevatedVerb.Copy => OperationKind.Copy,
+                ElevatedVerb.Move => OperationKind.Move,
+                _ => OperationKind.Delete,
+            },
         };
 
         _ = Task.Run(async () =>

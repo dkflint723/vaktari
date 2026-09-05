@@ -1780,16 +1780,64 @@ public sealed partial class ShellViewModel : ObservableObject, IDisposable
     /// ConcurrentOperationsTests, which adopts two handles into one shell,
     /// finds ActiveOperation on the newer of them, and reads the bar.
     ///
-    /// A count and not a list of rows: IOperationHandle carries an id, a state,
-    /// its paths and its problems, and nothing that says what KIND of work it
-    /// is, so there is no sentence to put on a per-operation row without every
-    /// engine learning to supply one.
+    /// The count leads to the rows beside it: every engine now records what
+    /// KIND of work its handle is doing, which is what a per-operation sentence
+    /// was missing, and <see cref="RunningOperations"/> is the list this count
+    /// counts.
     ///
     /// Empty rather than "1 running" for the ordinary case: the bar is already
     /// the one operation, and a badge that is on screen for every single copy
     /// stops being read by the time it matters.
     /// </summary>
     [ObservableProperty] private string _concurrentOperations = "";
+
+    /// <summary>
+    /// A row per running operation: what each is doing, and a cancel that
+    /// reaches that one.
+    ///
+    /// **The count said there were others and named none of them.** The bar
+    /// follows the newest handle, so the line, the fraction, the speed, Pause
+    /// and Cancel all belong to that one — and CancelOperation is
+    /// <c>ActiveOperation?.Cancel()</c>, so the only way to stop the copy
+    /// underneath was to wait for the one on top to finish. Paste a large
+    /// folder, start a second one, and the first is unreachable for as long as
+    /// the second runs.
+    ///
+    /// Rebuilt in <see cref="RefreshConcurrentOperations"/>, off the same
+    /// state-filtered list the count is taken from, so a row and the number
+    /// beside it can never disagree — and a handle that has finished but is
+    /// still lingering in <see cref="_running"/> gets neither.
+    ///
+    /// A whole new list rather than a mutated ObservableCollection: it is
+    /// rebuilt only when an operation starts or ends, it holds a handful of
+    /// rows, and a row carries nothing worth preserving across a rebuild.
+    /// </summary>
+    [ObservableProperty] private IReadOnlyList<RunningOperationRow> _runningOperations = [];
+
+    /// <summary>
+    /// Whether the list is worth offering, on the same threshold as the count:
+    /// with one operation running the bar IS that operation, and its own Cancel
+    /// is already the per-operation cancel.
+    ///
+    /// **The threshold was decided with the 2-to-1 transition in front of it,
+    /// measured on a headless window with the flyout open.** When one of two
+    /// ends, this goes false and the button disappears — but the popup already
+    /// open stays open, showing the survivor's row with its Cancel still live,
+    /// and the completion continuation below has by then pointed
+    /// <see cref="ActiveOperation"/> at that same survivor, so the bar's own
+    /// Cancel reaches it too. What goes is a second way IN, not the only way
+    /// out of anything.
+    ///
+    /// Against <c>&gt; 0</c>, which would hold the button still across that
+    /// moment: it also puts an Operations button on the bar for every single
+    /// copy — measured at 143px on this machine, taken off a status line that
+    /// had 310px left at a 1000-wide window — to open a list of one row saying
+    /// what the bar beside it is already saying.
+    /// </summary>
+    public bool CanShowRunningOperations => RunningOperations.Count > 1;
+
+    partial void OnRunningOperationsChanged(IReadOnlyList<RunningOperationRow> value)
+        => OnPropertyChanged(nameof(CanShowRunningOperations));
 
     /// <summary>
     /// The offer to go again on what an operation could not do, or null.
@@ -3429,7 +3477,14 @@ public sealed partial class ShellViewModel : ObservableObject, IDisposable
     }
 
     /// <summary>
-    /// Re-reads how many operations are live, for the bar's count.
+    /// Re-reads how many operations are live, for the bar's count and for the
+    /// rows behind it.
+    ///
+    /// **One filtered list feeds both**, and that is the point of doing it
+    /// here: a count taken one way and rows taken another would eventually
+    /// disagree, and the disagreement would be on screen — "2 running" over
+    /// three rows, one of them offering a Cancel for work that had already
+    /// finished.
     ///
     /// Counted through InFlight.Unfinished rather than off _running.Count, for
     /// the reason InFlight.On's own comment gives and that this one measured: a
@@ -3448,9 +3503,11 @@ public sealed partial class ShellViewModel : ObservableObject, IDisposable
     /// </summary>
     private void RefreshConcurrentOperations()
     {
-        var live = _running.Count(h => Core.FileSystem.InFlight.Unfinished(h.State));
+        var live = _running.Where(h => Core.FileSystem.InFlight.Unfinished(h.State)).ToList();
 
-        ConcurrentOperations = live > 1 ? $"{live} running" : "";
+        ConcurrentOperations = live.Count > 1 ? $"{live.Count} running" : "";
+
+        RunningOperations = [.. live.Select(h => new RunningOperationRow(h))];
     }
 
     /// <summary>
