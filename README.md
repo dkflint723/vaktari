@@ -31,7 +31,8 @@ A few things you would notice in the first ten minutes:
   tab, its own place in Back and Forward, and it is still there after a
   restart.
 - **Nothing waits its turn.** Start a second copy while the first is running,
-  pause either one, and cancel just the one you meant.
+  and cancel just the one you meant. (Pause belongs to the bar, and the bar
+  follows whichever transfer you started last.)
 - **One failure does not end the batch.** The rest goes through, and a *Retry
   3* button goes again on only the three that did not.
 - **It tells you the truth.** When a search has no index behind it, it says so.
@@ -55,10 +56,10 @@ you next launch.
 **A path bar that goes sideways and downwards.** Click any part of the
 breadcrumb to jump there, or press the separator after a folder name to list
 that folder's own subfolders and go straight into one. Every crumb has a menu,
-including the drive at the front — so the machine's other drive is one press
-away without a trip to the sidebar. When the window is too narrow for the whole
-path, the `…` that replaces the middle is itself a menu of exactly the folders
-it stands for.
+including *This PC* at the very front — so the machine's other drive is one
+press away without a trip to the sidebar. When the window is too narrow for the
+whole path, the `…` that replaces the middle is itself a menu of exactly the
+folders it stands for.
 
 **Or type it.** `Ctrl+L` (or `Alt+D`) puts the cursor in the path. A list of
 the folders you could mean drops down as you type; `Tab` completes shell-style.
@@ -71,7 +72,9 @@ landing you on its folder with the row lit.
 list of where it goes, nearest first, twelve deep — and picking a row several
 steps back leaves both buttons exactly as that many presses would have. A third
 chevron beside them lists the folders you have recently been in, which reaches
-across tabs and across restarts as Back and Forward cannot.
+across tabs and windows as Back and Forward cannot — those two belong to one
+tab's own walk, though each tab's stacks are saved with the session and come
+back with it.
 
 If your mouse has the two buttons under the thumb, they go back and forward
 too. In a split, they move whichever half the pointer is over.
@@ -99,6 +102,12 @@ the real bindings by a test so it cannot fall behind the application.
 **Three layouts** — *List*, *Small grid* and *Large grid* — one click each on
 the toolbar, or `Ctrl+Shift+1`, `2`, `3`. (`F8` flips between List and Large
 grid.) The choice belongs to the pane, so the two halves of a split can differ.
+
+Sizes are the pane's too. `Ctrl` and the wheel scale the pane under the
+pointer, `Ctrl+Shift` and the wheel its icons alone, and `Ctrl`+middle-click
+puts it back. If you would rather type a number than find it by scrolling, the
+view-options menu has *Text size* and *Icon size* as steppers, with a chooser
+above them saying whether they act on the left pane, the right one or both.
 
 **The List layout chooses its columns.** Name, Type, Size, Modified and
 Created, with Type and Created off until you ask for them; right-click the
@@ -157,7 +166,9 @@ files, which columns were ticked and both zoom levels. It is off by default and
 lives in Settings ▸ General, and the record is kept centrally rather than
 written into your folders. A `.directory` file Dolphin already left in a folder
 is still read, so a folder somebody configured elsewhere opens the way they
-meant.
+meant. *Use this view for all folders*, in the view-options menu, goes the
+other way: it makes the pane you are looking at the way folders open from now
+on, and forgets the views individual folders were given.
 
 ## Finding things
 
@@ -169,8 +180,9 @@ sort by size, or open a second search beside the first in a split.
 A band above the results says what was asked and where it looked, with a tick
 box reading *Only in Documents*, on by default for a search started in a
 folder. Clear it and the search leaves that folder. Ticking or clearing it
-counts as a navigation, so Back returns to the answer you already had rather
-than running the search again. On Windows a *Match case* box sits beside it.
+counts as a navigation rather than an edit in place, so Back takes you to the
+previous question instead of making you retype it. Nothing is cached between
+searches, so it is asked again. On Windows a *Match case* box sits beside it.
 
 **It names what "everywhere" actually covers** — "searching every drive on this
 machine" on Windows, "searching your home folder and any mounted drives" on
@@ -208,9 +220,11 @@ forgotten from the right-click menu — *Forget (keeps the file)* — and the wh
 record can be switched off. Only what you opened yourself is recorded: Back,
 Forward, Refresh and a restored session are not choices about where to go.
 
-**`Ctrl+D` pins the current folder** to the sidebar, and right-clicking it
-removes it again. Only places you added offer that — Home, your drives and your
-network shares are the desktop's, not yours to drop.
+**`Ctrl+D` pins the current folder** to the sidebar; right-clicking a pinned
+place renames or removes it. Home, your drives and your network shares are the
+desktop's rather than yours to drop — but a removable drive offers *Eject*, and
+a mapped network drive offers *Disconnect*, which also forgets the sign-in so
+it does not come back on its own.
 
 ## Working with files
 
@@ -221,8 +235,9 @@ worth knowing is what happens when things get big, or go wrong.
 going and how much longer it has — "10 MiB/s · about 4 min left". The speed is
 measured over the last few seconds, so a copy that crosses from an SSD onto a
 memory stick stops promising a speed it will never see again. A copy checks
-there is room before it starts, keeps the file's dates and permissions, and
-leaves no half-written file under the final name if it is cancelled.
+there is room before it starts, keeps the file's dates — and its permissions on
+Linux, its attributes on Windows — and leaves no half-written file under the
+final name if it is cancelled.
 
 **Nothing queues, and nothing is all-or-nothing.** An *Operations* button opens
 the list of everything in flight — "Copying 12 items to Photos" — each row with
@@ -255,16 +270,18 @@ carrying, so a drag begun by accident does not look like the drag of twenty
 files you meant. The folder under the pointer takes a ring; files can also be
 dropped on another tab, which pauses and then switches, on a breadcrumb to move
 them up the tree, or on the bin. A folder cannot be dropped into itself by any
-route. Drag with the *right* button instead and the drop asks. *Copy to* and
-*Move to* send a selection somewhere without opening it first.
+route. Drag with the *right* button instead and the drop asks. On Windows a
+drag straight out of 7-Zip or Explorer's own zip view lands too, even though
+those files do not exist on disk until they are dropped. *Copy to* and *Move
+to* send a selection somewhere without opening it first.
 
 **`F2` renames on the row**, in any layout, with the extension left off the
 offer. `Enter` commits, `Escape` cancels, and `Tab` commits and opens the
 *next* file's name — so renaming a run of files costs one keystroke each. A
-name the filesystem will not accept is explained under the box as you type it,
-and what you typed is kept. `Shift+F2` renames in bulk, with a live preview of
-every old name and what it will become: numbered (each run of `#` becomes a
-zero-padded counter) or find-and-replace, optionally a regular expression.
+name the filesystem will not accept is explained as you type it, and what you
+typed is kept. `Shift+F2` renames in bulk, with a live preview of every old
+name and what it will become: numbered (each run of `#` becomes a zero-padded
+counter) or find-and-replace, optionally a regular expression.
 
 **The bin can restore.** Deleted files go to your desktop's own bin and appear
 in Vaktari's bin view, each row showing where it came from — so *Restore* puts
@@ -281,14 +298,22 @@ shortened in the middle so the extension survives, since `.pdf` against `.exe`
 is the part that changes what deleting it means. Each confirmation can be
 switched off.
 
-**Also on the right-click menu:** *New folder*, *New file* and *New from
-template*, each opening straight into the rename box. *Compress to ZIP* and
-*Extract all* — Vaktari's own, undoable, written beside what they act on, and
-refusing any archive entry that points outside the folder it is landing in.
-*Create shortcut*, made the way each platform makes them. *Open with*, reading
-your system's own file-type database. *Open terminal here* on `F4`. Entries
-that need a selection are simply not offered when there is none, and you can
-switch off the ones you never use.
+**Also on the right-click menu:** *Mount* for a disk image, which attaches it
+and takes you inside, and *Unmount* when you are done. *New folder*, *New file*
+and *New from template*, each opening straight into the rename box. *Compress
+to ZIP* and *Extract all* — Vaktari's own, undoable, written beside what they
+act on, and refusing any archive entry that points outside the folder it is
+landing in. *Create shortcut*, made the way each platform makes them. *Open
+with*, reading your system's own file-type database. *Run* and *Run as
+administrator* for a program. *Open terminal here* on `F4`, with *Open admin
+terminal here* beside it. Entries that need a selection are simply not offered
+when there is none, and you can switch off the ones you never use.
+
+On Linux, double-clicking a program asks before running it — *Run*, *Open* or
+*Cancel* — because double-click has meant "open this" everywhere else and a
+script is often a file you want to read. A file counts as a program only if it
+carries an execute bit *and* its first bytes say so, so a FAT stick that
+reports an execute bit on every file does not offer to run your photographs.
 
 **Properties** counts a folder's size the moment you open it — that being the
 figure people open the window for — and says which volume it is on and how much
@@ -312,8 +337,10 @@ your desktop's own mounter; on Windows it is `\\server\share`, `smb://` and
 `http://` for WebDAV, and Windows asks for a password in its own dialog and
 remembers it.
 
-**Discover shares** announcing themselves on your network — a NAS, another
-desktop, a Vaktari share on another machine — without typing addresses.
+**Scan the network** for shares announcing themselves — a NAS, another desktop,
+a Vaktari share on another machine — without typing addresses. On Linux this
+needs `avahi-browse` on the machine (the `avahi-tools` package on Fedora);
+without it the button stays greyed out.
 
 **Share a folder over HTTP** for another machine to fetch, with optional
 upload. This uses [copyparty](https://github.com/9001/copyparty), which Vaktari
@@ -326,6 +353,11 @@ crosses the internet. Vaktari drives Proton's own tool rather than
 reimplementing any of it, and the first click does whatever is missing in order
 — fetches the tool, opens your browser to sign in, then makes the link.
 
+**Every live share is listed.** A *Sharing* section appears in the sidebar
+holding each HTTP share and each Proton link with its address, a button to copy
+it again and one to stop it — so a share you started an hour ago is not
+something you have to remember.
+
 ## Version control
 
 Inside a git repository, files are marked with their status: **M** modified,
@@ -337,7 +369,7 @@ file, and when you commit or switch branch. Status is read once per folder
 rather than once per file, so it stays cheap on a large repository. The letters
 carry the meaning and the colours are decoration, so the marks stay readable if
 you cannot tell the colours apart. Needs `git` on the machine; without it the
-feature is simply absent, and says so once.
+marks simply never appear, and nothing in the interface explains why.
 
 ## Fitting your desktop
 
@@ -393,12 +425,19 @@ last row, called *Windows menu*, exactly where Windows 11 puts *Show more
 options*. It is built only when you open it, so an ordinary right-click never
 pays for other people's code.
 
+**Where Vaktari opens is yours to choose** — last session's folders, tabs and
+windows (the default), your home folder, *This PC*, or a folder you browse for.
+The same page decides how it opens: straight into a split, with the filter bar
+showing, with the path bar already editable, or with the full path in the title
+bar.
+
 **Everything else is one dialog**, on `Ctrl+Shift+,`: sorting, what a click
 does, previews and their size limits, confirmations, the status bar, which
 entries appear in the right-click menu, extensions and selection boxes,
 per-layout spacing, date style, the font and text size, light or dark,
 version-control marks, per-folder view memory, the details panel, and how the
-bin is swept.
+bin is swept. It can also show you the settings file itself, save a copy of it,
+put one back from another machine, and restore every setting to its default.
 
 ## Keyboard
 
@@ -420,14 +459,15 @@ bin is swept.
 | `F3` / `Tab` | split view / switch side | `Ctrl+Shift+1` `2` `3` | list, small grid, large grid |
 | `F6` | listing, path bar, sidebar | `F8` | change the view |
 | `F9` `Ctrl+B` | show or hide the sidebar | `Ctrl` `+` `−` `0` | zoom in, out, reset |
+| `Ctrl`+scroll | resize the pane under the pointer | `Ctrl+Shift`+scroll | its icons only |
 | `F11` | details panel | `Ctrl+D` | pin this folder to places |
 | `Ctrl+F` `Ctrl+E` | search | `→` `←` | open and close a folder in place |
 | `Ctrl+I` | filter the listing | `Menu` `Shift+F10` | the right-click menu |
 | `Escape` | clear the filter | `Ctrl+Shift+,` | settings |
 | `F1` | every key, in the app | | |
 
-`F1` is the authority — it is generated from the real bindings, and it prints
-whichever job `Backspace` is currently doing.
+`F1` is the authority — a test checks it against the real bindings in both
+directions, and it prints whichever job `Backspace` is currently doing.
 
 ## Install
 
@@ -459,7 +499,8 @@ which is the quickest way to tell which one you have.
 Your tabs, places, folder views and settings live in `~/.local/state/vaktari`.
 There is no uninstaller for the tarball — removing it by hand means deleting
 `~/.local/bin/vaktari`, `~/.local/lib/vaktari` and
-`~/.local/share/applications/vaktari.desktop`.
+`~/.local/share/applications/vaktari.desktop` and the icons under
+`~/.local/share/icons/hicolor/*/apps/vaktari*`.
 
 ### Windows
 
@@ -514,16 +555,20 @@ promise yet. Worth knowing before you decide:
 
 **Searching**
 
-- **There is no searching inside files** anywhere in the interface, on either
-  platform. Search matches names, with `*` and `?` as patterns — no regex, and
-  no searching by size, date or type.
+- **Nothing in the interface offers to search inside files** — there is no
+  contents box anywhere. On Windows that is the whole story: search matches
+  names. On Linux it is not, because a plain word goes to Baloo, whose index is
+  full-text, so a result there may be a file matched on its contents rather
+  than its name. Patterns are names only: `*` and `?` go past Baloo to a
+  filename walk on both platforms. No regex, and no searching by size, date or
+  type.
 - **Windows has no search index at all.** Every search is a live directory
   walk, capped at 10,000 matches, so an unscoped search over every drive is
   slow and the answer is a shallow slice rather than a complete one. On Linux,
   Baloo answers where KDE is indexing.
 - *Match case* is Windows-only — it is the only backend that honours it.
-- Searches cannot be saved. The history replays the last fifty; there is no
-  named saved search.
+- Searches cannot be saved. The history offers the last twelve to run again;
+  there is no named saved search.
 - Recent files and locations are Vaktari's own record. Files you opened in
   other applications do not appear.
 
