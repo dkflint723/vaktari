@@ -9,6 +9,10 @@ Newest first. Dates are the day the tag was cut. Versions follow
 [Status](README.md#status): there has been no stable release, and the numbers
 should not be trusted for compatibility yet.
 
+## [Unreleased]
+
+Nothing yet.
+
 ## [0.10.0] — 2026-09-05
 
 ### Added
