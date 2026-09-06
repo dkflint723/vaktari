@@ -16,7 +16,7 @@ second copy of all of it.
 
 ![Vaktari](docs/screenshot-grid.png)
 
-<sub>Large grid at the filesystem root.</sub>
+<sub>Large grid at the root of a drive, on Windows.</sub>
 
 ---
 
