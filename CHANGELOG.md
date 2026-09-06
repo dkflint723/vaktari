@@ -11,6 +11,10 @@ should not be trusted for compatibility yet.
 
 ## [Unreleased]
 
+Nothing yet.
+
+## [0.10.2] — 2026-09-06
+
 ### Fixed
 
 - **A file type whose icon the shell declined once no longer keeps Vaktari's
@@ -55,7 +59,7 @@ should not be trusted for compatibility yet.
   theme is drawing the icons and how to go back to your desktop's, while
   remembering what you ticked for when you do.
 
-- **The mouse'''s back button goes back again, rather than up one folder.** The
+- **The mouse's back button goes back again, rather than up one folder.** The
   two buttons under the thumb are unlabelled precisely because every browser and
   every file manager agrees what they do — so one of them quietly doing the
   other thing is a wrong turn you have to notice before you can undo it. The
@@ -3085,7 +3089,8 @@ should not be trusted for compatibility yet.
 
 First tagged releases. Linux tarball and RPM.
 
-[Unreleased]: https://github.com/dkflint723/vaktari/compare/v0.10.1...HEAD
+[Unreleased]: https://github.com/dkflint723/vaktari/compare/v0.10.2...HEAD
+[0.10.2]: https://github.com/dkflint723/vaktari/compare/v0.10.1...v0.10.2
 [0.10.1]: https://github.com/dkflint723/vaktari/compare/v0.10.0...v0.10.1
 [0.10.0]: https://github.com/dkflint723/vaktari/compare/v0.9.16...v0.10.0
 [0.9.16]: https://github.com/dkflint723/vaktari/compare/v0.9.15...v0.9.16
