@@ -72,6 +72,67 @@ public sealed class PaneStateTests : OwnedViewModels
     // ---- the keyboard keeps its place ----------------------------------------
 
     /// <summary>
+    /// Waits until the refresh a finished operation posts has both STARTED and
+    /// landed, under a wall-clock ceiling.
+    ///
+    /// **The completion reaches the pane through the thread pool.** Track hangs
+    /// a ContinueWith(TaskScheduler.Default) off the handle, and it is that
+    /// pool continuation which posts the refresh — so at the moment the command
+    /// returns there is nothing on the dispatcher queue to be drained. What
+    /// stood here was fifty turns of RunJobs plus a bare Task.Yield, and
+    /// MEASURED on this machine all fifty of them cost 2.010 ms together while
+    /// the hop took 1.961 ms of the first one: the other forty-nine were worth
+    /// fifty MICROSECONDS between them. That is a guess about how busy the
+    /// machine is, which is the flake fixed in 3f53458 and again in fa2b247
+    /// wearing a third face.
+    ///
+    /// What the wrong guess costs was measured rather than assumed, by draining
+    /// nothing at all. The change then races the operation's own refresh, two
+    /// ways at once: a burst arriving while a load is in flight is dropped
+    /// whole by the drain's IsLoading check in PaneViewModel.Watching, and a
+    /// refresh landing after the burst re-lists the deleted name — this fake
+    /// always answers with the names it was built with — and puts the
+    /// selection back on it. Either way the caller reads the row it has just
+    /// deleted. MEASURED, with the loop cut to nothing:
+    /// Deleting_the_last_row_falls_back_to_the_one_before read "b.txt" where it
+    /// wants "a.txt" in every run of this class;
+    /// Deleting_a_row_moves_the_selection_to_the_next_one read "b.txt" where it
+    /// wants "c.txt" in one run and passed in the others, including alone.
+    /// **Which caller loses is not fixed**, which is what a race looks like
+    /// from outside — so this is one helper for all three rather than a claim
+    /// about any one of them.
+    ///
+    /// IsLoading is that check's own variable, which is why the wait is on it
+    /// rather than on the rows — the fake re-lists the same names and
+    /// FileEntry is a value type, so nothing about the listing tells the two
+    /// states apart. It takes BOTH halves: IsLoading is false before the
+    /// refresh has begun, so **the transition satisfies the flag on its own**
+    /// — the re-read having started is what says the refresh being waited for
+    /// is this one. The load raises IsLoading before it asks the provider for
+    /// anything, so a count that has moved means the flag was already up.
+    ///
+    /// The ceiling is four hundred turns of Task.Delay(5), the shape fa2b247
+    /// left, and **it is not the two seconds that arithmetic suggests**:
+    /// Windows rounds a delay up to the ~15.6 ms timer tick, so the loop runs
+    /// about six. MEASURED at the sibling wait in EjectFlowTests — with the
+    /// places subscription replaced by an empty handler the wait exhausts, and
+    /// the runner reports that failure as taking 6 s. Left generous rather
+    /// than tightened, since the loop only ever runs to the end when the
+    /// behaviour under it is already broken; recorded here because a count is
+    /// a proxy for the time, and on this platform a 3x wrong one.
+    /// </summary>
+    private static async Task RefreshLanded(PaneViewModel pane, Listing fs, int readsBefore)
+    {
+        for (var i = 0; i < 400 && !(fs.Reads > readsBefore && !pane.IsLoading); i++)
+        {
+            Avalonia.Threading.Dispatcher.UIThread.RunJobs();
+            await Task.Delay(5);
+        }
+
+        Avalonia.Threading.Dispatcher.UIThread.RunJobs();
+    }
+
+    /// <summary>
     /// The row after the deleted one is chosen BEFORE the operation, because
     /// afterwards the rows it refers to are gone.
     /// </summary>
@@ -85,18 +146,16 @@ public sealed class PaneStateTests : OwnedViewModels
         pane.SelectedEntry = second;
         pane.DetailsSelection.Add(second);
 
+        var reads = fs.Reads;
+
         pane.TrashSelectedCommand.Execute(null);
 
-        // **Drained before the change is raised**, for the reason spelled out
+        // **Settled before the change is raised**, for the reason spelled out
         // on the test below: the operation finishes on the pool and posts a
         // refresh of its own, and which side of the watcher event that lands on
         // is a coin toss. This one used to win the toss by accident, because
         // the removal happened inside the same dispatcher job as the event.
-        for (var i = 0; i < 50; i++)
-        {
-            Avalonia.Threading.Dispatcher.UIThread.RunJobs();
-            await Task.Yield();
-        }
+        await RefreshLanded(pane, fs, reads);
 
         // The row goes, the way the watcher delivers it.
         fs.Raise(new FileSystemChange(ChangeKind.Removed, second.FullPath!));
@@ -117,18 +176,16 @@ public sealed class PaneStateTests : OwnedViewModels
         pane.SelectedEntry = last;
         pane.DetailsSelection.Add(last);
 
+        var reads = fs.Reads;
+
         pane.TrashSelectedCommand.Execute(null);
 
-        // **Drained before the change is raised.** The operation finishes on
+        // **Settled before the change is raised.** The operation finishes on
         // the pool and posts a refresh, and a refresh reloads the listing and
         // puts the selection back — so whether this test saw the fallback or
         // the reload depended on which side of the change that post landed.
         // It failed about one run in three.
-        for (var i = 0; i < 50; i++)
-        {
-            Avalonia.Threading.Dispatcher.UIThread.RunJobs();
-            await Task.Yield();
-        }
+        await RefreshLanded(pane, fs, reads);
 
         fs.Raise(new FileSystemChange(ChangeKind.Removed, last.FullPath!));
         Avalonia.Threading.Dispatcher.UIThread.RunJobs();
@@ -154,13 +211,11 @@ public sealed class PaneStateTests : OwnedViewModels
 
         pane.SelectedEntry = pane.DetailsEntries.First(e => e.Name == "b.txt");
 
+        var reads = fs.Reads;
+
         pane.TrashSelectedCommand.Execute(null);
 
-        for (var i = 0; i < 50; i++)
-        {
-            Avalonia.Threading.Dispatcher.UIThread.RunJobs();
-            await Task.Yield();
-        }
+        await RefreshLanded(pane, fs, reads);
 
         // One burst, the way a two-file delete actually reports itself.
         fs.Raise(new FileSystemChange(ChangeKind.Removed,
@@ -222,10 +277,22 @@ public sealed class PaneStateTests : OwnedViewModels
 
         public void Raise(FileSystemChange change) => _onChange?.Invoke(change);
 
+        /// <summary>
+        /// How many listings this folder has been asked for. The one thing that
+        /// tells "the operation's refresh has begun" from "it has not been
+        /// posted yet" — the rows cannot, because a re-list answers with the
+        /// same names and FileEntry is a value type. Written and read on the
+        /// dispatcher thread: the load raises IsLoading and then calls
+        /// MoveNextAsync on this enumerator without an await in between.
+        /// </summary>
+        internal int Reads;
+
         public async IAsyncEnumerable<IReadOnlyList<FileEntry>> EnumerateAsync(
             string path, ListingOptions options,
             [System.Runtime.CompilerServices.EnumeratorCancellation] CancellationToken ct)
         {
+            Reads++;
+
             await Task.CompletedTask;
             yield return [.. _names.Select(n => Entry(n, path))];
         }

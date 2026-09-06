@@ -368,6 +368,29 @@ public sealed class EjectFlowTests : OwnedViewModels
     /// <summary>
     /// The watch raising PlacesChanged rebuilds the sidebar — which is the
     /// whole detection feature, seen from the top.
+    ///
+    /// **It proved none of that, and the wait was why.** This asked for a
+    /// sidebar that was not empty after the event, over a sidebar the first
+    /// load had already filled — so the answer was yes before the event was
+    /// raised, and a rebuild that never happened read exactly the same. Its
+    /// wait was one bare Task.Yield, and the rebuild does not live on the
+    /// dispatcher: ReloadOnceAsync hands the enumeration to Task.Run and comes
+    /// back through InvokeAsync, so the yield returns while the pool still has
+    /// it. MEASURED, with the PlacesChanged subscription replaced by an empty
+    /// handler — the sidebar can then never rebuild at all — this test passed.
+    ///
+    /// The rows are new objects on every rebuild, which is the one thing that
+    /// tells the second sidebar from the first, and Clear-and-refill happen
+    /// inside a single dispatcher job so **the transition cannot be caught
+    /// half-done**. That is what is waited for now, and under a wall-clock
+    /// ceiling: a slow machine takes longer, and a sidebar that never rebuilds
+    /// runs the ceiling out and then fails on the same object it started with.
+    ///
+    /// MEASURED, with that same empty handler in place: the wait does run out
+    /// and the test does fail, and the runner reports it as taking 6 s. Four
+    /// hundred turns of Task.Delay(5) is not the two seconds the arithmetic
+    /// suggests — Windows rounds a delay up to the ~15.6 ms timer tick — and
+    /// six is the ceiling this loop actually enforces.
     /// </summary>
     [AvaloniaFact]
     public async Task A_device_change_rebuilds_the_sidebar()
@@ -375,13 +398,29 @@ public sealed class EjectFlowTests : OwnedViewModels
         var (shell, places, _) = Fresh();
 
         await LoadAsync(shell);
+
         Assert.NotEmpty(shell.Sidebar.Groups);
+
+        // The sidebar the FIRST load built. Held by identity, because that is
+        // the only thing about it that a rebuild changes: the same provider
+        // answers with the same two places both times.
+        var built = shell.Sidebar.Groups[0];
 
         places.Raise();
 
-        // The subscription posts to the dispatcher; let it run.
-        await Task.Yield();
+        for (var i = 0; i < 400; i++)
+        {
+            Avalonia.Threading.Dispatcher.UIThread.RunJobs();
+
+            if (shell.Sidebar.Groups.Count > 0
+                && !ReferenceEquals(shell.Sidebar.Groups[0], built)) break;
+
+            await Task.Delay(5);
+        }
+
+        Avalonia.Threading.Dispatcher.UIThread.RunJobs();
 
         Assert.NotEmpty(shell.Sidebar.Groups);
+        Assert.NotSame(built, shell.Sidebar.Groups[0]);
     }
 }

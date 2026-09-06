@@ -355,6 +355,23 @@ public sealed class GroupHeaderTests : OwnedViewModels
 
     // ---- and in the real window, where the heading is really pressed --------
 
+    /// <summary>
+    /// Pumps the dispatcher and lays the window out, the way the other window
+    /// tests in this assembly do.
+    ///
+    /// **Every call here follows an awaited navigation or a synchronous
+    /// gesture**, which is what makes twenty immediate turns enough. That is
+    /// the claim the split test in ExpandableFoldersTests could not make: its
+    /// Layout stood in for a read started by a void ToggleSplit, and it flaked.
+    /// LoadListingAsync puts every row into the collection through an AWAITED
+    /// Dispatcher.InvokeAsync, so by the time NavigateAsync returns the rows
+    /// are there; the containers the Single(...) helpers read are then realized
+    /// by the Measure/Arrange below, which is synchronous. MEASURED, with this
+    /// loop cut to ZERO turns in all three files that have one at once —
+    /// ContextMenuPlacementTests, ShellMenuPlacementTests, GroupHeaderTests:
+    /// all 28 of their tests passed. The probe is not blind —
+    /// GroupHeaderTests' separate Settle reddens two tests at zero.
+    /// </summary>
     private static async Task Layout(Window window)
     {
         for (var i = 0; i < 20; i++)

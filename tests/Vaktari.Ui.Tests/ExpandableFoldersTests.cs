@@ -44,8 +44,38 @@ public sealed class ExpandableFoldersTests : OwnedViewModels
 
     private static string In(params string[] parts) => Path.Combine([Root, .. parts]);
 
-    /// <summary>Runs the dispatcher until an expansion's directory read and the
-    /// re-projection behind it have both landed.</summary>
+    /// <summary>
+    /// Runs the dispatcher twenty times, for work that is already ON it.
+    ///
+    /// **Nothing on the ungated path here ever suspends.** The Tree fake below
+    /// is this file's whole filesystem, and its EnumerateAsync awaits exactly
+    /// two things: a gate, which only a folder passed to Hold has, and
+    /// Task.CompletedTask, which is already finished. So an ordinary read runs
+    /// straight through and everything it leaves behind is a dispatcher job —
+    /// the InvokeAsync hops LoadListingAsync posts, and the re-projection after
+    /// them — which is what RunJobs drains. The turns are turns because there
+    /// is no clock to wait on, not because twenty was thought to be enough.
+    ///
+    /// MEASURED, which is the only thing that could say that rather than
+    /// assume it: with this body cut to twenty RunJobs and NO awaits at all,
+    /// all 48 tests in this file passed. A count standing in for a hop from the
+    /// pool to the dispatcher is the flake fa2b247 fixed at four sites, and it
+    /// is not this one: there is no hop.
+    ///
+    /// A HELD read is the exception, and it is not one Settle covers. MEASURED,
+    /// with a counter incremented on the line after `await
+    /// gate.Task.ConfigureAwait(false)`: at both held sites the read was parked
+    /// on the gate when Release was called, and the counter still read zero on
+    /// the line after Release returned — the resumption is a continuation that
+    /// arrives later, not work SetResult does on its way through. Four of the
+    /// five Hold/Release pairs get away with Settle anyway, and not by luck:
+    /// three of them await the operation's own handle immediately after the
+    /// release (`await opening`, `await first`/`await second`, `await inner`),
+    /// and the fourth releases only to let a held read finish AFTER its
+    /// assertion has already run. The fifth has no handle to await — the
+    /// reload it releases was started fire-and-forget by LoadListingAsync's
+    /// `_ = ReloadExpandedAsync(generation)` — and that one uses Drain.
+    /// </summary>
     private static async Task Settle()
     {
         for (var i = 0; i < 20; i++)
@@ -1138,8 +1168,6 @@ public sealed class ExpandableFoldersTests : OwnedViewModels
         }
     }
 
-    /// <summary>Runs the dispatcher and lays the window out, so the containers
-    /// a listing change asked for are really there to be read.</summary>
     /// <summary>Every expander cell currently in the window's visual tree.</summary>
     private static IEnumerable<Panel> Expanders(Window window)
         => window.GetVisualDescendants().OfType<Panel>()
@@ -1153,6 +1181,12 @@ public sealed class ExpandableFoldersTests : OwnedViewModels
     /// for is a real directory read rather than work already sitting on the
     /// dispatcher queue. A slow machine takes longer here; a broken one still
     /// fails, because the assertions afterwards are unchanged.
+    ///
+    /// The ceiling is four hundred turns of Task.Delay(5), the shape fa2b247
+    /// left, and it is about SIX seconds rather than the two that arithmetic
+    /// suggests: Windows rounds a delay up to the ~15.6 ms timer tick.
+    /// MEASURED at the sibling wait in EjectFlowTests, whose failure with the
+    /// behaviour under it broken is reported by the runner as taking 6 s.
     /// </summary>
     private static async Task Until(Func<bool> done)
     {
@@ -1165,6 +1199,8 @@ public sealed class ExpandableFoldersTests : OwnedViewModels
         Dispatcher.UIThread.RunJobs();
     }
 
+    /// <summary>Runs the dispatcher and lays the window out, so the containers
+    /// a listing change asked for are really there to be read.</summary>
     private static async Task Layout(Window window)
     {
         for (var i = 0; i < 20; i++)
@@ -1625,16 +1661,17 @@ public sealed class ExpandableFoldersTests : OwnedViewModels
 
             if (!shell.IsSplit) shell.ToggleSplit();
 
-            // **ToggleSplit is void and starts a navigation.** It calls
-            // AddTab on the group it has just made, which begins a real
-            // directory read; Layout's twenty immediate yields are
-            // microseconds and do not outlast one. MEASURED elsewhere in this
-            // session: this test failed once in a full local run and passed
-            // alone and in CI, which is what a load-dependent wait looks like
-            // from the outside. Waiting for the half to EXIST, rather than for
-            // a number of turns, is waiting on the thing the next line reads.
-            await Until(() => shell.Right?.ActiveTab is not null);
-
+            // **ToggleSplit is void and starts a navigation**, and this test
+            // failed once in a full local run while passing alone and in CI —
+            // the signature every load-dependent wait in this file has had.
+            // The half itself is not what was missing, though: AddTab adds the
+            // pane and assigns ActiveTab BEFORE it starts the read, and the
+            // remembered-split branch does the same in Restore, so
+            // shell.Right.ActiveTab is there the instant ToggleSplit returns.
+            // MEASURED: a wait for it ended on turn zero, both times it ran.
+            // What the un-awaited read owes is the LISTING, and the navigation
+            // below supersedes it and is awaited — so the wait that matters is
+            // the one further down, over the row this test presses.
             await Layout(window);
 
             var other = shell.Right!;
@@ -1649,9 +1686,12 @@ public sealed class ExpandableFoldersTests : OwnedViewModels
 
             Assert.NotSame(other, shell.ActiveGroup);
 
-            // The row itself, for the same reason: the navigation above is
-            // awaited but the LISTING reaching the visual tree is not, and
-            // Single throws rather than failing when it is not there yet.
+            // The row itself, under a wall-clock ceiling. The navigation above
+            // is awaited but the LISTING reaching the visual tree is not, and
+            // **Single throws rather than failing when it is not there yet**,
+            // which is why this presented as an exception rather than as an
+            // assertion. A slow machine takes longer here; a broken one runs
+            // the ceiling out and the assertions below still catch it.
             await Until(() => Expanders(window).Any(
                 p => p.DataContext is FileEntry e && e.FullPath == Path.Combine(root, "docs")));
 
