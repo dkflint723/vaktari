@@ -52,7 +52,18 @@ public sealed class SystemFolderIconTests : IDisposable
 
         AppSettings.Apply(_before with
         {
-            General = _before.General with { UseSystemIcons = true },
+            General = _before.General with
+            {
+                UseSystemIcons = true,
+
+                // **The other half of the condition since it stopped being
+                // `Provider is null`.** A chosen theme switches the
+                // desktop-icons route off outright, and this inherits whatever
+                // folder the running settings happen to name — so without it
+                // the route is off and every assertion below is about the
+                // wrong branch.
+                IconThemeFolder = "",
+            },
         });
     }
 

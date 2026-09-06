@@ -438,6 +438,24 @@ public sealed partial class SettingsViewModel : ObservableObject
     public bool HasIconTheme => IconThemeFolder.Length > 0;
 
     /// <summary>
+    /// Why the box above it is doing nothing, said where the box is.
+    ///
+    /// **An imported theme outranks the desktop's own icons deliberately, and
+    /// nothing on screen said so.** The precedence lives in one place —
+    /// IconLoader.UseSystemIcons — and was recorded only in source comments, so
+    /// ticking the box with a theme chosen looked like a setting that had
+    /// stopped working rather than one that had been overruled. It names the
+    /// theme doing the drawing and the row that undoes it, and says the tick is
+    /// remembered, because it is.
+    /// </summary>
+    public string DesktopIconsOverridden => HasIconTheme
+        ? $"An imported theme is drawing the icons — {IconThemeLabel} — and it wins over your "
+          + "desktop's, because it is the more deliberate choice of the two. Pick "
+          + "\"Vaktari's own icons\" in the list below to use your desktop's set instead. "
+          + "What is ticked here is remembered until then."
+        : "";
+
+    /// <summary>
     /// Why a chosen folder was refused, shown under the row.
     ///
     /// **Said here rather than in a dialog.** The answer belongs beside the
@@ -498,6 +516,10 @@ public sealed partial class SettingsViewModel : ObservableObject
     {
         OnPropertyChanged(nameof(IconThemeLabel));
         OnPropertyChanged(nameof(HasIconTheme));
+
+        // The note beside the desktop-icons box names the theme, so it has to
+        // follow the chooser live rather than waiting for the dialog to reopen.
+        OnPropertyChanged(nameof(DesktopIconsOverridden));
 
         // Set from somewhere other than the list — browsing, or a theme that
         // has just been installed — so the list is rebuilt around it.

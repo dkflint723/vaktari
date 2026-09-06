@@ -104,17 +104,39 @@ public static class IconLoader
     /// </summary>
     public static IFileIconProvider? Files { get; set; }
 
-    /// <summary>Whether to use them, which is the user's choice and off by
-    /// default — the bundled set is the one this application looks right in.</summary>
     /// <summary>
+    /// Whether to use them: the user's choice, off by default — the bundled set
+    /// is the one this application looks right in.
+    ///
     /// **An imported theme wins over the desktop's own icons.** Both can be set
     /// — a checkbox and a folder are independent controls — and the theme is
     /// the more deliberate choice of the two, so it is the one honoured rather
     /// than whichever happens to be checked last.
+    ///
+    /// **Decided by the theme that is CHOSEN, not by the one that is
+    /// installed**, and that distinction was the whole of a bug reported as
+    /// "very flakey if it will actually apply them or not". This asked
+    /// `Provider is null`, and Provider is installed asynchronously: a theme
+    /// whose index is already cached is in place before the first row paints,
+    /// but a theme nobody has read yet takes seconds to build, and
+    /// IconThemeInstall applies the platform's own icons — null, on Windows —
+    /// for the whole of that window. So the same tick with the same folder
+    /// gave the shell's icons or the theme's depending on whether an index
+    /// cache the user cannot see happened to be warm, and on how far the
+    /// re-listing had got before the build landed. Worse, the transient answer
+    /// STAYED on screen: the swap invalidates the caches but nothing re-lists,
+    /// so rows painted during the build kept the shell's icons until the next
+    /// navigation.
+    ///
+    /// The rule is unchanged. It is now answered from the two settings, which
+    /// are both on screen together, so the answer is the same before, during
+    /// and after any install — and it is one the user can predict: the
+    /// desktop's icons are used exactly when this platform has per-file icons,
+    /// no theme is chosen, and the box is ticked.
     /// </summary>
     public static bool UseSystemIcons =>
         Files is not null
-        && Provider is null
+        && string.IsNullOrEmpty(Settings.AppSettings.Current.General.IconThemeFolder)
         && Settings.AppSettings.Current.General.UseSystemIcons;
 
     /// <summary>

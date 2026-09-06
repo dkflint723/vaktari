@@ -98,12 +98,16 @@ public sealed class DeviceSizeCallSiteTests : IDisposable
     private readonly IFileIconProvider? _iconsBefore = IconLoader.Files;
 
     /// <summary>
-    /// **An icon THEME switches the desktop-icons route off entirely**, and a
-    /// sibling class in this assembly leaves one installed. UseSystemIcons is
-    /// `Files is not null && Provider is null && the setting`, so without
-    /// clearing this the row never asks the provider anything and the
-    /// assertion below fails on a full run while passing on its own — which is
-    /// exactly what it did.
+    /// **A chosen icon THEME switches the desktop-icons route off entirely.**
+    /// UseSystemIcons is `Files is not null && no theme chosen && the setting`,
+    /// so a test that wants the shell route has to say both halves; leaving the
+    /// folder to whatever the running settings name made this fail on a full
+    /// run while passing on its own, which is exactly what it did.
+    ///
+    /// The provider itself is no longer what decides — it was, and that was the
+    /// flake — but a sibling class in this assembly still installs one, and
+    /// leaving it behind would change what the row DRAWS even though it no
+    /// longer changes which branch is taken.
     /// </summary>
     private readonly IIconThemeProvider? _themeBefore = IconLoader.Provider;
 
@@ -184,7 +188,13 @@ public sealed class DeviceSizeCallSiteTests : IDisposable
 
         AppSettings.Apply(AppSettings.Current with
         {
-            General = AppSettings.Current.General with { UseSystemIcons = true },
+            General = AppSettings.Current.General with
+            {
+                UseSystemIcons = true,
+
+                // Both halves: see the note on _themeBefore above.
+                IconThemeFolder = "",
+            },
         });
 
         DeviceSize.ScalingOverride = _ => 1.5;

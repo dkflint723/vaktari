@@ -523,12 +523,24 @@
                  stays, because that one is live on both. -->
             <StackPanel x:Name="DesktopIconsChoice" Spacing="6"
                         IsVisible="{Binding CanUseDesktopIcons}">
+              <!-- Disabled rather than hidden, and still showing what is
+                   stored. The theme chooser below outranks it — see
+                   IconLoader.UseSystemIcons — and a box that silently loses is
+                   worse than one that says it has. Ticking it here with a theme
+                   chosen was the reported bug. -->
               <CheckBox Content="Use my desktop's icons"
                         FontSize="{DynamicResource FontSizeSmall}"
+                        IsEnabled="{Binding !HasIconTheme}"
                         IsChecked="{Binding UseSystemIcons}"/>
               <TextBlock Text="Off, files use the set drawn for Vaktari. On, they use the ones your desktop draws — so a program shows its own icon, a shortcut carries its arrow, and a folder you gave a custom icon keeps it. Thumbnails are unaffected either way."
                          FontSize="{DynamicResource FontSizeTiny}"
                          Foreground="{DynamicResource ViewDimText}"
+                         TextWrapping="Wrap"/>
+              <TextBlock x:Name="DesktopIconsOverriddenNote"
+                         Text="{Binding DesktopIconsOverridden}"
+                         IsVisible="{Binding HasIconTheme}"
+                         FontSize="{DynamicResource FontSizeTiny}"
+                         Foreground="{DynamicResource AccentText}"
                          TextWrapping="Wrap"/>
             </StackPanel>
 

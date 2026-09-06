@@ -13,6 +13,25 @@ should not be trusted for compatibility yet.
 
 ### Fixed
 
+- **"Use my desktop's icons" now does what it says, or says why it cannot.**
+  Ticking it applied the desktop's icons sometimes and did nothing other times,
+  with nothing on screen to tell the two apart. An imported icon theme outranks
+  that box — deliberately, because finding a theme and pointing Vaktari at it is
+  the more considered of the two choices — but the rule was answered from
+  whether a theme happened to be *installed yet* rather than from whether one
+  was *chosen*. A theme Vaktari had already indexed was in place before the
+  first row painted, so the box did nothing at all; a theme it had not read
+  before takes a couple of seconds to build, and for those seconds the box
+  worked — long enough to repaint the folder you were looking at, which then
+  went back to the theme's icons at the next scroll or the next folder. Same
+  tick, same settings, opposite outcomes, decided by an index cache nobody can
+  see. The rule now reads the two settings themselves, so the answer is the same
+  before, during and after a theme is read: your desktop's icons are used when
+  no theme is chosen and the box is ticked, and at no other time. And the box no
+  longer loses in silence — with a theme chosen it is greyed out and says which
+  theme is drawing the icons and how to go back to your desktop's, while
+  remembering what you ticked for when you do.
+
 - **The mouse'''s back button goes back again, rather than up one folder.** The
   two buttons under the thumb are unlabelled precisely because every browser and
   every file manager agrees what they do — so one of them quietly doing the
