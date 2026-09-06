@@ -82,6 +82,34 @@ public static class IconLoader
 
 
     /// <summary>
+    /// Raised when the icons a row would draw have CHANGED SOURCE — not merely
+    /// when the caches were dropped.
+    ///
+    /// **Dropping a cache repaints nothing.** RowIcon resolves an icon when its
+    /// entry is set and never again, so clearing these dictionaries reaches
+    /// only rows realized afterwards: a theme read in the background swapped
+    /// in, the caches went, and the folder on screen kept the icons it opened
+    /// with until the next navigation or scroll. IconThemeInstall's own promise
+    /// — "icons change once shortly after this window opens" — was not kept for
+    /// the rows that were open.
+    ///
+    /// Static, so it outlives every window: a window that subscribes MUST let
+    /// go on close, or the event holds a dead one alive and re-lists it on
+    /// every swap. <see cref="RowVcs.Changed"/> carries the same warning for
+    /// the same reason.
+    /// </summary>
+    public static event EventHandler? SourceChanged;
+
+    /// <summary>
+    /// Says the icons now come from somewhere else.
+    ///
+    /// Separate from <see cref="Invalidate"/>, which is also called on paths
+    /// that re-list by themselves — a settings save does both, and announcing
+    /// there as well would refresh every pane twice.
+    /// </summary>
+    public static void AnnounceSourceChanged() => SourceChanged?.Invoke(null, EventArgs.Empty);
+
+    /// <summary>
     /// Drops every cached icon. Called when the desktop theme changes: the
     /// resolved paths belong to the old icon theme, and the drawables were
     /// built with the old text colour baked into every currentColor.

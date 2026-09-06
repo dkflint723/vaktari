@@ -1525,6 +1525,24 @@ public sealed partial class ShellViewModel : ObservableObject, IDisposable
         NotifyTargetSizes();
     }
 
+    /// <summary>
+    /// Re-lists every open pane.
+    ///
+    /// **A listing rather than a repaint, because RowIcon resolves an icon when
+    /// its entry is set and never again** — there is no cheaper handle on "draw
+    /// that row again". Called when the icons change SOURCE, which the caches
+    /// alone cannot express: dropping them leaves whatever is already drawn
+    /// exactly as it is.
+    /// </summary>
+    public void RefreshPaneListings()
+    {
+        // Left and Right, not a Groups collection — see RefreshPaneScales.
+        foreach (var group in new[] { Left, Right })
+            if (group is not null)
+                foreach (var tab in group.Tabs)
+                    tab.RefreshCommand.Execute(null);
+    }
+
     public void OnSettingsChanged()
     {
         // The tile and cell metrics are computed from the pane's scale AND the

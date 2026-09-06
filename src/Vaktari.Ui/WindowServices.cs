@@ -392,12 +392,22 @@ internal sealed class WindowServices
             return;
         }
 
+        var moved = !ReferenceEquals(Thumbnails.IconLoader.Provider, provider);
+
         Thumbnails.IconLoader.Provider = provider;
 
         // Resolved paths and drawables belong to whatever was in place before.
         // On the first call there are none; on the swap they are the shell's,
         // and every one of them is now the wrong picture.
         Thumbnails.IconLoader.Invalidate();
+
+        // **And the rows already on screen have to be told.** Invalidate empties
+        // the caches, which reaches only rows realized afterwards — so a theme
+        // read in the background landed and the folder being looked at kept the
+        // icons it opened with. Announced only when the source really MOVED:
+        // this runs on every settings save, and the ordinary save changes no
+        // icon source at all.
+        if (moved) Thumbnails.IconLoader.AnnounceSourceChanged();
     }
 
     /// <summary>

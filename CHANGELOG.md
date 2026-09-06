@@ -13,6 +13,29 @@ should not be trusted for compatibility yet.
 
 ### Fixed
 
+- **A file type whose icon the shell declined once no longer keeps Vaktari's
+  own picture for the rest of the session.** The desktop's icons are cached so
+  that a folder of four thousand text files asks Windows once rather than four
+  thousand times — but a refusal was cached in exactly the same way, under the
+  file's extension, and nothing ever cleared it. One handler declining once, for
+  any of the ordinary reasons a handler declines — a third-party extension, a
+  file that lives in the cloud rather than on the disk, a moment of pressure on
+  the machine — and every file of that type drew Vaktari's own glyph until the
+  application was restarted, while the types either side of it drew Windows'. A
+  folder came out half converted, which reads exactly like a setting that only
+  half works. A refusal is no longer an answer worth remembering, so the next
+  row asks again; and a handler that never answers at all is now given two
+  seconds and then left to finish in its own time, so one badly-behaved
+  extension cannot hold up a listing.
+
+- **Icons now change on the folder you are looking at, not just the next one
+  you open.** The first time Vaktari meets an icon theme it reads it in the
+  background, which takes a second or two, and swapped it in when it was ready.
+  Rows already on screen kept the icons they were drawn with: the folder in
+  front of you stayed as it was until you navigated somewhere and back, even
+  though everything opened afterwards was right. Every open window is now told
+  when the icons change source, and re-reads what it is showing.
+
 - **"Use my desktop's icons" now does what it says, or says why it cannot.**
   Ticking it applied the desktop's icons sometimes and did nothing other times,
   with nothing on screen to tell the two apart. An imported icon theme outranks

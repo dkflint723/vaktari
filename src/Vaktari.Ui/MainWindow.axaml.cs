@@ -65,6 +65,13 @@ public partial class MainWindow : Window
     /// </summary>
     private readonly EventHandler? _onThemeChanged;
 
+    /// <summary>
+    /// Held for the same reason as the one above. IconLoader's event is STATIC,
+    /// so a closed window that stayed subscribed would be kept alive by it and
+    /// would re-list its dead panes on every icon swap.
+    /// </summary>
+    private readonly EventHandler _onIconSourceChanged;
+
     private bool _closeApproved;
 
     /// <summary>
@@ -172,6 +179,15 @@ public partial class MainWindow : Window
 
             _theme.Changed += _onThemeChanged;
         }
+
+        // Outside the theme block on purpose: an icon source also moves when a
+        // THEME is chosen or cleared, which has nothing to do with the
+        // desktop's palette and happens on machines with no theme provider at
+        // all. Posted, because the announcement can arrive from the dispatcher
+        // callback of a background build.
+        _onIconSourceChanged = (_, _) => Dispatcher.UIThread.Post(() => Shell.RefreshPaneListings());
+
+        Thumbnails.IconLoader.SourceChanged += _onIconSourceChanged;
 
         // Not platform-specific: the clipboard comes from the toolkit.
         IClipboardService clipboard = ClipboardService.ForWindow(this);
@@ -4795,6 +4811,8 @@ public partial class MainWindow : Window
     {
         if (_theme is not null && _onThemeChanged is not null)
             _theme.Changed -= _onThemeChanged;
+
+        Thumbnails.IconLoader.SourceChanged -= _onIconSourceChanged;
 
         _shell.Dispose();
     }
