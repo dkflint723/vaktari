@@ -300,6 +300,32 @@ public sealed class NameEllipsisTests : OwnedViewModels
 
         var shell = Assert.IsType<ShellViewModel>(window.DataContext);
 
+        // **The three answers below were measured at 100%, and the interface
+        // text size is a SETTING that follows the desktop out of the box.**
+        // This measured whatever the machine running it was set to: on a
+        // developer machine at 125% only "q….xlsx" survives 120 pixels, and the
+        // assertion failed there while passing in CI, which is the shape of a
+        // test reading the tester rather than the application.
+        //
+        // Applied AFTER the window is built, because the constructor applies
+        // whatever is on disk over anything set before it — and pushed into the
+        // pane by hand, because the scale is read once into TextScale rather
+        // than recomputed per row.
+        //
+        // The SHIPPED font size is deliberately left alone: catching a change
+        // to that is half of what this test is for.
+        var scaleBefore = InterfaceText.SystemScale;
+        var settingsBefore = Vaktari.Ui.Settings.AppSettings.Current;
+
+        InterfaceText.SystemScale = null;
+
+        Vaktari.Ui.Settings.AppSettings.Apply(settingsBefore with
+        {
+            Views = settingsBefore.Views with { InterfaceTextScale = 1.0 },
+        });
+
+        shell.RefreshPaneScales();
+
         // Closing this window flushes a session and the temp folder below would
         // be in it, so the tab goes back where it was first — see the row-name
         // tests, which learned this the same way.
@@ -338,6 +364,9 @@ public sealed class NameEllipsisTests : OwnedViewModels
             }
 
             window.Close();
+
+            InterfaceText.SystemScale = scaleBefore;
+            Vaktari.Ui.Settings.AppSettings.Apply(settingsBefore);
 
             try { Directory.Delete(root, recursive: true); }
             catch (Exception) { /* a temp dir is not worth failing over */ }
