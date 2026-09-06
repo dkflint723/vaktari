@@ -6,7 +6,7 @@ outside, it belongs in the git history rather than here.
 
 Newest first. Dates are the day the tag was cut. Versions follow
 [semantic versioning](https://semver.org), with the caveat in
-[Status](README.md#status): there has been no stable release, and the numbers
+[Known limits](README.md#known-limits): there has been no stable release, and the numbers
 should not be trusted for compatibility yet.
 
 ## [Unreleased]
