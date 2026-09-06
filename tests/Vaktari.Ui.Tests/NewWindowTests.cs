@@ -227,51 +227,87 @@ public sealed class NewWindowTests : OwnedViewModels
     private static readonly TimeSpan Ceiling = TimeSpan.FromSeconds(10);
 
     /// <summary>
-    /// The session as session.json itself holds it.
+    /// The session that reached session.json at or after <paramref name="since"/>
+    /// — which is the write the caller is asserting about, and no other.
     ///
-    /// **Not <c>Session.Load()</c>, because Load has a SECOND answer and here
-    /// that answer is always the wrong one.** Rule 3 of its own doc is "never
-    /// let a bad session file prevent startup", so it reads
-    /// <c>session.json.bak</c> whenever session.json cannot be read — and
+    /// Not <c>Session.Load()</c>: rule 3 of its own doc is "never let a bad
+    /// session file prevent startup", so it is
+    /// <c>TryLoad(session.json) ?? TryLoad(session.json.bak)</c>, and
     /// <c>WriteAsync</c> copies the OLD session.json to that backup one line
-    /// before it renames the new one into place. MEASURED at exactly the point
-    /// <see cref="The_last_window_still_writes_itself_into_the_session"/> reads
-    /// it, forty runs of its body: session.json held one window of 287 and
-    /// session.json.bak held the empty session <see cref="SaveAsync"/> wrote.
-    /// Load() called there with session.json held open by one other handle
-    /// answered ZERO windows and did not raise. So the reader the test asked
-    /// could hand back the state from BEFORE the write it is asserting about,
-    /// as an answer rather than as an error, and from the assertion that looks
-    /// exactly like "the collection was empty".
+    /// before it renames the new one into place. An unreadable session.json
+    /// therefore gets the state from BEFORE the write under assertion handed
+    /// back as an ANSWER rather than as an error.
     ///
-    /// The intermittent failure this was found by has not been reproduced on
-    /// this machine: 2010 Ui tests green before the change and after it, forty
-    /// runs of this test's body green, and eight runs of this class green under
-    /// manufactured CPU load. What is above is the reader's own measured
-    /// behaviour, not a reading of that failing run.
+    /// **But reading the file by name was only half of it: the same handle that
+    /// makes the READ fall back also makes the WRITE fail, silently, and the
+    /// stale file left behind parses perfectly.** <c>WriteAsync</c> ends in
+    /// <c>File.Copy(session.json, .bak)</c> and <c>File.Move(.tmp,
+    /// session.json)</c> inside a <c>catch { }</c>, and its window is strictly
+    /// wider than one <c>File.OpenRead</c>. MEASURED on this machine: one
+    /// deny-read handle held across <c>ReleaseAsync</c> ONLY and dropped before
+    /// the read, and the by-name reader came back in 15 ms with zero windows,
+    /// reddening <see cref="The_last_window_still_writes_itself_into_the_session"/>
+    /// with "Assert.Single() Failure: The collection was empty" — character for
+    /// character what the real fault produces (the last window dropped from the
+    /// composed session, 1 s, same text). Two causes, one message: session.json
+    /// BY NAME was still a proxy for "what this release wrote".
     ///
-    /// Only the READ is retried. The flush is awaited and the store is disposed
-    /// behind it, so nothing writes again and no amount of re-reading can turn
-    /// a wrong session into a right one: a release that dropped the last window
-    /// still exhausts the ceiling and still fails.
+    /// So the wait is on <see cref="SessionState.SavedAt"/>, which
+    /// <c>NotifyChanged</c> stamps from the wall clock on every compose. The
+    /// state that was on disk before the caller's mark cannot satisfy
+    /// <c>SavedAt &gt;= since</c>, so the state being waited across cannot end
+    /// the wait — the rule 82f54ae paid for — and a lost write now runs the
+    /// ceiling out and names itself instead of borrowing the real fault's
+    /// message.
+    ///
+    /// Retrying still cannot turn a wrong session into a right one: it takes
+    /// the FIRST state stamped at or after the caller's mark, and the caller
+    /// makes that mark immediately before the one write it asserts about —
+    /// with no dispatcher turn in between, so the one-second debounce cannot
+    /// slip an older compose past the mark either. <c>&gt;=</c> rather than
+    /// <c>&gt;</c> is safe on the clock this runs on: 2000 consecutive
+    /// <c>UtcNow</c> reads here were 2000 distinct values, smallest gap 17
+    /// ticks, against the milliseconds of window construction that separate the
+    /// previous stamp from the mark.
+    ///
+    /// On the sharing semantics, because the commit that introduced this
+    /// overstated them: a plain reader does not block this read at all.
+    /// MEASURED, PowerShell against a temp file — a second <c>File.OpenRead</c>
+    /// SUCCEEDED while one <c>File.OpenRead</c> handle was held, and failed
+    /// only against a <c>FileShare.None</c> handle, which also failed the Copy
+    /// ("used by another process") and the Move ("access to the path is
+    /// denied"). Every reader in this codebase opens with FileShare.Read, so
+    /// what is measured is the reader's fallback and the writer's silence under
+    /// a deny-read handle constructed for the measurement. No source for such a
+    /// handle during a run has been identified — an AV scan and the search
+    /// indexer are candidates, not findings — and the intermittent failure this
+    /// was found by has never been reproduced here.
     /// </summary>
-    private static async Task<SessionState> WrittenSessionAsync()
+    private static async Task<SessionState> WrittenSessionAsync(DateTimeOffset since)
     {
         var path = Path.Combine(TestState.Current(), "session.json");
         var deadline = DateTime.UtcNow + Ceiling;
-        var why = "it was never there";
 
         while (true)
         {
+            // Declared in the loop and assigned on every path that reaches the
+            // Assert, so the sentence that ships is always the one that was
+            // actually reached.
+            string why;
+
             try
             {
                 using var stream = System.IO.File.OpenRead(path);
                 var state = System.Text.Json.JsonSerializer.Deserialize(
                     stream, SessionJsonContext.Default.SessionState);
 
-                if (state is not null) return state;
-
-                why = "it parsed as nothing";
+                if (state is null)
+                    why = "it parsed as nothing";
+                else if (state.SavedAt >= since)
+                    return state;
+                else
+                    why = $"it still holds the session saved at {state.SavedAt:O}, "
+                          + $"which is before {since:O}";
             }
             catch (Exception ex)
             {
@@ -279,7 +315,7 @@ public sealed class NewWindowTests : OwnedViewModels
             }
 
             Assert.True(DateTime.UtcNow < deadline,
-                        $"session.json never came back readable: {why}");
+                        $"the write under assertion never reached session.json: {why}");
 
             Settle();
             await Task.Delay(5);
@@ -295,15 +331,33 @@ public sealed class NewWindowTests : OwnedViewModels
     /// that list is empty one line before it used to call CloseAll, so that call
     /// iterated nothing: the window it opened was still open, still shown, and
     /// still holding its shell's panes, watchers and timers for the rest of the
-    /// run. Nothing else would have closed it either — MEASURED by taking the
-    /// final Close() out of OnClosing, after which the wait below runs out
-    /// instead. That is the leak <see cref="OwnedViewModels"/> exists to
-    /// prevent, in the one test here that cannot hand a window to it.
+    /// run. That is the leak <see cref="OwnedViewModels"/> exists to prevent,
+    /// in the one test here that cannot hand a window to it.
     ///
-    /// Waits on the window's own Closed event rather than on a number of
-    /// dispatcher turns: OnClosing cancels the first close, awaits the release
-    /// and only then closes for real, so the window is still open when Close()
-    /// returns.
+    /// **And it has to be called from a finally, because the first version of
+    /// this was the last statement of the method and leaked on exactly the red
+    /// it was written for.** MEASURED with the last window dropped from the
+    /// composed session: the throw landed at the Assert.Single above the close,
+    /// and a Closed probe at teardown read "fired=False IsVisible=True". With
+    /// the body in a try and this in the finally, the same fault reads
+    /// "fired=True IsVisible=False" and the assertion is still the red that is
+    /// reported — the close completes synchronously there, so the finally does
+    /// not throw over it.
+    ///
+    /// **The loop below runs ZERO turns at this call site, and that is
+    /// measured** — the sentence that used to stand here said the opposite.
+    /// OnClosing does cancel the first close and await a release, but by the
+    /// time this helper runs the caller's own ReleaseAsync has already disposed
+    /// the store, so the second release short-circuits (WriteAsync returns at
+    /// <c>state is null || _disposed</c>) and the whole chain completes inside
+    /// Close(). MEASURED, three runs of the green test: "right after Close():
+    /// closed=True", turns=0, 28-30 ms. So the wait is a GUARD against the
+    /// asynchronous path this window does not take, not a wait any green run
+    /// needs.
+    ///
+    /// It still has teeth: with the final Close() in OnClosing replaced by
+    /// Hide(), the loop runs the ceiling out and fails with "the window never
+    /// closed".
     /// </summary>
     private static async Task CloseAndWaitAsync(MainWindow window)
     {
@@ -387,12 +441,16 @@ public sealed class NewWindowTests : OwnedViewModels
             founder.Shell.Sidebar.Width = 265;
             peer.Shell.Sidebar.Width = 315;
 
+            // Same reader as the last-window test, and MORE exposed than it
+            // was: this one never releases, so the store is never disposed and
+            // its one-second debounce is still armed while the file is read.
+            var since = DateTimeOffset.UtcNow;
+
             founder.Shell.NotifyWindowChanged();
             await services.Session.FlushAsync(CancellationToken.None);
 
-            var onDisk = services.Session.Load();
+            var onDisk = await WrittenSessionAsync(since);
 
-            Assert.NotNull(onDisk);
             Assert.Equal(2, onDisk.Windows.Count);
             Assert.Equal([265d, 315d], onDisk.Windows.Select(w => w.SidebarWidth));
         }
@@ -425,6 +483,8 @@ public sealed class NewWindowTests : OwnedViewModels
 
             Assert.Equal(2, services.Compose().Windows.Count);
 
+            var since = DateTimeOffset.UtcNow;
+
             await services.ReleaseAsync(peer);
 
             Assert.Single(services.Compose().Windows);
@@ -433,9 +493,13 @@ public sealed class NewWindowTests : OwnedViewModels
             // by the end of the release.** Removing it afterwards leaves the
             // file holding a window that has closed, which the next launch
             // would faithfully open again.
-            var onDisk = services.Session.Load();
+            //
+            // Through the same by-name-and-by-clock reader as the other two,
+            // for the reason WrittenSessionAsync records: Load() would answer
+            // this question from session.json.bak, which by construction holds
+            // the two-window state from before the release.
+            var onDisk = await WrittenSessionAsync(since);
 
-            Assert.NotNull(onDisk);
             Assert.Single(onDisk.Windows);
         }
         finally
@@ -458,30 +522,40 @@ public sealed class NewWindowTests : OwnedViewModels
 
         var founder = new MainWindow();
 
-        founder.Show();
-        Settle();
+        try
+        {
+            founder.Show();
+            Settle();
 
-        var services = founder.Services;
-        founder.Shell.Sidebar.Width = 287;
+            var services = founder.Services;
+            founder.Shell.Sidebar.Width = 287;
 
-        await services.ReleaseAsync(founder);
+            // The mark the write has to beat, taken immediately before the one
+            // write this test asserts about. Reading session.json by name is
+            // not enough on its own — WrittenSessionAsync carries why.
+            var since = DateTimeOffset.UtcNow;
 
-        // The file the release wrote, rather than what Session.Load() makes of
-        // the directory — WrittenSessionAsync carries the measurement.
-        var onDisk = await WrittenSessionAsync();
+            await services.ReleaseAsync(founder);
 
-        Assert.Equal(SessionState.CurrentVersion, onDisk.Version);
+            var onDisk = await WrittenSessionAsync(since);
 
-        var saved = Assert.Single(onDisk.Windows);
-        Assert.Equal(287d, saved.SidebarWidth);
+            Assert.Equal(SessionState.CurrentVersion, onDisk.Version);
 
-        // And then it really is let go of, so nothing composes a window that
-        // has been torn down.
-        Assert.Empty(services.Windows);
+            var saved = Assert.Single(onDisk.Windows);
+            Assert.Equal(287d, saved.SidebarWidth);
 
-        // Which is also why CloseAll cannot end this one: it walks the list
-        // that assertion just found empty. See CloseAndWaitAsync.
-        await CloseAndWaitAsync(founder);
+            // And then it really is let go of, so nothing composes a window that
+            // has been torn down.
+            Assert.Empty(services.Windows);
+        }
+        finally
+        {
+            // CloseAll cannot end this one: it walks the list that assertion
+            // just found empty. In a finally rather than after the assertions,
+            // because a red one used to leave this window open, shown and
+            // ticking for the rest of the run. See CloseAndWaitAsync.
+            await CloseAndWaitAsync(founder);
+        }
     }
 
     /// <summary>
