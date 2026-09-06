@@ -955,8 +955,15 @@ public partial class MainWindow : Window
 
             if (pane is not null)
             {
+                // **Back, not up.** This read GoUpAsync between fee6393 and
+                // now, collateral from the commit that made BACKSPACE a
+                // choice between the two: the mouse button was swept up in
+                // the same edit and nothing said so, because the test beside
+                // this one only checked which button maps to which action.
+                // The two coincide in most trees, which is why it survived —
+                // walk sideways rather than down and they part company.
                 _ = side is Input.SideButtonAction.Back
-                    ? pane.GoUpAsync()
+                    ? pane.GoBackAsync()
                     : pane.GoForwardAsync();
             }
 

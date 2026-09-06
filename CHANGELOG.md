@@ -11,7 +11,16 @@ should not be trusted for compatibility yet.
 
 ## [Unreleased]
 
-Nothing yet.
+### Fixed
+
+- **The mouse'''s back button goes back again, rather than up one folder.** The
+  two buttons under the thumb are unlabelled precisely because every browser and
+  every file manager agrees what they do — so one of them quietly doing the
+  other thing is a wrong turn you have to notice before you can undo it. The
+  back button had been walking up to the parent folder since the release that
+  made *Backspace* a choice between back and up; the mouse was swept into that
+  edit and nothing said so. The two land in the same place in an ordinary walk
+  straight down a tree, which is why it survived. Forward was always right.
 
 ## [0.10.1] — 2026-09-06
 

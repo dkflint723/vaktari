@@ -6,6 +6,7 @@ using Avalonia.Headless;
 using Avalonia.Headless.XUnit;
 using Avalonia.Input;
 using Avalonia.Interactivity;
+using Avalonia.Threading;
 using Avalonia.VisualTree;
 using Vaktari.Core.FileSystem;
 using Vaktari.Ui.Input;
@@ -33,6 +34,19 @@ namespace Vaktari.Ui.Tests;
 /// </summary>
 public sealed class SideButtonNavigationTests : OwnedViewModels
 {
+    private MainWindow? _real;
+
+    public override void Dispose()
+    {
+        // A shown window flushes the session on close, and one left open is
+        // torn down later on whatever thread xunit is on — which surfaces as a
+        // threading failure in some unrelated test that merely ran afterwards.
+        _real?.Close();
+
+        base.Dispose();
+        GC.SuppressFinalize(this);
+    }
+
     [Theory]
     [InlineData(PointerUpdateKind.XButton1Pressed, SideButtonAction.Back)]
     [InlineData(PointerUpdateKind.XButton2Pressed, SideButtonAction.Forward)]
@@ -256,6 +270,129 @@ public sealed class SideButtonNavigationTests : OwnedViewModels
         {
             window.Close();
         }
+    }
+
+    // ---- where each button actually goes ------------------------------------
+
+    /// <summary>
+    /// Three real folders arranged so Back and Up cannot give the same answer:
+    /// the pane walks to <c>far</c> and then to <c>near/deep</c>, so Back is
+    /// <c>far</c> and Up is <c>near</c>. Copied from
+    /// <see cref="BackspacePreferenceTests"/>, which needs the same shape for
+    /// the same reason.
+    /// </summary>
+    private sealed record Tree(string Root, string Far, string Near, string Deep) : IDisposable
+    {
+        public static Tree Make()
+        {
+            var root = Path.Combine(
+                Path.GetTempPath(), "vaktari-sidebutton-" + Guid.NewGuid().ToString("N")[..8]);
+
+            var tree = new Tree(root,
+                                Path.Combine(root, "far"),
+                                Path.Combine(root, "near"),
+                                Path.Combine(root, "near", "deep"));
+
+            Directory.CreateDirectory(tree.Far);
+            Directory.CreateDirectory(tree.Deep);
+
+            return tree;
+        }
+
+        public void Dispose()
+        {
+            try { Directory.Delete(Root, recursive: true); } catch { /* temp */ }
+        }
+    }
+
+    private static void Settle()
+    {
+        Dispatcher.UIThread.RunJobs();
+        Dispatcher.UIThread.RunJobs(DispatcherPriority.Input);
+        Dispatcher.UIThread.RunJobs(DispatcherPriority.Background);
+    }
+
+    /// <summary>
+    /// A real window walked to <see cref="Tree.Deep"/> with <see cref="Tree.Far"/>
+    /// behind it, so that both buttons have somewhere to go.
+    /// </summary>
+    private async Task<(MainWindow Window, PaneViewModel Pane)> Walked(Tree tree)
+    {
+        UseSearch(PaneViewModel.Search);
+
+        var window = _real = new MainWindow();
+
+        window.Show();
+        Settle();
+
+        var shell = Assert.IsType<ShellViewModel>(window.DataContext);
+        var pane = shell.ActiveTab!;
+
+        await pane.NavigateAsync(tree.Far);
+        await pane.NavigateAsync(tree.Deep);
+        Settle();
+
+        // Nothing is pressed until the pane is provably where this test put it:
+        // a real window opens on whatever folders the session restored, and the
+        // assertions below would otherwise be about that folder's history.
+        Assert.Equal(tree.Deep, pane.CurrentPath);
+        Assert.True(pane.CanGoBack, "there is no history for Back to walk");
+        Assert.True(pane.CanGoUp, "there is no parent for Up to reach");
+
+        return (window, pane);
+    }
+
+    /// <summary>
+    /// **The back button went UP one folder for four commits.** fee6393 made
+    /// BACKSPACE a choice between Back and Up, and swept this line up with it —
+    /// so the button under the thumb, which is unlabelled precisely because
+    /// every browser and every file manager agrees what it does, quietly did
+    /// the other thing. Nothing caught it: the theory above pins which button
+    /// maps to which <see cref="SideButtonAction"/>, and that mapping stayed
+    /// right the whole time. What was wrong was what the action then DID.
+    ///
+    /// The two coincide in an ordinary walk straight down a tree, which is why
+    /// it was not noticed by hand either. This walks sideways first, so a pane
+    /// that goes up lands somewhere Back never was.
+    ///
+    /// Pressed rather than called, for the reason
+    /// <see cref="BackspacePreferenceTests"/> records: invoking GoBackAsync
+    /// directly would pass with the whole branch deleted.
+    /// </summary>
+    [AvaloniaFact]
+    public async Task The_back_button_goes_back_rather_than_up()
+    {
+        using var tree = Tree.Make();
+
+        var (window, pane) = await Walked(tree);
+
+        window.MouseDown(new Point(400, 300), MouseButton.XButton1);
+        window.MouseUp(new Point(400, 300), MouseButton.XButton1);
+        Settle();
+
+        Assert.Equal(tree.Far, pane.CurrentPath);
+    }
+
+    /// <summary>
+    /// And the far button forward, which is the half that was always right —
+    /// here so that a fix which simply swapped the two branches cannot pass.
+    /// </summary>
+    [AvaloniaFact]
+    public async Task The_far_button_goes_forward()
+    {
+        using var tree = Tree.Make();
+
+        var (window, pane) = await Walked(tree);
+
+        await pane.GoBackAsync();
+        Settle();
+        Assert.Equal(tree.Far, pane.CurrentPath);
+
+        window.MouseDown(new Point(400, 300), MouseButton.XButton2);
+        window.MouseUp(new Point(400, 300), MouseButton.XButton2);
+        Settle();
+
+        Assert.Equal(tree.Deep, pane.CurrentPath);
     }
 
     /// <summary>
