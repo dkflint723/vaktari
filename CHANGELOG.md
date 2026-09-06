@@ -11,6 +11,10 @@ should not be trusted for compatibility yet.
 
 ## [Unreleased]
 
+Nothing yet.
+
+## [0.10.1] — 2026-09-06
+
 ### Fixed
 
 - **A settings file that leaves a section out is read as one that means the
@@ -3030,7 +3034,8 @@ should not be trusted for compatibility yet.
 
 First tagged releases. Linux tarball and RPM.
 
-[Unreleased]: https://github.com/dkflint723/vaktari/compare/v0.10.0...HEAD
+[Unreleased]: https://github.com/dkflint723/vaktari/compare/v0.10.1...HEAD
+[0.10.1]: https://github.com/dkflint723/vaktari/compare/v0.10.0...v0.10.1
 [0.10.0]: https://github.com/dkflint723/vaktari/compare/v0.9.16...v0.10.0
 [0.9.16]: https://github.com/dkflint723/vaktari/compare/v0.9.15...v0.9.16
 [0.9.15]: https://github.com/dkflint723/vaktari/compare/v0.9.14...v0.9.15
