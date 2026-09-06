@@ -1140,6 +1140,31 @@ public sealed class ExpandableFoldersTests : OwnedViewModels
 
     /// <summary>Runs the dispatcher and lays the window out, so the containers
     /// a listing change asked for are really there to be read.</summary>
+    /// <summary>Every expander cell currently in the window's visual tree.</summary>
+    private static IEnumerable<Panel> Expanders(Window window)
+        => window.GetVisualDescendants().OfType<Panel>()
+                 .Where(p => p.Classes.Contains(MainWindow.ExpanderClass));
+
+    /// <summary>
+    /// Waits for something to become true rather than for a number of turns.
+    ///
+    /// **Layout's twenty immediate yields are a guess about how busy the
+    /// machine is**, and they are the wrong guess whenever what is being waited
+    /// for is a real directory read rather than work already sitting on the
+    /// dispatcher queue. A slow machine takes longer here; a broken one still
+    /// fails, because the assertions afterwards are unchanged.
+    /// </summary>
+    private static async Task Until(Func<bool> done)
+    {
+        for (var i = 0; i < 400 && !done(); i++)
+        {
+            Dispatcher.UIThread.RunJobs();
+            await Task.Delay(5);
+        }
+
+        Dispatcher.UIThread.RunJobs();
+    }
+
     private static async Task Layout(Window window)
     {
         for (var i = 0; i < 20; i++)
@@ -1600,6 +1625,16 @@ public sealed class ExpandableFoldersTests : OwnedViewModels
 
             if (!shell.IsSplit) shell.ToggleSplit();
 
+            // **ToggleSplit is void and starts a navigation.** It calls
+            // AddTab on the group it has just made, which begins a real
+            // directory read; Layout's twenty immediate yields are
+            // microseconds and do not outlast one. MEASURED elsewhere in this
+            // session: this test failed once in a full local run and passed
+            // alone and in CI, which is what a load-dependent wait looks like
+            // from the outside. Waiting for the half to EXIST, rather than for
+            // a number of turns, is waiting on the thing the next line reads.
+            await Until(() => shell.Right?.ActiveTab is not null);
+
             await Layout(window);
 
             var other = shell.Right!;
@@ -1614,8 +1649,13 @@ public sealed class ExpandableFoldersTests : OwnedViewModels
 
             Assert.NotSame(other, shell.ActiveGroup);
 
-            var cell = window.GetVisualDescendants().OfType<Panel>()
-                .Where(p => p.Classes.Contains(MainWindow.ExpanderClass))
+            // The row itself, for the same reason: the navigation above is
+            // awaited but the LISTING reaching the visual tree is not, and
+            // Single throws rather than failing when it is not there yet.
+            await Until(() => Expanders(window).Any(
+                p => p.DataContext is FileEntry e && e.FullPath == Path.Combine(root, "docs")));
+
+            var cell = Expanders(window)
                 .Single(p => p.DataContext is FileEntry entry
                              && entry.FullPath == Path.Combine(root, "docs"));
 
