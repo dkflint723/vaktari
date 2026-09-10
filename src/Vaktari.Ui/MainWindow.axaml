@@ -2920,15 +2920,23 @@
                   <Style Selector="ListBoxItem:nth-child(even) /template/ ContentPresenter">
                     <Setter Property="Background" Value="{DynamicResource ViewAlternate}"/>
                   </Style>
-                  <!-- Hover wash. Declared before the selection rules so selection wins. -->
+                  <!-- Hover wash. Declared before the selection rules so selection wins.
+                       (This rule was here TWICE, identically — the second copy has gone.) -->
                   <Style Selector="ListBoxItem:pointerover /template/ ContentPresenter">
                     <Setter Property="Background" Value="{DynamicResource HoverBackground}"/>
+                  </Style>
+                  <!-- **A banded row keeps its band while hovered.** The rule above sets the
+                       same Background the banding rule uses, so a banded row lost its shade
+                       entirely under the pointer and drew as the plain ground. This one is
+                       the band and the wash already composited together — see
+                       ThemeApplier.ApplyHoveredBand — and it must stay AFTER the rule above,
+                       because Avalonia takes the last matching style rather than the most
+                       specific one. -->
+                  <Style Selector="ListBoxItem:nth-child(even):pointerover /template/ ContentPresenter">
+                    <Setter Property="Background" Value="{DynamicResource HoverBackgroundBanded}"/>
                   </Style>
                   <!-- The theme's own selection fill is suppressed; the row template draws
                        the cue, so it is guaranteed to appear. -->
-                  <Style Selector="ListBoxItem:pointerover /template/ ContentPresenter">
-                    <Setter Property="Background" Value="{DynamicResource HoverBackground}"/>
-                  </Style>
                   <Style Selector="ListBoxItem:selected /template/ ContentPresenter">
                     <Setter Property="Background" Value="Transparent"/>
                   </Style>

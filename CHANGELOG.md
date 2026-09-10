@@ -11,7 +11,16 @@ should not be trusted for compatibility yet.
 
 ## [Unreleased]
 
-Nothing yet.
+### Fixed
+
+- **Hovering a banded row no longer wipes out its band.** Every other row in a
+  listing is drawn a shade apart from its neighbours, which is what lets the eye
+  follow one across a wide window — and the moment the pointer crossed such a
+  row, that shade vanished completely and the row drew as though it had never
+  been banded. The highlight and the band were being written to the same place,
+  so the highlight simply replaced it. Most of the band now survives the
+  pointer: enough that the row still belongs to its stripe, and it still lights
+  up plainly enough to see which row you are on.
 
 ## [0.10.2] — 2026-09-06
 

@@ -394,6 +394,7 @@ public static class ThemeApplier
         // ancient ones fade past the dim colour — a lightness ramp that holds
         // under any scheme, this one or a desktop's.
         ApplyBanding(target, dark);
+        ApplyHoveredBand(target);
         ApplyAgeRamp(target);
 
         // Always set, so the markup can bind unconditionally: a palette that
@@ -559,6 +560,79 @@ public static class ThemeApplier
 
         if (Contrast(alt, view.Color) < BandContrast)
             target["ViewAlternate"] = new SolidColorBrush(BandFor(view.Color, dark));
+    }
+
+    /// <summary>
+    /// What a banded row looks like while the pointer is over it.
+    ///
+    /// **Hover was REPLACING the band rather than sitting on it.** HoverBackground
+    /// is translucent by design — a wash that works over whatever is underneath
+    /// — but it is set on the same ContentPresenter Background the band is set
+    /// on, so there is nothing underneath it to wash: the band is gone the
+    /// instant it applies, and a hovered banded row drew as the plain ground.
+    /// Reported as the darker line "completely fading away", which is exactly
+    /// what a listing does when every other row loses its shade under the
+    /// pointer.
+    ///
+    /// So the two are composited HERE, into one opaque colour, rather than
+    /// being layered at draw time — the alternative is moving the band onto a
+    /// different element, which means fighting the theme's own ListBoxItem
+    /// template for who owns the row's background.
+    ///
+    /// The band is SOFTENED rather than preserved whole. Keeping it at full
+    /// strength holds the two hover states exactly as far apart as the two
+    /// resting states, which is defensible but reads as though the pointer has
+    /// done less than it has; dropping it entirely is the bug. Most of it
+    /// survives, which is what was asked for: enough that the row still belongs
+    /// to its stripe, little enough that the pointer plainly did something.
+    /// </summary>
+    private static void ApplyHoveredBand(IResourceDictionary target)
+    {
+        if (target["ViewBackground"] is not ISolidColorBrush view
+            || target["ViewAlternate"] is not ISolidColorBrush alt
+            || target["HoverBackground"] is not ISolidColorBrush hover) return;
+
+        // The plain row with the wash on it — what an unbanded row already
+        // draws as, composited here because the markup can only composite at
+        // draw time against whatever is BEHIND the presenter.
+        var hovered = Over(hover.Color, view.Color);
+
+        // **Then the stripe, as a difference rather than as a colour.** Washing
+        // the band directly works only while HoverBackground is translucent,
+        // and it is not on every path: the Design palette carries it at 7-11%
+        // alpha, but the Fallback scheme's is flat opaque, and compositing an
+        // opaque wash over anything returns the wash — which is the very bug
+        // this method exists to fix, reintroduced on the path nobody looks at.
+        // Carrying the stripe as a delta holds on both.
+        target["HoverBackgroundBanded"] = new SolidColorBrush(Color.FromRgb(
+            Shift(hovered.R, alt.Color.R - view.Color.R),
+            Shift(hovered.G, alt.Color.G - view.Color.G),
+            Shift(hovered.B, alt.Color.B - view.Color.B)));
+    }
+
+    /// <summary>One channel moved by a softened share of the stripe.</summary>
+    private static byte Shift(byte from, int delta)
+        => (byte)Math.Clamp(from + delta * BandOnHover, 0, 255);
+
+    /// <summary>How much of the band survives under the pointer.</summary>
+    private const double BandOnHover = 0.65;
+
+    /// <summary>
+    /// <paramref name="src"/> composited over <paramref name="dst"/> — what a
+    /// translucent Background would do if the band were on a layer beneath it.
+    ///
+    /// Distinct from <see cref="Blend"/>, which takes the amount as an argument
+    /// and ignores alpha entirely; every colour it is given here already
+    /// carries the amount in its own alpha channel.
+    /// </summary>
+    private static Color Over(Color src, Color dst)
+    {
+        var a = src.A / 255.0;
+
+        return Color.FromRgb(
+            (byte)(src.R * a + dst.R * (1 - a)),
+            (byte)(src.G * a + dst.G * (1 - a)),
+            (byte)(src.B * a + dst.B * (1 - a)));
     }
 
     /// <summary>

@@ -367,4 +367,108 @@ public class ThemeApplierTests : IDisposable
         Assert.Equal(first, Applied(window)?.Name);
         Assert.Equal("Georgia", Applied(window)?.Name);
     }
+
+    // ---- the band under the pointer ----------------------------------------
+
+    /// <summary>
+    /// Ordering only, so it does not need the linearised curve: what is under
+    /// test is which way a stripe points and how far, not a contrast ratio.
+    /// </summary>
+    private static double Lightness(Color c)
+        => (0.2126 * c.R + 0.7152 * c.G + 0.0722 * c.B) / 255.0;
+
+    /// <summary>
+    /// What an UNBANDED row draws as while hovered, which is the reference the
+    /// banded one has to differ from.
+    ///
+    /// The hover brush is translucent on most paths, so its own RGB is the wash
+    /// and not a colour any row ever shows — comparing against it directly is
+    /// what made the first version of this test report the stripe inverting.
+    /// </summary>
+    private static Color Over(Color src, Color dst)
+    {
+        var a = src.A / 255.0;
+
+        return Color.FromRgb(
+            (byte)(src.R * a + dst.R * (1 - a)),
+            (byte)(src.G * a + dst.G * (1 - a)),
+            (byte)(src.B * a + dst.B * (1 - a)));
+    }
+
+    /// <summary>
+    /// **A hovered banded row lost its band completely.** The hover wash is
+    /// translucent on purpose, but it is set on the same ContentPresenter
+    /// Background the band is set on — so there was nothing beneath it to wash,
+    /// and every other row dropped to the plain ground the moment the pointer
+    /// crossed it. Reported as the darker line fading away entirely.
+    ///
+    /// Three things, and each fails a different way of getting it wrong:
+    /// dropping the band (the bug), keeping it whole (defensible, but the
+    /// pointer reads as having done nothing), and softening it past the plain
+    /// ground so the stripe changes sides under the pointer.
+    ///
+    /// Both variants, because the band goes UP from the ground on a dark scheme
+    /// and DOWN on a light one, and a fix that assumed one direction would draw
+    /// the other backwards.
+    /// </summary>
+    [AvaloniaTheory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public void A_hovered_band_is_softened_rather_than_dropped(bool dark)
+    {
+        Configure(null);
+
+        var window = new Window();
+        ThemeApplier.Apply(window, new ThemePalette
+        {
+            Colours = new Dictionary<string, string>(),
+            IsDark = dark,
+        });
+
+        var view = Resource(window, "ViewBackground");
+        var band = Resource(window, "ViewAlternate");
+        var hover = Resource(window, "HoverBackground");
+        var hoveredBand = Resource(window, "HoverBackgroundBanded");
+
+        var atRest = Lightness(band) - Lightness(view);
+        var hovered = Lightness(hoveredBand) - Lightness(Over(hover, view));
+
+        Assert.True(Math.Abs(atRest) > 0.001, "there is no band to hover over");
+
+        // Not dropped: the hovered banded row is still not the hovered plain row.
+        Assert.NotEqual(hover, hoveredBand);
+
+        // And still on the same side of the plain row, so the stripe does not
+        // invert under the pointer.
+        Assert.True(Math.Sign(hovered) == Math.Sign(atRest),
+            $"the band points {atRest:+0.000;-0.000} at rest and {hovered:+0.000;-0.000} hovered");
+
+        // Softened: nearer the plain row than it was, but not all the way.
+        Assert.True(Math.Abs(hovered) < Math.Abs(atRest),
+            $"the band was not softened — {Math.Abs(hovered):0.0000} against {Math.Abs(atRest):0.0000}");
+
+        Assert.True(Math.Abs(hovered) > Math.Abs(atRest) * 0.25,
+            $"almost none of the band survived — {Math.Abs(hovered):0.0000} against {Math.Abs(atRest):0.0000}");
+    }
+
+    /// <summary>
+    /// The hover wash is translucent, and the composite has to be opaque or the
+    /// row draws whatever is behind the listing through itself.
+    /// </summary>
+    [AvaloniaTheory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public void The_hovered_band_is_opaque(bool dark)
+    {
+        Configure(null);
+
+        var window = new Window();
+        ThemeApplier.Apply(window, new ThemePalette
+        {
+            Colours = new Dictionary<string, string>(),
+            IsDark = dark,
+        });
+
+        Assert.Equal(255, Resource(window, "HoverBackgroundBanded").A);
+    }
 }
