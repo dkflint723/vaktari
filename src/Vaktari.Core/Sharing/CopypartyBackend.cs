@@ -72,6 +72,13 @@ public abstract class CopypartyBackend
     public virtual bool NextAttemptAddresses(string output) => false;
 
     /// <summary>
+    /// Something the person starting a share should hear once, from the
+    /// platform — Windows knows whether the network is one it marks public.
+    /// Null when there is nothing to say, which is the default, and Linux.
+    /// </summary>
+    public virtual string? StartWarning() => null;
+
+    /// <summary>
     /// The first executable of this name on PATH, or null.
     ///
     /// Here rather than in each subclass because the only real difference is

@@ -782,7 +782,7 @@ public sealed partial class ShellViewModel : ObservableObject, IDisposable
 
         try
         {
-            await ShareFolderAsync(target, writable).ConfigureAwait(true);
+            await ShareFolderAsync(target, new ShareOptions(writable)).ConfigureAwait(true);
         }
         catch (Exception ex)
         {
@@ -1040,18 +1040,21 @@ public sealed partial class ShellViewModel : ObservableObject, IDisposable
     }
 
     /// <summary>Shared by the dialog and the context menu, so both behave alike.</summary>
-    private async Task ShareFolderAsync(string path, bool writable)
+    private async Task ShareFolderAsync(string path, ShareOptions options)
     {
         if (_sharing is null) return;
 
-        var session = await _sharing.StartAsync(path, writable, CancellationToken.None)
+        var session = await _sharing.StartAsync(path, options, CancellationToken.None)
                                     .ConfigureAwait(true);
 
         if (ActiveTab is { } pane)
         {
-            pane.Status = writable
-                ? $"sharing {session.Label} read-write at {session.Url}"
-                : $"sharing {session.Label} at {session.Url}";
+            // The address carries the password, so the line is the whole
+            // handover; what the platform had to say rides behind it.
+            pane.Status = (options.Writable
+                    ? $"sharing {session.Label} read-write at {session.Url}"
+                    : $"sharing {session.Label} at {session.Url}")
+                + (session.Warning is { } warning ? $" — {warning}" : "");
         }
     }
 

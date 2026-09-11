@@ -67,6 +67,18 @@
                    IsChecked="{Binding Writable}"/>
     </StackPanel>
 
+    <!-- Off unless asked. Announcing puts the share by name into every
+         mDNS-aware file manager and Windows Explorer on the network, which is
+         the opposite of handing one person an address. The password applies
+         either way. -->
+    <CheckBox Content="Announce on the local network, so other machines list it by name"
+              FontSize="{DynamicResource FontSizeSmall}"
+              IsChecked="{Binding Announce}"/>
+
+    <TextBlock Text="Every share gets a password of its own; it is part of the address you hand out."
+               FontSize="{DynamicResource FontSizeTiny}"
+               Foreground="{DynamicResource ViewDimText}"/>
+
     <Border Height="1" Background="{DynamicResource SeparatorColour}"/>
 
     <DockPanel>

@@ -344,7 +344,9 @@ without it the button stays greyed out.
 
 **Share a folder over HTTP** for another machine to fetch, with optional
 upload. This uses [copyparty](https://github.com/9001/copyparty), which Vaktari
-can fetch for you.
+can fetch for you. Every share gets a password of its own, carried in the
+address you hand out; the server listens only on the address shown, and the
+share is not announced on the network unless you tick the box.
 
 **Share by link.** For anything inside your Proton Drive folder, right-click ▸
 *Share* offers *Share via Proton Drive*: the link lands on your clipboard,

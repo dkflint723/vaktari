@@ -2,6 +2,7 @@ using System.Collections.ObjectModel;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using Vaktari.Core.FileSystem;
+using Vaktari.Core.Sharing;
 
 namespace Vaktari.Ui.ViewModels;
 
@@ -14,9 +15,9 @@ namespace Vaktari.Ui.ViewModels;
 /// </summary>
 public sealed partial class ShareRequestViewModel : ObservableObject
 {
-    private readonly Func<string, bool, Task> _share;
+    private readonly Func<string, ShareOptions, Task> _share;
 
-    public ShareRequestViewModel(string startingPath, Func<string, bool, Task> share)
+    public ShareRequestViewModel(string startingPath, Func<string, ShareOptions, Task> share)
     {
         _share = share;
         _path = startingPath;
@@ -84,6 +85,11 @@ public sealed partial class ShareRequestViewModel : ObservableObject
 
     [ObservableProperty] private string _path = "";
     [ObservableProperty] private bool _writable;
+
+    /// <summary>Off unless ticked: announcing puts the share by name into
+    /// every file manager on the network, which is the opposite of handing
+    /// one person an address.</summary>
+    [ObservableProperty] private bool _announce;
     [ObservableProperty] private string _status = "";
     [ObservableProperty] private bool _busy;
 
@@ -116,7 +122,7 @@ public sealed partial class ShareRequestViewModel : ObservableObject
 
         try
         {
-            await _share(Path.Trim(), Writable).ConfigureAwait(true);
+            await _share(Path.Trim(), new ShareOptions(Writable, Announce)).ConfigureAwait(true);
             Finished?.Invoke(this, EventArgs.Empty);
         }
         catch (Exception ex)

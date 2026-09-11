@@ -1133,7 +1133,7 @@ public sealed class NewWindowTests : OwnedViewModels
 
         public void Raise() => Changed?.Invoke(this, EventArgs.Empty);
 
-        public Task<ShareSession> StartAsync(string path, bool writable, CancellationToken ct)
+        public Task<ShareSession> StartAsync(string path, ShareOptions options, CancellationToken ct)
             => throw new NotSupportedException("this test never starts one");
 
         public Task<bool> InstallAsync(IProgress<string> progress, CancellationToken ct)

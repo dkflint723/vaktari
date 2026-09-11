@@ -72,6 +72,22 @@ should not be trusted for compatibility yet.
   `XDG_RUNTIME_DIR` — nearly all desktop logins — were never affected, and
   Windows keeps its per-user temp folder.
 
+- **A shared folder now needs a password, is served on one address, and is
+  not announced unless you ask.** Sharing a folder over HTTP granted read —
+  or read-write — access to anyone who could reach the port; the server
+  listened on every address the machine had, a VPN's or a public one's
+  included; it announced itself over mDNS and SSDP, so a folder handed to
+  one person by its address appeared by name in every file manager and
+  Windows Explorer on the network; and its config went to /tmp. Every share
+  now gets a sixteen-character password of its own, carried in the address
+  you hand out (opening it logs the browser in, and the login box takes the
+  same password); the server listens only on the address shown, which is now
+  the adapter with a route out rather than whichever the system lists first;
+  the share dialog has a box for announcing, off by default; the config is
+  written to the session's private folder, readable by this user alone; and
+  on Windows, a share started on a network marked public says so on the
+  status line.
+
 ### Fixed
 
 - **A settings file from another version of Vaktari is no longer thrown

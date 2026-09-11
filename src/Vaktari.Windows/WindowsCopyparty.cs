@@ -1,3 +1,5 @@
+using System.Diagnostics;
+using Vaktari.Core;
 using Vaktari.Core.Sharing;
 
 namespace Vaktari.Windows;
@@ -109,6 +111,55 @@ public sealed class WindowsCopyparty : CopypartyBackend
         }
 
         return attempts;
+    }
+
+    /// <summary>What netsh says about the current firewall profile, for
+    /// tests. Null runs netsh.</summary>
+    internal static Func<string?>? ProfileOverride { get; set; }
+
+    /// <summary>
+    /// **A share on a network Windows marks Public — a café, a hotel, an
+    /// airport — is a folder offered to everyone on it.** The password stands
+    /// between them and the files, and it is a good one; but the person
+    /// sharing chose "this folder", not "this folder, to this whole room",
+    /// and the difference is worth a line. Windows already knows which kind
+    /// of network it is on: the active firewall profile says, and netsh
+    /// prints it — in the language of the installation, so on a Windows in
+    /// another language nothing is recognised and nothing is said, which is
+    /// the quiet side to fail on.
+    /// </summary>
+    public override string? StartWarning()
+        => (ProfileOverride ?? CurrentProfile)() is { } profile
+           && profile.Contains("Public Profile", StringComparison.OrdinalIgnoreCase)
+            ? "this machine is on a network Windows marks as public — anyone on it with the address can try the password"
+            : null;
+
+    private static string? CurrentProfile()
+    {
+        try
+        {
+            var info = new ProcessStartInfo("netsh")
+            {
+                RedirectStandardOutput = true,
+                UseShellExecute = false,
+                CreateNoWindow = true,
+            };
+
+            foreach (var arg in new[] { "advfirewall", "show", "currentprofile" }) info.ArgumentList.Add(arg);
+
+            using var process = Process.Start(info);
+
+            if (process is null) return null;
+
+            var output = process.StandardOutput.ReadToEnd();
+
+            return process.WaitForExit(5000) ? output : null;
+        }
+        catch (Exception ex)
+        {
+            Quiet.Swallowed("sharing", ex);
+            return null;
+        }
     }
 
     public override string NotInstalledHint =>
