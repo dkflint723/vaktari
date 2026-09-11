@@ -317,7 +317,7 @@ public sealed class SidebarPinDropTests : OwnedViewModels
             Assert.Empty(plan.Folders);
             Assert.Equal(1, plan.Files);
             Assert.False(plan.Any);
-            Assert.Equal("only a folder can be a place", plan.Report(already: 0));
+            Assert.Equal("only a folder or a search can be a place", plan.Report(already: 0));
 
             // Refused by the cursor, on the way in. The toolkit delivers a drop
             // only where the drag-over said yes, so this is what keeps a file

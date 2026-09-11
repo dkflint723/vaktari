@@ -32,7 +32,7 @@ public readonly record struct PinPlan(IReadOnlyList<string> Folders, int Files)
     /// second of those said nothing at all**, so the key that pins a folder
     /// was, in those listings, a key that did nothing and explained nothing.
     /// </summary>
-    public const string OnlyFolders = "only a folder can be a place";
+    public const string OnlyFolders = "only a folder or a search can be a place";
 
     /// <summary>
     /// What the cursor says over the panel.

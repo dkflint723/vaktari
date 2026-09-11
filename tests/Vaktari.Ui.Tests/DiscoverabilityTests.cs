@@ -48,10 +48,13 @@ public sealed class DiscoverabilityTests
 
         Assert.True(at > 0, "the place row is not written the way this test looks for it");
 
-        // Within the same element, not somewhere else in the file.
+        // Within the same element, not somewhere else in the file. Where
+        // rather than Path since a saved search joined the rows: its path is
+        // an internal scheme, and Where is that path for a folder and the
+        // folder it looks under for a search.
         var element = markup[at..markup.IndexOf('>', at)];
 
-        Assert.Contains("ToolTip.Tip=\"{Binding Path}\"", element);
+        Assert.Contains("ToolTip.Tip=\"{Binding Where}\"", element);
     }
 
     /// <summary>

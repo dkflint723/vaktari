@@ -2408,6 +2408,14 @@
                                       Command="{Binding $parent[Window].((vm:ShellViewModel)DataContext).PinCurrentCommand}"
                                       InputGesture="Ctrl+D"
                                       IsVisible="{Binding $parent[Window].((vm:ShellViewModel)DataContext).ShowAddCurrentToPlaces}"/>
+              <!-- The same slot in a search listing, under the words that are
+                   true there: a search is not a folder, and the row that
+                   saves it must not call it one. The same command — it knows
+                   what it is standing in. -->
+              <MenuItem Header="Save this search to places"
+                                      Command="{Binding $parent[Window].((vm:ShellViewModel)DataContext).PinCurrentCommand}"
+                                      InputGesture="Ctrl+D"
+                                      IsVisible="{Binding $parent[Window].((vm:ShellViewModel)DataContext).ShowSaveSearchToPlaces}"/>
               <!-- Gated on the one entry it introduces. Ungated it drew a rule
                    with nothing under it in every listing that is not the recent
                    one — which is most of them, including every ordinary folder —
@@ -2668,6 +2676,21 @@
                              Margin="0,6,0,0" TextTrimming="CharacterEllipsis"
                              Foreground="{DynamicResource ViewDimText}"
                              FontSize="{DynamicResource FontSizeSmall}"/>
+                  <!-- **A question worth keeping had nowhere to be kept.** The
+                       magnifier's history holds twelve and forgets the rest,
+                       so a search somebody runs every week was retyped every
+                       week or fished out of a list that was shortening under
+                       it. This saves it to places, where it sits with a
+                       magnifier and asks its question again when clicked —
+                       the same PinCurrent that Ctrl+D runs, which knows it is
+                       standing in a search. Through the window, because the
+                       band is the pane's and the sidebar is the shell's. -->
+                  <Button x:Name="SearchSave" DockPanel.Dock="Right"
+                          Command="{Binding $parent[Window].((vm:ShellViewModel)DataContext).PinCurrentCommand}"
+                          Content="Save search" Padding="10,3" MinWidth="0" Margin="8,0,0,0"
+                          FontSize="{DynamicResource FontSizeSmall}"
+                          AutomationProperties.Name="Save this search to places"
+                          ToolTip.Tip="Keep this search in the sidebar, to ask again with one click  (ctrl+d)"/>
                   <Button x:Name="SearchStop" DockPanel.Dock="Right"
                           IsVisible="{Binding IsLoading}"
                           Command="{Binding StopSearchCommand}"
@@ -4721,7 +4744,7 @@
                             <Button ContextRequested="OnPlaceContextRequested" Command="{Binding $parent[Window].((vm:ShellViewModel)DataContext).OpenPlaceCommand}"
                                     CommandParameter="{Binding}"
                                     AutomationProperties.Name="{Binding Label}"
-                                    ToolTip.Tip="{Binding Path}"
+                                    ToolTip.Tip="{Binding Where}"
                                     ToolTip.ShowDelay="900"
                                     BorderThickness="0"
                                     DragDrop.AllowDrop="True"

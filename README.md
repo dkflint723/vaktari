@@ -207,6 +207,12 @@ answer about capitals — because what is kept is the whole search rather than
 the words in it. Twelve are offered, fifty are kept, and it can be switched off
 and emptied from Settings.
 
+**A search worth keeping can be saved to places.** `Ctrl+D` in a search, the
+*Save search* button on the band above the results, or *Save this search to
+places* on the listing's menu puts it in the sidebar with a magnifier, named
+for its question and where it looks. Clicking it asks the question again;
+rename or remove it like any other pinned place.
+
 **Filter the listing you are looking at** with `Ctrl+I`, and nothing on screen
 moves. `*` and `?` work as patterns here too, so `*.png` hides everything else;
 the count underneath reads "filtered to 2 of 3"; and a filter that matches

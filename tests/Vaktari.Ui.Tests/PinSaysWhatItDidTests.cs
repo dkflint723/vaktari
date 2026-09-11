@@ -110,9 +110,10 @@ public sealed class PinSaysWhatItDidTests : OwnedViewModels
     }
 
     /// <summary>
-    /// In the bin, This PC or a search there is no folder to pin — the gesture
-    /// has been guarded there since it pinned "vaktari:trash", and the guard
-    /// was as silent as the pin it replaced.
+    /// In the bin or This PC there is no folder to pin — the gesture has been
+    /// guarded there since it pinned "vaktari:trash", and the guard was as
+    /// silent as the pin it replaced. A search is no longer in this list: it
+    /// is the one view that is a place, and SavedSearchTests has it.
     /// </summary>
     [AvaloniaTheory]
     [InlineData(VirtualPaths.Trash)]
@@ -131,7 +132,7 @@ public sealed class PinSaysWhatItDidTests : OwnedViewModels
             await shell.PinCurrentCommand.ExecuteAsync(null);
 
             Assert.Empty(places.Pinned);
-            Assert.Equal("only a folder can be a place", shell.ActiveTab.Status);
+            Assert.Equal("only a folder or a search can be a place", shell.ActiveTab.Status);
         }
         finally
         {
@@ -207,7 +208,7 @@ public sealed class PinSaysWhatItDidTests : OwnedViewModels
             await shell.AddSelectionToPlacesCommand.ExecuteAsync(null);
 
             Assert.Empty(places.Pinned);
-            Assert.Equal("only a folder can be a place", shell.ActiveTab.Status);
+            Assert.Equal("only a folder or a search can be a place", shell.ActiveTab.Status);
         }
         finally
         {
@@ -246,7 +247,7 @@ public sealed class PinSaysWhatItDidTests : OwnedViewModels
             await shell.AddSelectionToPlacesCommand.ExecuteAsync(null);
 
             Assert.Empty(places.Pinned);
-            Assert.Equal("only a folder can be a place", shell.ActiveTab.Status);
+            Assert.Equal("only a folder or a search can be a place", shell.ActiveTab.Status);
         }
         finally
         {

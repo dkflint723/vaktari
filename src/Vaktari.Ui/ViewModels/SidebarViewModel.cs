@@ -818,8 +818,10 @@ public sealed partial class SidebarViewModel : ObservableObject, IDisposable
             OpenedAt: arrived.Count == 1 ? arrived[0] : null);
     }
 
-    public Task PinAsync(string path)
-        => _places?.PinAsync(path, null, CancellationToken.None).AsTask() ?? Task.CompletedTask;
+    /// <summary>Pins a path, under a label when the caller has a better one
+    /// than the path's tail — a saved search's question, say.</summary>
+    public Task PinAsync(string path, string? label = null)
+        => _places?.PinAsync(path, label, CancellationToken.None).AsTask() ?? Task.CompletedTask;
 
     /// <summary>
     /// Takes a place back off the list, and rebuilds it so the row goes.
@@ -983,6 +985,16 @@ public sealed partial class PlaceItemViewModel(Place place) : ObservableObject
     public string Label { get; } = place.Label;
     public string Path { get; } = place.Path;
     public string Icon { get; } = place.Icon;
+
+    /// <summary>
+    /// What the row's tooltip says: the folder, for a folder — and for a
+    /// saved search, where it looks, since its Path is an internal scheme
+    /// that reads as nothing. The same words the magnifier's history rows
+    /// hover, so a search reads alike in both places it can be reached from.
+    /// </summary>
+    public string Where => Core.Places.PinnedPlaces.IsSearch(Path)
+        ? PaneViewModel.SearchStepWhere(Path)
+        : Path;
 
     /// <summary>
     /// Whether the bin is holding anything. Meaningless on every other row.

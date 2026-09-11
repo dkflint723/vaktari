@@ -13,6 +13,15 @@ should not be trusted for compatibility yet.
 
 ### Added
 
+- **Saved searches.** A search worth keeping can be saved to places: Ctrl+D
+  in a search, the *Save search* button on the band above the results, or
+  *Save this search to places* on the listing's menu. It sits in the sidebar
+  with a magnifier, named for its question and where it looks, and clicking
+  it asks the question again — the whole search, folder and capitals
+  included. Rename or remove it like any pinned place. Before this the
+  gesture that keeps a folder refused a search, and the magnifier's history
+  kept twelve and forgot the rest.
+
 - **Portable mode.** A folder named `portable` beside the executable makes
   Vaktari keep everything in it — tabs, places, folder views, settings,
   recents, the log — instead of under `%LOCALAPPDATA%` or `~/.local/state`,

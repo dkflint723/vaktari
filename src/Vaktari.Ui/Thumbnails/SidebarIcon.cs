@@ -138,6 +138,11 @@ public static class SidebarIcon
         ["bookmark"] =
             "M6 4 H18 V20 L12 15.25 L6 20 Z",
 
+        // A saved search: the toolbar's own magnifier, so the row and the
+        // button that made it read as the same thing.
+        ["search"] =
+            "M10.5 4 a6.5 6.5 0 1 0 0 13 a6.5 6.5 0 1 0 0 -13 M15.5 15.5 L20 20",
+
         // Both meridians as ONE closed lens rather than two open curves: the
         // old pair met at the poles and doubled the stroke there, which at 16px
         // showed as a dark node top and bottom.

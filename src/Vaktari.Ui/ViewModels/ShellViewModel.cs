@@ -1413,6 +1413,17 @@ public sealed partial class ShellViewModel : ObservableObject, IDisposable
         => Menu.ShowAddToPlaces
            && ActiveTab?.HasDirectorySelected != true
            && ActiveTab?.IsRealFolder == true;
+
+    /// <summary>
+    /// The same slot, in a search listing: the row reads "save this search"
+    /// there rather than "add this folder", because a search is not a folder
+    /// and a row that called it one would be the reader's homework again.
+    /// Same command behind both — PinCurrent knows which it is standing in.
+    /// </summary>
+    public bool ShowSaveSearchToPlaces
+        => Menu.ShowAddToPlaces
+           && ActiveTab?.HasDirectorySelected != true
+           && ActiveTab?.IsSearchListing == true;
     public bool ShowCopyLocationInMenu => Menu.ShowCopyLocation;
 
     /// <summary>
@@ -3088,7 +3099,14 @@ public sealed partial class ShellViewModel : ObservableObject, IDisposable
         // Null, not an early return: the refusal is a line the helper writes,
         // and a listing with no folder in it is one of the two things this can
         // have to say.
-        var here = ActiveTab is { IsRealFolder: true, CurrentPath: { Length: > 0 } path }
+        //
+        // **A search is a place too.** It was refused with the bin and This
+        // PC as "a view rather than a folder" — and it is a view, but one the
+        // panes can open again from its path alone, which is exactly what a
+        // place is for. The right-click history keeps twelve and forgets the
+        // rest; this is how a question worth keeping is kept.
+        var here = ActiveTab is { CurrentPath: { Length: > 0 } path } pane
+                   && (pane.IsRealFolder || pane.IsSearchListing)
             ? path
             : null;
 
@@ -3124,13 +3142,18 @@ public sealed partial class ShellViewModel : ObservableObject, IDisposable
         // falls back to the current listing — when nothing is selected, and in
         // the bin whatever is — and in the bin that fallback is the scheme
         // itself. The length alone answers Ctrl+D, which hands over a null.
-        if (path is not { Length: > 0 } || VirtualPaths.IsVirtual(path))
+        // A search is the one view that IS a place: see PinCurrentAsync.
+        var search = path is { Length: > 0 } && VirtualPaths.IsSearch(path);
+
+        if (path is not { Length: > 0 } || (VirtualPaths.IsVirtual(path) && !search))
         {
             pane.Status = Input.PinPlan.OnlyFolders;
             return;
         }
 
-        var name = PathRules.LeafName(path);
+        // The question and where it was asked, for a search — the tail of its
+        // path is the scheme's own punctuation, not a name.
+        var name = search ? PaneViewModel.SearchStepName(path) : PathRules.LeafName(path);
 
         if (Sidebar.Groups.SelectMany(g => g.Places).Any(p => PathRules.Same(p.Path, path)))
         {
@@ -3138,9 +3161,9 @@ public sealed partial class ShellViewModel : ObservableObject, IDisposable
             return;
         }
 
-        await Sidebar.PinAsync(path).ConfigureAwait(true);
+        await Sidebar.PinAsync(path, search ? name : null).ConfigureAwait(true);
 
-        pane.Status = $"pinned {name} to places";
+        pane.Status = search ? $"saved the search {name} to places" : $"pinned {name} to places";
     }
 
     /// <summary>
