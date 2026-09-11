@@ -43,6 +43,36 @@ public partial class MainWindow : Window
 
     internal WindowServices Services => _services;
 
+    /// <summary>
+    /// The once-a-day question to the releases page, when the setting asks
+    /// for it — from App once the founder exists, and from a settings save
+    /// that turns it on.
+    ///
+    /// **Off means nothing is asked**, not asked and discarded: the request
+    /// is the thing the setting is about. The cadence and the silences are
+    /// the check's own (see ReleaseCheck). The answer goes on the operation
+    /// bar, the one line that stays until dismissed, and onto the settings
+    /// footer's version line, where "What is new" is the link.
+    /// </summary>
+    /// <param name="running">The version to compare against; the build's
+    /// own unless a test says otherwise, since a test host reports 0.0.0
+    /// and a development build never asks.</param>
+    internal async Task CheckForUpdatesAsync(string? running = null)
+    {
+        if (!AppSettings.Current.General.CheckForUpdates) return;
+
+        var found = await Task
+            .Run(() => _services.Updates.CheckAsync(running ?? Program.Version, CancellationToken.None))
+            .ConfigureAwait(true);
+
+        if (found is null) return;
+
+        _services.UpdateAvailable = found;
+
+        Shell.OperationStatus =
+            $"Vaktari {found.Version} is available — Settings ▸ Vaktari {Program.Version} ▸ What is new";
+    }
+
     private readonly Vaktari.Core.FileSystem.IApplicationLauncher? _launcher;
     private readonly IPlatform _platform;
 
@@ -1443,7 +1473,8 @@ public partial class MainWindow : Window
             _services.FolderViews,
             _services.Recents,
             _services.Searches,
-            _services.SettingsStore.ReadOnlyReason);
+            _services.SettingsStore.ReadOnlyReason,
+            _services.UpdateAvailable?.Version);
 
         // The pane already holds the detected list, ordered and cached, so the
         // dialog borrows it rather than probing the disk again as it opens.
@@ -1651,6 +1682,10 @@ public partial class MainWindow : Window
             WindowServices.InstallIconTheme(_platform);
             Thumbnails.IconLoader.Invalidate();
             _services.SettingsStore.Save(model.Result);
+
+            // Turned on just now: ask now rather than tomorrow. The check's
+            // own cadence keeps a save that leaves it on from asking twice.
+            if (model.Result.General.CheckForUpdates) _ = CheckForUpdatesAsync();
 
             // Here rather than in the dialog, so it lands through the one
             // handler that already applies a save — and so Cancel throws it

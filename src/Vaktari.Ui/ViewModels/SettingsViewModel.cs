@@ -63,11 +63,15 @@ public sealed partial class SettingsViewModel : ObservableObject
         Core.FileSystem.IFolderViewStore? folderViews = null,
         Core.FileSystem.IRecentStore? recents = null,
         Core.Search.ISearchHistory? searches = null,
-        string? settingsFileNote = null)
+        string? settingsFileNote = null,
+        string? updateAvailable = null)
     {
         // The footer line, seeded: a file this build must not write is said
         // where the Save button is, not only on the status bar at startup.
         _settingsFileStatus = settingsFileNote ?? "";
+
+        // And the version line, which is where "What is new" is the link.
+        _updateAvailable = updateAvailable;
 
         _rememberedViews = folderViews?.Remembered ?? 0;
         _recentCount = recents?.Count ?? 0;
@@ -116,6 +120,7 @@ public sealed partial class SettingsViewModel : ObservableObject
         RememberViewPerFolder = general.RememberViewPerFolder;
         ShowTooltips = general.ShowTooltips;
         RememberRecent = general.RememberRecent;
+        CheckForUpdates = general.CheckForUpdates;
 
         // Inverted HERE and nowhere else. GeneralSettings.ForgetSearches is
         // named for its zero value because deserialization does not run
@@ -318,6 +323,9 @@ public sealed partial class SettingsViewModel : ObservableObject
     [ObservableProperty] private bool _rememberViewPerFolder;
     [ObservableProperty] private bool _showTooltips;
     [ObservableProperty] private bool _rememberRecent;
+
+    /// <summary>Off by default; see GeneralSettings.CheckForUpdates.</summary>
+    [ObservableProperty] private bool _checkForUpdates;
 
     /// <summary>The positive half of <c>GeneralSettings.ForgetSearches</c>,
     /// which is named for its zero value so an upgrading settings.json keeps
@@ -976,7 +984,13 @@ public sealed partial class SettingsViewModel : ObservableObject
     /// the two cannot disagree — asking the assembly twice by two routes is
     /// exactly how a window and a command line end up naming different builds.
     /// </summary>
-    public string VersionLine => $"Vaktari {Program.Version}";
+    public string VersionLine => _updateAvailable is { } newer
+        ? $"Vaktari {Program.Version} — {newer} is available"
+        : $"Vaktari {Program.Version}";
+
+    /// <summary>A newer release the once-a-day check found this run, or null.
+    /// Handed in by the window, which is where the check lives.</summary>
+    private readonly string? _updateAvailable;
 
     // ---- and what that version IS -------------------------------------------
 
@@ -1431,6 +1445,7 @@ public sealed partial class SettingsViewModel : ObservableObject
                 RememberViewPerFolder = RememberViewPerFolder,
                 ShowTooltips = ShowTooltips,
                 RememberRecent = RememberRecent,
+                CheckForUpdates = CheckForUpdates,
                 ForgetSearches = !RememberSearches,
                 TabSwitchesSplitPanes = TabSwitchesSplitPanes,
                 ClosingSplitDiscardsOtherPane = ClosingSplitDiscardsOtherPane,

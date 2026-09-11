@@ -66,7 +66,8 @@ internal sealed class WindowServices
         JsonRecentStore recents,
         JsonSearchHistory searches,
         Vaktari.Core.Sharing.ProtonDriveLinks driveLinks,
-        JsonDriveLinkStore driveLinkStore)
+        JsonDriveLinkStore driveLinkStore,
+        Vaktari.Core.Updates.ReleaseCheck updates)
     {
         Platform = platform;
         SettingsStore = settingsStore;
@@ -77,6 +78,7 @@ internal sealed class WindowServices
         Searches = searches;
         DriveLinks = driveLinks;
         DriveLinkStore = driveLinkStore;
+        Updates = updates;
     }
 
     internal IPlatform Platform { get; }
@@ -94,6 +96,16 @@ internal sealed class WindowServices
     internal JsonSearchHistory Searches { get; }
     internal Vaktari.Core.Sharing.ProtonDriveLinks DriveLinks { get; }
     internal JsonDriveLinkStore DriveLinkStore { get; }
+
+    /// <summary>The once-a-day question to the releases page, asked only when
+    /// the setting says so. One per application, like the stores: its day's
+    /// stamp is one file.</summary>
+    internal Vaktari.Core.Updates.ReleaseCheck Updates { get; }
+
+    /// <summary>A newer release the check found this run — for the status
+    /// line and the settings footer. Null until then, and for good when the
+    /// setting is off.</summary>
+    internal Vaktari.Core.Updates.ReleaseCheck.Available? UpdateAvailable { get; set; }
 
     /// <summary>
     /// The desktop's own request channel, held here rather than on the window
@@ -343,7 +355,8 @@ internal sealed class WindowServices
 
         return new WindowServices(
             platform, settingsStore, settings, session, folderViews, recents,
-            searches, driveLinks, driveLinkStore);
+            searches, driveLinks, driveLinkStore,
+            new Vaktari.Core.Updates.ReleaseCheck(JsonSessionStore.DefaultDirectory()));
     }
 
     /// <summary>

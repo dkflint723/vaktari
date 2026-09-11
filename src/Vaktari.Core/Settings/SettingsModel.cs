@@ -175,6 +175,18 @@ public sealed record GeneralSettings
     /// </summary>
     public bool ClosingSplitDiscardsOtherPane { get; init; }
 
+    // ---- keeping up ---------------------------------------------------------
+
+    /// <summary>
+    /// Whether Vaktari asks github.com, once a day, whether a newer release
+    /// exists. **Off unless turned on**: a request on the user's network that
+    /// they did not choose is not a default, and false is also the zero value
+    /// the deserializer leaves for a file written before this existed — see
+    /// <see cref="MixFoldersWithFiles"/> for that rule. Nothing is ever
+    /// downloaded; the answer is a line and a link.
+    /// </summary>
+    public bool CheckForUpdates { get; init; }
+
     // ---- what gets remembered ---------------------------------------------
 
     /// <summary>

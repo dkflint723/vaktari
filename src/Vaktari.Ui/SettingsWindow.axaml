@@ -733,6 +733,28 @@
 
           <Border Height="1" Background="{DynamicResource SeparatorColour}"/>
 
+          <TextBlock Text="Updates"
+                     FontSize="{DynamicResource FontSizeTiny}"
+                     Foreground="{DynamicResource ViewDimText}"/>
+
+          <!-- Off unless asked: a request to github.com on the user's own
+               network is not a default. Nothing is downloaded; a newer release
+               is a line on the status bar and on the version line below, where
+               "What is new" is the link. -->
+          <CheckBox FontSize="{DynamicResource FontSizeSmall}"
+                    IsChecked="{Binding CheckForUpdates}"
+                    AutomationProperties.Name="Check for a newer release once a day">
+            <StackPanel>
+              <TextBlock Text="Check for a newer release once a day"/>
+              <TextBlock Text="Asks github.com whether a newer release exists — once a day, sending nothing but the request. Nothing is downloaded: a newer release is a line here and on the status bar, with a link to its notes."
+                         FontSize="{DynamicResource FontSizeTiny}"
+                         Foreground="{DynamicResource ViewDimText}"
+                         TextWrapping="Wrap"/>
+            </StackPanel>
+          </CheckBox>
+
+          <Border Height="1" Background="{DynamicResource SeparatorColour}"/>
+
           <TextBlock Text="Status bar"
                      FontSize="{DynamicResource FontSizeTiny}"
                      Foreground="{DynamicResource ViewDimText}"/>

@@ -13,6 +13,16 @@ should not be trusted for compatibility yet.
 
 ### Added
 
+- **Vaktari can tell you when a newer release exists — if you ask it to.**
+  Settings ▸ General ▸ Updates has a box, off by default. With it on,
+  Vaktari asks github.com once a day whether a newer release exists, sending
+  nothing but the request — no version, no identifier — and never downloads
+  anything: a newer release is a line on the status bar and on the settings
+  footer's version line, whose "What is new" opens the release notes. A file
+  manager stays installed for years, and the fixes in this changelog are
+  worth a line to somebody who never reads a changelog. A development build
+  never asks.
+
 - **A crash leaves evidence, and Settings can hand it over.** Vaktari keeps a
   small log beside its settings now — a megabyte at a time, three kept — with
   every path in it reduced to the file's name and a short code for its folder,
