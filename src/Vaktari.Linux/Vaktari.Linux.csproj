@@ -25,7 +25,7 @@
        takes the higher version and nothing breaks; the pin exists so a LOWER
        one here can never quietly win. -->
   <ItemGroup>
-    <PackageReference Include="Tmds.DBus.Protocol" Version="0.94.1" />
+    <PackageReference Include="Tmds.DBus.Protocol" Version="0.95.1" />
   </ItemGroup>
 
 
