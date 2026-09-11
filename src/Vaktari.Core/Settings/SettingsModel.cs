@@ -693,6 +693,29 @@ public sealed record SettingsState
     public NavigationSettings Navigation { get; init; } = new();
     public ContextMenuSettings ContextMenu { get; init; } = new();
     public TrashSettings Trash { get; init; } = new();
+    public KeyboardSettings Keyboard { get; init; } = new();
+}
+
+/// <summary>
+/// The keys somebody has chosen, where they differ from the ones Vaktari
+/// ships with.
+///
+/// **Only the differences are stored.** A command that is absent here answers
+/// to its default keys, so a key Vaktari adds in a later release reaches
+/// everybody who never touched that command — which a file holding the whole
+/// keymap would have frozen out. An entry replaces the command's defaults
+/// entirely; an empty list is a command with no key at all.
+///
+/// Keys are stored the way Avalonia writes them — <c>Ctrl+Shift+OemComma</c>,
+/// <c>Alt+Left</c> — and read back by the Ui's own parser, which also takes
+/// the way the F1 sheet prints them, so a hand-edited file can say either.
+/// An entry naming a command this build does not know is kept, not dropped:
+/// it belongs to a newer Vaktari, and saving from this one must not erase it.
+/// </summary>
+public sealed record KeyboardSettings
+{
+    /// <summary>Command id to the keys it answers to. See the record's summary.</summary>
+    public Dictionary<string, List<string>> Bindings { get; init; } = new(StringComparer.Ordinal);
 }
 
 /// <summary>
@@ -741,7 +764,23 @@ public static class SettingsRepair
         Navigation = ReferenceEquals(settings.Navigation, null) ? new() : settings.Navigation,
         ContextMenu = ReferenceEquals(settings.ContextMenu, null) ? new() : settings.ContextMenu,
         Trash = ReferenceEquals(settings.Trash, null) ? new() : settings.Trash,
+        Keyboard = Complete(settings.Keyboard),
     };
+
+    /// <summary>
+    /// The keyboard group, and the one collection inside it. A file that
+    /// names <c>"keyboard": {}</c> and no bindings arrives with a null
+    /// dictionary, for the reason the class summary gives — and every read of
+    /// the keymap would dereference it.
+    /// </summary>
+    private static KeyboardSettings Complete(KeyboardSettings keyboard)
+    {
+        if (ReferenceEquals(keyboard, null)) return new KeyboardSettings();
+
+        return ReferenceEquals(keyboard.Bindings, null)
+            ? keyboard with { Bindings = new Dictionary<string, List<string>>(StringComparer.Ordinal) }
+            : keyboard;
+    }
 
     /// <summary>
     /// The same hazard one level down, on STRINGS rather than groups.

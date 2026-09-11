@@ -66,9 +66,13 @@ public sealed class DiscoverabilityTests
     {
         var markup = Markup("MainWindow.axaml");
 
+        // The button on the view menu; the key is the keymap's now, and asked
+        // of it below.
         var routes = markup.Split("ShowShortcutsCommand").Length - 1;
 
-        Assert.True(routes >= 2,
+        Assert.NotEmpty(Vaktari.Ui.Input.Keymap.Default.KeysOf("ShowShortcuts"));
+
+        Assert.True(routes >= 1,
             "the shortcut sheet is reachable only by pressing F1, so the list of "
             + "keys is behind one of the keys it lists");
     }

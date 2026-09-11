@@ -672,7 +672,7 @@ public sealed class SearchHistoryTests : OwnedViewModels
         var pane = Pane(history);
 
         Assert.False(pane.HasSearchSteps);
-        Assert.Equal("Search files  (ctrl+f)", pane.SearchTip);
+        Assert.Equal("Search files  (ctrl+f or ctrl+e)", pane.SearchTip);
 
         await pane.NavigateAsync(VirtualPaths.Search("report", Folder, scoped: true));
 
@@ -1163,8 +1163,8 @@ public sealed class SearchHistoryTests : OwnedViewModels
     private static XElement SearchButton()
         => XDocument.Parse(RepoSource.Ui("MainWindow.axaml"))
             .Descendants(Avalonia + "Button")
-            .Single(b => (string?)b.Attribute("AutomationProperties.Name")
-                         == "Search files  (ctrl+f)");
+            .Single(b => (string?)b.Attribute(XNamespace.Get("clr-namespace:Vaktari.Ui.Input") + "KeyHint.Name")
+                         == "Search files");
 
     /// <summary>
     /// The settings page carries both halves.

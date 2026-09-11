@@ -77,32 +77,23 @@ public static class SidebarWalk
     /// every stop is a Button — so a clause for them would be one that cannot
     /// fire, and one the next reader has to work out is decorative.
     /// </summary>
-    public static bool ActsOnTheListing(Key key, KeyModifiers modifiers)
-        => key switch
-        {
-            // Trash, and delete for good.
-            Key.Delete => true,
+    public static bool ActsOnTheListing(Key key, KeyModifiers modifiers, Keymap? keymap = null)
+    {
+        // Open a folder in the listing where it stands, and shut it again.
+        // The listing the keyboard is not pointing at, exactly like the
+        // commands below: measured in the real window, Right on a place row
+        // opened a folder in the listing behind it, with nothing on screen
+        // saying which of the two the keystroke had gone to. Fixed keys, so
+        // written here rather than asked of the keymap.
+        if ((key is Key.Left or Key.Right) && modifiers == KeyModifiers.None) return true;
 
-            // Rename, and rename in bulk.
-            Key.F2 => modifiers is KeyModifiers.None or KeyModifiers.Shift,
-
-            // Copy and cut the selection.
-            Key.C or Key.X => modifiers == KeyModifiers.Control,
-
-            // Select all, and invert the selection.
-            Key.A => modifiers == KeyModifiers.Control
-                     || modifiers == (KeyModifiers.Control | KeyModifiers.Shift),
-
-            // The properties of the selection.
-            Key.Enter => modifiers.HasFlag(KeyModifiers.Alt),
-
-            // Open a folder in the listing where it stands, and shut it again.
-            // The listing the keyboard is not pointing at, exactly like the
-            // five above it: measured in the real window, Right on a place row
-            // opened a folder in the listing behind it, with nothing on screen
-            // saying which of the two the keystroke had gone to.
-            Key.Left or Key.Right => modifiers == KeyModifiers.None,
-
-            _ => false,
-        };
+        // **Asked of the keymap, not of the key.** Trash, delete for good,
+        // rename, rename in bulk, copy, cut, select all, invert and properties
+        // were a list of keys here — and a list of keys goes on guarding
+        // Delete after somebody has moved Move to the bin to another one,
+        // while the key it moved to trashes the listing's selection from a
+        // place row. Every command that acts on the selection says so, and
+        // whatever key runs one is refused here.
+        return (keymap ?? Keymap.Current).Owner(KeyChords.From(key, modifiers)) is { OnSelection: true };
+    }
 }

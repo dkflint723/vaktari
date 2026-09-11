@@ -4,8 +4,10 @@ using Avalonia.Headless;
 using Avalonia.Headless.XUnit;
 using Avalonia.Input;
 using Avalonia.Threading;
-using Vaktari.Core.FileSystem;
+using Vaktari.Core.Settings;
 using Vaktari.Ui;
+using Vaktari.Ui.Input;
+using Vaktari.Ui.Settings;
 using Vaktari.Ui.ViewModels;
 using Xunit;
 
@@ -15,20 +17,35 @@ namespace Vaktari.Ui.Tests;
 /// Any command by name: the box Ctrl+Shift+P opens.
 ///
 /// **A hundred and twenty-five menu rows and seventy-five keys, and no way
-/// to run one by its name.** These pin the table — every key on it is a key
-/// the F1 sheet lists, and every entry reaches a real command on a started
-/// shell — the matching, and the two ends: Enter runs the highlighted entry
-/// once the box has closed, and Escape runs nothing.
+/// to run one by its name.** These pin what the palette lists and prints, the
+/// matching, and the two ends: Enter runs the highlighted command once the box
+/// has closed, and Escape runs nothing.
+///
+/// **And the safety net the palette went round.** It had a table of its own,
+/// and its Delete for good went straight to the pane's delete — deleting the
+/// selection for good without the question Shift+Delete asks. It runs the
+/// same commands the keys run now; the test that says so is here.
 /// </summary>
 public sealed class PaletteTests : OwnedViewModels
 {
     private static readonly XNamespace Ax = "https://github.com/avaloniaui";
+    private static readonly XNamespace In = "clr-namespace:Vaktari.Ui.Input";
 
     private readonly List<Window> _windows = [];
+    private readonly SettingsState _settingsBefore = AppSettings.Current;
+    private string? _scratch;
 
     public override void Dispose()
     {
         foreach (var window in _windows) window.Close();
+
+        AppSettings.Apply(_settingsBefore);
+
+        if (_scratch is not null)
+        {
+            try { Directory.Delete(_scratch, recursive: true); }
+            catch (Exception) { /* a temp folder left behind is not worth failing over */ }
+        }
 
         base.Dispose();
         GC.SuppressFinalize(this);
@@ -43,58 +60,48 @@ public sealed class PaletteTests : OwnedViewModels
         return window;
     }
 
-    // ---- the table ---------------------------------------------------------------
+    // ---- what it lists -----------------------------------------------------------
 
     /// <summary>
-    /// **A key printed beside a command that the sheet does not list is a
-    /// key that has been renamed or removed.** The sheet is held to the
-    /// markup by ShortcutListTests; this holds the palette to the sheet, by
-    /// exact spelling. An empty key is an entry no key runs, which is
-    /// allowed — it is what the palette is FOR.
+    /// Each row prints the keys its command has in the keymap it was built
+    /// from — the shipped ones, and a key somebody chose once they have. The
+    /// keys beside each name are how the key gets learnt, so a row printing a
+    /// key the command no longer answers to would be teaching a dead key.
     /// </summary>
     [AvaloniaFact]
-    public void Every_key_the_palette_prints_is_a_key_on_the_sheet()
+    public void Every_row_prints_the_keys_its_command_has()
     {
-        // A sheet line can carry two keys — "Ctrl++ / Ctrl+-" — and the
-        // palette prints one per entry, so the sheet is read a key at a
-        // time, the way ShortcutListTests reads it.
-        var sheet = Shortcuts.All
-            .SelectMany(g => g.Keys)
-            .SelectMany(k => k.Keys.Split(" / ", StringSplitOptions.TrimEntries))
-            .ToHashSet(StringComparer.Ordinal);
+        var rows = Palette.Rows(Keymap.Default);
 
-        var strangers = Palette.Entries
-            .Where(e => e.Keys.Length > 0 && !sheet.Contains(e.Keys))
-            .Select(e => $"{e.Name} ({e.Keys})")
-            .ToList();
+        Assert.All(rows, row => Assert.Equal(Keymap.Default.Readable(row.Command.Id), row.Keys));
+        Assert.True(rows.Count(r => r.Keys.Length > 0) >= 30, "the rule is looking at too few keys");
 
-        Assert.True(strangers.Count == 0,
-            "the palette prints keys the F1 sheet does not list: " + string.Join(", ", strangers));
+        var chosen = Keymap.From(new KeyboardSettings
+        {
+            Bindings = new(StringComparer.Ordinal) { ["SortBySize"] = ["Ctrl+Alt+S"] },
+        });
 
-        Assert.True(Palette.Entries.Count(e => e.Keys.Length > 0) >= 30, "the rule is looking at too few keys");
+        Assert.Equal("Ctrl+Alt+S", Palette.Rows(chosen).Single(r => r.Command.Id == "SortBySize").Keys);
     }
 
     /// <summary>
-    /// Every entry reaches a command on a shell with a tab open — a lambda
-    /// that reaches for a command the pane does not have, or the shell's
-    /// where the pane's was meant, answers null here and a dead row in the
-    /// box. Names are unique too, or two rows would read alike.
+    /// Every command but two: the palette itself, and moving the keyboard
+    /// between regions, which the palette taking the keyboard makes
+    /// meaningless. Names unique, or two rows would read alike.
     /// </summary>
     [AvaloniaFact]
-    public void Every_entry_reaches_a_command_on_a_started_shell()
+    public void Every_command_is_offered_but_the_palette_and_the_region_key()
     {
-        var shell = Own(new ShellViewModel(new InertFileSystem()));
+        var rows = Palette.Rows(Keymap.Default);
+        var ids = rows.Select(r => r.Command.Id).ToList();
 
-        shell.Start(null, Path.GetTempPath());
+        Assert.DoesNotContain("ShowPalette", ids);
+        Assert.DoesNotContain("NextRegion", ids);
+        Assert.Contains("DeletePermanently", ids);
+        Assert.Contains("SelectAll", ids);
+        Assert.Equal(Commands.All.Count - 2, ids.Count);
 
-        var dead = Palette.Entries
-            .Where(e => e.Command(shell) is null)
-            .Select(e => e.Name)
-            .ToList();
-
-        Assert.True(dead.Count == 0, "these entries reach no command: " + string.Join(", ", dead));
-
-        Assert.Equal(Palette.Entries.Count, Palette.Entries.Select(e => e.Name).Distinct(StringComparer.OrdinalIgnoreCase).Count());
+        Assert.Equal(rows.Count, rows.Select(r => r.Name).Distinct(StringComparer.OrdinalIgnoreCase).Count());
     }
 
     // ---- matching ----------------------------------------------------------------
@@ -109,10 +116,10 @@ public sealed class PaletteTests : OwnedViewModels
     [AvaloniaFact]
     public void Typing_narrows_the_list_and_a_name_that_starts_with_it_comes_first()
     {
-        Assert.Equal(Palette.Entries.Count, Palette.Match("").Count);
-        Assert.Empty(Palette.Match("no such command"));
+        Assert.Equal(Palette.Rows(Keymap.Default).Count, Palette.Match("", Keymap.Default).Count);
+        Assert.Empty(Palette.Match("no such command", Keymap.Default));
 
-        var up = Palette.Match("up");
+        var up = Palette.Match("up", Keymap.Default);
 
         Assert.Equal("Up one folder", up[0].Name);
         Assert.Contains(up, e => e.Name == "Duplicate tab");
@@ -120,7 +127,7 @@ public sealed class PaletteTests : OwnedViewModels
         // Words in any order, and case does not matter. "closed" contains
         // "close", so Reopen closed tab is a match too — after Close tab,
         // which the table lists first.
-        var close = Palette.Match("TAB close");
+        var close = Palette.Match("TAB close", Keymap.Default);
 
         Assert.Equal("Close tab", close[0].Name);
         Assert.Contains(close, e => e.Name == "Reopen closed tab");
@@ -142,12 +149,12 @@ public sealed class PaletteTests : OwnedViewModels
         palette.Query.Text = "new";
         Pump();
 
-        Assert.Equal("New tab", Assert.IsType<PaletteEntry>(palette.Matches.SelectedItem).Name);
+        Assert.Equal("New tab", Assert.IsType<PaletteRow>(palette.Matches.SelectedItem).Name);
 
         palette.KeyPress(Key.Down, RawInputModifiers.None, PhysicalKey.ArrowDown, null);
         Pump();
 
-        Assert.Equal("New window", Assert.IsType<PaletteEntry>(palette.Matches.SelectedItem).Name);
+        Assert.Equal("New window", Assert.IsType<PaletteRow>(palette.Matches.SelectedItem).Name);
 
         palette.KeyPress(Key.Up, RawInputModifiers.None, PhysicalKey.ArrowUp, null);
         palette.KeyPress(Key.Up, RawInputModifiers.None, PhysicalKey.ArrowUp, null);
@@ -213,24 +220,78 @@ public sealed class PaletteTests : OwnedViewModels
         Assert.Equal(tabs, window.Shell.Left.Tabs.Count);
     }
 
+    // ---- the safety net ----------------------------------------------------------
+
+    /// <summary>
+    /// **Delete for good from the palette asks first, the way Shift+Delete
+    /// does.** The palette's own table sent it straight to the pane's delete —
+    /// the command whose summary says the view must confirm first — so with
+    /// "ask before deleting for good" on, the key asked and the palette did
+    /// not. Now both run the window's PermanentlyDelete.
+    ///
+    /// A real file in a folder this test makes, a real window, and the real
+    /// pick: the file still there and the question on screen is the answer,
+    /// and nothing short of both would be.
+    /// </summary>
+    [AvaloniaFact]
+    public async Task Delete_for_good_from_the_palette_asks_first_the_way_shift_delete_does()
+    {
+        UseSearch(PaneViewModel.Search);
+
+        var folder = _scratch = Directory.CreateTempSubdirectory("vaktari-palette").FullName;
+        var file = Path.Combine(folder, "keep-me.txt");
+
+        File.WriteAllText(file, "not yet");
+
+        var window = Shown(new MainWindow());
+
+        // After the window, which applies the settings on disk when it opens.
+        AppSettings.Apply(AppSettings.Current with
+        {
+            General = AppSettings.Current.General with { ConfirmPermanentDelete = true },
+        });
+
+        var pane = window.Shell.ActiveTab!;
+
+        await pane.NavigateAsync(folder);
+        await Until(() => pane.Entries.Any(e => e.Name == "keep-me.txt"));
+
+        pane.SelectedEntry = pane.Entries.Single(e => e.Name == "keep-me.txt");
+        Pump();
+
+        window.Shell.ShowPaletteCommand.Execute(null);
+        Pump();
+
+        var palette = Assert.Single(window.OwnedWindows.OfType<PaletteWindow>());
+
+        palette.Query.Text = "delete for good";
+        Pump();
+
+        Assert.Equal("DeletePermanently", Assert.IsType<PaletteRow>(palette.Matches.SelectedItem).Command.Id);
+
+        palette.KeyPress(Key.Enter, RawInputModifiers.None, PhysicalKey.Enter, null);
+        await Until(() => !window.OwnedWindows.OfType<PaletteWindow>().Any());
+
+        Assert.True(File.Exists(file), "the palette deleted the file for good without asking");
+        Assert.True(window.FindControl<Control>("PromptBar")?.IsVisible == true,
+                    "nothing asked before deleting for good");
+    }
+
     // ---- the routes --------------------------------------------------------------
 
-    /// <summary>On the key, and on the view menu beside the sheet and the
-    /// tour, printed with its key the way the rows around it are.</summary>
+    /// <summary>On its key, and on the view menu beside the sheet and the
+    /// tour, printed with whatever key it has.</summary>
     [AvaloniaFact]
     public void The_key_and_the_view_menu_both_open_it()
     {
-        var doc = XDocument.Parse(RepoSource.Ui("MainWindow.axaml"));
+        Assert.Equal("ShowPalette",
+                     Keymap.Default.Owner(new KeyGesture(Key.P, KeyModifiers.Control | KeyModifiers.Shift))?.Id);
 
-        var binding = doc.Descendants(Ax + "KeyBinding")
-                         .Single(k => (string?)k.Attribute("Gesture") == "Ctrl+Shift+P");
+        var row = XDocument.Parse(RepoSource.Ui("MainWindow.axaml"))
+            .Descendants(Ax + "Button")
+            .Single(b => (string?)b.Attribute(In + "KeyHint.Content") == "Commands…");
 
-        Assert.Equal("{Binding ShowPaletteCommand}", (string?)binding.Attribute("Command"));
-
-        var row = doc.Descendants(Ax + "Button")
-                     .Single(b => ((string?)b.Attribute("Content") ?? "").StartsWith("Commands…", StringComparison.Ordinal));
-
-        Assert.Contains("ctrl+shift+p", (string?)row.Attribute("Content"), StringComparison.Ordinal);
+        Assert.Equal("ShowPalette", (string?)row.Attribute(In + "KeyHint.Command"));
         Assert.Equal(
             "{Binding $parent[Window].((vm:ShellViewModel)DataContext).ShowPaletteCommand}",
             (string?)row.Attribute("Command"));
@@ -245,28 +306,16 @@ public sealed class PaletteTests : OwnedViewModels
         Dispatcher.UIThread.RunJobs(DispatcherPriority.Background);
     }
 
-    private sealed class InertFileSystem : IFileSystemProvider
+    /// <summary>A bounded wait on the condition itself, the shape
+    /// ExpandableFoldersTests.Until measures.</summary>
+    private static async Task Until(Func<bool> done)
     {
-        public async IAsyncEnumerable<IReadOnlyList<FileEntry>> EnumerateAsync(
-            string path, ListingOptions options,
-            [System.Runtime.CompilerServices.EnumeratorCancellation] CancellationToken ct)
+        for (var i = 0; i < 400 && !done(); i++)
         {
-            await Task.CompletedTask;
-            yield break;
+            Pump();
+            await Task.Delay(5);
         }
 
-        public ValueTask<FileEntry?> GetEntryAsync(string path, CancellationToken ct)
-            => ValueTask.FromResult<FileEntry?>(null);
-
-        public IDisposable Watch(string path, Action<FileSystemChange> onChange) => new Nothing();
-
-        public ValueTask<bool> IsReachableAsync(string path, TimeSpan timeout, CancellationToken ct)
-            => ValueTask.FromResult(true);
-
-        public string Combine(string basePath, string name) => Path.Combine(basePath, name);
-        public string? GetParent(string path) => Path.GetDirectoryName(path);
-        public bool IsCaseSensitive => false;
-
-        private sealed class Nothing : IDisposable { public void Dispose() { } }
+        Pump();
     }
 }

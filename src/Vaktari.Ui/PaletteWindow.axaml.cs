@@ -34,7 +34,7 @@ public partial class PaletteWindow : Window
 
     /// <summary>What Enter or a double-click picked, or null when the box
     /// was closed without picking anything.</summary>
-    public PaletteEntry? Chosen { get; private set; }
+    public Input.AppCommand? Chosen { get; private set; }
 
     /// <summary>Re-lists for a query and highlights the first match, so Enter
     /// straight after typing runs the best one.</summary>
@@ -47,7 +47,7 @@ public partial class PaletteWindow : Window
     /// <summary>Takes the highlighted entry, if any, and closes.</summary>
     internal void Pick()
     {
-        Chosen = Matches.SelectedItem as PaletteEntry;
+        Chosen = (Matches.SelectedItem as PaletteRow)?.Command;
         Close();
     }
 

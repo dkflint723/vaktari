@@ -222,7 +222,7 @@ public sealed partial class PaneViewModel : ObservableObject, IDisposable
 
         if (_recents is not null) _recents.Changed += OnRecentPlacesChanged;
 
-        Settings.AppSettings.Changed += OnRecentPlacesChanged;
+        Settings.AppSettings.Changed += OnSettingsChanged;
 
         // **The search menu had the same wound one control along, and worse.**
         // The store is one per application and this menu is one per pane, so
@@ -259,6 +259,19 @@ public sealed partial class PaneViewModel : ObservableObject, IDisposable
     private readonly IRecentStore? _recents;
 
     private void OnRecentPlacesChanged(object? sender, EventArgs e) => NotifyRecentPlaces();
+
+    /// <summary>
+    /// A settings save: recent places may have been switched off, and the key
+    /// the magnifier's tooltip names may have moved. Hopped to the UI thread
+    /// for the reason NotifyRecentPlaces gives.
+    /// </summary>
+    private void OnSettingsChanged(object? sender, EventArgs e)
+    {
+        NotifyRecentPlaces();
+
+        if (Avalonia.Threading.Dispatcher.UIThread.CheckAccess()) OnPropertyChanged(nameof(SearchTip));
+        else Avalonia.Threading.Dispatcher.UIThread.Post(() => OnPropertyChanged(nameof(SearchTip)));
+    }
 
     /// <summary>The search history this pane's menu listens to, remembered for
     /// the same reason.</summary>
@@ -5365,7 +5378,7 @@ public sealed partial class PaneViewModel : ObservableObject, IDisposable
         // it has already finished with.
         if (_recents is not null) _recents.Changed -= OnRecentPlacesChanged;
 
-        Settings.AppSettings.Changed -= OnRecentPlacesChanged;
+        Settings.AppSettings.Changed -= OnSettingsChanged;
 
         if (_searches is not null) _searches.Changed -= OnSearchHistoryChanged;
 

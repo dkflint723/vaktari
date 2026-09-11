@@ -347,22 +347,27 @@ public sealed class ExplorerConventionTests : OwnedViewModels
     [InlineData("F9", "CycleRail")]
     public void The_expected_shortcut_is_bound(string gesture, string command)
     {
-        // Either binding site counts, and the command has to match at whichever
-        // one implements it — a gesture pointing at the wrong command is
-        // missing rather than present.
-        //
-        // **Undo and redo live in the second one, and had to.** As markup
-        // KeyBindings they were claimed ahead of the focused control, so
-        // pressing Ctrl+Z to take back a mistyped character in the address bar
-        // reversed the last copy, move or delete on disk instead.
-        var site = KeyBindingSites.Markup().TryGetValue(gesture, out var markup)
-            ? markup
-            : KeyBindingSites.CodeBehind().GetValueOrDefault(gesture);
+        // Asked of the keymap — every key the window answers comes from it —
+        // and then of the command the key runs, compared by reference with the
+        // one the shell, its sidebar or the pane hands back. A gesture pointing
+        // at the wrong command is missing rather than present, and a row in
+        // the command table that names the right id and runs the wrong command
+        // fails here too.
+        var owner = Keymap.Default.Owner(KeyChords.Parse(gesture)!);
 
-        Assert.True(site is not null, $"{gesture} is bound nowhere — neither a Window "
-                                      + "KeyBinding nor a case in OnWindowKeyDown.");
+        Assert.True(owner is not null, $"{gesture} runs no command in the shipped keymap.");
 
-        Assert.Contains(command, site!, StringComparison.Ordinal);
+        var shell = Own(new ShellViewModel(new Canned([])));
+
+        shell.Start(null, Path.GetTempPath());
+
+        var expected = new object?[] { shell, shell.Sidebar, shell.ActiveTab }
+            .OfType<object>()
+            .Select(host => host.GetType().GetProperty(command + "Command")?.GetValue(host))
+            .FirstOrDefault(value => value is not null);
+
+        Assert.True(expected is not null, $"nothing in the window has a {command}Command");
+        Assert.Same(expected, owner!.Command?.Invoke(shell));
     }
 
     private static string MarkupPath(string name)

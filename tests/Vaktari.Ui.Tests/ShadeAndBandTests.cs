@@ -238,9 +238,14 @@ public sealed class ShadeAndBandTests
         System.Xml.Linq.XNamespace avalonia = "https://github.com/avaloniaui";
         System.Xml.Linq.XNamespace x = "http://schemas.microsoft.com/winfx/2006/xaml";
 
+        // The search box's chip by the command whose key it prints, not by
+        // its text: the text is the key in force, written when the chip is
+        // drawn, so the markup no longer holds "Ctrl+F" for this to find.
+        System.Xml.Linq.XNamespace input = "clr-namespace:Vaktari.Ui.Input";
+
         var hints = markup.Descendants(avalonia + "TextBlock")
             .Where(t => (string?)t.Attribute(x + "Name") == "PromptHint"
-                        || (string?)t.Attribute("Text") == "Ctrl+F")
+                        || (string?)t.Attribute(input + "KeyHint.Command") == "Search")
             .ToList();
 
         Assert.Equal(2, hints.Count);

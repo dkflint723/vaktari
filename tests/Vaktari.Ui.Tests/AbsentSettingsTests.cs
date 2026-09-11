@@ -121,6 +121,7 @@ public sealed class AbsentSettingsTests : IDisposable
         nameof(SettingsState.Navigation) => state.Navigation,
         nameof(SettingsState.ContextMenu) => state.ContextMenu,
         nameof(SettingsState.Trash) => state.Trash,
+        nameof(SettingsState.Keyboard) => state.Keyboard,
         _ => throw new ArgumentOutOfRangeException(nameof(name), name, "not a group"),
     };
 
@@ -137,6 +138,7 @@ public sealed class AbsentSettingsTests : IDisposable
     [InlineData(nameof(SettingsState.Navigation))]
     [InlineData(nameof(SettingsState.ContextMenu))]
     [InlineData(nameof(SettingsState.Trash))]
+    [InlineData(nameof(SettingsState.Keyboard))]
     public void A_file_that_names_no_section_still_loads_every_one(string group)
         => Assert.NotNull(Group(Load(NamesNothing), group));
 
@@ -158,6 +160,15 @@ public sealed class AbsentSettingsTests : IDisposable
     [InlineData(nameof(ViewSettings.Details))]
     public void And_the_three_layouts_underneath_the_views(string layout)
         => Assert.NotNull(Layout(Load(NamesNoViewsKey).Views, layout));
+
+    /// <summary>
+    /// **And the one collection inside the keyboard group.** A file that names
+    /// <c>"keyboard": {}</c> and no bindings arrives with a null dictionary,
+    /// and every read of the keymap would dereference it.
+    /// </summary>
+    [Fact]
+    public void A_keyboard_section_with_nothing_in_it_still_has_its_bindings()
+        => Assert.NotNull(Load("{\"version\":1,\"keyboard\":{}}").Keyboard.Bindings);
 
     /// <summary>
     /// A group the file DOES name keeps what it says, so the repair cannot be a

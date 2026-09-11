@@ -31,12 +31,14 @@ public sealed class PropertiesGateTests
     [AvaloniaFact]
     public void Alt_enter_asks_the_shell_rather_than_the_window()
     {
-        var handled = KeyBindingSites.CodeBehind();
+        var owner = Vaktari.Ui.Input.Keymap.Default.Owner(
+            new Avalonia.Input.KeyGesture(Avalonia.Input.Key.Enter, Avalonia.Input.KeyModifiers.Alt));
 
-        Assert.True(handled.TryGetValue("Alt+Enter", out var command),
-                    "Alt+Enter is not handled where this test looks for it");
-
-        Assert.Equal("ShowProperties", command);
+        // The command it runs is the shell's ShowProperties — which command
+        // each id runs is pinned for the whole table in
+        // KeymapTests.Every_command_runs_the_view_model_command_it_is_named_for.
+        Assert.Equal("Properties", owner?.Id);
+        Assert.Null(owner!.Window);
     }
 
     /// <summary>

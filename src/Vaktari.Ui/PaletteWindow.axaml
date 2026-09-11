@@ -32,7 +32,7 @@
              AutomationProperties.Name="Matching commands"
              SelectionMode="Single">
       <ListBox.ItemTemplate>
-        <DataTemplate x:DataType="vm:PaletteEntry">
+        <DataTemplate x:DataType="vm:PaletteRow">
           <DockPanel>
             <TextBlock DockPanel.Dock="Right" Text="{Binding Keys}"
                        FontFamily="{DynamicResource AppMonoFamily}"

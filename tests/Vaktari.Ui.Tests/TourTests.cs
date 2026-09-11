@@ -7,6 +7,7 @@ using Vaktari.Core.Settings;
 using Vaktari.Ui;
 using Vaktari.Ui.Session;
 using Vaktari.Ui.Settings;
+using Vaktari.Ui.Input;
 using Vaktari.Ui.ViewModels;
 using Xunit;
 
@@ -124,28 +125,48 @@ public sealed class TourTests : OwnedViewModels
     // ---- the cards ---------------------------------------------------------------
 
     /// <summary>
-    /// **A tour that taught a key the sheet does not list would be teaching a
-    /// key that has been renamed or removed.** The sheet is held to the
-    /// markup by ShortcutListTests; this holds the cards to the sheet, by
-    /// the exact spelling, so the two cannot drift apart. Pointer gestures
-    /// — a click, a drag — are the one kind of line the sheet's own
-    /// cross-check cannot reach, and are the only kind let through here.
+    /// **Each line teaches a command, and the command's keys come from the
+    /// keymap**, so the rules are about the commands: every one a line names
+    /// exists, every one ships with a key — a first run reading "no key yet"
+    /// would teach nothing — and a line written as a fixed gesture is not a
+    /// key some command owns, which would be a promise about a key that can
+    /// be moved. That the tour follows a moved key is KeymapTests' business.
     /// </summary>
     [AvaloniaFact]
-    public void Every_key_the_tour_names_is_a_key_on_the_sheet()
+    public void Every_line_teaches_a_command_that_has_a_key_or_a_fixed_gesture()
     {
-        var sheet = Shortcuts.All.SelectMany(g => g.Keys).Select(k => k.Keys).ToHashSet(StringComparer.Ordinal);
+        var lines = Tour.Cards.SelectMany(card => card.Lines).ToList();
 
-        var strangers = Tour.Cards
-            .SelectMany(card => card.Lines)
-            .Select(line => line.Keys)
-            .Where(keys => !sheet.Contains(keys))
-            .Where(keys => !keys.Contains("click", StringComparison.OrdinalIgnoreCase)
-                           && !keys.Contains("drag", StringComparison.OrdinalIgnoreCase))
+        // Every line that names a command names one the keymap has.
+        var strangers = lines
+            .Where(line => line.Command is { } id && Commands.Find(id) is null)
+            .Select(line => line.Command)
             .ToList();
 
         Assert.True(strangers.Count == 0,
-            "the tour names keys the F1 sheet does not: " + string.Join(", ", strangers));
+            "the tour names commands the keymap does not have: " + string.Join(", ", strangers));
+
+        // A first run is the shipped keys, and a line reading "no key yet" on
+        // the very first screen somebody sees would be teaching nothing.
+        var keyless = lines
+            .Where(line => line.Command is { } id && Keymap.Default.KeysOf(id).Count == 0)
+            .Select(line => line.Command)
+            .ToList();
+
+        Assert.True(keyless.Count == 0,
+            "the tour teaches commands that ship with no key: " + string.Join(", ", keyless));
+
+        // **A fixed line must not print a key a command answers to.** That key
+        // can be moved, and the line would go on promising it.
+        var movable = lines
+            .Where(line => line.Command is null
+                           && KeyChords.Parse(line.Gesture) is { } g
+                           && Keymap.Default.Owner(g) is not null)
+            .Select(line => line.Gesture)
+            .ToList();
+
+        Assert.True(movable.Count == 0,
+            "the tour prints these as fixed when a command owns them: " + string.Join(", ", movable));
 
         // And the rule is looking at something: three cards, none empty.
         Assert.Equal(3, Tour.Cards.Count);
