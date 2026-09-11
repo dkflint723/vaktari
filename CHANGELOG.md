@@ -14,14 +14,29 @@ should not be trusted for compatibility yet.
 ### Added
 
 - **The two sides of a split can be compared.** *Compare the two sides* —
-  in the view-options menu while the window is split, or in the command box
-  — marks each row by what the other side has: *Only here*, *Newer*,
-  *Older*, or *Different*. The status bar counts the marks on the active
-  side, *Select what differs from the other side* selects them, and they
-  follow either side as files arrive, leave or change. It compares one
-  folder level, hidden files only while both sides show them, and folders
-  only: a side showing search results, the bin, a recent list or the list
-  of drives marks nothing.
+  in the view-options menu while the window is split, in the listing's
+  *Compare* menu, or in the command box — marks each row by what the other
+  side has: *Only here*, *Newer*, *Older*, or *Different*. The status bar
+  counts the marks on the active side and what is missing there, *Select
+  what differs from the other side* selects them, and they follow either
+  side as files arrive, leave or change. It compares one folder level,
+  hidden files only while both sides show them, and folders it has read to
+  the end: nothing is marked while either side shows search results, the
+  bin, a recent list or the list of drives, is still loading, or could not
+  be read.
+
+- **What is newer or missing on one side can be copied to the other.**
+  *Copy what is newer or missing here to the other side* — in the
+  listing's *Compare* menu on the side to copy from, or in the command box
+  — copies the rows marked *Only here* and *Newer* that the listing shows
+  into the other side's folder, after a prompt that says how many it
+  copies, to which folder, and how many older files it replaces for good.
+  Rows marked *Older* or *Different* stay where they are, and so does a
+  folder on both sides: it copies one level. Each clash is decided when
+  the copy reaches it, so a file that has turned up on the other side by
+  then, or become the newer one there, is left alone, and the operation
+  bar names it. It is one step on the Undo row, which takes the copies
+  back but cannot bring back what they replaced.
 
 - **Keys can be changed.** Settings ▸ Keyboard lists every command with
   the keys that run it. *Add key* listens for the next key you press; a key

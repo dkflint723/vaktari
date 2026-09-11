@@ -316,6 +316,7 @@ public partial class MainWindow : Window
         // the same reason.
         _shell.ColumnWidthsChanged += (_, settings) => _services.SettingsStore.Save(settings);
         _shell.EmptyTrashRequested += (_, _) => AskConfirmEmptyTrash();
+        _shell.CopyAcrossRequested += (_, plan) => AskConfirmCopyAcross(plan);
 
         // Exactly what Delete does, so the menu and the key cannot disagree
         // about whether the confirmation setting applies.
@@ -5181,7 +5182,7 @@ public partial class MainWindow : Window
 
     // ---- inline prompt -------------------------------------------------
 
-    private enum PromptMode { None, Rename, RenamePlace, ConfirmDelete, ConfirmTrash, ConfirmEmptyTrash, Connect }
+    private enum PromptMode { None, Rename, RenamePlace, ConfirmDelete, ConfirmTrash, ConfirmEmptyTrash, ConfirmCopyAcross, Connect }
 
     private PromptMode _prompt = PromptMode.None;
 
@@ -5204,7 +5205,12 @@ public partial class MainWindow : Window
     private bool IsConfirming => _prompt
         is PromptMode.ConfirmDelete
         or PromptMode.ConfirmTrash
-        or PromptMode.ConfirmEmptyTrash;
+        or PromptMode.ConfirmEmptyTrash
+        or PromptMode.ConfirmCopyAcross;
+
+    /// <summary>What the copy-across prompt asked about, so a yes copies
+    /// exactly that rather than the marks as they stand when it comes.</summary>
+    private CopyAcrossPlan? _copyAcross;
     private FileEntry _renameTarget;
 
     /// <summary>
@@ -5308,6 +5314,7 @@ public partial class MainWindow : Window
             : PromptInput?.Text ?? "";
 
         var entry = _renameTarget;
+        var copyAcross = _copyAcross;
 
         // **A refused name used to close the bar and report afterwards.** By
         // the time "that name is not one Windows will take" reached the status
@@ -5390,6 +5397,10 @@ public partial class MainWindow : Window
 
             case PromptMode.ConfirmEmptyTrash:
                 _ = target?.EmptyTrashAsync();
+                break;
+
+            case PromptMode.ConfirmCopyAcross when copyAcross is not null:
+                _shell.RunCopyAcross(copyAcross);
                 break;
 
             // Rename is answered above, before the bar closes, so that a
@@ -5637,6 +5648,32 @@ public partial class MainWindow : Window
 
         // Focus the button, for the same reason the delete prompt does: a
         // focused Button takes Enter and Space itself.
+        PromptConfirm.Focus();
+    }
+
+    /// <summary>
+    /// Copying what is newer or missing here to the other side. **Always
+    /// asked**, whatever the confirmation settings say about the bin: it can
+    /// replace files, and a replaced file goes nowhere it could come back
+    /// from.
+    /// </summary>
+    private void AskConfirmCopyAcross(CopyAcrossPlan plan)
+    {
+        if (PromptBar is null) return;
+
+        _prompt = PromptMode.ConfirmCopyAcross;
+        _copyAcross = plan;
+
+        PromptLabel.Text = ViewModels.Confirmations.CopyAcross(plan);
+        PromptInput.IsVisible = false;
+        PromptConfirm.Content = "Copy";
+        PromptConfirm.IsVisible = true;
+        PromptCancel.IsVisible = true;
+        PromptHint.Text = "esc to cancel";
+        PromptBar.IsVisible = true;
+
+        // Focus the button, for the reason the delete prompt does: a focused
+        // Button takes Enter and Space itself.
         PromptConfirm.Focus();
     }
 

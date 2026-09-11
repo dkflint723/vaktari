@@ -28,6 +28,89 @@ public sealed class ConfirmationCopyTests
     private static TrashedItem Binned(string path, bool isDirectory = false)
         => new("t1", path, "p", DateTimeOffset.UnixEpoch, 4, isDirectory);
 
+    private static CopyAcrossPlan Across(string[] missing, string[] replacing, string to = "/home/me/backup")
+        => new(to, missing, replacing);
+
+    [Fact]
+    public void Copying_one_file_across_names_it_and_where_it_goes()
+        => Assert.Equal("copy notes.txt to /home/me/backup?",
+                        Confirmations.CopyAcross(Across(["/home/me/notes.txt"], [])));
+
+    /// <summary>**The replacing is said out loud**, because it is the one
+    /// part an undo cannot take back.</summary>
+    [Fact]
+    public void Copying_across_says_what_it_replaces_for_good()
+    {
+        Assert.Equal("copy notes.txt to /home/me/backup? it replaces the older one there for good",
+                     Confirmations.CopyAcross(Across([], ["/home/me/notes.txt"])));
+        Assert.Equal("copy 3 items to /home/me/backup? 1 of them replaces an older file there for good",
+                     Confirmations.CopyAcross(Across(["/home/me/a", "/home/me/b"], ["/home/me/c"])));
+        Assert.Equal("copy 3 items to /home/me/backup? 2 of them replace older files there for good",
+                     Confirmations.CopyAcross(Across(["/home/me/a"], ["/home/me/b", "/home/me/c"])));
+    }
+
+    /// <summary>
+    /// **By the destination's path, not its name.** A folder and its backup
+    /// are called the same, and "copy 3 items to Photos?" read the same in
+    /// either direction.
+    /// </summary>
+    [Fact]
+    public void Two_folders_of_one_name_are_told_apart()
+    {
+        Assert.Equal("copy a.jpg to /media/stick/Photos?",
+                     Confirmations.CopyAcross(Across(["/home/me/Photos/a.jpg"], [], to: "/media/stick/Photos")));
+        Assert.Equal("copy a.jpg to /home/me/Photos?",
+                     Confirmations.CopyAcross(Across(["/media/stick/Photos/a.jpg"], [], to: "/home/me/Photos")));
+    }
+
+    /// <summary>A long destination is cut in the middle, so its start and its
+    /// own name both survive.</summary>
+    [Fact]
+    public void A_long_destination_keeps_its_start_and_its_own_name()
+    {
+        var deep = "/home/me/" + string.Join("/", Enumerable.Repeat("folder", 10)) + "/Photos";
+        var said = Confirmations.CopyAcross(Across(["/x/a.jpg"], [], to: deep));
+
+        Assert.StartsWith("copy a.jpg to /home/me/", said);
+        Assert.EndsWith("/Photos?", said);
+        Assert.Contains("…", said);
+    }
+
+    [Fact]
+    public void What_copying_across_left_alone_is_named_or_counted()
+    {
+        var plan = Across(["/home/me/a.txt", "/home/me/b.txt"], []);
+
+        Assert.Null(Confirmations.LeftAlone(plan));
+
+        plan.Decide(new FileConflict("/home/me/a.txt", "/home/me/backup/a.txt"));
+
+        Assert.Equal("left a.txt alone: it changed after the prompt", Confirmations.LeftAlone(plan));
+
+        plan.Decide(new FileConflict("/home/me/b.txt", "/home/me/backup/b.txt"));
+
+        Assert.Equal("left 2 items alone: they changed after the prompt", Confirmations.LeftAlone(plan));
+    }
+
+    [Fact]
+    public void What_copying_across_leaves_out_is_said_with_why()
+    {
+        Assert.Null(Confirmations.LeftOut(Across(["/home/me/a"], [])));
+
+        Assert.Equal("left out of the copy: inner, which holds the other side",
+            Confirmations.LeftOut(new CopyAcrossPlan("/home/me/inner/deeper", [], [],
+                [new Withheld("/home/me/inner", WithheldBecause.HoldsTheOtherSide)])));
+
+        Assert.Equal("left out of the copy: \"report \", whose name Windows cannot open",
+            Confirmations.LeftOut(new CopyAcrossPlan("/x", [], [],
+                [new Withheld("/home/me/report ", WithheldBecause.NameWindowsCannotOpen)])));
+
+        Assert.Equal("left out of the copy: 2 names Windows cannot open",
+            Confirmations.LeftOut(new CopyAcrossPlan("/x", [], [],
+                [new Withheld("/home/me/a ", WithheldBecause.NameWindowsCannotOpen),
+                 new Withheld("/home/me/b.", WithheldBecause.NameWindowsCannotOpen)])));
+    }
+
     [Fact]
     public void One_file_is_named_rather_than_counted()
     {
@@ -125,7 +208,7 @@ public sealed class ConfirmationCopyTests
         Assert.DoesNotContain("item(s) to {Naming.TheBin}", source);
 
         foreach (var call in new[] { "Confirmations.Delete(", "Confirmations.MoveToBin(",
-                                     "Confirmations.EmptyBin(" })
+                                     "Confirmations.EmptyBin(", "Confirmations.CopyAcross(" })
             Assert.Contains(call, source);
     }
 }

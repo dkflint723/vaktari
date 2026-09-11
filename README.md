@@ -110,17 +110,34 @@ view-options menu has *Text size* and *Icon size* as steppers, with a chooser
 above them saying whether they act on the left pane, the right one or both.
 
 **The two sides of a split can be compared.** *Compare the two sides*, in the
-view-options menu or the command box, marks every row that differs from the
-other side's folder: *Only here*, *Newer*, *Older*, or *Different* for a file
-and a folder of one name, or two files changed at the same moment at
-different sizes. Two files the same size changed less than two seconds apart
-count as the same, because FAT keeps times in two-second steps. The marks
-follow either side as it changes, the status bar counts them, and *Select
-what differs from the other side* selects them. It compares one level, so two
-folders of the same name are not looked inside, and it compares hidden files
-only while both sides show them. It compares folders only: while either side
-shows search results, the bin, a recent list or the list of drives, nothing is
-marked. Closing the split stops it.
+view-options menu, the listing's *Compare* menu or the command box, marks
+every row that differs from the other side's folder: *Only here*, *Newer*,
+*Older*, or *Different* for a file and a folder of one name, or two files
+changed at the same moment at different sizes. Two files the same size
+changed less than two seconds apart count as the same, because FAT keeps
+times in two-second steps. Nothing is allowed for daylight saving: FAT keeps
+local time, so after the clocks change a stick's files can read an hour newer
+or older. The marks follow either side as it changes, the status bar counts
+them and what is missing here, and *Select what differs from the other side*
+selects them. It compares one level, so two folders of the same name are not
+looked inside, and it compares hidden files only while both sides show them.
+It compares folders it has read to the end: while either side shows search
+results, the bin, a recent list or the list of drives, is still loading, or
+could not be read, nothing is marked and the status bar says why. Closing the
+split stops it.
+
+**What is newer or missing on one side can be copied to the other.** Right-click
+the side to copy from and choose *Compare ▸ Copy what is newer or missing here
+to the other side*, or run it from the command box. It copies the rows marked
+*Only here* and *Newer* that the listing shows into the other side's folder,
+after a prompt that says how many it copies, to which folder, and how many
+older files it replaces for good. Rows marked *Older* or *Different* stay
+where they are, and so does a folder on both sides, since it copies one
+level. A folder the other side is inside is left out, as is a name Windows
+cannot open, and the status line says so. Each clash is decided when the copy
+reaches it: a file that has turned up on the other side by then, or become
+the newer one there, is left alone, and the operation bar names what was.
+Ctrl+Z takes the copies back, though not the older files they replaced.
 
 **The List layout chooses its columns.** Name, Type, Size, Modified and
 Created, with Type and Created off until you ask for them; right-click the

@@ -152,6 +152,7 @@ public sealed class KeymapTests : OwnedViewModels
         { "ToggleInfo", "Shell.ToggleInfoCommand" },
         { "CompareSides", "Shell.ToggleCompareCommand" },
         { "SelectDifferences", "Pane.SelectDifferencesCommand" },
+        { "CopyAcross", "Shell.RequestCopyAcrossCommand" },
         { "Sidebar", "Sidebar.CycleRailCommand" },
         { "Search", "Pane.BeginSearchCommand" },
         { "ToggleFilter", "Pane.ToggleFilterCommand" },

@@ -2348,6 +2348,25 @@
                                           IsEnabled="False"/>
                               </MenuItem>
               </MenuItem>
+              <!-- **Comparing had no pointer route on the left half of a split.**
+                   Its switch and the copy it offers lived in the view-options
+                   flyout, whose button only the right half shows, and pressing
+                   that button makes the right half active: copying across could
+                   only ever go right to left. This menu belongs to the listing,
+                   and each half has its own. -->
+              <MenuItem Header="Compare"
+                        IsVisible="{Binding $parent[Window].((vm:ShellViewModel)DataContext).IsSplit}">
+                <MenuItem Header="_Compare the two sides" ToggleType="CheckBox"
+                          IsChecked="{Binding $parent[Window].((vm:ShellViewModel)DataContext).IsComparing, Mode=OneWay}"
+                          Command="{Binding $parent[Window].((vm:ShellViewModel)DataContext).ToggleCompareCommand}"
+                          in:KeyHint.Command="CompareSides"/>
+                <MenuItem Header="_Select what differs from the other side"
+                          Command="{Binding ActiveTab.SelectDifferencesCommand}"
+                          in:KeyHint.Command="SelectDifferences"/>
+                <MenuItem Header="C_opy what is newer or missing here to the other side"
+                          Command="{Binding $parent[Window].((vm:ShellViewModel)DataContext).RequestCopyAcrossCommand}"
+                          in:KeyHint.Command="CopyAcross"/>
+              </MenuItem>
               <!-- **Two entries for one action, and only one is ever shown.**
                    Most machines have a single terminal, where a submenu holding
                    one row is a hover that buys nothing; a machine with Warp and
