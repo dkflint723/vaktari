@@ -155,8 +155,11 @@ public sealed class PastedItemsAreSelectedTests : OwnedViewModels
     /// Matched as strings, those are two files and the arrival came back
     /// unselected; where it is the only arrival the whole paste selects
     /// nothing.
+    ///
+    /// A Windows fact: the comparer is the platform's, and on Linux Report.TXT
+    /// and report.txt are two files, so there is no row here to write through.
     /// </summary>
-    [AvaloniaFact]
+    [AvaloniaFact(Skip = OnlyOn.Windows, SkipUnless = nameof(OnlyOn.IsWindows), SkipType = typeof(OnlyOn))]
     public async Task An_arrival_that_replaced_a_differently_cased_row_is_still_selected()
     {
         var (pane, _, _) = await Listing("Report.TXT");

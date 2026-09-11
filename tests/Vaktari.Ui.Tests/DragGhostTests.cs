@@ -95,10 +95,14 @@ public sealed class DragGhostTests : OwnedViewModels
                     "Firefox.lnk", path, 0, default, Vaktari.Core.FileSystem.EntryFlags.None)),
             Vaktari.Ui.Input.DragGhost.Label([path]));
 
-        // Said outright as well, because the line above would also hold if both
-        // sides broke together.
-        Assert.Equal("Firefox", Vaktari.Ui.Input.DragGhost.Label([path]));
     }
+
+    /// <summary>Said outright as well, because the agreement above would also
+    /// hold if both sides broke together. On Windows, where a .lnk is a
+    /// shortcut; elsewhere it is a file called Firefox.lnk and the row says so.</summary>
+    [WindowsFact]
+    public void A_shortcut_drops_its_extension_on_windows()
+        => Assert.Equal("Firefox", Vaktari.Ui.Input.DragGhost.Label([Under("Firefox.lnk")]));
 
     /// <summary>
     /// The same on the other platform's shortcut, where the divergence was
@@ -463,7 +467,13 @@ public sealed class DragGhostTests : OwnedViewModels
 
             Raise(window, DragDrop.DragOverEvent, await Carrying(window, file), new Point(400, 300));
 
-            Assert.Equal("Firefox", GhostTextOf(window).Text);
+            // The row's own rule, which hides the extension on Windows and
+            // not elsewhere — the agreement is the assertion, as above.
+            Assert.Equal(
+                Vaktari.Core.FileSystem.FileKind.DisplayName(
+                    new Vaktari.Core.FileSystem.FileEntry(
+                        "Firefox.lnk", file, 0, default, Vaktari.Core.FileSystem.EntryFlags.None)),
+                GhostTextOf(window).Text);
         }
         finally
         {

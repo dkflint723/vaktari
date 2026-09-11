@@ -635,6 +635,14 @@ public sealed class SearchBandTests : OwnedViewModels
             pane.SearchBackendLine);
     }
 
+    /// <summary>The folder in this platform's separators and under its root,
+    /// with and without the trailing one.</summary>
+    public static TheoryData<string> Documents =>
+    [
+        Path.Combine(Path.GetPathRoot(Path.GetTempPath())!, "Users", "me", "Documents"),
+        Path.Combine(Path.GetPathRoot(Path.GetTempPath())!, "Users", "me", "Documents") + Path.DirectorySeparatorChar,
+    ];
+
     /// <summary>
     /// **The two halves of the band contradicted each other on a scoped
     /// search.** The box read "Only in Documents" and the sentence directly
@@ -645,11 +653,12 @@ public sealed class SearchBandTests : OwnedViewModels
     ///
     /// Both spellings of the folder, because the box and the sentence share one
     /// naming rule and a trailing separator is what a GetFileName without a
-    /// TrimEnd answers the empty string to.
+    /// TrimEnd answers the empty string to. In this platform's separators: the
+    /// leaf rule splits on them, and a Windows path handed to Linux was one
+    /// long leaf.
     /// </summary>
     [AvaloniaTheory]
-    [InlineData(@"C:\Users\me\Documents")]
-    [InlineData(@"C:\Users\me\Documents\")]
+    [MemberData(nameof(Documents))]
     public async Task A_search_narrowed_to_a_folder_says_that_folder(string origin)
     {
         var pane = await Asking(new Fake([]), origin: origin, scoped: true);

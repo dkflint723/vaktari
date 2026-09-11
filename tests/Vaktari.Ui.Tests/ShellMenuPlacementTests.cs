@@ -215,8 +215,12 @@ public sealed class ShellMenuPlacementTests : OwnedViewModels
 
     /// <summary>
     /// The finding: the machine's own menu is the last thing on the list.
+    ///
+    /// Windows facts, these three (see OnlyOn): the hosted row is the Windows shell's, the
+    /// platform offers no provider elsewhere and the window installs none, so
+    /// the seam set in the constructor is gone by the time the menu opens.
     /// </summary>
-    [AvaloniaFact]
+    [AvaloniaFact(Skip = OnlyOn.Windows, SkipUnless = nameof(OnlyOn.IsWindows), SkipType = typeof(OnlyOn))]
     public async Task The_windows_menu_is_the_last_row_of_the_listing_menu()
         => await InTheMenu(null, (shell, menu) =>
         {
@@ -237,7 +241,7 @@ public sealed class ShellMenuPlacementTests : OwnedViewModels
     /// hosted row and kept Properties nowhere near it; Properties, a rule, then
     /// the machine's own is the arrangement Explorer has.
     /// </summary>
-    [AvaloniaFact]
+    [AvaloniaFact(Skip = OnlyOn.Windows, SkipUnless = nameof(OnlyOn.IsWindows), SkipType = typeof(OnlyOn))]
     public async Task Properties_and_one_rule_are_what_sit_above_it()
         => await InTheMenu(null, (_, menu) =>
         {
@@ -263,7 +267,7 @@ public sealed class ShellMenuPlacementTests : OwnedViewModels
     /// Asserted over the whole menu rather than that one pair: any two rules
     /// touching is the same line drawn twice, wherever it happens.
     /// </summary>
-    [AvaloniaTheory]
+    [AvaloniaTheory(Skip = OnlyOn.Windows, SkipUnless = nameof(OnlyOn.IsWindows), SkipType = typeof(OnlyOn))]
     [InlineData(VirtualPaths.Computer)]
     [InlineData("vaktari:search:report::everywhere")]
     public async Task No_two_rules_meet_where_properties_is_hidden(string path)

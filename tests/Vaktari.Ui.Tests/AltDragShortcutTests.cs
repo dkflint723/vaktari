@@ -242,8 +242,13 @@ public sealed class AltDragShortcutTests : OwnedViewModels
             Assert.Single(landed);
 
             // Whatever this platform calls a shortcut, it is not the file: a
-            // copy or a move would have put "notes.txt" here under that name.
-            Assert.NotEqual("notes.txt", Path.GetFileName(landed[0]));
+            // copy or a move would have put "notes.txt" here as a plain file.
+            // Windows makes a .lnk under another name; Linux makes a link
+            // under the same one — measured on the first Linux run, where
+            // the name alone called a correct symlink a copy.
+            Assert.True(
+                Path.GetFileName(landed[0]) != "notes.txt" || new FileInfo(landed[0]).LinkTarget is not null,
+                "a plain file named notes.txt landed, which is a copy or a move, not a shortcut");
 
             // Written down rather than left implied, and honestly labelled: once
             // the status line above holds, this CANNOT fail — the Link branch
