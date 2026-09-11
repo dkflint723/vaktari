@@ -234,7 +234,7 @@ internal sealed class WindowServices
         else
             throw new PlatformNotSupportedException(Unsupported);
 #else
-#error Vaktari.Ui references no platform assembly. One is selected from the build machine's OS, or by -p:VaktariPlatform=Linux|Windows; see Vaktari.Ui.csproj and WINDOWS.md §2.
+#error Vaktari.Ui references no platform assembly. One is selected from the build machine's OS, or by -p:VaktariPlatform=Linux|Windows; see Vaktari.Ui.csproj and docs/history/WINDOWS.md §2.
         platform = null!;
 #endif
 

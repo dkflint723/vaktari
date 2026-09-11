@@ -33,7 +33,7 @@
 
          dotnet build src/Vaktari.Ui -p:VaktariPlatform=Linux
 
-       That override is the whole point. WINDOWS.md §8 warns that conditional
+       That override is the whole point. docs/history/WINDOWS.md §8 warns that conditional
        references make it possible to break the Linux build from a Windows
        machine without noticing, and waiting for CI to say so is a slow way to
        find out. The compile is real; only the runtime behaviour still needs the

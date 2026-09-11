@@ -6,7 +6,7 @@ namespace Vaktari.Windows;
 /// <summary>
 /// The Win32 surface this assembly needs, in one place.
 ///
-/// **`LibraryImport`, never `DllImport`.** WINDOWS.md §6 is explicit: the
+/// **`LibraryImport`, never `DllImport`.** docs/history/WINDOWS.md §6 is explicit: the
 /// project publishes with `PublishAot=true` and turns the AOT analyser on for
 /// every project, with warnings as errors. Source-generated P/Invoke is
 /// AOT-clean; the reflection-based marshaller behind `DllImport` is not, and

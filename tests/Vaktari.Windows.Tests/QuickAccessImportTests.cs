@@ -15,7 +15,7 @@ namespace Vaktari.Windows.Tests;
 /// replaced it, and Network Shortcuts — and the comment beside it said Quick
 /// access was "waiting on the same COM decision as the Trash view and the
 /// open-with list". That decision was made a release earlier and recorded in
-/// WINDOWS.md §7c; four files in the Windows assembly have used
+/// docs/history/WINDOWS.md §7c; four files in the Windows assembly have used
 /// source-generated COM since. The reason outlived itself, and the feature it
 /// was blocking stayed blocked because nobody re-read the comment.
 ///

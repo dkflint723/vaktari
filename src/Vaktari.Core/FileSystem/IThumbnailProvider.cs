@@ -31,7 +31,7 @@ public interface IThumbnailProvider
     /// composed on demand by a registered handler and handed back as an
     /// HBITMAP, and the only way to obtain a path for it would be to encode a
     /// PNG and cache it to disk — reimplementing the freedesktop cache purely
-    /// to satisfy the shape of this method. WINDOWS.md §4 reached that
+    /// to satisfy the shape of this method. docs/history/WINDOWS.md §4 reached that
     /// conclusion for the neighbouring seam before either provider was
     /// written: deciding IIconThemeProvider stays null, it rejected
     /// "extracting the handle, encoding a PNG and caching it to disk purely to

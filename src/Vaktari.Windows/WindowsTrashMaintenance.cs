@@ -8,7 +8,7 @@ namespace Vaktari.Windows;
 /// Listing, restoring and emptying the Recycle Bin.
 ///
 /// **Returning null for this was the honest answer for one release and is no
-/// longer.** WINDOWS.md recorded the Recycle Bin as needing COM, and COM under
+/// longer.** docs/history/WINDOWS.md recorded the Recycle Bin as needing COM, and COM under
 /// NativeAOT as the risky combination that would fail at runtime rather than at
 /// compile time. That was an assumption, and it was wrong: a source-generated
 /// IShellItem enumeration of the bin runs correctly in a published AOT binary.

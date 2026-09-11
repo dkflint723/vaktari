@@ -71,7 +71,7 @@ public sealed class WindowsPropertiesProvider : IPropertiesProvider
     /// <summary>
     /// **From the extension, not the registry.** Explorer shows the registered
     /// type description, which lives under HKCR and would mean referencing the
-    /// registry — see WINDOWS.md §9. "PNG file" is less specific than "PNG
+    /// registry — see docs/history/WINDOWS.md §9. "PNG file" is less specific than "PNG
     /// image" but it is true, and it never claims a handler that is not there.
     /// </summary>
     private static string KindOf(string path, bool isDirectory, FileAttributes attributes)

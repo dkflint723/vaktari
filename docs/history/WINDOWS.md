@@ -1,5 +1,11 @@
 # Starting the Windows port
 
+> **Historical.** This is the plan the Windows port was built from, kept
+> because comments in the source cite its sections by number. **The port
+> shipped.** Every "missing" and "waiting on" below is a July 2026 statement
+> about a July 2026 tree — for what Windows does today, read the
+> [README](../../README.md); for how to build and test it, [BUILDING.md](../../BUILDING.md).
+
 Written 29 July 2026, from the tree at that date. Everything below was read off
 the source rather than recalled; where something is a guess it says so.
 

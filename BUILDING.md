@@ -5,11 +5,10 @@ reads the desktop's own configuration where it exists and falls back where it
 does not — but the colour scheme and icon theme come from `kdeglobals`, so on a
 non-KDE desktop it will use its built-in defaults.
 
-**Windows runs.** It browses, lists drives, opens files, copies, moves,
-renames, recycles, connects to and discovers network shares, and follows the
-system light/dark mode and accent. The Recycle Bin is browsable and *Restore*
-puts a file back where it came from. Still missing: the shell's per-file icons,
-and content search — see [WINDOWS.md](WINDOWS.md) for what each is waiting on.
+**Windows runs.** What it does is in the [README](README.md); what it does
+not — content search among them — is under *Known limits* there. The plan the
+port was built from is kept at [docs/history/WINDOWS.md](docs/history/WINDOWS.md),
+because comments in the source cite its sections; it is not a status document.
 `Vaktari.Ui` picks its platform assembly from the build machine's OS.
 
 Publishing on Windows needs the **MSVC C++ build tools**, and `vswhere.exe` on
@@ -50,7 +49,7 @@ dotnet build src/Vaktari.Ui -p:VaktariPlatform=Linux
 
 That override is worth knowing about on Linux too — it is how you check a change
 has not broken the Windows configuration without waiting for CI. It proves the
-other configuration *compiles*; to check that it *behaves*, WINDOWS.md §8a has a
+other configuration *compiles*; to check that it *behaves*, docs/history/WINDOWS.md §8a has a
 WSL recipe for running the Linux suite from the Windows machine.
 
 **Rebuild without the override before running.** Both configurations write to the
@@ -66,7 +65,7 @@ thoroughly misleading one about your machine. A bare `dotnet build` fixes it.
 `dotnet test` is green on both, and the `PathRules` suite is split three ways —
 platform-neutral, POSIX, Windows — because a POSIX literal names something else
 on Windows. Each half skips on the other's platform, so a run reports skips
-rather than failures. WINDOWS.md §5b has the detail.
+rather than failures. docs/history/WINDOWS.md §5b has the detail.
 
 ---
 

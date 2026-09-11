@@ -26,7 +26,7 @@ internal sealed record RecycleEntry(
 /// **Read directly rather than through the shell, and that is a deliberate
 /// reversal of the earlier assumption.** COM was measured first: a
 /// source-generated IShellItem enumeration of the bin works correctly in a
-/// published NativeAOT binary, so the risk WINDOWS.md recorded is not real. The
+/// published NativeAOT binary, so the risk docs/history/WINDOWS.md recorded is not real. The
 /// format is still the better tool for this particular job, for reasons that
 /// have nothing to do with whether COM works:
 ///

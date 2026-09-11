@@ -404,7 +404,7 @@ public sealed class WindowsPlacesProvider : IPlacesProvider, IDisposable
     /// is where a Windows user's real bookmarks live, and the comment that used
     /// to stand here said reading it was "waiting on the same COM decision as
     /// the Trash view and the open-with list". That decision was made a release
-    /// ago — WINDOWS.md §7c records the spike proving source-generated COM works
+    /// ago — docs/history/WINDOWS.md §7c records the spike proving source-generated COM works
     /// in a published NativeAOT binary, and four files in the Windows assembly
     /// have used it since. The reason outlived itself, and the feature it was
     /// blocking stayed blocked because nobody re-read it.

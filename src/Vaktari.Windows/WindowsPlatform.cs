@@ -15,7 +15,7 @@ namespace Vaktari.Windows;
 /// them while constructing the main window: ShellViewModel takes Operations,
 /// Launcher, Search, Scripts and Templates alongside the obvious ones, so a
 /// throwing stub anywhere here means no window at all. That is why step 3 built
-/// more than the two providers WINDOWS.md §7 names.
+/// more than the two providers docs/history/WINDOWS.md §7 names.
 ///
 /// **Real does not mean complete.** The open-with list is empty, pending the
 /// shell's handler enumeration — documented on the class that does it. Trash

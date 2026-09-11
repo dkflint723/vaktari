@@ -10,7 +10,7 @@ namespace Vaktari.Windows;
 /// target, IPersistFile for the save.
 ///
 /// Source-generated COM, the same way the rest of this assembly talks to the
-/// shell — see <see cref="AssocHandlers"/> for the pattern and WINDOWS.md for
+/// shell — see <see cref="AssocHandlers"/> for the pattern and docs/history/WINDOWS.md for
 /// why the runtime-built RCW machinery is off the table under NativeAOT.
 ///
 /// Named as Explorer names them: "report.pdf - Shortcut.lnk", then

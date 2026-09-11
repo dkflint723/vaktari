@@ -13,7 +13,7 @@ namespace Vaktari.Windows;
 /// which is where Explorer kept Favorites before Quick access replaced it, and
 /// Network Shortcuts — and the comment beside it said Quick access was
 /// "waiting on the same COM decision as the Trash view". That decision was
-/// made: WINDOWS.md §7c records the spike that proved source-generated COM
+/// made: docs/history/WINDOWS.md §7c records the spike that proved source-generated COM
 /// works in a published NativeAOT binary, and four files in this assembly have
 /// used it since. The comment outlived its reason by a release.
 ///

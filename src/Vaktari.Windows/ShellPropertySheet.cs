@@ -59,7 +59,7 @@ internal static partial class ShellPropertySheet
     // DllImport rather than LibraryImport for this one struct: SHELLEXECUTEINFOW
     // carries seven string fields, and the source generator wants a blittable
     // layout it can marshal itself. Marked explicitly so the AOT analyser is
-    // told this is deliberate rather than an oversight -- see WINDOWS.md §6,
+    // told this is deliberate rather than an oversight -- see docs/history/WINDOWS.md §6,
     // which bans DllImport precisely so a lapse is visible.
     [DllImport("shell32.dll", EntryPoint = "ShellExecuteExW", SetLastError = true,
         CharSet = CharSet.Unicode)]

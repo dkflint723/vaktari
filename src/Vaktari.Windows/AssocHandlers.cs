@@ -8,7 +8,7 @@ namespace Vaktari.Windows;
 /// <summary>
 /// The shell's own list of applications that can open a file.
 ///
-/// **This is the list WINDOWS.md recorded as needing COM and therefore
+/// **This is the list docs/history/WINDOWS.md recorded as needing COM and therefore
 /// deferred.** The deferral was never a design decision, only an untested
 /// assumption that source-generated COM interop would fail under NativeAOT. It
 /// does not — an IShellItem enumeration of the Recycle Bin proved that in a
