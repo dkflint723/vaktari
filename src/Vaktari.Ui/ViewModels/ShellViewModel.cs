@@ -1122,6 +1122,8 @@ public sealed partial class ShellViewModel : ObservableObject, IDisposable
     /// them has none in its listing, so comparing it against one that shows
     /// them would mark every hidden file "only here" when the other folder
     /// may well have it too.
+    ///
+    /// **Two folders, or no marks.** See <see cref="BothSidesAreFolders"/>.
     /// </summary>
     private void Recompare()
     {
@@ -1133,12 +1135,7 @@ public sealed partial class ShellViewModel : ObservableObject, IDisposable
 
         if (left is not null && right is not null)
         {
-            var hide = !left.ShowHidden || !right.ShowHidden;
-
-            IEnumerable<FileEntry> Compared(PaneViewModel pane)
-                => hide ? pane.Listed.Where(e => !e.IsConcealed) : pane.Listed;
-
-            var result = FolderComparison.Between(Compared(left), Compared(right));
+            var result = BothSidesAreFolders ? Between(left, right) : FolderComparison.None;
 
             left.CompareMarks = result.Left;
             right.CompareMarks = result.Right;
@@ -1146,6 +1143,25 @@ public sealed partial class ShellViewModel : ObservableObject, IDisposable
 
         OnPropertyChanged(nameof(CompareSummary));
     }
+
+    private static FolderComparison Between(PaneViewModel left, PaneViewModel right)
+    {
+        var hide = !left.ShowHidden || !right.ShowHidden;
+
+        IEnumerable<FileEntry> Compared(PaneViewModel pane)
+            => hide ? pane.Listed.Where(e => !e.IsConcealed) : pane.Listed;
+
+        return FolderComparison.Between(Compared(left), Compared(right));
+    }
+
+    /// <summary>
+    /// Whether each side is showing a folder. **Search results, the bin, the
+    /// recent lists and the list of drives are views**, whose rows come from
+    /// anywhere, so matching their names against a folder's says nothing
+    /// about either.
+    /// </summary>
+    private bool BothSidesAreFolders
+        => Left.ActiveTab is { IsRealFolder: true } && Right?.ActiveTab is { IsRealFolder: true };
 
     /// <summary>Moves the listing subscription to the pane now compared, and
     /// takes the marks off the one that no longer is.</summary>
@@ -1173,6 +1189,8 @@ public sealed partial class ShellViewModel : ObservableObject, IDisposable
         get
         {
             if (!IsComparing || ActiveTab is not { } pane) return "";
+
+            if (!BothSidesAreFolders) return "Not compared: one side is a view, not a folder";
 
             var counts = pane.CompareMarks.Values
                 .GroupBy(mark => mark)

@@ -305,6 +305,33 @@ public sealed class CompareSidesTests : OwnedViewModels
     }
 
     /// <summary>
+    /// **An empty folder is a listing too.** A side that opens one has none of
+    /// what the other side has, so everything over there is only there.
+    /// </summary>
+    [AvaloniaFact]
+    public async Task Opening_an_empty_folder_compares_the_sides_again()
+    {
+        var left = Folder("left");
+        var right = Folder("right");
+        var empty = Folder("empty");
+
+        Write(left, "shared.txt", "x", Noon);
+        var there = Write(right, "shared.txt", "x", Noon);
+
+        var shell = await Split(left, right, 1, 1);
+        var rightPane = shell.Right!.ActiveTab!;
+
+        shell.ToggleCompareCommand.Execute(null);
+
+        Assert.Empty(rightPane.CompareMarks);
+
+        await shell.Left.ActiveTab!.NavigateAsync(empty);
+        await Until(() => rightPane.CompareMarks.ContainsKey(there));
+
+        Assert.Equal(CompareMark.OnlyHere, rightPane.CompareMarks[there]);
+    }
+
+    /// <summary>
     /// All three layouts carry the word. A mark drawn in one layout and not
     /// the others would say, in the others, that the rows are the same.
     /// </summary>
@@ -338,5 +365,46 @@ public sealed class CompareSidesTests : OwnedViewModels
         Assert.Equal("Older", Word("/c"));
         Assert.Equal("Different", Word("/d"));
         Assert.Equal("", Word("/same"));
+    }
+
+    /// <summary>
+    /// **Two folders, or no marks.** Search results, the bin and the list of
+    /// drives are views whose rows come from anywhere, so a name matched
+    /// against a folder says nothing about either: on whichever side the
+    /// view is, and for as long as it is showing.
+    /// </summary>
+    [AvaloniaFact]
+    public async Task A_side_showing_a_view_rather_than_a_folder_is_not_compared()
+    {
+        var left = Folder("left");
+        var right = Folder("right");
+
+        var alone = Write(right, "only-right.txt", "x", Noon);
+
+        var shell = await Split(left, right, 0, 1);
+        var leftPane = shell.Left.ActiveTab!;
+        var rightPane = shell.Right!.ActiveTab!;
+
+        shell.ToggleCompareCommand.Execute(null);
+
+        Assert.True(rightPane.CompareMarks.ContainsKey(alone));
+
+        await leftPane.NavigateAsync(VirtualPaths.Computer);
+        await Until(() => rightPane.CompareMarks.Count == 0);
+
+        Assert.Empty(rightPane.CompareMarks);
+        Assert.Empty(leftPane.CompareMarks);
+        Assert.Equal("Not compared: one side is a view, not a folder", shell.CompareSummary);
+
+        await leftPane.NavigateAsync(left);
+        await Until(() => rightPane.CompareMarks.ContainsKey(alone));
+
+        Assert.True(rightPane.CompareMarks.ContainsKey(alone), "leaving the view did not compare again");
+
+        await rightPane.NavigateAsync(VirtualPaths.Computer);
+        await Until(() => rightPane.CompareMarks.Count == 0);
+
+        Assert.Empty(rightPane.CompareMarks);
+        Assert.Empty(leftPane.CompareMarks);
     }
 }

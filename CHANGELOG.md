@@ -19,7 +19,9 @@ should not be trusted for compatibility yet.
   *Older*, or *Different*. The status bar counts the marks on the active
   side, *Select what differs from the other side* selects them, and they
   follow either side as files arrive, leave or change. It compares one
-  folder level, and hidden files only while both sides show them.
+  folder level, hidden files only while both sides show them, and folders
+  only: a side showing search results, the bin, a recent list or the list
+  of drives marks nothing.
 
 - **Keys can be changed.** Settings ▸ Keyboard lists every command with
   the keys that run it. *Add key* listens for the next key you press; a key

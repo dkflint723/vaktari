@@ -5045,7 +5045,16 @@ public sealed partial class PaneViewModel : ObservableObject, IDisposable
             return;
         }
 
-        if (Entries.Count == 0) return;
+        // **An empty folder never said it had settled.** This returned ahead
+        // of RefreshConfusable, the one place ListingSettled is raised, so the
+        // two sides were not compared again when one of them opened an empty
+        // folder: measured, the other side kept the marks it had before.
+        // There is nothing to sort, but the listing has still settled.
+        if (Entries.Count == 0)
+        {
+            RefreshConfusable();
+            return;
+        }
 
         _groupNow = DateTimeOffset.Now;
 

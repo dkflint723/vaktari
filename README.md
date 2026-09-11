@@ -118,7 +118,9 @@ count as the same, because FAT keeps times in two-second steps. The marks
 follow either side as it changes, the status bar counts them, and *Select
 what differs from the other side* selects them. It compares one level, so two
 folders of the same name are not looked inside, and it compares hidden files
-only while both sides show them. Closing the split stops it.
+only while both sides show them. It compares folders only: while either side
+shows search results, the bin, a recent list or the list of drives, nothing is
+marked. Closing the split stops it.
 
 **The List layout chooses its columns.** Name, Type, Size, Modified and
 Created, with Type and Created off until you ask for them; right-click the
