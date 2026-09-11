@@ -143,7 +143,7 @@ jobs:
           # portions", so a binary tarball without it does not satisfy the
           # licence the project ships under. The distro tarballs already carried
           # these; this one did not.
-          cp LICENSE README.md dist/vaktari/
+          cp LICENSE THIRD-PARTY-NOTICES.txt README.md dist/vaktari/
 
           # The icons, which the tarball never carried. install.sh has always
           # tried to install them and always found nothing: the application's

@@ -21,6 +21,13 @@ should not be trusted for compatibility yet.
 
 ### Fixed
 
+- **The licences of what Vaktari is built from now ship with it.** The README
+  said the licences of SkiaSharp, HarfBuzzSharp and the Inter typeface travel
+  with the release, and only Vaktari's own did. A THIRD-PARTY-NOTICES file
+  now sits beside LICENSE in the tarball, the installer and the packages,
+  carrying every component's notice — and a test fails the build if a package
+  is added to the source without an entry there.
+
 - **A search on Windows now says that files marked as system are not
   searched.** The walk has always skipped anything carrying the System
   attribute — a framework default rather than a decision — and nothing on

@@ -609,5 +609,6 @@ Bugs and ideas are welcome on the
 MIT — see [LICENSE](LICENSE).
 
 Built with [Avalonia](https://avaloniaui.net). Published binaries include
-SkiaSharp, HarfBuzzSharp and the Inter typeface; their licences travel with the
-release.
+SkiaSharp, HarfBuzzSharp and the Inter typeface; their licences are in
+[THIRD-PARTY-NOTICES.txt](THIRD-PARTY-NOTICES.txt), which ships inside every
+tarball, installer and package.

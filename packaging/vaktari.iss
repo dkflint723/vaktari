@@ -165,6 +165,7 @@ Source: "{#Payload}\*"; DestDir: "{app}"; \
 ; MIT requires the notice to travel with "all copies or substantial portions",
 ; so it ships inside the installer rather than only in the repository.
 Source: "..\LICENSE"; DestDir: "{app}"; Flags: ignoreversion
+Source: "..\THIRD-PARTY-NOTICES.txt"; DestDir: "{app}"; Flags: ignoreversion
 Source: "..\README.md"; DestDir: "{app}"; Flags: ignoreversion
 
 ; **Undo the folder-handler registration before the executable goes.**

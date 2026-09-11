@@ -68,7 +68,7 @@ jobs:
           test -f "$P/libSkiaSharp.so" || { echo "libSkiaSharp.so missing"; exit 1; }
           mkdir -p dist/vaktari
           cp -a "$P"/. dist/vaktari/
-          cp LICENSE README.md dist/vaktari/
+          cp LICENSE THIRD-PARTY-NOTICES.txt README.md dist/vaktari/
 
           # So install.sh can offer the symbolic icon; the RPM takes its copy
           # straight from brand/ instead.
@@ -169,7 +169,7 @@ jobs:
           test -f "$P/libSkiaSharp.so" || { echo "libSkiaSharp.so missing"; exit 1; }
           mkdir -p dist/vaktari
           cp -a "$P"/. dist/vaktari/
-          cp LICENSE README.md dist/vaktari/
+          cp LICENSE THIRD-PARTY-NOTICES.txt README.md dist/vaktari/
           tar -czf vaktari-linux-x64-arch.tar.gz -C dist vaktari
 
       # Validates the PKGBUILD's syntax and metadata without downloading the

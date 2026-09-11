@@ -104,6 +104,7 @@ fi
 
 %files
 %license LICENSE
+%license THIRD-PARTY-NOTICES.txt
 %doc README.md
 %{_libdir}/vaktari/
 %{_bindir}/vaktari
