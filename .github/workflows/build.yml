@@ -212,8 +212,13 @@ jobs:
     # **A bound, because a hung step once burned the whole six-hour
     # ceiling.** apt on the hosted runner could not reach a mirror and
     # retried in silence; the job was killed at the limit and the
-    # release that needed it never ran. This job takes minutes.
-    timeout-minutes: 30
+    # release that needed it never ran.
+    #
+    # **45, because 30 cancelled a run whose every test had passed.** The
+    # job takes about 24 minutes, 20 of them the test step; on a slow
+    # runner that step took 27 and the limit landed in Publish (30m13s,
+    # 2026-09-11). 45 still stops a hang long before the six hours.
+    timeout-minutes: 45
 
     steps:
       - uses: actions/checkout@v7
