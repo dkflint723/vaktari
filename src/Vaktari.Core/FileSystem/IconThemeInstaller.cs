@@ -1,4 +1,5 @@
 using System.Net.Http;
+using System.Security.Cryptography;
 
 namespace Vaktari.Core.FileSystem;
 
@@ -24,6 +25,10 @@ public static class IconThemeInstaller
     /// </summary>
     private static readonly TimeSpan Patience = TimeSpan.FromMinutes(10);
 
+    /// <summary>Stands in for the network in tests, which serve an archive of
+    /// their own making. Null in production.</summary>
+    internal static HttpMessageHandler? HandlerOverride { get; set; }
+
     /// <summary>
     /// Downloads and installs, reporting progress from 0 to 1 where the server
     /// says how large the file is.
@@ -38,7 +43,10 @@ public static class IconThemeInstaller
         IProgress<FetchProgress>? progress = null,
         CancellationToken token = default)
     {
-        using var http = new HttpClient { Timeout = Patience };
+        using var http = new HttpClient(HandlerOverride ?? new HttpClientHandler(), disposeHandler: HandlerOverride is null)
+        {
+            Timeout = Patience,
+        };
 
         // Courtesy, not a requirement — and it was written down as a
         // requirement, which the next person to read it would have believed.
@@ -58,10 +66,33 @@ public static class IconThemeInstaller
         await using var network = await response.Content.ReadAsStreamAsync(token).ConfigureAwait(false);
         await using var counted = new CountingStream(network, expected, progress);
 
+        // **Hashed as it streams, compared before anything is published.** The
+        // archive unpacks straight off the network and never sits on disk
+        // whole, so the bytes are digested on their way past and the digest is
+        // read once the last of them has gone by — which the unpacker does
+        // not guarantee on its own, a tar reader stops at the end-of-archive
+        // marker and leaves the gzip trailer unread, hence the drain. HTTPS
+        // says who sent the file; this says it is the file the catalogue was
+        // written against, and a mismatch is thrown away with the staging
+        // folder, before a theme folder has been touched.
+        using var digest = IncrementalHash.CreateHash(HashAlgorithmName.SHA256);
+        var hashed = new HashingStream(counted, digest);
+        var destination = IconThemeCatalogue.FolderFor(source);
+
         // Off the calling thread: unpacking fifty thousand files is real work,
         // and the caller is a settings window.
         return await Task
-            .Run(() => IconThemeArchive.Install(counted, IconThemeCatalogue.FolderFor(source), token), token)
+            .Run(() => IconThemeArchive.Install(hashed, destination, token, beforePublish: () =>
+            {
+                hashed.DrainToEnd(token);
+
+                var actual = Convert.ToHexString(digest.GetHashAndReset()).ToLowerInvariant();
+
+                if (!string.Equals(actual, source.Sha256, StringComparison.OrdinalIgnoreCase))
+                    throw new InvalidDataException(
+                        $"the download is not the {source.Name} the catalogue expects "
+                        + $"(sha256 {actual[..12]}…, wanted {source.Sha256[..12]}…) — nothing was installed");
+            }), token)
             .ConfigureAwait(false);
     }
 
@@ -110,6 +141,52 @@ public static class IconThemeInstaller
         // A name of nothing would put the themes in the root of the install
         // folder, mixed in with the packs.
         return name.Length > 0 ? name : "icons";
+    }
+
+    /// <summary>
+    /// Feeds every byte read through it to a digest. Read-only and forward-only
+    /// like the counter it wraps.
+    ///
+    /// **Owns nothing, and disposing it does nothing.** The archive reader
+    /// closes the stream it is handed when its decompressor is disposed, and
+    /// the bytes past the end-of-archive marker still have to be read for the
+    /// digest to be of the whole file; so this wrapper ignores the close, and
+    /// the counting stream underneath is closed by whoever opened the network.
+    /// </summary>
+    internal sealed class HashingStream(Stream inner, IncrementalHash digest) : Stream
+    {
+        public override int Read(byte[] buffer, int offset, int count)
+            => Read(buffer.AsSpan(offset, count));
+
+        public override int Read(Span<byte> buffer)
+        {
+            var read = inner.Read(buffer);
+
+            if (read > 0) digest.AppendData(buffer[..read]);
+
+            return read;
+        }
+
+        /// <summary>Reads whatever is left, so the digest covers all of it.</summary>
+        public void DrainToEnd(CancellationToken token)
+        {
+            Span<byte> sink = stackalloc byte[16 * 1024];
+
+            while (Read(sink) > 0) token.ThrowIfCancellationRequested();
+        }
+
+        public override bool CanRead => true;
+        public override bool CanSeek => false;
+        public override bool CanWrite => false;
+        public override long Length => throw new NotSupportedException();
+        public override long Position { get => throw new NotSupportedException(); set => throw new NotSupportedException(); }
+
+        public override void Flush() { }
+        public override long Seek(long offset, SeekOrigin origin) => throw new NotSupportedException();
+        public override void SetLength(long value) => throw new NotSupportedException();
+        public override void Write(byte[] buffer, int offset, int count) => throw new NotSupportedException();
+
+        protected override void Dispose(bool disposing) { /* see above */ }
     }
 
     /// <summary>

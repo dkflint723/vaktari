@@ -14,6 +14,16 @@ namespace Vaktari.Windows;
 public sealed class WindowsCopyparty : CopypartyBackend
 {
     /// <summary>
+    /// The copyparty this version of Vaktari installs. **A version, not
+    /// "latest":** pip and pipx take no hash on the command line, so a
+    /// pinned version is as far as provenance reaches by this route — but
+    /// it is the difference between installing a program somebody has run
+    /// and whatever PyPI holds this morning. Moved on purpose, together
+    /// with a look at its changelog.
+    /// </summary>
+    internal const string CopypartyVersion = "1.20.23";
+
+    /// <summary>
     /// A real executable first, then the module, then a downloaded sfx or exe.
     ///
     /// `py` before `python` deliberately: the Python launcher is what a Windows
@@ -81,15 +91,17 @@ public sealed class WindowsCopyparty : CopypartyBackend
         var attempts = new List<InstallAttempt>();
 
         if (Which("pipx") is { } pipx)
-            attempts.Add(new(pipx, ["install", "copyparty"], "pipx install copyparty"));
+            attempts.Add(new(pipx,
+                ["install", "copyparty==" + CopypartyVersion],
+                "pipx install copyparty==" + CopypartyVersion));
 
         foreach (var launcher in new[] { "py", "python3", "python" })
         {
             if (Which(launcher) is not { } python) continue;
 
             attempts.Add(new(python,
-                ["-m", "pip", "install", "--user", "--upgrade", "copyparty"],
-                $"{launcher} -m pip install --user copyparty"));
+                ["-m", "pip", "install", "--user", "--upgrade", "copyparty==" + CopypartyVersion],
+                $"{launcher} -m pip install --user copyparty=={CopypartyVersion}"));
 
             // One launcher is enough; trying all three would run the same
             // install three times against whichever Python answered first.

@@ -113,6 +113,8 @@ public sealed class DriveInstallOfferTests : OwnedViewModels
                 LocateOverride = () => File.Exists(landed) ? landed : null,
                 FetchOverride = (_, destination, _) =>
                     File.WriteAllBytesAsync(destination, [1, 2, 3]),
+                HashOverride = () => Convert.ToHexString(
+                    System.Security.Cryptography.SHA256.HashData([1, 2, 3])).ToLowerInvariant(),
                 RunOverride = (_, _) => Task.FromResult(
                     new ProtonDriveLinks.CliResult(0, """{"url":"https://drive.proton.me/urls/abc"}""", "")),
             };

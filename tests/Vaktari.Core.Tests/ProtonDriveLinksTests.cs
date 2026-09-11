@@ -1,3 +1,4 @@
+using System.Security.Cryptography;
 using Vaktari.Core.Sharing;
 using Xunit;
 
@@ -268,6 +269,10 @@ public sealed class ProtonDriveLinksTests
                     Assert.Contains("proton.me", url);
                     return File.WriteAllBytesAsync(destination, [1, 2, 3]);
                 },
+
+                // The stand-in binary is three bytes; the install checks the
+                // download against a hash, so the test says which.
+                HashOverride = () => Sha256Of([1, 2, 3]),
             };
 
             Assert.False(links.IsAvailable);
@@ -285,6 +290,88 @@ public sealed class ProtonDriveLinksTests
         {
             Directory.Delete(tools, recursive: true);
         }
+    }
+
+    private static string Sha256Of(byte[] bytes)
+        => Convert.ToHexString(SHA256.HashData(bytes)).ToLowerInvariant();
+
+    /// <summary>
+    /// **The download was renamed into the tools folder on the strength of
+    /// its address**, and everything under that name runs with the user's
+    /// rights. It is hashed first now, before it is made executable or moved,
+    /// and a file that is not the build this version expects is deleted with a
+    /// line saying so.
+    /// </summary>
+    [Fact]
+    public async Task A_download_that_is_not_the_expected_binary_is_refused_and_removed()
+    {
+        var tools = Directory.CreateTempSubdirectory("vaktari-proton-tamper").FullName;
+
+        try
+        {
+            var links = new ProtonDriveLinks
+            {
+                ToolsDirOverride = tools,
+                LocateOverride = () => null,
+                FetchOverride = (_, destination, _) => File.WriteAllBytesAsync(destination, [1, 2, 3]),
+                HashOverride = () => Sha256Of([4, 5, 6]),
+            };
+
+            var lines = new List<string>();
+            var done = await links.InstallAsync(new Immediate(lines.Add), CancellationToken.None);
+
+            Assert.False(done);
+            Assert.False(links.IsAvailable);
+            Assert.Empty(Directory.GetFiles(tools));
+            Assert.Contains(lines, l => l.Contains("not the 0.8.0 build") && l.Contains("was not installed"));
+        }
+        finally
+        {
+            Directory.Delete(tools, recursive: true);
+        }
+    }
+
+    /// <summary>
+    /// With no test seam, the table shipped in the code is what the download
+    /// is held to — three bytes are not the CLI, whatever platform this is.
+    /// The seam is for tests; production must not be able to skip the check.
+    /// </summary>
+    [Fact]
+    public async Task Without_a_seam_the_shipped_hash_table_is_what_is_checked()
+    {
+        if (ProtonDriveLinks.Grammar.ExpectedSha256() is null) return; // no CLI for this platform at all
+
+        var tools = Directory.CreateTempSubdirectory("vaktari-proton-shipped").FullName;
+
+        try
+        {
+            var links = new ProtonDriveLinks
+            {
+                ToolsDirOverride = tools,
+                LocateOverride = () => null,
+                FetchOverride = (_, destination, _) => File.WriteAllBytesAsync(destination, [1, 2, 3]),
+            };
+
+            var lines = new List<string>();
+
+            Assert.False(await links.InstallAsync(new Immediate(lines.Add), CancellationToken.None));
+            Assert.Empty(Directory.GetFiles(tools));
+            Assert.Contains(lines, l => l.Contains("not the 0.8.0 build"));
+        }
+        finally
+        {
+            Directory.Delete(tools, recursive: true);
+        }
+    }
+
+    /// <summary>The shipped table knows this platform's binary by a hash of
+    /// the right shape — a blank here would make the check above a no-op.</summary>
+    [Fact]
+    public void The_shipped_table_names_a_hash_for_this_platform()
+    {
+        if (!OperatingSystem.IsWindows() && !OperatingSystem.IsLinux()) return;
+
+        Assert.Matches("^[0-9a-f]{64}$", ProtonDriveLinks.Grammar.ExpectedSha256());
     }
 
     /// <summary>A dead download says so and leaves nothing that discovery

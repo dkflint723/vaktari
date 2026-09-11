@@ -53,7 +53,14 @@ public static class IconThemeArchive
     /// with some of its icons is worse than no theme, because it looks like it
     /// worked.
     /// </summary>
-    public static Installed Install(Stream archive, string destination, CancellationToken token = default)
+    /// <param name="beforePublish">Runs after the archive has been read in
+    /// full and before anything is moved into the destination; throwing here
+    /// discards the unpacked tree. The fetch uses it to compare the download
+    /// against the hash in the catalogue — **there is no earlier point**, the
+    /// archive streams straight off the network, and no later one that would
+    /// not already have published.</param>
+    public static Installed Install(
+        Stream archive, string destination, CancellationToken token = default, Action? beforePublish = null)
     {
         // **Normalised once, here, and everything downstream is then comparable.**
         // Paths are compared against each other all through this — is this entry
@@ -75,6 +82,9 @@ public static class IconThemeArchive
         try
         {
             var (icons, bytes, aliases) = Unpack(archive, staging, token);
+
+            beforePublish?.Invoke();
+
             var themes = Publish(staging, destination, aliases, token);
 
             return new Installed(themes, icons, aliases.Count, bytes);

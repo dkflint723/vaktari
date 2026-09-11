@@ -121,6 +121,11 @@ public sealed class ProtonDriveLinks : ILinkSharing
     /// the network. Takes the URL and the file to write.</summary>
     internal Func<string, string, CancellationToken, Task>? FetchOverride { get; set; }
 
+    /// <summary>The hash the install checks the download against, for tests
+    /// whose fake fetch writes bytes of their own choosing. Null is the
+    /// shipped table; a function returning null skips the check.</summary>
+    internal Func<string?>? HashOverride { get; set; }
+
     /// <summary>
     /// Downloads the CLI into Vaktari's tools folder — the same "install is a
     /// menu click" promise copyparty makes, kept the way a single static
@@ -151,6 +156,26 @@ public sealed class ProtonDriveLinks : ILinkSharing
             Directory.CreateDirectory(ToolsDir);
 
             await (FetchOverride ?? FetchAsync)(url, staged, ct).ConfigureAwait(false);
+
+            // **Not a program until it is the program.** The staged file is
+            // hashed before it is made executable or renamed into place, and a
+            // mismatch is deleted with a line saying so — a binary that runs
+            // with the user's rights is not something to install on the
+            // strength of the address it came from.
+            if ((HashOverride ?? Grammar.ExpectedSha256)() is { } expected)
+            {
+                string actual;
+
+                await using (var check = File.OpenRead(staged))
+                    actual = Convert.ToHexString(
+                        await System.Security.Cryptography.SHA256.HashDataAsync(check, ct).ConfigureAwait(false))
+                        .ToLowerInvariant();
+
+                if (!string.Equals(actual, expected, StringComparison.OrdinalIgnoreCase))
+                    throw new InvalidDataException(
+                        $"the downloaded Proton Drive CLI is not the {Grammar.CliVersion} build this "
+                        + $"version of Vaktari expects (sha256 {actual[..12]}…) — it was not installed");
+            }
 
             // The download is not a program until it can run.
             if (!OperatingSystem.IsWindows())
@@ -463,6 +488,20 @@ public sealed class ProtonDriveLinks : ILinkSharing
         /// keeps working, and Proton's download paths carry the number.
         /// </summary>
         internal const string CliVersion = "0.8.0";
+
+        /// <summary>
+        /// What the download for <see cref="CliVersion"/> hashes to, per
+        /// platform. **Checked before the file is renamed into the tools
+        /// folder**, because everything under that name is executed with the
+        /// user's rights. Moving to a newer CLI is a change to the version
+        /// and both hashes, made together and on purpose.
+        /// </summary>
+        internal static string? ExpectedSha256()
+            => OperatingSystem.IsWindows()
+                ? "3ffb839d9148dc877d10422064ca7c7776befbbf79ad6cbba60bc34002ce19b5"
+                : OperatingSystem.IsLinux()
+                    ? "9443d771719c892790db17e6f02ecd99ad7c53593329f3a67c77677dce577735"
+                    : null;
 
         /// <summary>
         /// VERIFIED for both platforms — each URL answered 200 with the

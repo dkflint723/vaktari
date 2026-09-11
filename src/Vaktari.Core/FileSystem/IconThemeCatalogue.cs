@@ -10,12 +10,16 @@ namespace Vaktari.Core.FileSystem;
 /// <param name="Megabytes">Roughly, so nobody starts a hundred-megabyte
 /// download without being told it is one.</param>
 /// <param name="Licence">Theirs, not ours, and worth saying out loud.</param>
+/// <param name="Sha256">What the file at <paramref name="Url"/> hashes to,
+/// lower-case hex. The download is refused if it hashes to anything else, so
+/// this and the URL move together.</param>
 public sealed record IconThemeSource(
     string Name,
     string Summary,
     string Url,
     int Megabytes,
-    string Licence);
+    string Licence,
+    string Sha256);
 
 /// <summary>
 /// The themes offered in Settings, and where they are put.
@@ -35,19 +39,30 @@ public static class IconThemeCatalogue
             "Papirus",
             "Flat, colourful, and the most complete free icon set there is. "
             + "Installs the light and dark variants too.",
-            "https://github.com/PapirusDevelopmentTeam/papirus-icon-theme/archive/refs/heads/master.tar.gz",
+            // **A release tag, not a branch.** refs/heads/master changes every
+            // day, so what this fetched was whatever the project had committed
+            // that morning, and nothing could say whether the bytes that
+            // arrived were the bytes anyone had looked at. A tag is one set of
+            // bytes with one hash; moving to a newer Papirus is a change to
+            // these two lines, made on purpose.
+            "https://github.com/PapirusDevelopmentTeam/papirus-icon-theme/archive/refs/tags/20260801.tar.gz",
             110,
-            "GPL-3.0"),
+            "GPL-3.0",
+            "646f622e9e7e9e65eef9d0ab58999d4920ddb33d98e6a75232627cfe3bd508f9"),
     ];
 
     /// <summary>
     /// Where fetched themes are kept: per user, beside everything else this
     /// application stores, and needing no elevation to write.
     /// </summary>
-    public static string InstallRoot => Path.Combine(
+    public static string InstallRoot => InstallRootOverride ?? Path.Combine(
         Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
         "Vaktari",
         "Icons");
+
+    /// <summary>Where tests install to, so a test of the fetch never writes
+    /// into the developer's own icon folder. Null in production.</summary>
+    internal static string? InstallRootOverride { get; set; }
 
     /// <summary>
     /// One folder per pack, holding the themes that came out of it.

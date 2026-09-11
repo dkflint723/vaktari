@@ -43,6 +43,21 @@ should not be trusted for compatibility yet.
   folder names are taken literally rather than as patterns. Windows was never
   exposed, because Windows will not create such a name.
 
+- **What Vaktari downloads on your behalf is now checked before it is used.**
+  Three things arrive over the network at a click: the Papirus icon theme,
+  the Proton Drive command-line tool, and copyparty for sharing a folder. All
+  three were taken on the strength of their address — the theme from a branch
+  that changes every day, the Proton tool renamed into place and made
+  executable as it arrived, copyparty as whatever PyPI held that morning. A
+  tampered mirror or a hijacked repository would have gone unnoticed. The
+  theme now comes from a named release and must hash to what the catalogue
+  says, or it is thrown away before a single icon reaches the theme folder;
+  the Proton tool is hashed before it is made executable, and a file that is
+  not the build this version expects is deleted with a line saying so; and
+  copyparty is installed at one named version rather than the newest. Moving
+  any of them to a newer release is a deliberate change to the code, made
+  with a look at what changed.
+
 ### Fixed
 
 - **Overwriting a file no longer destroys the original before the replacement

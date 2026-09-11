@@ -18,7 +18,7 @@ namespace Vaktari.Ui.Tests;
 public sealed class IconThemeFetchTests : IDisposable
 {
     private static readonly IconThemeSource Source =
-        new("Papirus", "…", "https://example.invalid/papirus.tar.gz", 110, "GPL-3.0");
+        new("Papirus", "…", "https://example.invalid/papirus.tar.gz", 110, "GPL-3.0", new string('0', 64));
 
     public void Dispose()
     {

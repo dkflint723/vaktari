@@ -13,6 +13,16 @@ namespace Vaktari.Linux;
 public sealed class LinuxCopyparty : CopypartyBackend
 {
     /// <summary>
+    /// The copyparty this version of Vaktari installs. **A version, not
+    /// "latest":** pip and pipx take no hash on the command line, so a
+    /// pinned version is as far as provenance reaches by this route — but
+    /// it is the difference between installing a program somebody has run
+    /// and whatever PyPI holds this morning. Moved on purpose, together
+    /// with a look at its changelog.
+    /// </summary>
+    internal const string CopypartyVersion = "1.20.23";
+
+    /// <summary>
     /// Found rather than bundled, and in the order a user would expect: a real
     /// executable first, then the module, then a downloaded sfx.
     /// </summary>
@@ -55,17 +65,19 @@ public sealed class LinuxCopyparty : CopypartyBackend
         var attempts = new List<InstallAttempt>();
 
         if (Which("pipx") is { } pipx)
-            attempts.Add(new(pipx, ["install", "copyparty"], "pipx install copyparty"));
+            attempts.Add(new(pipx,
+                ["install", "copyparty==" + CopypartyVersion],
+                "pipx install copyparty==" + CopypartyVersion));
 
         if (Which("python3") is { } python)
         {
             attempts.Add(new(python,
-                ["-m", "pip", "install", "--user", "--upgrade", "copyparty"],
-                "pip install --user copyparty"));
+                ["-m", "pip", "install", "--user", "--upgrade", "copyparty==" + CopypartyVersion],
+                "pip install --user copyparty==" + CopypartyVersion));
 
             attempts.Add(new(python,
-                ["-m", "pip", "install", "--user", "--upgrade", "--break-system-packages", "copyparty"],
-                "pip install --user --break-system-packages copyparty"));
+                ["-m", "pip", "install", "--user", "--upgrade", "--break-system-packages", "copyparty==" + CopypartyVersion],
+                "pip install --user --break-system-packages copyparty==" + CopypartyVersion));
         }
 
         return attempts;
