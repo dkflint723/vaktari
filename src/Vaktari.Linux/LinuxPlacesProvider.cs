@@ -101,8 +101,28 @@ public sealed class LinuxPlacesProvider : IPlacesProvider, IDisposable
 
         var (devices, network) = BuildMounts();
 
-        _names = devices.Concat(network)
-                        .ToDictionary(p => p.Path, p => p.Label, Vaktari.Core.FileSystem.PathRules.Comparer);
+        // **Two volumes with no mount point share an empty path, and the table
+        // below threw on the second.** MEASURED on the Ubuntu CI runner, the
+        // first machine this ran on with more than one filesystem that is not
+        // mounted: ToDictionary over the rows raised "An item with the same
+        // key has already been added. Key: " — the empty key — from inside
+        // the rebuild, which the sidebar starts fire-and-forget at startup and
+        // so lost; the sidebar stayed empty and nothing said why. An ordinary
+        // desktop is that machine: an EFI partition under /boot and a swap
+        // partition both carry a UUID, neither is a volume this provider
+        // mounts, and both were offered with no path. Under WSL there was
+        // exactly one and nothing showed.
+        //
+        // Names are for rows with a path — a tab title asks by path, and a
+        // row with none has nothing to be asked for — and two mounts at one
+        // mount point are a legal stack, so the first wins rather than the
+        // second throwing.
+        var names = new Dictionary<string, string>(Vaktari.Core.FileSystem.PathRules.Comparer);
+
+        foreach (var place in devices.Concat(network))
+            if (place.Path.Length > 0) names.TryAdd(place.Path, place.Label);
+
+        _names = names;
 
         if (devices.Count > 0) groups.Add(new PlaceGroup(PlaceGroups.Devices, devices));
         if (network.Count > 0) groups.Add(new PlaceGroup(PlaceGroups.Shares, network));
@@ -379,6 +399,8 @@ public sealed class LinuxPlacesProvider : IPlacesProvider, IDisposable
             ? fakeDevices()
             : ReadFilesystemDevices();
 
+        var swaps = SwapDevices();
+
         foreach (var device in offered)
         {
             if (seenDevices.Contains(device)) continue;
@@ -386,6 +408,13 @@ public sealed class LinuxPlacesProvider : IPlacesProvider, IDisposable
             // A loop device with a filesystem is a mounted disk image, which
             // has its own row and its own way of going away.
             if (device.StartsWith("/dev/loop", StringComparison.Ordinal)) continue;
+
+            // **A swap partition has a UUID and is not a volume.** by-uuid
+            // lists it beside the filesystems, so it was offered as a drive
+            // named by its device — "sdc" on the Fedora this was written on —
+            // with a Mount action udisksctl refuses. /proc/swaps names every
+            // swap in use; one that is not in use is rare enough to leave.
+            if (swaps.Contains(device)) continue;
 
             devices.Add(new Place
             {
@@ -413,6 +442,35 @@ public sealed class LinuxPlacesProvider : IPlacesProvider, IDisposable
     /// <summary>The real mount table, when no test has substituted one.</summary>
     private static IEnumerable<string> ReadMountLines()
         => File.Exists("/proc/mounts") ? File.ReadLines("/proc/mounts") : [];
+
+    /// <summary>Stands in for /proc/swaps, for the same reason as the mount
+    /// table: the rule is testable on a machine with no swap at all.</summary>
+    internal Func<IEnumerable<string>>? SwapLines { get; init; }
+
+    /// <summary>
+    /// Every device in use as swap: the first column of every line of the
+    /// file. The header line's "Filename" lands in the set too, deliberately
+    /// left rather than filtered — no device is called that, so a guard
+    /// against it would be a line no test can redden, and it was measured as
+    /// exactly that before it came out.
+    /// </summary>
+    private HashSet<string> SwapDevices()
+    {
+        var lines = SwapLines is { } fake ? fake() : ReadSwapLines();
+        var swaps = new HashSet<string>(StringComparer.Ordinal);
+
+        foreach (var line in lines)
+        {
+            var first = line.Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries).FirstOrDefault();
+
+            if (first is { Length: > 0 }) swaps.Add(MountTable.Unescape(first));
+        }
+
+        return swaps;
+    }
+
+    private static IEnumerable<string> ReadSwapLines()
+        => File.Exists("/proc/swaps") ? File.ReadLines("/proc/swaps") : [];
 
     private static string LabelFor(
         string source, string mountPoint, Dictionary<string, string> labels)
