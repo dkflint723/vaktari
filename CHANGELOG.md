@@ -90,6 +90,15 @@ should not be trusted for compatibility yet.
 
 ### Fixed
 
+- **A folder on a network mount now updates on its own.** On Linux, a
+  share mounted over SMB, NFS or SSH — or through the desktop's own file
+  dialogs, which mount through gvfs or KIO — delivers no change
+  notifications for what other machines do to it, so a file put there from
+  elsewhere never appeared until you pressed F5, which on a share is exactly
+  where somebody else is putting files for you to see. Such folders are now
+  re-read every five seconds and the differences applied as if the
+  notifications had arrived. Local folders are watched as before.
+
 - **Pause reaches every running operation, not only the newest.** The
   transfer bar follows whichever operation started last, and its Pause did
   too; the list behind the bar's count gave each operation a Cancel of its
