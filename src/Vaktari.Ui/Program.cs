@@ -252,15 +252,31 @@ internal sealed class Program
         // string would be work done for nobody.
         ClaimInstanceMutex();
 
+        // **A crash left nothing on disk.** These two handlers wrote to
+        // stderr, and a windowed process on Windows has no stderr, so an exit
+        // mid-copy was undiagnosable: the report said "it closed" and there
+        // was nothing to read. The log is under the state directory beside
+        // session.json, one megabyte at a time, three kept; paths in it are
+        // redacted unless VAKTARI_QUIET_DEBUG=1, the switch Quiet already
+        // honours, because a log ends up pasted into bug reports.
+        Vaktari.Core.Diagnostics.Log.Configure(
+            Path.Combine(Session.JsonSessionStore.DefaultDirectory(), "logs"),
+            includePaths: Environment.GetEnvironmentVariable("VAKTARI_QUIET_DEBUG") == "1");
+
         // An unhandled exception on a pool thread terminates the process with
         // nothing but a core dump. Logging first turns "it vanished" into
-        // something diagnosable.
+        // something diagnosable — and Fatal leaves the marker the next start
+        // reads, so the window can say it happened.
         AppDomain.CurrentDomain.UnhandledException += (_, e) =>
+        {
             Console.Error.WriteLine($"[vaktari] FATAL: {e.ExceptionObject}");
+            Vaktari.Core.Diagnostics.Log.Fatal("process", e.ExceptionObject?.ToString() ?? "(no exception object)");
+        };
 
         TaskScheduler.UnobservedTaskException += (_, e) =>
         {
             Console.Error.WriteLine($"[vaktari] unobserved: {e.Exception}");
+            Vaktari.Core.Diagnostics.Log.Error("unobserved", e.Exception.ToString());
             e.SetObserved();
         };
 

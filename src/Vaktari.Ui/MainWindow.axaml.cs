@@ -189,6 +189,23 @@ public partial class MainWindow : Window
 
         Thumbnails.IconLoader.SourceChanged += _onIconSourceChanged;
 
+        // **The previous run ended in a crash, and until now nothing said
+        // so.** The marker is taken exactly once, so only the first window of
+        // the next run says it; the operation bar is the one line that stays
+        // until dismissed, which a status line does not.
+        //
+        // Posted, for the reason the theme handler above is: this runs in the
+        // constructor before _shell is assigned, and the compiler will not
+        // take "it only runs later" for an answer — measured, as a null
+        // reference on the first test that built a window after a crash.
+        if (Vaktari.Core.Diagnostics.Log.TakeCrashMarker() is { } crashed)
+        {
+            Vaktari.Core.Diagnostics.Log.Warn("startup", "previous run ended unexpectedly: " + crashed.Split('\n')[0]);
+
+            Dispatcher.UIThread.Post(() => Shell.OperationStatus =
+                "Vaktari closed unexpectedly last time — Settings ▸ Settings file ▸ Copy diagnostics");
+        }
+
         // Not platform-specific: the clipboard comes from the toolkit.
         IClipboardService clipboard = ClipboardService.ForWindow(this);
 
@@ -1446,6 +1463,19 @@ public partial class MainWindow : Window
             if (picked.Count == 0 || picked[0].TryGetLocalPath() is not { } folder) return;
 
             model.StartupFolder = folder;
+        };
+
+        model.DiagnosticsRequested += async (_, text) =>
+        {
+            try
+            {
+                if (Clipboard is { } clipboard) await clipboard.SetTextAsync(text);
+                model.SettingsFileStatus = "diagnostics copied — paste them into a bug report";
+            }
+            catch (Exception ex)
+            {
+                model.SettingsFileStatus = $"could not reach the clipboard: {ex.Message}";
+            }
         };
 
         model.SettingsExportRequested += async (_, _) =>

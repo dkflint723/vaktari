@@ -675,6 +675,40 @@ public sealed partial class SettingsViewModel : ObservableObject
     /// <summary>A save-file picker, for somewhere to put a copy.</summary>
     public event EventHandler? SettingsExportRequested;
 
+    /// <summary>
+    /// The diagnostics text, for the window to put on the clipboard. Raised
+    /// rather than written here because the clipboard belongs to a TopLevel.
+    /// </summary>
+    public event EventHandler<string>? DiagnosticsRequested;
+
+    /// <summary>
+    /// **What a bug report needs, in one paste.** Version and where it runs
+    /// from, the platform, how the interface is set up, and the tail of the
+    /// log — with every path in it already redacted by the log, so the text
+    /// can go into a public issue without a second look. The last line names
+    /// the crash marker if the previous run left one.
+    /// </summary>
+    [RelayCommand]
+    private void CopyDiagnostics()
+    {
+        var sb = new System.Text.StringBuilder();
+
+        sb.AppendLine($"vaktari {Program.Version}");
+        sb.AppendLine(Vaktari.Core.Diagnostics.Log.Redact($"running from {Program.RunningFrom}"));
+        sb.AppendLine($"{Environment.OSVersion} · {System.Runtime.InteropServices.RuntimeInformation.OSArchitecture} · .NET {Environment.Version}");
+        sb.AppendLine($"interface text {InterfaceText.ScaleFor(InterfaceTextIndex):P0} · " +
+                      $"theme {(FollowDesktopColours ? "desktop" : "bundled")} · " +
+                      $"icons {(HasIconTheme ? "theme " + IconThemeLabel : UseSystemIcons ? "desktop" : "bundled")}");
+        sb.AppendLine(Vaktari.Core.Diagnostics.Log.Redact($"settings {SettingsFile}"));
+        sb.AppendLine();
+
+        var tail = Vaktari.Core.Diagnostics.Log.Tail(200);
+        sb.AppendLine(tail.Length > 0 ? "--- last log lines ---" : "--- no log lines ---");
+        if (tail.Length > 0) sb.AppendLine(tail);
+
+        DiagnosticsRequested?.Invoke(this, sb.ToString());
+    }
+
     /// <summary>And an open-file picker, for a copy to put back.</summary>
     public event EventHandler? SettingsImportRequested;
 

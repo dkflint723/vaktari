@@ -29,6 +29,11 @@ public static class Quiet
     /// </param>
     public static void Swallowed(string area, Exception ex)
     {
+        // To the log whether or not stderr is asked for: this is exactly the
+        // class of failure a bug report needs and a user never sees. The log
+        // redacts paths itself, so nothing is lost by passing the message on.
+        Diagnostics.Log.Warn(area, $"{ex.GetType().Name}: {ex.Message}");
+
         if (!Enabled) return;
 
         // Type as well as message: "Object reference not set" without a type or a

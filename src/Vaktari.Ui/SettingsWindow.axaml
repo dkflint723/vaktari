@@ -103,6 +103,13 @@
                         Command="{Binding ExportSettingsCommand}"/>
               <MenuItem Header="_Replace from a copy…"
                         Command="{Binding ImportSettingsCommand}"/>
+              <Separator/>
+              <!-- Version, platform, how the interface is set, and the tail of
+                   the log, with paths already redacted — the paste a bug
+                   report needs. Here rather than on its own button because it
+                   is about the same file's neighbours. -->
+              <MenuItem Header="Copy _diagnostics"
+                        Command="{Binding CopyDiagnosticsCommand}"/>
             </MenuFlyout>
           </Button.Flyout>
         </Button>

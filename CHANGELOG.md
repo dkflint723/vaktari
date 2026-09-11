@@ -11,6 +11,18 @@ should not be trusted for compatibility yet.
 
 ## [Unreleased]
 
+### Added
+
+- **A crash leaves evidence, and Settings can hand it over.** Vaktari keeps a
+  small log beside its settings now — a megabyte at a time, three kept — with
+  every path in it reduced to the file's name and a short code for its folder,
+  so the log can go into a bug report without a second look. If Vaktari ever
+  closes on its own, the next start says so on the operation bar; and
+  *Settings ▸ Settings file ▸ Copy diagnostics* puts the version, the
+  platform, how the interface is set up and the last two hundred log lines on
+  the clipboard in one go. Set `VAKTARI_QUIET_DEBUG=1` to keep whole paths in
+  the log on a machine nobody else will read it on.
+
 ### Changed
 
 - **Undo reaches a hundred steps back, rather than every step since the

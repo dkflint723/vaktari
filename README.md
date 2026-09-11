@@ -496,7 +496,9 @@ systems, so a copy installed by hand keeps running even after you upgrade the
 package. `vaktari --version` prints the version *and* the file it came from,
 which is the quickest way to tell which one you have.
 
-Your tabs, places, folder views and settings live in `~/.local/state/vaktari`.
+Your tabs, places, folder views and settings live in `~/.local/state/vaktari`,
+with a small log under `logs/` beside them — paths in it are reduced to file
+names, so it can go straight into a bug report.
 There is no uninstaller for the tarball — removing it by hand means deleting
 `~/.local/bin/vaktari`, `~/.local/lib/vaktari` and
 `~/.local/share/applications/vaktari.desktop` and the icons under
@@ -513,8 +515,9 @@ The installer is **not code-signed**, so the first run shows SmartScreen's
 "Windows protected your PC" — *More info* ▸ *Run anyway*. The installer will
 also stop rather than overwrite a copy of Vaktari that is currently running.
 
-Uninstalling leaves your tabs, places, folder views, settings, recents and your
-own `scripts\` folder alone, under `%LOCALAPPDATA%\vaktari`, so reinstalling or
+Uninstalling leaves your tabs, places, folder views, settings, recents, log
+and your own `scripts\` folder alone, under `%LOCALAPPDATA%\vaktari`, so
+reinstalling or
 upgrading picks up where you left off. Delete that folder by hand if you want
 them gone — but note what is in it first.
 
@@ -602,7 +605,10 @@ promise yet. Worth knowing before you decide:
   Settings dialog does not.
 
 Bugs and ideas are welcome on the
-[issue tracker](https://github.com/dkflint723/vaktari/issues).
+[issue tracker](https://github.com/dkflint723/vaktari/issues). For a bug,
+*Settings ▸ Settings file ▸ Copy diagnostics* puts the version, the platform
+and the last of the log on your clipboard with every path already reduced to
+a file name — paste that in.
 
 ## Licence
 
