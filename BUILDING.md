@@ -223,24 +223,49 @@ session are still required, which any desktop already has.
 ## 4a. Tests
 
 ```bash
-dotnet test tests/Vaktari.Core.Tests
+dotnet test vaktari.slnx            # everything this machine can run
+dotnet test tests/Vaktari.Ui.Tests  # one project
 ```
 
-**Only the pure pieces of `Vaktari.Core` are covered** — `PathRules`,
-`ByteSize`, `NaturalOrder` and `BatchRename`. Those are the parts with real
-logic, no filesystem and no UI, so a test is cheap and a failure is unambiguous.
-They run in CI on every push, after the Debug build and before the AOT publish,
-so a broken assumption fails in seconds rather than after a 55-second link.
+Four projects, some 4,000 cases:
 
-**The test project switches OFF the trim and AOT analysers** that
+| Project | What it covers | Runs on |
+|---|---|---|
+| `Vaktari.Core.Tests` | the platform-neutral rules: paths, names, sorting, the copy staging, settings migration, the git arguments, the download checks | both |
+| `Vaktari.Linux.Tests` | `Vaktari.Linux` — the mount table, xattrs, trash, desktop entries, the poll on network mounts. Most of it is logic and runs on Windows too; a `PosixFact` needs a real Linux filesystem and skips elsewhere | both |
+| `Vaktari.Windows.Tests` | `Vaktari.Windows` — the file operations, the shell, the registry. Runs on Windows only | Windows |
+| `Vaktari.Ui.Tests` | the windows and view models, driven headless through Avalonia — a real `MainWindow`, no display needed. A test asserting something only Windows offers says so with `OnlyOn.Windows` and skips on Linux | both |
+
+**The Ui suite ran on Windows alone until September 2026.** Two of its
+source-reading tests had broken on CI for exactly that reason — once reading
+CRLF as LF, once looking for a file by the wrong case — and the first run on
+Linux found twelve more tests asserting Windows facts. It runs on both CI jobs
+now; on a Windows desktop, a Fedora or Ubuntu under WSL runs it in under five
+minutes (`rsync` the tree into WSL's own filesystem first — building on
+`/mnt/d` collides with the Windows `bin` and `obj`).
+
+**The test projects switch OFF the trim and AOT analysers** that
 `Directory.Build.props` turns on everywhere else. xunit and the test host use
 reflection by design, and with warnings-as-errors inherited those analysers would
 fail the build over code that is never published. **Switched off in the test
-project rather than loosened in the shared props** — the application's guarantees
-must not weaken to accommodate its tests.
+projects rather than loosened in the shared props** — the application's
+guarantees must not weaken to accommodate its tests.
 
-Deliberately not covered: `PathCompleter` (needs real directories on disk),
-`Checksums` (needs real files), and anything in `Vaktari.Ui` (needs a display).
+**A house rule for every fix:** its test is reddened by a one-line, compiling
+mutation of the code it pins — checked by hand before the commit, and said so
+in the commit message. A test that cannot be reddened is a guard, and says
+that instead.
+
+**The large-folder budget** is a separate, nightly run: two hundred thousand
+files, a stopwatch, and a generous bound on the first batch of a listing and
+on a full sort. Set `VAKTARI_LARGE_FIXTURE` to a count to run it by hand:
+
+```bash
+VAKTARI_LARGE_FIXTURE=200000 dotnet test tests/Vaktari.Core.Tests -c Release --filter "FullyQualifiedName~LargeFolderTests"
+```
+
+It is a trend to read, not a gate on a merge — a timing on a shared runner is
+weather as well as code — which is why it is not in `build.yml`.
 
 ## 5. Giving someone else a build
 
@@ -380,3 +405,36 @@ Environment variables, all off by default:
 `VAKTARI_TILE_DEBUG` is the one to reach for first when a listing feels slow:
 the realized count is unambiguous in a way that a timing figure is not. If it
 approaches the item count, nothing is being virtualized.
+
+### Measuring
+
+`tests/Vaktari.Benchmarks` holds BenchmarkDotNet benchmarks for the pure
+pieces a listing's cost is made of — the natural sort over 10,000 and 200,000
+names against the ordinal one, the name rules, the path comparison, and the
+tree walk. Release, always; a Debug build measures the JIT's caution rather
+than the code.
+
+```bash
+dotnet run -c Release --project tests/Vaktari.Benchmarks -- --filter '*Sorting*'
+dotnet run -c Release --project tests/Vaktari.Benchmarks -- --filter '*'
+```
+
+For scale — measured 10 September 2026 on the maintainer's desktop, Release,
+.NET 10: 200,000 realistic names sort in 24 ms ordinally and 73 ms naturally
+(3.05×), allocating nothing beyond the copy of the array; 10,000 in 0.9 ms and
+2.4 ms. The nightly budget of 1.5 s for the natural sort is twenty times that,
+which is the point of it: it catches a comparison that starts allocating or a
+rule that turns quadratic, not a slow afternoon on a shared runner.
+
+For the rest of the application — a load that feels slow, a window that
+stalls — trace it rather than guess:
+
+```bash
+dotnet tool install --global dotnet-trace
+dotnet-trace collect --providers Microsoft-DotNETCore-SampleProfiler -- src/Vaktari.Ui/bin/Release/net10.0/Vaktari.Ui
+```
+
+Open the `.nettrace` in Visual Studio, PerfView or `dotnet-trace report`. Under
+NativeAOT the sample profiler does not attach; trace the JIT build (`dotnet run
+-c Release --project src/Vaktari.Ui`), which has the same code paths and the
+same allocations.

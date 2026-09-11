@@ -1,0 +1,51 @@
+# The large-folder fixture: two hundred thousand files, a stopwatch, and a
+# budget. Nightly and by hand rather than on every push, because a timing
+# assertion on a shared runner is weather as well as code — it is read as a
+# trend, and a red night is a reason to look, not a blocked merge. The
+# ordinary test run skips these; VAKTARI_LARGE_FIXTURE is what turns them on.
+name: nightly
+
+on:
+  schedule:
+    - cron: '17 3 * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  large-folder:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 40
+    env:
+      VAKTARI_LARGE_FIXTURE: '200000'
+
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-dotnet@v5
+        with:
+          dotnet-version: '10.0.x'
+
+      # Release, because a budget measured on a Debug build measures the
+      # JIT's caution rather than the code.
+      - name: Build
+        run: dotnet build -c Release
+
+      - name: Sorting budget
+        run: dotnet test tests/Vaktari.Core.Tests -c Release --no-build --filter "FullyQualifiedName~LargeFolderTests"
+
+      - name: Listing budget
+        shell: bash
+        run: |
+          if [ "$RUNNER_OS" = "Windows" ]; then
+            dotnet test tests/Vaktari.Windows.Tests -c Release --no-build --filter "FullyQualifiedName~LargeFolderTests"
+          else
+            dotnet test tests/Vaktari.Linux.Tests -c Release --no-build --filter "FullyQualifiedName~LargeFolderTests"
+          fi

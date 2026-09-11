@@ -33,4 +33,10 @@
     <ProjectReference Include="../../src/Vaktari.Linux/Vaktari.Linux.csproj" />
   </ItemGroup>
 
+  <!-- The large-folder fixture's switch, shared with the other two test
+       projects the way Vaktari.Windows.Tests shares the platform facts. -->
+  <ItemGroup>
+    <Compile Include="../Vaktari.Core.Tests/LargeFixture.cs" Link="LargeFixture.cs" />
+  </ItemGroup>
+
 </Project>

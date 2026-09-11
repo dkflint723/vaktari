@@ -58,6 +58,21 @@ public sealed class RepoHygieneTests
         Assert.Contains("dotnet test tests/Vaktari.Ui.Tests --configuration Debug", linuxJob);
     }
 
+    /// <summary>
+    /// The large-folder fixture runs somewhere: nightly, on both platforms,
+    /// with the variable that turns it on. Every ordinary run skips it, so
+    /// nothing else would notice the workflow going.
+    /// </summary>
+    [Fact]
+    public void A_nightly_run_measures_the_large_folder_budget_on_both_platforms()
+    {
+        var nightly = Read(".github", "workflows", "nightly.yml");
+
+        Assert.Contains("VAKTARI_LARGE_FIXTURE: '200000'", nightly);
+        Assert.Contains("os: [ubuntu-latest, windows-latest]", nightly);
+        Assert.Contains("FullyQualifiedName~LargeFolderTests", nightly);
+    }
+
     /// <summary>A bill of materials goes up with every release, in the
     /// CycloneDX form the scanners read.</summary>
     [Fact]

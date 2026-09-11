@@ -35,6 +35,7 @@
        the same drift one directory further out. -->
   <ItemGroup>
     <Compile Include="../Vaktari.Core.Tests/PlatformFacts.cs" Link="PlatformFacts.cs" />
+    <Compile Include="../Vaktari.Core.Tests/LargeFixture.cs" Link="LargeFixture.cs" />
   </ItemGroup>
 
 </Project>
