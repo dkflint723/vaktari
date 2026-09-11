@@ -38,6 +38,16 @@ public sealed class WindowsSearchProvider : ISearchProvider
     /// </summary>
     public bool AnswersFromIndex(SearchQuery query) => false;
 
+    /// <summary>
+    /// The walk below skips anything carrying the System attribute — see
+    /// <c>AttributesToSkip</c> in <see cref="Walk"/> — and until this line the
+    /// band never said so. Kept rather than dropped for now: without the skip
+    /// the walk descends <c>$Recycle.Bin</c> and turns up <c>pagefile.sys</c>
+    /// for "sys", and neither is an answer anyone asked for. Said, so that a
+    /// folder a sync client marked System is not searched past in silence.
+    /// </summary>
+    public string? Caveat => "files Windows marks as system are not searched";
+
     public string BackendName => "directory walk";
 
     /// <summary>

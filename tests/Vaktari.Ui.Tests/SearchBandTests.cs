@@ -788,6 +788,42 @@ public sealed class SearchBandTests : OwnedViewModels
             RepoSource.Ui("ViewModels", "PaneViewModel.cs"),
             StringComparison.Ordinal);
 
+    // ---- what the walk leaves out --------------------------------------
+
+    /// <summary>
+    /// **A walk that skips something and does not say so is a search that
+    /// lies by omission.** Windows skips every System-attributed file — a
+    /// framework default narrowed, never a decision — and until the band
+    /// carried this line the only place to learn that was the source. The
+    /// provider states its caveat; the band has to print it.
+    /// </summary>
+    [AvaloniaFact]
+    public async Task The_band_says_what_the_backend_leaves_out()
+    {
+        var pane = Own(new PaneViewModel(new NoDisk()));
+        UseSearch(new Fake([Entry("one.txt")]) { Caveat = "files marked system are skipped" });
+
+        await pane.NavigateAsync(VirtualPaths.Search("one", null, scoped: false));
+
+        Assert.EndsWith("; files marked system are skipped", pane.SearchBackendLine,
+            StringComparison.Ordinal);
+    }
+
+    /// <summary>And a backend with nothing to confess leaves the line exactly
+    /// as it was — no dangling separator, no empty clause.</summary>
+    [AvaloniaFact]
+    public async Task A_backend_with_nothing_to_confess_adds_nothing()
+    {
+        var pane = Own(new PaneViewModel(new NoDisk()));
+        UseSearch(new Fake([Entry("one.txt")]));
+
+        await pane.NavigateAsync(VirtualPaths.Search("one", null, scoped: false));
+
+        Assert.EndsWith("there is no index on this machine", pane.SearchBackendLine,
+            StringComparison.Ordinal);
+        Assert.DoesNotContain(";", pane.SearchBackendLine, StringComparison.Ordinal);
+    }
+
     private sealed class Fake(FileEntry[] results) : ISearchProvider
     {
         public string BackendName => "fake";
@@ -805,6 +841,10 @@ public sealed class SearchBandTests : OwnedViewModels
         /// every real provider on both platforms currently is.
         /// </summary>
         public Func<SearchQuery, bool> Indexes { get; init; } = static _ => false;
+
+        /// <summary>What the backend leaves out, for the band; null by default
+        /// exactly as the interface defaults it.</summary>
+        public string? Caveat { get; init; }
 
         public bool AnswersFromIndex(SearchQuery query) => Indexes(query);
 

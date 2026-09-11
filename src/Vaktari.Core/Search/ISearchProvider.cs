@@ -117,6 +117,23 @@ public interface ISearchProvider
     string Everywhere => "everywhere";
 
     /// <summary>
+    /// What this backend's search leaves out, said in a few words for the band
+    /// above the results — or null when there is nothing to confess.
+    ///
+    /// **Windows skipped every file carrying the System attribute and nothing
+    /// on screen said so.** The walk's <c>AttributesToSkip</c> was the
+    /// framework's default narrowed, not a decision, and a folder a sync client
+    /// had marked System was searched past in silence. Explorer searches those.
+    /// Whether to search them is the provider's call; that the call is VISIBLE
+    /// is this member's, and it sits beside <see cref="Everywhere"/> for the
+    /// same reason that one does — the band is not the place for a second copy
+    /// of a rule that lives here.
+    ///
+    /// Defaulted to null so a provider with nothing to leave out says nothing.
+    /// </summary>
+    string? Caveat => null;
+
+    /// <summary>
     /// Streams results as the index answers, so the panel fills progressively
     /// instead of waiting on a complete result set.
     /// </summary>

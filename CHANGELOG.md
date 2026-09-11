@@ -21,6 +21,14 @@ should not be trusted for compatibility yet.
 
 ### Fixed
 
+- **A search on Windows now says that files marked as system are not
+  searched.** The walk has always skipped anything carrying the System
+  attribute — a framework default rather than a decision — and nothing on
+  screen said so, so a folder a sync client had marked that way was searched
+  past in silence. The line under the search that explains there is no index
+  now says this too. What is skipped is unchanged; that it is skipped is no
+  longer a secret.
+
 - **Hovering a banded row no longer wipes out its band.** Every other row in a
   listing is drawn a shade apart from its neighbours, which is what lets the eye
   follow one across a wide window — and the moment the pointer crossed such a

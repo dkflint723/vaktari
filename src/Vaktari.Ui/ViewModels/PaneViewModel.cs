@@ -2246,10 +2246,21 @@ public sealed partial class PaneViewModel : ObservableObject, IDisposable
     /// works, during and after.
     /// </summary>
     public string SearchBackendLine =>
-        VirtualPaths.ScopeOf(CurrentPath) is { Length: > 0 } scope
+        (VirtualPaths.ScopeOf(CurrentPath) is { Length: > 0 } scope
             ? $"every folder in {FolderName(scope)} is read in turn — "
               + "there is no index on this machine"
-            : "every folder is read in turn — there is no index on this machine";
+            : "every folder is read in turn — there is no index on this machine")
+        + SearchCaveat;
+
+    /// <summary>
+    /// What the backend leaves out, appended to the line above. **A walk that
+    /// skips something and does not say so is a search that lies by omission**
+    /// — on Windows it skipped every System-attributed file, and the only
+    /// place a person could have learned that was the source. Empty when the
+    /// provider has nothing to confess, so the line reads exactly as before.
+    /// </summary>
+    private string SearchCaveat =>
+        Search?.Caveat is { Length: > 0 } caveat ? $"; {caveat}" : "";
 
     /// <summary>
     /// Whether that line is drawn at all: an index answering has nothing to
