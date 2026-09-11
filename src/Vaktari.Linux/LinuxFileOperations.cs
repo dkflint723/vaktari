@@ -1,4 +1,5 @@
 using System.Collections.Concurrent;
+using Vaktari.Core;
 using Vaktari.Core.FileSystem;
 
 namespace Vaktari.Linux;
@@ -14,7 +15,21 @@ public sealed class LinuxFileOperations : IFileOperations
 {
     private const int BufferSize = 1 << 20;
 
-    private readonly ConcurrentStack<IUndoable> _undo = new();
+    /// <summary>
+    /// How many steps back Undo reaches.
+    ///
+    /// **There was no ceiling.** Every operation pushed an entry holding the
+    /// paths it landed and nothing ever let one go, so a long session carried
+    /// its whole history until the window closed. A hundred is far past what
+    /// anyone walks back through by hand, and the bin is what covers anything
+    /// older.
+    /// </summary>
+    private const int UndoHistoryLimit = 100;
+
+    private readonly BoundedStack<IUndoable> _undo = new(UndoHistoryLimit);
+
+    // Redo needs no ceiling of its own: it only ever holds what was popped off
+    // the undo stack, which is already bounded.
     private readonly ConcurrentStack<IUndoable> _redo = new();
 
     /// <summary>The open rename group, when a batch rename is running. See

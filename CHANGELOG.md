@@ -11,6 +11,14 @@ should not be trusted for compatibility yet.
 
 ## [Unreleased]
 
+### Changed
+
+- **Undo reaches a hundred steps back, rather than every step since the
+  window opened.** Each operation keeps a note of what it landed so it can be
+  taken back, and nothing ever let one go — a long day of renaming and moving
+  carried all of it in memory until Vaktari closed, for an undo nobody was
+  going to press a thousand steps back. The bin is what covers anything older.
+
 ### Fixed
 
 - **Hovering a banded row no longer wipes out its band.** Every other row in a
