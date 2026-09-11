@@ -594,8 +594,10 @@ promise yet. Worth knowing before you decide:
   against the glibc of GitHub's current Ubuntu runner, so it will not start on
   a long-term-support distribution several years older.
 - The interface is **English only**.
-- Vaktari never checks for updates. Upgrading means going back to the releases
-  page.
+- Vaktari does not update itself. It looks for a newer release only when
+  *Check for a newer release once a day* is ticked in Settings ▸ General, and
+  that box is off by default. It downloads nothing; upgrading means going back
+  to the releases page.
 
 **Searching**
 
@@ -611,8 +613,6 @@ promise yet. Worth knowing before you decide:
   slow and the answer is a shallow slice rather than a complete one. On Linux,
   Baloo answers where KDE is indexing.
 - *Match case* is Windows-only — it is the only backend that honours it.
-- Searches cannot be saved. The history offers the last twelve to run again;
-  there is no named saved search.
 - Recent files and locations are Vaktari's own record. Files you opened in
   other applications do not appear.
 
