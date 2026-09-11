@@ -297,6 +297,10 @@ public partial class MainWindow : Window
         // write. Through the same store the settings dialog saves with, so the
         // two routes cannot disagree about where preferences live.
         _shell.DefaultViewChanged += (_, settings) => _services.SettingsStore.Save(settings);
+
+        // A dragged column width, once the drag has ended: the same route for
+        // the same reason.
+        _shell.ColumnWidthsChanged += (_, settings) => _services.SettingsStore.Save(settings);
         _shell.EmptyTrashRequested += (_, _) => AskConfirmEmptyTrash();
 
         // Exactly what Delete does, so the menu and the key cannot disagree
@@ -1821,6 +1825,28 @@ public partial class MainWindow : Window
         if (sender is Control { DataContext: PaneGroupViewModel group })
             group.ResizeInfoBy(e.Vector.X);
     }
+
+    /// <summary>
+    /// Widens or narrows a details column as the grip on its heading is
+    /// dragged. The same plumbing as the two handles above — which column,
+    /// from the Thumb's Tag, and how far — with the arithmetic in the shell.
+    ///
+    /// **The pane's own zoom goes with it.** The grip reports pixels on
+    /// screen and the width is kept at 100%, and it is THIS pane's scale the
+    /// column under the pointer was drawn at: in a split at two zooms, the
+    /// other side's would move the column a different distance from the
+    /// pointer. From the DataContext rather than a name for the reason the
+    /// info handle gives: in split view there are two of these, and a name
+    /// would find one.
+    /// </summary>
+    private void OnColumnGripDragDelta(object? sender, VectorEventArgs e)
+    {
+        if (sender is Control { DataContext: PaneViewModel pane, Tag: string column })
+            _shell.ResizeColumn(Enum.Parse<DetailsColumn>(column), e.Vector.X, pane.FontScale);
+    }
+
+    private void OnColumnGripDragCompleted(object? sender, VectorEventArgs e)
+        => _shell.CommitColumnWidths();
 
     /// <summary>
     /// Keeps a sidebar place from opening a menu with nothing in it.

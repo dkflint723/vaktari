@@ -1528,6 +1528,85 @@ public sealed partial class ShellViewModel : ObservableObject, IDisposable
         NotifyTargetSizes();
     }
 
+    // ---- column widths --------------------------------------------------------
+
+    /// <summary>
+    /// Raised once a dragged column width is in force and the drag has ended,
+    /// so the window can write it out through the settings store it owns — the
+    /// same shape as <see cref="DefaultViewChanged"/>, for the same reason:
+    /// the shell has no store of its own.
+    ///
+    /// At the END of the drag and not on every move: a drag is a hundred
+    /// events, and each one written to disk is a hundred atomic rewrites of
+    /// settings.json for one gesture.
+    /// </summary>
+    public event EventHandler<Core.Settings.SettingsState>? ColumnWidthsChanged;
+
+    /// <summary>
+    /// Moves one details column's width by how far its grip was dragged.
+    ///
+    /// **The four metadata columns were fixed widths, in a file manager.**
+    /// Every table a person has used lets a heading's edge be dragged, and a
+    /// date column that cannot be widened is a date column that trims the year
+    /// off at every size the designed width did not anticipate — a long
+    /// relative date, a mono font with wide digits, a size in a language with
+    /// a longer unit.
+    ///
+    /// The grip reports pixels on screen; the width is kept at 100%, so the
+    /// pixels are divided by what the column was drawn at — the pane's own
+    /// zoom times the interface size, exactly the product
+    /// <see cref="PaneScale.Compute"/> multiplies the width by on the way out.
+    /// Skipping the division would move a column at 200% half as far as the
+    /// pointer, and the grip would slide out from under it.
+    ///
+    /// Every pane takes the width at once, through the same re-apply a zoom
+    /// notch runs, because the width is one preference and not a property of
+    /// the pane that was dragged. The file is written when the drag ends: see
+    /// <see cref="ColumnWidthsChanged"/>.
+    /// </summary>
+    public void ResizeColumn(Core.Settings.DetailsColumn column, double deltaPixels, double paneFontScale)
+    {
+        var scale = paneFontScale * InterfaceText.Scale;
+        var details = Settings.AppSettings.Current.Views.Details;
+        var current = PaneScale.ColumnWidth(details, column);
+
+        var next = Math.Clamp(
+            Math.Round(current + deltaPixels / scale, 1),
+            PaneScale.ColumnMin, PaneScale.ColumnMax);
+
+        SetColumnWidths(details.WithWidth(column, next));
+    }
+
+    /// <summary>The drag has ended; what it left is written out.</summary>
+    public void CommitColumnWidths()
+        => ColumnWidthsChanged?.Invoke(this, Settings.AppSettings.Current);
+
+    /// <summary>
+    /// Every column back to its designed width, and written out at once — the
+    /// only way back after a drag went too far, short of restoring every
+    /// setting in the dialog.
+    /// </summary>
+    [RelayCommand]
+    private void ResetColumnWidths()
+    {
+        SetColumnWidths(Settings.AppSettings.Current.Views.Details with
+        {
+            TypeColumn = 0, SizeColumn = 0, ModifiedColumn = 0, CreatedColumn = 0,
+        });
+
+        CommitColumnWidths();
+    }
+
+    private void SetColumnWidths(Core.Settings.DetailsViewSettings details)
+    {
+        Settings.AppSettings.Apply(Settings.AppSettings.Current with
+        {
+            Views = Settings.AppSettings.Current.Views with { Details = details },
+        });
+
+        RefreshPaneScales();
+    }
+
     /// <summary>
     /// Re-lists every open pane.
     ///

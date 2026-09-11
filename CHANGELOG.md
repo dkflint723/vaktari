@@ -13,6 +13,14 @@ should not be trusted for compatibility yet.
 
 ### Added
 
+- **The list's columns can be dragged wider or narrower.** The right edge of
+  the Type, Size, Modified and Created headings is a grip: drag it and the
+  column follows, in every pane, and the width is kept across a restart. A
+  date that trimmed its year at the designed width, or a size column with
+  room to spare, is now yours to set; *Reset column widths* on the headings'
+  right-click menu puts the four back. The columns keep their order — moving
+  one to a different place in the row is not in this release.
+
 - **Vaktari can tell you when a newer release exists — if you ask it to.**
   Settings ▸ General ▸ Updates has a box, off by default. With it on,
   Vaktari asks github.com once a day whether a newer release exists, sending

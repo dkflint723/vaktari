@@ -2,6 +2,7 @@ using System.ComponentModel;
 using System.Runtime.CompilerServices;
 using Avalonia;
 using Avalonia.Controls;
+using Vaktari.Core.Settings;
 using Vaktari.Ui.ViewModels;
 
 namespace Vaktari.Ui;
@@ -159,6 +160,53 @@ public static class PaneScale
     /// </summary>
     public static double? StepDownAt(Vaktari.Core.Session.ViewMode mode)
         => Neighbour(mode, false) is { } below ? IconPixelRange(below).Max : null;
+
+    /// <summary>
+    /// The columns a heading's grip can drag: the resource each is drawn
+    /// through and its designed width at 100%.
+    ///
+    /// Type is wide enough for "DOCX file" and no wider: it is the newest
+    /// column and the one that has to justify every pixel, because all of them
+    /// come out of the name beside it. Created is the same width as Modified
+    /// because it holds the same converter's output, in the same three shapes.
+    /// </summary>
+    private static readonly (DetailsColumn Column, string Key, double Designed)[] Columns =
+    [
+        (DetailsColumn.Type, "ColType", 110),
+        (DetailsColumn.Size, "ColSize", 100),
+        (DetailsColumn.Modified, "ColModified", 150),
+        (DetailsColumn.Created, "ColCreated", 150),
+    ];
+
+    /// <summary>
+    /// The narrowest and widest a column can be dragged or written, in pixels
+    /// at 100%. 40 still shows a size and the first characters of a date, so
+    /// the heading stays a thing to grab; 600 is wider than any of the four
+    /// has content for, and past it the drag is only taking room from the
+    /// name.
+    /// </summary>
+    public const double ColumnMin = 40;
+    public const double ColumnMax = 600;
+
+    /// <summary>The width a column was designed at, before anybody dragged it.</summary>
+    public static double DesignedWidth(DetailsColumn column)
+        => Columns.Single(c => c.Column == column).Designed;
+
+    /// <summary>
+    /// The width a column is drawn at, at 100%: what the file says, held to
+    /// the range, or the designed width when the file says nothing. **Zero and
+    /// below are "nothing", not a width** — see
+    /// <see cref="DetailsViewSettings.TypeColumn"/> for why zero has to mean
+    /// that.
+    /// </summary>
+    public static double ColumnWidth(DetailsViewSettings details, DetailsColumn column)
+    {
+        var chosen = details.Width(column);
+
+        return chosen <= 0
+            ? DesignedWidth(column)
+            : Math.Clamp(chosen, ColumnMin, ColumnMax);
+    }
 
     private static readonly (string Key, double Value)[] IconMetrics =
     [
@@ -328,15 +376,15 @@ public static class PaneScale
         yield return ("ColPathNarrow", Math.Round(120 * fontScale, 1));
         yield return ("ColPathWide", Math.Round(200 * fontScale, 1));
         yield return ("ColPermissions", Math.Round(100 * fontScale, 1));
-        // Wide enough for "DOCX file" and no wider: it is the newest column and
-        // the one that has to justify every pixel, because all of them come out
-        // of the name beside it.
-        yield return ("ColType", Math.Round(110 * fontScale, 1));
-        yield return ("ColSize", Math.Round(100 * fontScale, 1));
-        yield return ("ColModified", Math.Round(150 * fontScale, 1));
-        // The same width as Modified: it holds the same converter's output, in
-        // the same three shapes.
-        yield return ("ColCreated", Math.Round(150 * fontScale, 1));
+
+        // The four a heading's grip can drag. The designed width unless the
+        // file says otherwise, and the file's number held to the range —
+        // settings.json can be edited by hand, and a column 2 pixels wide is
+        // a column that has vanished with its heading still ticked.
+        var details = Settings.AppSettings.Current.Views.Details;
+
+        foreach (var (column, key, _) in Columns)
+            yield return (key, Math.Round(ColumnWidth(details, column) * fontScale, 1));
 
         yield return ("CompactIconSize", compactIcon);
         yield return ("CompactRowHeight", compactRow);

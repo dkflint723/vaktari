@@ -259,8 +259,11 @@ public sealed class CreatedColumnTests : OwnedViewModels
     [AvaloniaFact]
     public void The_created_column_took_the_seventh_slot_in_both_grids()
     {
+        // The heading's resize grip shares its cell and is not a cell: see
+        // ColumnWidthTests for what it is.
         var inColumnSix = Markup()
             .Descendants()
+            .Where(e => e.Name != Avalonia + "Thumb")
             .Count(e => (string?)e.Attribute("Grid.Column") == "6");
 
         Assert.Equal(2, inColumnSix);
@@ -374,8 +377,11 @@ public sealed class CreatedColumnTests : OwnedViewModels
     [AvaloniaFact]
     public void The_width_the_cells_ask_for_is_a_width_PaneScale_computes()
     {
+        // The grip in the heading's cell has a width of its own and asks for
+        // no resource; it is not one of the two.
         var keys = Markup()
             .Descendants()
+            .Where(e => e.Name != Avalonia + "Thumb")
             .Where(e => (string?)e.Attribute("Grid.Column") == "6")
             .Select(e => (string?)e.Attribute("Width"))
             .ToList();

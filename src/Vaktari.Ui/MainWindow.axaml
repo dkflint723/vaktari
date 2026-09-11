@@ -215,6 +215,33 @@
       <Setter Property="FontSize" Value="{DynamicResource FontSizeBase}"/>
     </Style>
 
+    <!-- **The grip on a details heading's right edge.** The four metadata
+         columns were fixed widths; every table a person has used lets a
+         heading's edge be dragged. The same shape as the sidebar's handle and
+         the details panel's, for the same reason: a Thumb reports how far it
+         was dragged and changes nothing itself, and the width is moved in the
+         handler. Transparent because the edge of the column is the line
+         somebody reaches for and a drawn bar would be a fifth column; six
+         pixels wide so it can be found with a pointer, and the cursor
+         announces it. Right-aligned in the SAME grid cell as its heading,
+         drawn after it so it is on top of the heading's last six pixels.
+
+         A Style rather than four copies of the template, so that the one
+         template, width and cursor cannot drift between the four; what
+         differs per column — which column, its heading's visibility and its
+         name to a screen reader — stays on each Thumb. -->
+    <Style Selector="Thumb.columnGrip">
+      <Setter Property="Width" Value="6"/>
+      <Setter Property="HorizontalAlignment" Value="Right"/>
+      <Setter Property="Background" Value="Transparent"/>
+      <Setter Property="Cursor" Value="SizeWestEast"/>
+      <Setter Property="Template">
+        <ControlTemplate>
+          <Border Background="{TemplateBinding Background}"/>
+        </ControlTemplate>
+      </Setter>
+    </Style>
+
   </Window.Styles>
 
   <Window.Resources>
@@ -2285,6 +2312,11 @@
                                           IsChecked="{Binding ActiveTab.IsCreatedColumnShown, Mode=OneWay}"
                                           Command="{Binding ActiveTab.ToggleCreatedColumnCommand}"/>
                                 <Separator/>
+                                <!-- The grips are a pointer's; this row is how
+                                     a keyboard undoes what one did. -->
+                                <MenuItem Header="Reset column _widths"
+                                          Command="{Binding $parent[Window].((vm:ShellViewModel)DataContext).ResetColumnWidthsCommand}"/>
+                                <Separator/>
                                 <MenuItem Header="A narrow pane drops columns to keep the name readable."
                                           IsEnabled="False"/>
                               </MenuItem>
@@ -2702,6 +2734,14 @@
                               IsChecked="{Binding IsCreatedColumnShown, Mode=OneWay}"
                               Command="{Binding ToggleCreatedColumnCommand}"/>
                     <Separator/>
+                    <!-- The way back from a drag that went too far, short of
+                         restoring every setting in the dialog. Through the
+                         window, unlike the four toggles above: the widths are
+                         one preference for every pane, which is what the
+                         toggles must not be — see the note on them. -->
+                    <MenuItem Header="Reset column _widths"
+                              Command="{Binding $parent[Window].((vm:ShellViewModel)DataContext).ResetColumnWidthsCommand}"/>
+                    <Separator/>
                     <!-- Says the other half out loud. A ticked column that is
                          not on screen looks like a bug, and this is the one
                          place somebody is looking when they wonder why. -->
@@ -2841,6 +2881,19 @@
                       <Run Text="Type"/><Run Text="{Binding KindSortGlyph}"/>
                     </TextBlock>
                   </Button>
+                  <!-- Each grip hides WITH its heading, and that is not
+                       tidiness: the cell is Auto, so a grip left visible in a
+                       column that is off keeps the cell six pixels wide with
+                       nothing in it, and the rows — whose cell really is
+                       empty — draw six pixels left of the headings from there
+                       on. Measured in a headless window at 1800px with the
+                       created column off: 0 wide with the binding, 6 without.
+                       See Thumb.columnGrip for the rest of the shape. -->
+                  <Thumb Grid.Column="3" Classes="columnGrip" Tag="Type"
+                         IsVisible="{Binding ShowType}"
+                         AutomationProperties.Name="Resize the type column"
+                         DragDelta="OnColumnGripDragDelta"
+                         DragCompleted="OnColumnGripDragCompleted"/>
                   <Button Grid.Column="4" Width="{DynamicResource ColSize}" Command="{Binding SortByCommand}" CommandParameter="size"
                           AutomationProperties.Name="Sort by size"
                           IsVisible="{Binding ShowSize}"
@@ -2851,6 +2904,11 @@
                       <Run Text="Size"/><Run Text="{Binding SizeSortGlyph}"/>
                     </TextBlock>
                   </Button>
+                  <Thumb Grid.Column="4" Classes="columnGrip" Tag="Size"
+                         IsVisible="{Binding ShowSize}"
+                         AutomationProperties.Name="Resize the size column"
+                         DragDelta="OnColumnGripDragDelta"
+                         DragCompleted="OnColumnGripDragCompleted"/>
                   <Button Grid.Column="5" Width="{DynamicResource ColModified}" Command="{Binding SortByCommand}" CommandParameter="modified"
                           AutomationProperties.Name="Sort by date modified"
                           IsVisible="{Binding ShowModified}"
@@ -2861,6 +2919,11 @@
                       <Run Text="Modified"/><Run Text="{Binding ModifiedSortGlyph}"/>
                     </TextBlock>
                   </Button>
+                  <Thumb Grid.Column="5" Classes="columnGrip" Tag="Modified"
+                         IsVisible="{Binding ShowModified}"
+                         AutomationProperties.Name="Resize the date modified column"
+                         DragDelta="OnColumnGripDragDelta"
+                         DragCompleted="OnColumnGripDragCompleted"/>
                   <!-- **When the file was made, which nothing in the window
                        could say.** A heading rather than a label, because every
                        other heading in this band sorts and one that did not
@@ -2876,6 +2939,11 @@
                       <Run Text="Created"/><Run Text="{Binding CreatedSortGlyph}"/>
                     </TextBlock>
                   </Button>
+                  <Thumb Grid.Column="6" Classes="columnGrip" Tag="Created"
+                         IsVisible="{Binding ShowCreated}"
+                         AutomationProperties.Name="Resize the date created column"
+                         DragDelta="OnColumnGripDragDelta"
+                         DragCompleted="OnColumnGripDragCompleted"/>
                 </Grid>
               </Border>
 
