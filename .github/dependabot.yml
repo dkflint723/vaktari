@@ -1,0 +1,26 @@
+# Dependency updates as pull requests, once a week, so a package with a
+# published advisory is offered rather than waited for. Grouped: the Avalonia
+# family moves together and a dozen single-line PRs on a Monday is noise
+# nobody reads.
+version: 2
+updates:
+  - package-ecosystem: nuget
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+    groups:
+      avalonia:
+        patterns:
+          - "Avalonia*"
+      xunit:
+        patterns:
+          - "xunit*"
+          - "Microsoft.NET.Test.Sdk"
+    open-pull-requests-limit: 5
+
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday

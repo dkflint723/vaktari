@@ -1,0 +1,44 @@
+# The conventions the code already follows, written down so an editor and a
+# contributor keep them without being told. Formatting and naming only: the
+# build treats warnings as errors and this file is not allowed to make one.
+root = true
+
+[*]
+charset = utf-8
+end_of_line = lf
+insert_final_newline = true
+trim_trailing_whitespace = true
+indent_style = space
+indent_size = 4
+
+[*.{yml,yaml,json}]
+indent_size = 2
+
+[*.md]
+# A trailing double space is a line break in Markdown.
+trim_trailing_whitespace = false
+
+[*.{cs,axaml}]
+max_line_length = 120
+
+[*.cs]
+# File-scoped namespaces, `var` everywhere, expression bodies where they read,
+# Allman braces, and _camelCase fields: what the tree already does.
+csharp_style_namespace_declarations = file_scoped:suggestion
+csharp_style_var_for_built_in_types = true:suggestion
+csharp_style_var_when_type_is_apparent = true:suggestion
+csharp_style_var_elsewhere = true:suggestion
+csharp_new_line_before_open_brace = all
+csharp_prefer_braces = when_multiline:suggestion
+csharp_style_expression_bodied_methods = when_on_single_line:suggestion
+csharp_style_expression_bodied_properties = true:suggestion
+dotnet_sort_system_directives_first = true
+dotnet_style_qualification_for_field = false:suggestion
+
+dotnet_naming_rule.private_fields_are_camel_case_with_underscore.symbols = private_fields
+dotnet_naming_rule.private_fields_are_camel_case_with_underscore.style = underscore_camel_case
+dotnet_naming_rule.private_fields_are_camel_case_with_underscore.severity = suggestion
+dotnet_naming_symbols.private_fields.applicable_kinds = field
+dotnet_naming_symbols.private_fields.applicable_accessibilities = private
+dotnet_naming_style.underscore_camel_case.capitalization = camel_case
+dotnet_naming_style.underscore_camel_case.required_prefix = _

@@ -109,6 +109,38 @@ jobs:
           dotnet test tests/Vaktari.Linux.Tests --configuration Debug
           dotnet test tests/Vaktari.Ui.Tests --configuration Debug
 
+      # **A gate, not a report.** Nothing audited what the binary carries, and
+      # a published advisory against a transitive package — which is where
+      # nearly all of them are — would have shipped in silence. This asks
+      # NuGet's advisory database about every package in the graph and turns
+      # the job red on a hit. Fatal on purpose: a warning in a log is a
+      # warning nobody reads. When it fires, the fix is an update, or a
+      # deliberate `NuGetAudit` suppression written down beside the reason.
+      - name: Dependency audit
+        run: |
+          set -o pipefail
+          dotnet list vaktari.slnx package --vulnerable --include-transitive | tee audit.txt
+          if grep -q "has the following vulnerable packages" audit.txt; then
+            echo "::error::a package in the dependency graph has a published advisory (see above)"
+            exit 1
+          fi
+
+      # A bill of materials, in the CycloneDX form the scanners read, built
+      # from the same restore the tests ran against and shipped with the
+      # release so anybody downstream can check the graph against the
+      # advisories of their own day rather than ours.
+      - name: Bill of materials
+        run: |
+          dotnet tool install --global CycloneDX --version 6.2.0
+          dotnet CycloneDX vaktari.slnx --output sbom --filename vaktari-sbom.cdx.json --json
+          test -s sbom/vaktari-sbom.cdx.json || { echo "no bill of materials was written"; exit 1; }
+
+      - uses: actions/upload-artifact@v7
+        with:
+          name: vaktari-sbom
+          path: sbom/vaktari-sbom.cdx.json
+          retention-days: 2
+
       - name: Publish
         run: |
           # Same tag-shaped test the distro workflow uses: `${VAR:-default}`
@@ -324,5 +356,5 @@ jobs:
             || gh release view "$GITHUB_REF_NAME" >/dev/null
 
           gh release upload "$GITHUB_REF_NAME" \
-            assets/vaktari-linux-x64/* assets/vaktari-win-x64/* \
+            assets/vaktari-linux-x64/* assets/vaktari-win-x64/* assets/vaktari-sbom/* \
             --clobber
