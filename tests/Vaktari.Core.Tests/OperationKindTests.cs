@@ -76,5 +76,6 @@ public sealed class OperationKindTests
         // Declared with explicit accessors so an event nobody raises is not a
         // warning, which this build treats as an error.
         public event EventHandler<OperationProgress>? Progressed { add { } remove { } }
+        public event EventHandler? StateChanged { add { } remove { } }
     }
 }

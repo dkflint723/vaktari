@@ -193,6 +193,19 @@ public interface IOperationHandle
     event EventHandler<OperationProgress>? Progressed;
 
     /// <summary>
+    /// Raised on every change of <see cref="State"/> — begun, paused,
+    /// resumed, and the three ways a run ends.
+    ///
+    /// **Was on the concrete class, where nothing outside the engines could
+    /// subscribe to it.** The rows behind the transfer bar's count are built
+    /// once per handle; they could cancel and could not pause, because a row
+    /// that said "Resume" had no way to learn its operation had been paused —
+    /// so the pause stayed the bar's, and the bar follows the newest handle
+    /// only. Here beside <see cref="Progressed"/>, for the reason that one is.
+    /// </summary>
+    event EventHandler? StateChanged;
+
+    /// <summary>
     /// Why the operation failed, when State is Failed. Operations swallow their
     /// exceptions so one bad file cannot tear down the app — but swallowing
     /// them without surfacing this makes a refused delete indistinguishable

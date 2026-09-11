@@ -4374,6 +4374,18 @@
                               FontSize="{DynamicResource FontSizeSmall}" Padding="8,2"
                               IsVisible="{Binding CanCancel}"
                               Command="{Binding CancelCommand}"/>
+                      <!-- **Pause was the bar's alone, and the bar follows the
+                           newest.** The same finding as the cancel beside it,
+                           one button later: a row can now pause THIS operation,
+                           and its word follows the operation's state — paused
+                           from here or from the bar, it reads Resume — through
+                           StateChanged, which was promoted to the interface for
+                           exactly this. Declared after Cancel so it docks to
+                           Cancel's left, the order the bar's own pair keeps. -->
+                      <Button DockPanel.Dock="Right" Content="{Binding PauseLabel}" Margin="8,0,0,0"
+                              FontSize="{DynamicResource FontSizeSmall}" Padding="8,2"
+                              IsVisible="{Binding CanPause}"
+                              Command="{Binding PauseCommand}"/>
                       <!-- The fill child, so it takes what the cancel left, and
                            trimmed rather than wrapped for the reason the bar's
                            own status line records: a row that grew taller would

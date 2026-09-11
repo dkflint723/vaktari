@@ -1,3 +1,5 @@
+using Avalonia.Threading;
+using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using Vaktari.Core.FileSystem;
 
@@ -16,32 +18,46 @@ namespace Vaktari.Ui.ViewModels;
 /// underneath was to wait for the one on top to finish.
 ///
 /// A row per handle answers both halves — what each one is doing, and a cancel
-/// that reaches THAT one.
+/// and a pause that reach THAT one.
 ///
-/// **Built once per row rather than tracking the handle**, which is what its
-/// sentence can honestly promise. The INTERFACE offers
-/// <see cref="IOperationHandle.Progressed"/> and no member for state:
-/// OperationHandle does raise a <c>StateChanged</c> of its own from SetState,
-/// which every one of Begin, Pause, Resume, Complete, Cancelled and Failed goes
-/// through, but it is declared on the concrete class, nothing in the repository
-/// subscribes to it, and reaching past the interface for it is the leak the
-/// platform split exists to prevent. So a row that said "paused" would need
-/// that member promoted to IOperationHandle first, which this change
-/// deliberately did not do: as things stand a row is rebuilt only when an
-/// operation starts or ends, and would say "paused" only if a pause happened to
-/// coincide with one. The progress line, the fraction and the speed stay on the
-/// bar, where there is a subscription behind them.
+/// **A row could cancel and could not pause**, and the reason was on the
+/// interface: it offered <see cref="IOperationHandle.Progressed"/> and no
+/// member for state, so a row that said "Resume" had no way to learn its
+/// operation had been paused — by its own button or by the bar's — and the
+/// pause stayed the bar's, which reaches the newest handle only.
+/// <see cref="IOperationHandle.StateChanged"/> is on the interface now, for
+/// exactly this, and a row follows it for as long as it is shown: the list is
+/// rebuilt whenever an operation starts or ends, and a row that has been
+/// replaced lets go of its handle in <see cref="Dispose"/>. The progress line,
+/// the fraction and the speed stay on the bar, where there is a subscription
+/// behind them.
 /// </summary>
-public sealed partial class RunningOperationRow
+public sealed partial class RunningOperationRow : ObservableObject, IDisposable
 {
     private readonly IOperationHandle _handle;
+    private readonly EventHandler _onStateChanged;
 
     internal RunningOperationRow(IOperationHandle handle)
     {
         _handle = handle;
         Description = Describe(handle.Kind, handle.Paths);
         CanCancel = handle.CanCancel;
+        CanPause = handle.CanPause;
+        _isPaused = handle.State == OperationState.Paused;
+
+        // The engine sets state from its own thread and the label is read by
+        // the view; a change made on the UI thread — a press on this row's
+        // own button — lands at once rather than a dispatcher turn later.
+        _onStateChanged = (_, _) =>
+        {
+            if (Dispatcher.UIThread.CheckAccess()) Follow();
+            else Dispatcher.UIThread.Post(Follow);
+        };
+
+        handle.StateChanged += _onStateChanged;
     }
+
+    private void Follow() => IsPaused = _handle.State == OperationState.Paused;
 
     /// <summary>What this operation is doing, in words — "Copying 3 items to
     /// Photos", "Moving report.txt to the bin".</summary>
@@ -59,10 +75,38 @@ public sealed partial class RunningOperationRow
     /// </summary>
     public bool CanCancel { get; }
 
+    /// <summary>Whether this row's Pause means anything — asked of the handle
+    /// for the reason <see cref="CanCancel"/> is: the same blocking recycle
+    /// has no gate to wait at.</summary>
+    public bool CanPause { get; }
+
+    /// <summary>Whether the operation is paused right now, from the handle's
+    /// own state — set from its own button or from the bar's alike.</summary>
+    [ObservableProperty] private bool _isPaused;
+
+    partial void OnIsPausedChanged(bool value) => OnPropertyChanged(nameof(PauseLabel));
+
+    /// <summary>One button, two words — the operation's state decides which,
+    /// the same as the bar's own button.</summary>
+    public string PauseLabel => IsPaused ? "Resume" : "Pause";
+
     /// <summary>Stops THIS operation, which is the whole of the finding: the
     /// bar's Cancel reaches only the handle it happens to be following.</summary>
     [RelayCommand]
     private void Cancel() => _handle.Cancel();
+
+    /// <summary>Pauses or resumes THIS operation, whichever one the bar
+    /// happens to be following.</summary>
+    [RelayCommand]
+    private void Pause()
+    {
+        if (_handle.State == OperationState.Paused) _handle.Resume();
+        else _handle.Pause();
+    }
+
+    /// <summary>Lets go of the handle. A replaced row still subscribed would
+    /// go on following a label nothing shows, for as long as the handle lived.</summary>
+    public void Dispose() => _handle.StateChanged -= _onStateChanged;
 
     /// <summary>
     /// The sentence, from the verb the engine recorded and the paths it was

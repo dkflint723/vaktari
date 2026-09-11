@@ -49,13 +49,15 @@ public sealed class RunningOperationsListTests : OwnedViewModels
         ShellViewModel shell,
         OperationKind kind = OperationKind.Other,
         IReadOnlyList<string>? paths = null,
-        bool canCancel = true)
+        bool canCancel = true,
+        bool canPause = true)
     {
         var handle = new OperationHandle
         {
             Kind = kind,
             Paths = paths ?? [],
             CanCancel = canCancel,
+            CanPause = canPause,
         };
 
         shell.ActiveTab!.Adopt(handle);
@@ -314,6 +316,117 @@ public sealed class RunningOperationsListTests : OwnedViewModels
         await DrainAsync(shell, stoppable, recycle);
     }
 
+    // ---- the pause on the row ----------------------------------------------
+
+    /// <summary>
+    /// **Pause was the bar's alone, and the bar follows the newest.** The first
+    /// operation is the one that had no way to be paused; its row's button
+    /// reaches it, leaves the other alone, and says which word comes next.
+    /// </summary>
+    [AvaloniaFact]
+    public async Task A_rows_pause_reaches_its_own_operation_and_says_so()
+    {
+        var shell = Shell();
+
+        var first = Running(shell);
+        var second = Running(shell);
+
+        Assert.Same(second, shell.ActiveOperation);
+
+        var row = shell.RunningOperations[0];
+
+        Assert.True(row.CanPause);
+        Assert.Equal("Pause", row.PauseLabel);
+
+        row.PauseCommand.Execute(null);
+
+        Assert.Equal(OperationState.Paused, first.State);
+        Assert.Equal(OperationState.Running, second.State);
+        Assert.True(row.IsPaused);
+        Assert.Equal("Resume", row.PauseLabel);
+
+        row.PauseCommand.Execute(null);
+
+        Assert.Equal(OperationState.Running, first.State);
+        Assert.Equal("Pause", row.PauseLabel);
+
+        await DrainAsync(shell, first, second);
+    }
+
+    /// <summary>
+    /// The word follows the OPERATION, not the button. Paused from the bar —
+    /// or by anything else holding the handle — the row says Resume, and it
+    /// tells the view so; a computed getter nothing raised would leave the
+    /// button reading Pause over a paused operation.
+    /// </summary>
+    [AvaloniaFact]
+    public async Task A_row_follows_a_pause_made_elsewhere()
+    {
+        var shell = Shell();
+
+        var first = Running(shell);
+        var second = Running(shell);
+
+        // The bar's own Pause reaches the newest handle, which is the second.
+        var row = shell.RunningOperations[1];
+        var told = new List<string?>();
+
+        row.PropertyChanged += (_, e) => told.Add(e.PropertyName);
+
+        shell.PauseOperationCommand.Execute(null);
+
+        Assert.Equal(OperationState.Paused, second.State);
+        Assert.Equal("Resume", row.PauseLabel);
+        Assert.Contains(nameof(RunningOperationRow.PauseLabel), told);
+        Assert.Equal("Pause", shell.RunningOperations[0].PauseLabel);
+
+        await DrainAsync(shell, first, second);
+    }
+
+    /// <summary>The same question the cancel asks, of the same handle: a
+    /// blocking recycle has no gate to wait at.</summary>
+    [AvaloniaFact]
+    public async Task A_row_that_cannot_be_paused_says_so()
+    {
+        var shell = Shell();
+
+        var pausable = Running(shell);
+        var recycle = Running(shell, canPause: false);
+
+        Assert.True(shell.RunningOperations[0].CanPause);
+        Assert.False(shell.RunningOperations[1].CanPause);
+
+        await DrainAsync(shell, pausable, recycle);
+    }
+
+    /// <summary>
+    /// The list is rebuilt whenever an operation starts or ends, so a row is
+    /// replaced often. A replaced row lets go of its handle; one that did not
+    /// would go on following a label nothing shows for as long as the handle
+    /// lived, and nothing would say so.
+    /// </summary>
+    [AvaloniaFact]
+    public async Task A_replaced_row_stops_following_its_operation()
+    {
+        var shell = Shell();
+
+        var first = Running(shell);
+        var stale = shell.RunningOperations[0];
+
+        var second = Running(shell);
+
+        Assert.NotSame(stale, shell.RunningOperations[0]);
+
+        first.Pause();
+
+        Assert.False(stale.IsPaused, "a row no longer shown went on following its handle");
+        Assert.True(shell.RunningOperations[0].IsPaused);
+
+        first.Resume();
+
+        await DrainAsync(shell, first, second);
+    }
+
     // ---- what a row says ---------------------------------------------------
 
     /// <summary>
@@ -436,7 +549,9 @@ public sealed class RunningOperationsListTests : OwnedViewModels
                 OperationKind.Copy,
                 ["one.txt", Path.Combine("D:", "Photos") + Path.DirectorySeparatorChar]));
 
-        var root = "D:" + Path.DirectorySeparatorChar;
+        // This platform's own root — D:\ here, / there — since what a root is
+        // is the platform's to say.
+        var root = Path.GetPathRoot(Path.GetTempPath())!;
 
         Assert.Equal(
             $"Copying one.txt to {root}",
@@ -543,8 +658,8 @@ public sealed class RunningOperationsListTests : OwnedViewModels
         var text = row.Descendants(Avalonia + "TextBlock").Single();
         Assert.Equal("{Binding Description}", (string?)text.Attribute("Text"));
 
-        var cancel = row.Descendants(Avalonia + "Button").Single();
-        Assert.Equal("Cancel", (string?)cancel.Attribute("Content"));
+        var cancel = row.Descendants(Avalonia + "Button")
+                        .Single(b => (string?)b.Attribute("Content") == "Cancel");
         Assert.Equal("{Binding CancelCommand}", (string?)cancel.Attribute("Command"));
 
         // Docked, so the sentence beside it ellipsizes instead of pushing the
@@ -555,6 +670,24 @@ public sealed class RunningOperationsListTests : OwnedViewModels
         // And it is hidden where it would do nothing: a Windows recycle is one
         // blocking call that reads no token.
         Assert.Equal("{Binding CanCancel}", (string?)cancel.Attribute("IsVisible"));
+    }
+
+    /// <summary>
+    /// The pause on the row, bound to the ROW's command and the ROW's word:
+    /// the bar's pause reaches the newest handle only, and a button whose
+    /// label did not follow the operation would read Pause over a paused copy.
+    /// </summary>
+    [Fact]
+    public void Every_row_can_pause_its_operation_and_the_word_follows_it()
+    {
+        var row = ListButton().Descendants(Avalonia + "DataTemplate").Single();
+
+        var pause = row.Descendants(Avalonia + "Button")
+                       .Single(b => (string?)b.Attribute("Command") == "{Binding PauseCommand}");
+
+        Assert.Equal("{Binding PauseLabel}", (string?)pause.Attribute("Content"));
+        Assert.Equal("{Binding CanPause}", (string?)pause.Attribute("IsVisible"));
+        Assert.Equal("Right", (string?)pause.Attribute("DockPanel.Dock"));
     }
 
     /// <summary>

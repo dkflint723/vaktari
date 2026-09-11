@@ -90,6 +90,14 @@ should not be trusted for compatibility yet.
 
 ### Fixed
 
+- **Pause reaches every running operation, not only the newest.** The
+  transfer bar follows whichever operation started last, and its Pause did
+  too; the list behind the bar's count gave each operation a Cancel of its
+  own but no Pause, so the only way to hold a large copy while another one
+  ran was to wait for the one on top. Each row now has a Pause, and its word
+  follows the operation — paused from the row or from the bar, it reads
+  Resume — rather than the button that was pressed.
+
 - **A screen reader can now name every control in the dialogs.** The main
   window named its buttons and rows for assistive technology; the nine
   dialogs — Settings, Properties, Batch rename, Open with, Share, the

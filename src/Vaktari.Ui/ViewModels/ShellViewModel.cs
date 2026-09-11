@@ -3517,16 +3517,25 @@ public sealed partial class ShellViewModel : ObservableObject, IDisposable
     /// three ways and only one of them is Completed. Both cases are in
     /// ConcurrentOperationsTests.
     ///
-    /// Called where the list changes, both sides. IOperationHandle raises
-    /// Progressed and nothing for state, so a subscription is not on offer as
-    /// an alternative: the shell learns an operation is over from its
-    /// Completion continuation, which is the same place the list shrinks.
+    /// Called where the list changes, both sides: the shell learns an
+    /// operation is over from its Completion continuation, which is the same
+    /// place the list shrinks. IOperationHandle.StateChanged exists now, and
+    /// the rows follow it for their own pause word — but the LIST still comes
+    /// from here, because a state change is not the moment a handle leaves
+    /// <see cref="_running"/>, and a row built off the one would disagree with
+    /// the count taken off the other.
+    ///
+    /// The rows being replaced are disposed first: each one holds a
+    /// subscription on its handle, and a row nothing shows any more would go
+    /// on following a label for as long as that handle lived.
     /// </summary>
     private void RefreshConcurrentOperations()
     {
         var live = _running.Where(h => Core.FileSystem.InFlight.Unfinished(h.State)).ToList();
 
         ConcurrentOperations = live.Count > 1 ? $"{live.Count} running" : "";
+
+        foreach (var row in RunningOperations) row.Dispose();
 
         RunningOperations = [.. live.Select(h => new RunningOperationRow(h))];
     }
