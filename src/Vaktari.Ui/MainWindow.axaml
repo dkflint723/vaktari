@@ -618,6 +618,16 @@
                           FontSize="{DynamicResource FontSizeSmall}"
                           Command="{Binding $parent[Window].((vm:ShellViewModel)DataContext).ShowShortcutsCommand}"/>
 
+                  <!-- The window in three cards. Here for anybody, any time,
+                       and not only on a first run: the first run's status
+                       line points HERE rather than opening it, because a file
+                       manager that opens on a dialog has not opened. -->
+                  <Button Content="Take the tour…" Padding="0" MinHeight="0"
+                          Background="Transparent" BorderThickness="0"
+                          HorizontalAlignment="Left"
+                          FontSize="{DynamicResource FontSizeSmall}"
+                          Command="{Binding $parent[Window].((vm:ShellViewModel)DataContext).ShowTourCommand}"/>
+
                   <!-- Ctrl+N was reachable only by already knowing it, which is
                        the same circularity the shortcut sheet above was added
                        to break. -->

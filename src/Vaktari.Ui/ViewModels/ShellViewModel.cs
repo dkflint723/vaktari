@@ -1812,6 +1812,13 @@ public sealed partial class ShellViewModel : ObservableObject, IDisposable
     [RelayCommand]
     private void ShowShortcuts() => ShortcutsRequested?.Invoke(this, EventArgs.Empty);
 
+    /// <summary>Raised so the window can show the tour — the same shape as
+    /// the sheet above, for the same reason.</summary>
+    public event EventHandler? TourRequested;
+
+    [RelayCommand]
+    private void ShowTour() => TourRequested?.Invoke(this, EventArgs.Empty);
+
     public Func<WindowSession>? GeometryProvider { get; set; }
 
     [ObservableProperty] private string _operationStatus = "";

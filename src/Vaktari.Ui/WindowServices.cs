@@ -108,6 +108,17 @@ internal sealed class WindowServices
     internal Vaktari.Core.Updates.ReleaseCheck.Available? UpdateAvailable { get; set; }
 
     /// <summary>
+    /// Whether this launch wrote the settings file — the one thing a first
+    /// run does that no later run can. **A first run got a settings file and
+    /// nothing else**: no word about where the sidebar, the split, the search
+    /// or the keys are, in an application whose pitch is that the keyboard
+    /// reaches all of them. The founder window says so once, on the line that
+    /// stays until dismissed; the tour itself is on the view menu for anybody,
+    /// any time.
+    /// </summary>
+    internal bool FirstRun { get; init; }
+
+    /// <summary>
     /// The desktop's own request channel, held here rather than on the window
     /// that happened to subscribe: the settings dialog reads it, and a
     /// secondary window's dialog would otherwise be handed a null and show
@@ -288,7 +299,7 @@ internal sealed class WindowServices
         // reason they precede the session load below.
         var settingsStore = new JsonSettingsStore(JsonSessionStore.DefaultDirectory());
         var settings = settingsStore.Load();
-        settingsStore.EnsureFileExists(settings);
+        var firstRun = settingsStore.EnsureFileExists(settings);
 
         AppSettings.Apply(settings);
 
@@ -356,7 +367,10 @@ internal sealed class WindowServices
         return new WindowServices(
             platform, settingsStore, settings, session, folderViews, recents,
             searches, driveLinks, driveLinkStore,
-            new Vaktari.Core.Updates.ReleaseCheck(JsonSessionStore.DefaultDirectory()));
+            new Vaktari.Core.Updates.ReleaseCheck(JsonSessionStore.DefaultDirectory()))
+        {
+            FirstRun = firstRun,
+        };
     }
 
     /// <summary>

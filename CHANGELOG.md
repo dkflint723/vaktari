@@ -13,6 +13,14 @@ should not be trusted for compatibility yet.
 
 ### Added
 
+- **A short tour of the window, and a first run that says where it is.** The
+  first time Vaktari runs it writes its settings file and, until now, said
+  nothing else. It now says one line on the operation bar: the tour is under
+  *View options (≡) ▸ Take the tour*. The tour is three cards — the window,
+  finding things, making it yours — each a handful of keys, and every key on
+  it is one the F1 sheet lists. It is there for anybody, any time, not only
+  the first time.
+
 - **The list's columns can be dragged wider or narrower.** The right edge of
   the Type, Size, Modified and Created headings is a grip: drag it and the
   column follows, in every pane, and the width is kept across a restart. A

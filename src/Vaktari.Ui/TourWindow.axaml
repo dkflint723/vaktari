@@ -1,0 +1,68 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:vm="clr-namespace:Vaktari.Ui.ViewModels"
+        x:Class="Vaktari.Ui.TourWindow"
+        Title="Welcome to Vaktari"
+        Background="{DynamicResource AppBackground}"
+        Foreground="{DynamicResource ViewText}"
+        FontFamily="{DynamicResource AppFontFamily}"
+        Width="560" Height="400"
+        CanResize="False"
+        WindowStartupLocation="CenterOwner">
+
+  <!-- The shape of the shortcut sheet: a footer with the buttons and the
+       Escape note, and the card above it. One card at a time rather than
+       three side by side, because three columns of keys is a sheet, and the
+       sheet already exists. -->
+  <DockPanel>
+
+    <Border DockPanel.Dock="Bottom"
+            BorderBrush="{DynamicResource SeparatorColour}"
+            BorderThickness="0,1,0,0"
+            Padding="16,10">
+      <DockPanel>
+        <StackPanel DockPanel.Dock="Right" Orientation="Horizontal" Spacing="8">
+          <Button x:Name="BackButton" Content="Back" Padding="14,4" Click="OnBack"/>
+          <!-- Reads "Done" on the last card, and closes from there: one
+               button that always means "onward", rather than a Next that
+               goes nowhere beside a Done that appears. -->
+          <Button x:Name="NextButton" Content="Next" Padding="14,4"
+                  IsDefault="True" Click="OnNext"/>
+        </StackPanel>
+        <TextBlock x:Name="Progress"
+                   VerticalAlignment="Center"
+                   FontSize="{DynamicResource FontSizeTiny}"
+                   Foreground="{DynamicResource ViewDimText}"/>
+      </DockPanel>
+    </Border>
+
+    <StackPanel Margin="24,20" Spacing="12">
+      <TextBlock x:Name="CardTitle"
+                 FontSize="{DynamicResource FontSizeLarge}"
+                 FontWeight="Medium"/>
+      <TextBlock x:Name="CardLead"
+                 TextWrapping="Wrap"
+                 FontSize="{DynamicResource FontSizeBase}"
+                 Foreground="{DynamicResource ViewDimText}"/>
+
+      <ItemsControl x:Name="CardLines" Margin="0,8,0,0">
+        <ItemsControl.ItemTemplate>
+          <DataTemplate x:DataType="vm:TourLine">
+            <Grid ColumnDefinitions="180,*" Margin="0,0,0,6">
+              <!-- Monospaced like the sheet's keys, so a gesture reads as
+                   something to press rather than as prose. -->
+              <TextBlock Grid.Column="0" Text="{Binding Keys}"
+                         FontFamily="{DynamicResource AppMonoFamily}"
+                         FontSize="{DynamicResource FontSizeSmall}"/>
+              <TextBlock Grid.Column="1" Text="{Binding Does}"
+                         TextWrapping="Wrap"
+                         FontSize="{DynamicResource FontSizeSmall}"
+                         Foreground="{DynamicResource ViewDimText}"/>
+            </Grid>
+          </DataTemplate>
+        </ItemsControl.ItemTemplate>
+      </ItemsControl>
+    </StackPanel>
+
+  </DockPanel>
+</Window>

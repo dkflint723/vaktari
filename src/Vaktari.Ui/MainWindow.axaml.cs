@@ -219,6 +219,20 @@ public partial class MainWindow : Window
 
         Thumbnails.IconLoader.SourceChanged += _onIconSourceChanged;
 
+        // **A first run got a settings file and nothing else.** The one line
+        // that stays until dismissed says where the tour is; the tour itself
+        // is on the view menu for anybody, any time, which is why this is a
+        // line rather than a dialog — a file manager that opens on a dialog
+        // has not opened. Founder only: a second window of a first run is not
+        // a second first run.
+        //
+        // FIRST of the three startup lines, deliberately: it is the quietest,
+        // so anything louder said below — a crash, a file this build will not
+        // write — is posted after it and wins the one slot.
+        if (founder && _services.FirstRun)
+            Dispatcher.UIThread.Post(() => Shell.OperationStatus =
+                "Welcome to Vaktari — the tour is under View options (≡) ▸ Take the tour");
+
         // **The previous run ended in a crash, and until now nothing said
         // so.** The marker is taken exactly once, so only the first window of
         // the next run says it; the operation bar is the one line that stays
@@ -328,6 +342,7 @@ public partial class MainWindow : Window
             new ConnectionWindow(info).ShowDialog(this);
 
         _shell.ShortcutsRequested += (_, _) => new ShortcutsWindow().ShowDialog(this);
+        _shell.TourRequested += (_, _) => new TourWindow().ShowDialog(this);
 
         _shell.RenamePlaceRequested += OnRenamePlaceRequested;
 
