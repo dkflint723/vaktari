@@ -595,6 +595,10 @@ public sealed class SidebarPinDropTests : OwnedViewModels
         Pump();
         Pump();
 
+        // The rows come from the pool; every test here is about them. See
+        // SidebarReady for the runner that first looked before they arrived.
+        SidebarReady(window);
+
         panel = window.FindControl<Border>("SidebarPanel")
                 ?? throw new InvalidOperationException("the sidebar panel is not in the window");
 

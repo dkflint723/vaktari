@@ -340,6 +340,10 @@ public sealed class ColumnChooserTests : OwnedViewModels
 
             Assert.NotNull(sidebar);
 
+            // A row to park on has to have arrived from the pool first: see
+            // SidebarReady.
+            SidebarReady(window);
+
             // The same rule FirstSidebarRow uses: a section heading is a
             // ToggleButton and is not a row.
             var place = sidebar!.GetVisualDescendants()

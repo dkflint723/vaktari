@@ -111,6 +111,10 @@ public sealed class F6RegionTests : OwnedViewModels
 
             var shell = Assert.IsType<ShellViewModel>(window.DataContext);
 
+            // The second press below lands on a sidebar row, and the rows
+            // arrive from the pool: see SidebarReady.
+            SidebarReady(window);
+
             Focused(window, shell);
 
             window.KeyPress(Key.F6, RawInputModifiers.None, PhysicalKey.F6, null);
