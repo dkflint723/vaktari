@@ -121,8 +121,14 @@ public sealed class GitArgumentsTests : IDisposable
         // thing git receives — after the `--` that ends the options.
         Assert.Equal(Path.Combine(_root, "repo", name), argv[^1]);
         Assert.Equal("--", argv[^2]);
-        Assert.DoesNotContain(argv, a => a.StartsWith("-c", StringComparison.Ordinal));
-        Assert.DoesNotContain(argv, a => a.Contains("fsmonitor", StringComparison.Ordinal));
+
+        // And nothing BEFORE it is an option smuggled out of the name. On
+        // every argument but the last: the name itself carries the text, which
+        // is the point — measured on the first Linux run, where this checked
+        // the whole list and matched the folder argument it had just approved.
+        var before = argv[..^1];
+        Assert.DoesNotContain(before, a => a.StartsWith("-c", StringComparison.Ordinal));
+        Assert.DoesNotContain(before, a => a.Contains("fsmonitor", StringComparison.Ordinal));
     }
 
     /// <summary>
