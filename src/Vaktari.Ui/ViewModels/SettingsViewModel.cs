@@ -62,8 +62,13 @@ public sealed partial class SettingsViewModel : ObservableObject
         string? settingsFile = null,
         Core.FileSystem.IFolderViewStore? folderViews = null,
         Core.FileSystem.IRecentStore? recents = null,
-        Core.Search.ISearchHistory? searches = null)
+        Core.Search.ISearchHistory? searches = null,
+        string? settingsFileNote = null)
     {
+        // The footer line, seeded: a file this build must not write is said
+        // where the Save button is, not only on the status bar at startup.
+        _settingsFileStatus = settingsFileNote ?? "";
+
         _rememberedViews = folderViews?.Remembered ?? 0;
         _recentCount = recents?.Count ?? 0;
         _searchCount = searches?.Count ?? 0;

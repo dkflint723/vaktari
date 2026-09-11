@@ -757,6 +757,13 @@ public interface ISettingsStore
     /// call site for no gain.
     /// </summary>
     void Save(SettingsState settings);
+
+    /// <summary>
+    /// Why this store will not write, when it will not — the file on disk was
+    /// written by a newer Vaktari and the choices in it belong to that
+    /// version. Null when writes are fine, which is nearly always.
+    /// </summary>
+    string? ReadOnlyReason => null;
 }
 
 /// <summary>Source-generated — reflection-based JSON does not survive trimming.</summary>

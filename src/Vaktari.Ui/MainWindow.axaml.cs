@@ -206,6 +206,12 @@ public partial class MainWindow : Window
                 "Vaktari closed unexpectedly last time — Settings ▸ Settings file ▸ Copy diagnostics");
         }
 
+        // The same line for a settings file this build must not write: the
+        // decision was made when the file was read, and this is where it is
+        // said. Posted for the same reason as the crash notice above.
+        if (_services.SettingsStore.ReadOnlyReason is { } readOnly)
+            Dispatcher.UIThread.Post(() => Shell.OperationStatus = readOnly);
+
         // Not platform-specific: the clipboard comes from the toolkit.
         IClipboardService clipboard = ClipboardService.ForWindow(this);
 
@@ -1436,7 +1442,8 @@ public partial class MainWindow : Window
             _services.SettingsStore.FilePath,
             _services.FolderViews,
             _services.Recents,
-            _services.Searches);
+            _services.Searches,
+            _services.SettingsStore.ReadOnlyReason);
 
         // The pane already holds the detected list, ordered and cached, so the
         // dialog borrows it rather than probing the disk again as it opens.

@@ -1,4 +1,5 @@
 using System.Text.Json;
+using System.Text.Json.Nodes;
 using Vaktari.Core.Settings;
 
 namespace Vaktari.Ui.Settings;
@@ -43,23 +44,72 @@ public sealed class JsonSettingsStore : ISettingsStore
     /// </summary>
     public SettingsState Load()
     {
-        var state = TryLoad(_path) ?? TryLoad(_backupPath);
+        // A file from a future version is read as defaults rather than
+        // partially: silently running with half the settings someone chose is
+        // worse than visibly running with none of them. **And it is never
+        // written over.** Before this, the next save replaced it — and its
+        // backup a save later — with this version's file, so trying an older
+        // build once destroyed the choices the newer one had kept. Either
+        // file being newer is enough: the backup is overwritten by a save too.
+        string? newerBackup = null;
 
-        // A file from a future version is ignored rather than partially read.
-        // Silently running with half the settings someone chose is worse than
-        // visibly running with none of them.
-        return state?.Version == SettingsState.CurrentVersion ? state : new SettingsState();
+        var state = TryLoad(_path, ours: true, out var newer)
+            ?? TryLoad(_backupPath, ours: true, out newerBackup);
+
+        ReadOnlyReason = newer ?? newerBackup;
+
+        return state ?? new SettingsState();
     }
 
-    private static SettingsState? TryLoad(string path)
+    /// <inheritdoc/>
+    public string? ReadOnlyReason { get; private set; }
+
+    /// <summary>
+    /// The file as a record, brought up the versions on the way.
+    ///
+    /// **A file from any other version used to be thrown away.** Only the
+    /// current number was kept, so the first release to change it would have
+    /// reset every choice on six pages for everyone who upgraded. Now an older
+    /// file walks <see cref="SettingsMigrations"/> up to today's format, and
+    /// a copy of it as the older version wrote it is kept first, under that
+    /// version's name, for the day that version is run again.
+    /// </summary>
+    /// <param name="ours">Whether this is the store's own file — the one a
+    /// newer version's number makes read-only, and the one worth keeping a
+    /// copy of — as opposed to a file somebody chose to import.</param>
+    /// <param name="newerThanThis">Why the file must not be written, when it
+    /// is ours and a newer version wrote it; null otherwise.</param>
+    private static SettingsState? TryLoad(string path, bool ours, out string? newerThanThis)
     {
+        newerThanThis = null;
+
         try
         {
             if (!File.Exists(path)) return null;
-            using var stream = File.OpenRead(path);
 
-            var state = JsonSerializer.Deserialize(
-                stream, SettingsJsonContext.Default.SettingsState);
+            if (JsonNode.Parse(File.ReadAllText(path)) is not JsonObject document) return null;
+
+            var version = SettingsMigrations.VersionOf(document);
+
+            if (version > SettingsState.CurrentVersion)
+            {
+                if (ours)
+                    newerThanThis =
+                        $"{Path.GetFileName(path)} was written by a newer Vaktari (format {version}; this one "
+                        + $"writes format {SettingsState.CurrentVersion}). It is left as it is; changes "
+                        + "made here apply until Vaktari closes and are not saved.";
+
+                return null;
+            }
+
+            if (version < SettingsState.CurrentVersion)
+            {
+                if (ours) Keep(path, version);
+
+                if (SettingsMigrations.Upgrade(document, SettingsState.CurrentVersion) is null) return null;
+            }
+
+            var state = JsonSerializer.Deserialize(document, SettingsJsonContext.Default.SettingsState);
 
             // **The one place a file becomes a record, so the one place the
             // groups it never mentioned are put back.** MEASURED 5 September
@@ -80,8 +130,27 @@ public sealed class JsonSettingsStore : ISettingsStore
         }
     }
 
+    /// <summary>
+    /// A copy of the file as the older version wrote it — settings.v1.json —
+    /// taken before the walk, and only the first time: later saves are this
+    /// version's, and the copy is worth having exactly once.
+    /// </summary>
+    private static void Keep(string path, int version)
+    {
+        var kept = Path.Combine(Path.GetDirectoryName(path)!, $"settings.v{version}.json");
+
+        try { if (!File.Exists(kept)) File.Copy(path, kept); }
+        catch (Exception ex) { Vaktari.Core.Quiet.Swallowed("settings", ex); }
+    }
+
     public void Save(SettingsState settings)
     {
+        if (ReadOnlyReason is { } reason)
+        {
+            Vaktari.Core.Diagnostics.Log.Warn("settings", "not written: " + reason);
+            return;
+        }
+
         lock (_writeLock)
         {
             try
@@ -171,10 +240,8 @@ public sealed class JsonSettingsStore : ISettingsStore
     /// </summary>
     public static SettingsState? Import(string path)
     {
-        var state = TryLoad(path);
-
-        // Same version rule as Load, for the same reason: half a file from
-        // another version is worse than none of it.
-        return state?.Version == SettingsState.CurrentVersion ? state : null;
+        // Not the store's own file: a newer number is a refusal here rather
+        // than a read-only run, and no copy of it is kept — it is theirs.
+        return TryLoad(path, ours: false, out _);
     }
 }

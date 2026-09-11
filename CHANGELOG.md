@@ -74,6 +74,22 @@ should not be trusted for compatibility yet.
 
 ### Fixed
 
+- **A settings file from another version of Vaktari is no longer thrown
+  away — or written over.** Startup kept `settings.json` only when its
+  format number was exactly this build's, and answered anything else with
+  defaults; so the first release to change the number would have reset
+  every choice on six pages for everyone who upgraded, silently. A file from
+  an older format is now brought up to the current one step by step, and a
+  copy of it as the older version wrote it is kept beside it as
+  `settings.v<N>.json` for the day that version is run again. A file from a
+  newer format is still read as defaults — half a newer file is worse than
+  none of it — but it is no longer written over on the next save (which
+  also replaced its backup a save later, so trying an older build once
+  destroyed what the newer one had kept): Vaktari says so on the status bar
+  and in the settings dialog, changes made apply until it closes, and the
+  file is left exactly as it was. A hand-written file that names no format
+  is read as the first format, which is the only one there has been.
+
 - **Overwriting a file no longer destroys the original before the replacement
   is complete.** A copy wrote straight into its destination, emptying the file
   there from the first byte, and deleted it if anything went wrong. So a copy

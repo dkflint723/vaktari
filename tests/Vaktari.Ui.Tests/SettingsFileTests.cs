@@ -171,6 +171,85 @@ public class SettingsFileTests : IDisposable
         Assert.False(vm.Saved);
     }
 
+    // ---- files from other versions --------------------------------------------
+
+    /// <summary>
+    /// **A file from any other version was thrown away** — only the current
+    /// number was kept, so the first release to change it would have reset
+    /// every choice for everyone who upgraded. A file naming no version is the
+    /// first format, the only one there has been; it is read, and a copy of
+    /// it as found is kept under that version's name.
+    /// </summary>
+    [AvaloniaFact]
+    public void A_file_from_an_older_format_is_read_and_a_copy_of_it_kept()
+    {
+        System.IO.File.WriteAllText(File("settings.json"), "{ \"general\": { \"naturalSorting\": false } }");
+
+        var store = new JsonSettingsStore(_root);
+        var loaded = store.Load();
+
+        Assert.False(loaded.General.NaturalSorting);
+        Assert.Equal(SettingsState.CurrentVersion, loaded.Version);
+        Assert.Null(store.ReadOnlyReason);
+
+        Assert.Equal(
+            "{ \"general\": { \"naturalSorting\": false } }",
+            System.IO.File.ReadAllText(File("settings.v0.json")));
+    }
+
+    /// <summary>
+    /// **And a file from a newer one was written over.** Load answered it with
+    /// defaults, as it still does — but the next save replaced it with this
+    /// version's file, and its backup a save later, so trying an older build
+    /// once destroyed what the newer one had kept. Now the store says why it
+    /// will not write, and does not.
+    /// </summary>
+    [AvaloniaFact]
+    public void A_file_from_a_newer_format_is_left_exactly_as_it_is()
+    {
+        var newer = "{ \"version\": 2, \"general\": { \"naturalSorting\": false }, \"aPageThisBuildLacks\": {} }";
+        System.IO.File.WriteAllText(File("settings.json"), newer);
+
+        var store = new JsonSettingsStore(_root);
+        var loaded = store.Load();
+
+        Assert.True(loaded.General.NaturalSorting, "half a newer file was read");
+        Assert.Contains("newer Vaktari", store.ReadOnlyReason);
+
+        store.Save(new SettingsState { General = new GeneralSettings { ShowStatusBar = false } });
+        store.EnsureFileExists(new SettingsState());
+
+        Assert.Equal(newer, System.IO.File.ReadAllText(File("settings.json")));
+        Assert.False(System.IO.File.Exists(File("settings.json.bak")));
+    }
+
+    /// <summary>A copy somebody chose is theirs: an older one is read up the
+    /// versions like the store's own, but no copy of it is kept beside it.</summary>
+    [AvaloniaFact]
+    public void An_older_copy_put_back_is_read_and_left_alone()
+    {
+        var copy = File("copy.json");
+        System.IO.File.WriteAllText(copy, "{ \"general\": { \"showStatusBar\": false } }");
+
+        var vm = Model();
+
+        Assert.True(vm.ImportFrom(copy));
+        Assert.False(vm.Result.General.ShowStatusBar);
+        Assert.Empty(Directory.GetFiles(_root, "*.v0.json"));
+    }
+
+    /// <summary>The dialog carries the store's reason on its footer line, so
+    /// the person about to press Save reads it there.</summary>
+    [AvaloniaFact]
+    public void The_dialog_opens_with_the_reason_a_file_is_not_written()
+    {
+        var vm = new SettingsViewModel(
+            new SettingsState(), settingsFile: File("settings.json"),
+            settingsFileNote: "settings.json was written by a newer Vaktari.");
+
+        Assert.Equal("settings.json was written by a newer Vaktari.", vm.SettingsFileStatus);
+    }
+
     // ---- putting everything back --------------------------------------------
 
     /// <summary>
