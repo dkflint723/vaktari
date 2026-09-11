@@ -631,8 +631,10 @@ promise yet. Worth knowing before you decide:
   come back.
 - Inside a git submodule or a linked worktree, the version-control marks wait
   for `F5` after a commit rather than updating on their own.
-- Accessibility is partial: the main window carries automation names, the
-  Settings dialog does not.
+- Accessibility is partial. A test holds every dialog to naming each box,
+  dropdown, list and button for a screen reader. The main window is not held
+  to it: the rows of its file lists are named, but its lists and its search,
+  filter, path, rename and prompt boxes are not.
 
 Bugs and ideas are welcome on the
 [issue tracker](https://github.com/dkflint723/vaktari/issues). For a bug,
