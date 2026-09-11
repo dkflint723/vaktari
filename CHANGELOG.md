@@ -179,6 +179,16 @@ should not be trusted for compatibility yet.
 
 ### Fixed
 
+- **A file that turns up at the destination during a copy is no longer
+  replaced without a word.** A copy asks about a clash when it reaches
+  each file, and then wrote the finished file under its name at the end,
+  over whatever had arrived there in the meantime; for a large file going
+  to a slow stick, that was minutes in which a save from another program
+  could be lost. A name that turns up while its file is on the way is now
+  asked about like any other clash, and so is one that turns up as a move
+  takes its name. On Linux a sliver of the window remains, between the
+  question and the rename itself.
+
 - **Undoing a copy into an existing folder no longer takes the folder with
   it.** Copying a folder onto one of the same name, choosing to merge, and
   pressing Ctrl+Z sent the whole destination folder to the bin, with the

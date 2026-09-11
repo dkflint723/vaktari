@@ -50,6 +50,13 @@ public sealed class WindowsFileOperations : IFileOperations
     /// </summary>
     internal Func<IReadOnlyList<string>, IOperationHandle>? TrashForUndo { get; init; }
 
+    /// <summary>
+    /// Called with a target just before something is renamed onto it: the one
+    /// moment a rename leaves between a clash being asked about and the name
+    /// being taken. Tests put a file there; the application never sets it.
+    /// </summary>
+    internal Action<string>? BeforeLanding { get; init; }
+
     // Redo needs no ceiling of its own: it only ever holds what was popped off
     // the undo stack, which is already bounded.
     private readonly ConcurrentStack<IUndoable> _redo = new();
@@ -852,6 +859,10 @@ public sealed class WindowsFileOperations : IFileOperations
                 // engines. A folder merged into is never recorded; what landed
                 // in it is, each at the top of what it brought.
                 var undoable = new List<(string Source, string Target)>();
+
+                // Targets left as they were because a name turned up at the
+                // last moment and was answered Skip. See the removal below.
+                var keptBack = new List<string>();
                 var mergedInto = new HashSet<string>(PathRules.Comparer);
 
                 // Targets of folders the user chose to skip. Everything planned
@@ -907,6 +918,11 @@ public sealed class WindowsFileOperations : IFileOperations
                         target = deduped;
                     }
 
+                    // Whether this item may take the place of what is at its
+                    // target, which only an Overwrite answer gives it. See
+                    // LandAsync.
+                    var replace = false;
+
                     if (File.Exists(target) || Directory.Exists(target))
                     {
                         switch (await onConflict(new FileConflict(item.Source, target)).ConfigureAwait(false))
@@ -941,6 +957,8 @@ public sealed class WindowsFileOperations : IFileOperations
                             case ConflictResolution.Cancel:
                                 throw new OperationCanceledException();
                             case ConflictResolution.Overwrite:
+                                replace = true;
+
                                 // A folder overwritten is a folder merged into.
                                 if (item.Kind == ItemKind.Directory && Directory.Exists(target))
                                     mergedInto.Add(target);
@@ -982,12 +1000,17 @@ public sealed class WindowsFileOperations : IFileOperations
                             // the move itself was not.
                             if (CanRename(item.Source, target, move))
                             {
-                                // The target only exists here if the user chose
-                                // to overwrite it; Skip continued, and KeepBoth
-                                // already moved the name aside.
-                                if (File.Exists(target)) ClearReadOnly(target);
+                                if (await LandAsync(item.Source, item.Source, target, replace, onConflict, handle)
+                                        .ConfigureAwait(false) is not { } renamed)
+                                {
+                                    // Left where it was: a name that turned up at
+                                    // the last moment was answered Skip.
+                                    keptBack.Add(target);
+                                    handle.ItemFinished();
+                                    continue;
+                                }
 
-                                File.Move(item.Source, target, overwrite: true);
+                                target = renamed;
 
                                 // Reported so the bar still advances: a rename
                                 // moves the bytes without reading any, and a
@@ -997,8 +1020,31 @@ public sealed class WindowsFileOperations : IFileOperations
                             }
                             else
                             {
-                                await CopyFileAsync(item.Source, target, handle)
+                                var staged = await CopyFileAsync(item.Source, target, handle)
                                     .ConfigureAwait(false);
+
+                                string? landed;
+
+                                try
+                                {
+                                    landed = await LandAsync(staged, item.Source, target, replace, onConflict, handle)
+                                        .ConfigureAwait(false);
+                                }
+                                catch
+                                {
+                                    Discard(staged);
+                                    throw;
+                                }
+
+                                if (landed is null)
+                                {
+                                    Discard(staged);
+                                    keptBack.Add(target);
+                                    handle.ItemFinished();
+                                    continue;
+                                }
+
+                                target = landed;
 
                                 if (move)
                                 {
@@ -1072,6 +1118,17 @@ public sealed class WindowsFileOperations : IFileOperations
                 // reports no landings even though the items before the clash
                 // did land — see A_cancelled_copy_reports_nothing.
                 handle.Arrived(landings.Select(l => l.Target));
+
+                // **A folder holding something this run did not write is not
+                // the run's to take back.** A name that turned up inside a
+                // folder this run made, answered Skip, leaves the source file
+                // standing there — and undoing the folder as one thing carries
+                // that file off with it, while the undo of a move onto a source
+                // folder still standing copies over what is in it and then
+                // deletes the lot. Left out, the undo does less, and less
+                // cannot destroy anything.
+                if (keptBack.Count > 0)
+                    undoable.RemoveAll(u => keptBack.Any(kept => PathRules.Contains(u.Target, kept)));
 
                 if (undoable.Count == 0)
                 {
@@ -1468,7 +1525,7 @@ public sealed class WindowsFileOperations : IFileOperations
             Path.GetDirectoryName(target) ?? "",
             $".{Path.GetFileName(target)}.vaktari-{Guid.NewGuid():N}");
 
-    private static async Task CopyFileAsync(string source, string target, OperationHandle handle)
+    private static async Task<string> CopyFileAsync(string source, string target, OperationHandle handle)
     {
         var buffer = new byte[BufferSize];
 
@@ -1512,11 +1569,9 @@ public sealed class WindowsFileOperations : IFileOperations
             // already complete in every respect, dates and attributes included.
             FileMetadata.Carry(source, staging);
 
-            // The target exists here only when the user chose Overwrite, and
-            // Windows refuses to rename over a read-only file.
-            if (File.Exists(target)) ClearReadOnly(target);
-
-            File.Move(staging, target, overwrite: true);
+            // Landed by the caller, which alone can ask about a name that has
+            // turned up while this was being written. See LandAsync.
+            return staging;
         }
         catch
         {
@@ -1524,6 +1579,84 @@ public sealed class WindowsFileOperations : IFileOperations
             // original or was never created, and both are exactly right.
             Discard(staging);
             throw;
+        }
+    }
+
+    /// <summary>
+    /// Puts <paramref name="from"/> at <paramref name="target"/> and says where
+    /// it went, or null when a name that had turned up there was answered Skip.
+    ///
+    /// **Over what is at the target only when the clash was answered
+    /// Overwrite.** A clash is asked about when the engine reaches an item,
+    /// and the rename at the end replaced whatever stood at the name by then:
+    /// a file saved there while a large copy was on its way was replaced
+    /// without a word, and the prompt was never asked. Measured with a 64 MB
+    /// copy held half-way, and with a move reached through BeforeLanding. A
+    /// name that has turned up since now fails the rename and is asked about
+    /// like any other clash.
+    /// </summary>
+    private async Task<string?> LandAsync(
+        string from, string source, string target, bool replace,
+        Func<FileConflict, ValueTask<ConflictResolution>> onConflict, OperationHandle handle)
+    {
+        while (true)
+        {
+            BeforeLanding?.Invoke(target);
+
+            // **Asked before the rename, not after one fails.** A failed
+            // rename does not say a name turned up: .NET's own no-overwrite
+            // move falls back to copying where a filesystem has no hard
+            // links, and a copy that fails part-way leaves a partial file
+            // under the real name, while a move whose source has gone throws
+            // an IOException too. Both would have read as a late arrival, and
+            // Skip would then have kept the wrong file and thrown away the
+            // whole one.
+            if (!replace && (File.Exists(target) || Directory.Exists(target)))
+            {
+                switch (await onConflict(new FileConflict(source, target)).ConfigureAwait(false))
+                {
+                    // **A file cannot replace a folder**, and Windows says so
+                    // with a permission error, which offers "try again as
+                    // administrator" for something no privilege can fix.
+                    case ConflictResolution.Overwrite when Directory.Exists(target):
+                        throw new IOException(
+                            $"\"{Path.GetFileName(target)}\" is a folder now, and a file cannot replace a folder.");
+
+                    case ConflictResolution.Overwrite:
+                        replace = true;
+                        break;
+
+                    // A clash in another folder, as the prompt's own Keep both is.
+                    case ConflictResolution.KeepBoth:
+                        target = Deduplicate(target, isDirectory: false, inPlace: false);
+                        break;
+
+                    case ConflictResolution.Cancel:
+                        throw new OperationCanceledException();
+
+                    default:
+                        return null;
+                }
+
+                // Cancelled while the question stood: the answer is stale, and
+                // landing now would leave a file behind that a stopped run no
+                // longer counts.
+                handle.Token.ThrowIfCancellationRequested();
+
+                continue;
+            }
+
+            // Windows refuses to rename over a read-only file.
+            if (replace && File.Exists(target)) ClearReadOnly(target);
+
+            // A name that appears between the question above and this rename
+            // fails it, and the item is then reported as a problem rather
+            // than asked about again: Windows settles the collision inside
+            // the rename, and nothing here can hold that moment open to test
+            // an answer for it.
+            File.Move(from, target, overwrite: replace);
+
+            return target;
         }
     }
 
