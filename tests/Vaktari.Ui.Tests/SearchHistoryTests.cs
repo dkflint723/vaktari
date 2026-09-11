@@ -1210,7 +1210,7 @@ public sealed class SearchHistoryTests : OwnedViewModels
     [Fact]
     public void The_dialog_is_told_how_many_searches_are_held()
         => Assert.Contains(
-            "_services.Searches);",
+            "_services.Searches,\n            _services.SettingsStore.ReadOnlyReason);",
             RepoSource.Ui("MainWindow.axaml.cs"),
             StringComparison.Ordinal);
 
