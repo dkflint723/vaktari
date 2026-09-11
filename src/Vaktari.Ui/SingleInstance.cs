@@ -47,8 +47,28 @@ public sealed class SingleInstance : IDisposable
     /// </summary>
     private static string RuntimeDirectory => RuntimeDirectoryOverride ?? PrivateDirectory.Runtime();
 
-    internal static string LockPath => Path.Combine(RuntimeDirectory, "vaktari.lock");
-    internal static string SocketPath => Path.Combine(RuntimeDirectory, "vaktari.sock");
+    /// <summary>
+    /// What tells one copy's lock and socket from another's: nothing for an
+    /// installed copy, so nothing about it changes, and for a portable one a
+    /// digest of where its state lives.
+    ///
+    /// **Without it a portable copy and the installed copy shared one lock.**
+    /// The second to start handed its folder to the first and exited — and
+    /// a copy somebody carried in on a stick and started on purpose is the
+    /// copy that was meant to open the folder. The full path, so the same
+    /// copy started the same way gets the same name every time; the lock
+    /// still lives in the per-user runtime folder, because the stick may be
+    /// read-only and the socket has to be somewhere a socket can be.
+    /// </summary>
+    internal static string Suffix
+        => Session.JsonSessionStore.PortableRoot is { } portable
+            ? "-" + Convert.ToHexStringLower(
+                        System.Security.Cryptography.SHA256.HashData(
+                            Encoding.UTF8.GetBytes(Path.GetFullPath(portable))))[..8]
+            : "";
+
+    internal static string LockPath => Path.Combine(RuntimeDirectory, $"vaktari{Suffix}.lock");
+    internal static string SocketPath => Path.Combine(RuntimeDirectory, $"vaktari{Suffix}.sock");
 
     /// <summary>
     /// True when this process is the one and only. False means another already

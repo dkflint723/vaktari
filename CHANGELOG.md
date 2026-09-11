@@ -13,6 +13,14 @@ should not be trusted for compatibility yet.
 
 ### Added
 
+- **Portable mode.** A folder named `portable` beside the executable makes
+  Vaktari keep everything in it — tabs, places, folder views, settings,
+  recents, the log — instead of under `%LOCALAPPDATA%` or `~/.local/state`,
+  so a copy on a stick carries its state with it and leaves nothing behind
+  on the machines it visits. A portable copy and an installed one run side
+  by side; before this the second to start handed its folder to the first
+  and quit.
+
 - **Any command, by name.** Ctrl+Shift+P — or *View options (≡) ▸
   Commands…* — opens a box: type a few letters of what you want, and Enter
   runs the highlighted match. Sixty-odd commands are in it, from *New tab*

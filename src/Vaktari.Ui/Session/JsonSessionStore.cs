@@ -73,8 +73,44 @@ public sealed class JsonSessionStore : ISessionStore, IAsyncDisposable
     /// </summary>
     internal static Func<string>? DirectoryOverride { get; set; }
 
+    /// <summary>Where the running binary is, for a test that wants to say
+    /// where "beside the executable" is without moving the executable.</summary>
+    internal static Func<string>? BinaryDirectoryOverride { get; set; }
+
+    /// <summary>The folder that, beside the executable, makes a copy portable.</summary>
+    public const string PortableFolder = "portable";
+
+    /// <summary>
+    /// The portable folder beside a binary in this directory, or null when
+    /// there is none. The decision on its own, so it can be checked against a
+    /// directory a test made rather than against wherever the tests run from.
+    /// </summary>
+    internal static string? PortableRootBeside(string binaryDirectory)
+    {
+        var beside = Path.Combine(binaryDirectory, PortableFolder);
+
+        return Directory.Exists(beside) ? beside : null;
+    }
+
+    /// <summary>
+    /// Where a portable copy keeps everything — the <c>portable</c> folder
+    /// beside the executable — or null for an installed one.
+    ///
+    /// **Every copy wrote to the one place per user, so a copy on a stick
+    /// left its tabs, places and settings behind on every machine it was
+    /// run on, and found none of its own on the next.** A folder beside the
+    /// executable is the convention the portable tools somebody carries
+    /// already use — a marker that is also the place — and it needs no
+    /// setting, since a setting would have to be read from the very folder
+    /// it decides. The single-instance lock is the one thing that stays
+    /// per-user, and is named for this folder: see <c>SingleInstance</c>.
+    /// </summary>
+    public static string? PortableRoot
+        => PortableRootBeside(BinaryDirectoryOverride?.Invoke() ?? AppContext.BaseDirectory);
+
     /// <summary>~/.local/state/vaktari on Linux, %LOCALAPPDATA%\vaktari on Windows —
-    /// or <see cref="DirectoryOverride"/> when a test has set one.</summary>
+    /// the <c>portable</c> folder beside the executable when there is one — or
+    /// <see cref="DirectoryOverride"/> when a test has set one.</summary>
     public static string DefaultDirectory()
     {
         // Before the adoptions below, deliberately: those MOVE a directory when
@@ -88,6 +124,11 @@ public sealed class JsonSessionStore : ISessionStore, IAsyncDisposable
             Directory.CreateDirectory(elsewhere);
             return elsewhere;
         }
+
+        // Before the adoptions for the same reason: a portable copy has no
+        // per-user history to adopt, and must not go looking in the per-user
+        // place for one — that is the folder it exists to stay out of.
+        if (PortableRoot is { } portable) return portable;
 
         var directory = Path.Combine(StateRoot(), "vaktari");
 

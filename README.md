@@ -523,6 +523,17 @@ reinstalling or
 upgrading picks up where you left off. Delete that folder by hand if you want
 them gone — but note what is in it first.
 
+### Portable
+
+Vaktari can carry its state with it. Make a folder named `portable` beside
+the executable — next to `vaktari.exe` in a copy of the installed folder, or
+next to `vaktari` in the unpacked tarball — and everything it would keep under
+`%LOCALAPPDATA%\vaktari` or `~/.local/state/vaktari` goes in there instead:
+tabs, places, folder views, settings, recents and the log. Nothing is written
+outside it except the single-instance lock, which lives in the per-user
+runtime folder and is named for the portable folder, so a copy on a stick and
+an installed copy run side by side rather than handing folders to each other.
+
 ### Building it yourself
 
 You need the .NET 10 SDK:
