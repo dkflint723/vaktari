@@ -369,6 +369,16 @@ public sealed class LinuxFileOperations : IFileOperations
                 var landings = new List<(string Source, string Target)>();
                 var redirects = new List<(string From, string To)>();
 
+                // **What an undo takes back: exactly what this run wrote.** It
+                // was each root's landing, and a root that already existed was
+                // merged into rather than made, so undoing a copy of "photos"
+                // onto an existing "photos" sent the whole folder to the bin,
+                // the files that were there before included -- measured.
+                // A folder merged into is never recorded; what landed in it is,
+                // each at the top of what it brought.
+                var undoable = new List<(string Source, string Target)>();
+                var mergedInto = new HashSet<string>(PathRules.Comparer);
+
                 // Targets of folders the user chose to skip. Everything planned
                 // underneath one of them is skipped too.
                 var skippedRoots = new List<string>();
@@ -451,6 +461,9 @@ public sealed class LinuxFileOperations : IFileOperations
                             case ConflictResolution.Cancel:
                                 throw new OperationCanceledException();
                             case ConflictResolution.Overwrite:
+                                // A folder overwritten is a folder merged into.
+                                if (item.IsDirectory && Directory.Exists(target))
+                                    mergedInto.Add(target);
                                 break;
                         }
                     }
@@ -520,6 +533,13 @@ public sealed class LinuxFileOperations : IFileOperations
                     // went — not destination + name, which is true only when
                     // nothing was renamed or skipped along the way.
                     if (item.IsRoot) landings.Add((item.Source, target));
+
+                    // At the top of what it brought: a root, or something that
+                    // landed directly in a folder merged into. Never the merged
+                    // folder itself, which was there before and stays after.
+                    if ((item.IsRoot || mergedInto.Contains(PathRules.Parent(target) ?? ""))
+                        && !mergedInto.Contains(target))
+                        undoable.Add((item.Source, target));
                     }
                     catch (OperationCanceledException)
                     {
@@ -579,13 +599,13 @@ public sealed class LinuxFileOperations : IFileOperations
                 // did land — see A_cancelled_copy_reports_nothing.
                 handle.Arrived(landings.Select(l => l.Target));
 
-                if (landings.Count == 0)
+                if (undoable.Count == 0)
                 {
-                    // nothing landed, nothing to take back
+                    // nothing written, nothing to take back
                 }
                 else if (move)
                 {
-                    Remember(new UndoMove(landings));
+                    Remember(new UndoMove(undoable));
                 }
                 else
                 {
@@ -594,7 +614,7 @@ public sealed class LinuxFileOperations : IFileOperations
                     // deleting files. True, and the bin is the answer: nothing
                     // is destroyed, and pasting into the wrong folder stops
                     // being a mistake you have to clean up by hand.
-                    Remember(new UndoCopy(Trash, landings.Select(l => l.Target).ToList()));
+                    Remember(new UndoCopy(Trash, undoable.Select(l => l.Target).ToList()));
                 }
 
 
@@ -1174,6 +1194,11 @@ public sealed class LinuxFileOperations : IFileOperations
             foreach (var (source, moved) in landings)
             {
                 if (!File.Exists(moved) && !Directory.Exists(moved)) continue;
+
+                // **The folder it came out of may be gone.** A move that merged
+                // into an existing folder carried its contents one by one, and
+                // the sweep then removed the emptied source folders.
+                if (PathRules.Parent(source) is { } parent) Directory.CreateDirectory(parent);
 
                 XdgTrash.MoveAcrossDevices(moved, source);
 

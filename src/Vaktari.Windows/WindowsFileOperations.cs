@@ -43,6 +43,13 @@ public sealed class WindowsFileOperations : IFileOperations
 
     private readonly BoundedStack<IUndoable> _undo = new(UndoHistoryLimit);
 
+    /// <summary>
+    /// What undoing a copy sends things to the bin with: the Recycle Bin in the
+    /// application. A test hands in a recorder instead, because the real one is
+    /// the user's own.
+    /// </summary>
+    internal Func<IReadOnlyList<string>, IOperationHandle>? TrashForUndo { get; init; }
+
     // Redo needs no ceiling of its own: it only ever holds what was popped off
     // the undo stack, which is already bounded.
     private readonly ConcurrentStack<IUndoable> _redo = new();
@@ -837,6 +844,16 @@ public sealed class WindowsFileOperations : IFileOperations
                 var landings = new List<(string Source, string Target)>();
                 var skipped = new List<(string Source, string Target)>();
 
+                // **What an undo takes back: exactly what this run wrote.** It
+                // was each root's landing, and a root that already existed was
+                // merged into rather than made, so undoing a copy of "photos"
+                // onto an existing "photos" sent the whole folder to the bin,
+                // the files that were there before included -- measured on both
+                // engines. A folder merged into is never recorded; what landed
+                // in it is, each at the top of what it brought.
+                var undoable = new List<(string Source, string Target)>();
+                var mergedInto = new HashSet<string>(PathRules.Comparer);
+
                 // Targets of folders the user chose to skip. Everything planned
                 // underneath one of them is skipped too.
                 var skippedRoots = new List<string>();
@@ -924,6 +941,9 @@ public sealed class WindowsFileOperations : IFileOperations
                             case ConflictResolution.Cancel:
                                 throw new OperationCanceledException();
                             case ConflictResolution.Overwrite:
+                                // A folder overwritten is a folder merged into.
+                                if (item.Kind == ItemKind.Directory && Directory.Exists(target))
+                                    mergedInto.Add(target);
                                 break;
                         }
                     }
@@ -990,6 +1010,13 @@ public sealed class WindowsFileOperations : IFileOperations
                     }
 
                     if (item.IsRoot) landings.Add((item.Source, target));
+
+                    // At the top of what it brought: a root, or something that
+                    // landed directly in a folder merged into. Never the merged
+                    // folder itself, which was there before and stays after.
+                    if ((item.IsRoot || mergedInto.Contains(PathRules.Parent(target) ?? ""))
+                        && !mergedInto.Contains(target))
+                        undoable.Add((item.Source, target));
                     }
                     catch (OperationCanceledException)
                     {
@@ -1046,13 +1073,13 @@ public sealed class WindowsFileOperations : IFileOperations
                 // did land — see A_cancelled_copy_reports_nothing.
                 handle.Arrived(landings.Select(l => l.Target));
 
-                if (landings.Count == 0)
+                if (undoable.Count == 0)
                 {
-                    // nothing landed, nothing to take back
+                    // nothing written, nothing to take back
                 }
                 else if (move)
                 {
-                    Remember(new UndoMove(landings));
+                    Remember(new UndoMove(undoable));
                 }
                 else
                 {
@@ -1061,7 +1088,7 @@ public sealed class WindowsFileOperations : IFileOperations
                     // deleting files. True, and the bin is the answer: nothing
                     // is destroyed, and pasting into the wrong folder stops
                     // being a mistake you have to clean up by hand.
-                    Remember(new UndoCopy(Trash, landings.Select(l => l.Target).ToList()));
+                    Remember(new UndoCopy(TrashForUndo ?? Trash, undoable.Select(l => l.Target).ToList()));
                 }
 
 
@@ -1750,6 +1777,12 @@ public sealed class WindowsFileOperations : IFileOperations
 
             foreach (var (source, landed) in moved)
             {
+                // **The folder it came out of may be gone.** A move that merged
+                // into an existing folder carried its contents one by one, and
+                // the sweep then removed the emptied source folders.
+                if ((File.Exists(landed) || Directory.Exists(landed))
+                    && PathRules.Parent(source) is { } parent)
+                    Directory.CreateDirectory(parent);
 
                 if (File.Exists(landed))
                 {
