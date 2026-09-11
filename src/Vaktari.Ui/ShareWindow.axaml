@@ -21,6 +21,7 @@
       <Button DockPanel.Dock="Right" Content="Up" Padding="12,4" Margin="8,0,0,0"
               IsEnabled="{Binding CanGoUp}" Command="{Binding GoUpCommand}"/>
       <TextBox Text="{Binding Path}" FontFamily="{DynamicResource AppMonoFamily}"
+               AutomationProperties.Name="Folder to share"
                FontSize="{DynamicResource FontSizeSmall}"/>
     </DockPanel>
 
@@ -30,7 +31,8 @@
     <Border Height="190" BorderThickness="1"
             BorderBrush="{DynamicResource SeparatorColour}"
             Background="{DynamicResource ViewBackground}">
-      <ListBox x:Name="FolderList" ItemsSource="{Binding Folders}" Background="Transparent">
+      <ListBox x:Name="FolderList" ItemsSource="{Binding Folders}" Background="Transparent"
+               AutomationProperties.Name="Subfolders">
         <ListBox.ItemTemplate>
           <DataTemplate x:DataType="sys:String">
             <TextBlock Text="{Binding}" FontSize="{DynamicResource FontSizeSmall}"/>

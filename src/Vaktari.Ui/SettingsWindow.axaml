@@ -152,6 +152,7 @@
              taken out of the width every page has (see the floor note at the
              top of this file), and this is three lines of content. -->
         <Button Content="{Binding VersionLine}"
+                AutomationProperties.Name="About this version"
                 Padding="0"
                 Background="Transparent"
                 BorderThickness="0"
@@ -260,7 +261,8 @@
 
           <StackPanel Spacing="8">
             <CheckBox FontSize="{DynamicResource FontSizeSmall}"
-                      IsChecked="{Binding NaturalSorting}">
+                      IsChecked="{Binding NaturalSorting}"
+                      AutomationProperties.Name="Natural sorting">
               <StackPanel>
                 <TextBlock Text="Natural sorting"/>
                 <TextBlock Text="file2 before file10, rather than file1, file10, file2."
@@ -283,7 +285,8 @@
                  is both the shipped behaviour and what all three references
                  do. -->
             <CheckBox FontSize="{DynamicResource FontSizeSmall}"
-                      IsChecked="{Binding FoldersFirst}">
+                      IsChecked="{Binding FoldersFirst}"
+                      AutomationProperties.Name="Sort folders before files">
               <StackPanel>
                 <TextBlock Text="Sort folders before files"/>
                 <TextBlock Text="On, folders are banded above the files whichever column you sort by. Off, they take their place in the order like anything else — the newest thing in a folder can then be a folder. Grouping by size or by type keeps a Folders band whichever way this is set, because those bands have a heading; grouping by name or by date does not, and there this decides whether folders lead inside each band."
@@ -302,7 +305,8 @@
 
           <StackPanel Spacing="8">
             <CheckBox FontSize="{DynamicResource FontSizeSmall}"
-                      IsChecked="{Binding RememberViewPerFolder}">
+                      IsChecked="{Binding RememberViewPerFolder}"
+                      AutomationProperties.Name="Remember the view for each folder">
               <StackPanel>
                 <TextBlock Text="Remember the view for each folder"/>
                 <TextBlock Text="Off, every folder uses the same view. On, a folder keeps the layout, sort and grouping you last gave it. Stored centrally rather than written into your folders, but a view another file manager has already written into a folder is still honoured."
@@ -340,7 +344,8 @@
                  On by default: both references record by default, and a
                  privacy switch that ships off is a feature nobody finds. -->
             <CheckBox FontSize="{DynamicResource FontSizeSmall}"
-                      IsChecked="{Binding RememberRecent}">
+                      IsChecked="{Binding RememberRecent}"
+                      AutomationProperties.Name="Remember recently opened files and folders">
               <StackPanel>
                 <TextBlock Text="Remember recently opened files and folders"/>
                 <TextBlock Text="Off, nothing new is recorded. What is already remembered stays until you clear it."
@@ -375,7 +380,8 @@
                  initializers, so a positively named default would ship the
                  feature off for everybody upgrading. -->
             <CheckBox FontSize="{DynamicResource FontSizeSmall}"
-                      IsChecked="{Binding RememberSearches}">
+                      IsChecked="{Binding RememberSearches}"
+                      AutomationProperties.Name="Remember what you search for">
               <StackPanel>
                 <TextBlock Text="Remember what you search for"/>
                 <TextBlock Text="On, right-clicking the search button lists the searches you have run, and choosing one asks it again. Off, nothing new is recorded. What is already remembered stays until you clear it."
@@ -409,7 +415,8 @@
                       IsChecked="{Binding TabSwitchesSplitPanes}"/>
 
             <CheckBox FontSize="{DynamicResource FontSizeSmall}"
-                      IsChecked="{Binding ClosingSplitDiscardsOtherPane}">
+                      IsChecked="{Binding ClosingSplitDiscardsOtherPane}"
+                      AutomationProperties.Name="Closing the split discards the other pane">
               <StackPanel>
                 <TextBlock Text="Closing the split discards the other pane"/>
                 <TextBlock Text="Off, Vaktari remembers what it was showing so reopening lands back in place."
@@ -565,6 +572,7 @@
                    a fetched pack's variants are one click apart and a folder
                    deleted by hand simply stops being offered. -->
               <ComboBox ItemsSource="{Binding IconThemeChoices}"
+                        AutomationProperties.Name="Icon theme"
                         SelectedItem="{Binding SelectedIconTheme}"
                         HorizontalAlignment="Stretch"
                         FontSize="{DynamicResource FontSizeSmall}"
@@ -690,6 +698,7 @@
                  all, and hiding it would make the feature depend on already
                  knowing about it. -->
             <ComboBox ItemsSource="{Binding AvailableTerminals}"
+                      AutomationProperties.Name="Terminal"
                       SelectedItem="{Binding SelectedTerminal}"
                       HorizontalAlignment="Stretch"
                       FontSize="{DynamicResource FontSizeSmall}">
@@ -713,6 +722,7 @@
 
           <StackPanel Spacing="6">
             <TextBox Text="{Binding ProtonDriveFolder}"
+                     AutomationProperties.Name="Proton Drive folder"
                      Watermark="The folder the Proton Drive app syncs, e.g. D:\Proton-Drive"
                      FontSize="{DynamicResource FontSizeSmall}"/>
             <TextBlock Text="With this set — and the Proton Drive CLI installed and signed in — right-clicking anything inside it offers a public share link, and active links appear under SHARING in the sidebar."
@@ -757,6 +767,7 @@
                          VerticalAlignment="Center"
                          FontSize="{DynamicResource FontSizeSmall}"/>
               <TextBox Grid.Column="1" Text="{Binding MaxLocalPreviewMegabytes}"
+                       AutomationProperties.Name="Skip local files larger than, in megabytes"
                        PlaceholderText="No limit"
                        FontSize="{DynamicResource FontSizeSmall}"/>
             </Grid>
@@ -767,6 +778,7 @@
                          VerticalAlignment="Center"
                          FontSize="{DynamicResource FontSizeSmall}"/>
               <TextBox Grid.Column="1" Text="{Binding MaxRemotePreviewMegabytes}"
+                       AutomationProperties.Name="Skip network files larger than, in megabytes"
                        PlaceholderText="No limit"
                        FontSize="{DynamicResource FontSizeSmall}"/>
             </Grid>
@@ -792,6 +804,7 @@
           <StackPanel Spacing="6">
             <RadioButton GroupName="startup"
                          FontSize="{DynamicResource FontSizeSmall}"
+                         AutomationProperties.Name="Restore folders, tabs and window from last time"
                          IsChecked="{Binding RestoreLastSession}">
               <StackPanel>
                 <TextBlock Text="Restore folders, tabs and window from last time"/>
@@ -842,6 +855,7 @@
                     Command="{Binding BrowseForStartupFolderCommand}"/>
 
             <TextBox Text="{Binding StartupFolder}"
+                     AutomationProperties.Name="Startup folder"
                      PlaceholderText="{Binding StartupFolderHint}"
                      IsEnabled="{Binding CanEditStartupFolder}"
                      FontSize="{DynamicResource FontSizeSmall}"/>
@@ -907,6 +921,7 @@
 
           <StackPanel Spacing="6">
             <ComboBox ItemsSource="{Binding AvailableFonts}"
+                      AutomationProperties.Name="Font"
                       SelectedItem="{Binding SelectedFont}"
                       HorizontalAlignment="Stretch"
                       FontSize="{DynamicResource FontSizeSmall}">
@@ -954,6 +969,7 @@
                store the size of whichever row happened to share its index. -->
           <StackPanel Spacing="6">
             <ComboBox SelectedIndex="{Binding InterfaceTextIndex}"
+                      AutomationProperties.Name="Text size"
                       HorizontalAlignment="Stretch"
                       FontSize="{DynamicResource FontSizeSmall}">
               <ComboBoxItem Content="Follow the desktop text size"/>
@@ -976,6 +992,7 @@
 
           <StackPanel Spacing="6">
             <ComboBox SelectedIndex="{Binding ThemeModeIndex}"
+                      AutomationProperties.Name="Colour"
                       HorizontalAlignment="Stretch"
                       FontSize="{DynamicResource FontSizeSmall}">
               <ComboBoxItem Content="Follow the desktop"/>
@@ -992,7 +1009,8 @@
                time and had no control at all, so the only way to set it was to
                edit settings.json by hand. -->
           <CheckBox FontSize="{DynamicResource FontSizeSmall}"
-                    IsChecked="{Binding FollowDesktopColours}">
+                    IsChecked="{Binding FollowDesktopColours}"
+                    AutomationProperties.Name="Follow desktop colours">
             <StackPanel>
               <TextBlock Text="Follow desktop colours"/>
               <TextBlock Text="Off, Vaktari uses its own scheme. On, your desktop's colours and accent are layered over it. This is about hues, not lightness — whichever you choose, the setting above still decides light or dark."
@@ -1009,7 +1027,8 @@
                      Foreground="{DynamicResource ViewDimText}"/>
 
           <CheckBox FontSize="{DynamicResource FontSizeSmall}"
-                    IsChecked="{Binding GrowWindowForPanel}">
+                    IsChecked="{Binding GrowWindowForPanel}"
+                    AutomationProperties.Name="Widen the window to fit the details panel">
             <StackPanel>
               <TextBlock Text="Widen the window to fit the details panel"/>
               <TextBlock Text="Off: the toggle is greyed out when the pane is too narrow, and the window keeps the size you gave it. On: the window grows instead — your desktop still caps how far."
@@ -1026,7 +1045,8 @@
           <CheckBox Margin="24,0,0,0"
                     FontSize="{DynamicResource FontSizeSmall}"
                     IsEnabled="{Binding GrowWindowForPanel}"
-                    IsChecked="{Binding RestoreWidthOnPanelClose}">
+                    IsChecked="{Binding RestoreWidthOnPanelClose}"
+                    AutomationProperties.Name="Shrink back when the panel closes">
             <StackPanel>
               <TextBlock Text="Shrink back when the panel closes"/>
               <TextBlock Text="Returns the window to the width it had before it was widened. Skipped if you have resized the window yourself since — and in split view, only once neither side still needs the room."
@@ -1043,7 +1063,8 @@
                      Foreground="{DynamicResource ViewDimText}"/>
 
           <CheckBox FontSize="{DynamicResource FontSizeSmall}"
-                    IsChecked="{Binding ShowVcsDecorations}">
+                    IsChecked="{Binding ShowVcsDecorations}"
+                    AutomationProperties.Name="Mark files by version-control status">
             <StackPanel>
               <TextBlock Text="Mark files by version-control status"/>
               <TextBlock Text="M modified · A added · D deleted · ? untracked · ! conflicted. Runs git once per folder, and only inside a repository."
@@ -1064,7 +1085,8 @@
                grows one uninvited is a worse first impression than a feature
                nobody finds. -->
           <CheckBox FontSize="{DynamicResource FontSizeSmall}"
-                    IsChecked="{Binding ShowSelectionBoxes}">
+                    IsChecked="{Binding ShowSelectionBoxes}"
+                    AutomationProperties.Name="Show selection check boxes">
             <StackPanel>
               <TextBlock Text="Show selection check boxes"/>
               <TextBlock Text="A box ahead of every row in all three layouts, and one on the list heading that ticks or clears the lot. The box appears when you point at a row and stays while the row is ticked. Ctrl+click, shift+click and dragging a rectangle round the rows work the same either way."
@@ -1087,7 +1109,8 @@
                changing what every row says on upgrade is not a default a file
                manager gets to pick for you. -->
           <CheckBox FontSize="{DynamicResource FontSizeSmall}"
-                    IsChecked="{Binding ShowFileExtensions}">
+                    IsChecked="{Binding ShowFileExtensions}"
+                    AutomationProperties.Name="Show file name extensions">
             <StackPanel>
               <TextBlock Text="Show file name extensions"/>
               <TextBlock Text="Off, notes.txt lists as notes in all three layouts. Anything that runs when you open it keeps its ending — a program, a script, an installer — so nothing can be listed as the document beside it. The name you type when renaming, the tooltip on a trimmed name and the look-alike mark all keep the whole file name, and a shortcut or a launcher keeps the name it already had."
@@ -1108,6 +1131,7 @@
                        VerticalAlignment="Center"
                        FontSize="{DynamicResource FontSizeSmall}"/>
             <TextBox Grid.Column="1" Text="{Binding IconSpacing}"
+                     AutomationProperties.Name="Extra gap between grid tiles, in pixels"
                      PlaceholderText="None"
                      FontSize="{DynamicResource FontSizeSmall}"/>
           </Grid>
@@ -1117,6 +1141,7 @@
                        VerticalAlignment="Center"
                        FontSize="{DynamicResource FontSizeSmall}"/>
             <TextBox Grid.Column="1" Text="{Binding CompactSpacing}"
+                     AutomationProperties.Name="Extra gap around compact cells, in pixels"
                      PlaceholderText="None"
                      FontSize="{DynamicResource FontSizeSmall}"/>
           </Grid>
@@ -1139,7 +1164,8 @@
 
           <StackPanel Spacing="8">
             <CheckBox FontSize="{DynamicResource FontSizeSmall}"
-                      IsChecked="{Binding AbsoluteDates}">
+                      IsChecked="{Binding AbsoluteDates}"
+                      AutomationProperties.Name="Absolute dates">
               <StackPanel>
                 <TextBlock Text="Absolute dates"/>
                 <TextBlock Text="2026-07-26 14:30 for everything, instead of dropping the parts you can infer from today."
@@ -1169,6 +1195,7 @@
           <StackPanel Spacing="6">
             <RadioButton GroupName="activation"
                          FontSize="{DynamicResource FontSizeSmall}"
+                         AutomationProperties.Name="Whatever the desktop is set to"
                          IsChecked="{Binding OpenWithSystem}">
               <StackPanel>
                 <TextBlock Text="Whatever the desktop is set to"/>
@@ -1209,7 +1236,8 @@
                as false, and false has to mean Back. -->
           <CheckBox x:Name="BackspaceChoice"
                     FontSize="{DynamicResource FontSizeSmall}"
-                    IsChecked="{Binding BackspaceGoesUp}">
+                    IsChecked="{Binding BackspaceGoesUp}"
+                    AutomationProperties.Name="Backspace goes up one folder">
             <StackPanel>
               <TextBlock Text="Backspace goes up one folder"/>
               <TextBlock Text="Off, Backspace goes back through the folders you visited, the way Explorer does. On, it goes up to the parent folder, the way Dolphin does. Alt+Left and Alt+Up keep doing those two jobs either way, and F1 says which one Backspace is currently doing. Where there is no parent — This PC, the bin, Recent, a search — it then does nothing."
@@ -1320,6 +1348,7 @@
                          VerticalAlignment="Center"
                          FontSize="{DynamicResource FontSizeSmall}"/>
               <TextBox Grid.Column="1" Text="{Binding DeleteAfterDays}"
+                       AutomationProperties.Name="Days to keep"
                        FontSize="{DynamicResource FontSizeSmall}"/>
             </Grid>
           </StackPanel>
@@ -1337,6 +1366,7 @@
                          VerticalAlignment="Center"
                          FontSize="{DynamicResource FontSizeSmall}"/>
               <TextBox Grid.Column="1" Text="{Binding MaxPercentOfDisk}"
+                       AutomationProperties.Name="Percent of the disk"
                        FontSize="{DynamicResource FontSizeSmall}"/>
             </Grid>
 

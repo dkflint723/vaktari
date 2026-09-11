@@ -74,6 +74,7 @@
                      FontSize="{DynamicResource FontSizeSmall}" Opacity="0.55"
                      Margin="0,0,8,0"/>
           <ComboBox Grid.Column="1" ItemsSource="{Binding OwnerChoices}"
+                    AutomationProperties.Name="Owner"
                     SelectedItem="{Binding Owner}"
                     IsEnabled="{Binding CanEditOwner}"
                     HorizontalAlignment="Stretch"
@@ -83,6 +84,7 @@
                      FontSize="{DynamicResource FontSizeSmall}" Opacity="0.55"
                      Margin="14,0,8,0"/>
           <ComboBox Grid.Column="3" ItemsSource="{Binding GroupChoices}"
+                    AutomationProperties.Name="Group"
                     SelectedItem="{Binding Group}"
                     IsEnabled="{Binding CanEditGroup}"
                     HorizontalAlignment="Stretch"
@@ -98,6 +100,7 @@
           <ItemsControl.ItemTemplate>
             <DataTemplate x:DataType="vm:AccessToggleViewModel">
               <CheckBox IsChecked="{Binding Value}"
+                        AutomationProperties.Name="{Binding Name}"
                         FontSize="{DynamicResource FontSizeSmall}">
                 <TextBlock>
                   <!-- FontSizeTiny, not a literal: this is the owner/group/other

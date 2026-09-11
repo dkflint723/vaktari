@@ -24,6 +24,7 @@
          ordinary desktop. Somebody who has come this far past the registered
          applications knows the name of what they want. -->
     <TextBox DockPanel.Dock="Top" x:Name="FilterBox"
+             AutomationProperties.Name="Narrow the list"
              Text="{Binding Filter}"
              PlaceholderText="Type to narrow the list"
              FontSize="{DynamicResource FontSizeSmall}"
@@ -46,6 +47,7 @@
             BorderBrush="{DynamicResource SeparatorColour}"
             Background="{DynamicResource ViewBackground}">
       <ListBox x:Name="Applications"
+               AutomationProperties.Name="Applications"
                ItemsSource="{Binding Shown}"
                SelectedItem="{Binding Selected}"
                Background="Transparent">

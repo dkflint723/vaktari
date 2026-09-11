@@ -90,6 +90,16 @@ should not be trusted for compatibility yet.
 
 ### Fixed
 
+- **A screen reader can now name every control in the dialogs.** The main
+  window named its buttons and rows for assistive technology; the nine
+  dialogs — Settings, Properties, Batch rename, Open with, Share, the
+  conflict prompt and the rest — named none of theirs. A button that says
+  "Cancel" needs no help, but a text box, a dropdown, a spinner or a list
+  has no words of its own, and a reader arriving on the Settings page heard
+  "combo box" and "edit" over and over with nothing to tell them apart.
+  Every such control now carries the label beside it, and a test holds
+  every dialog to that rule.
+
 - **A settings file from another version of Vaktari is no longer thrown
   away — or written over.** Startup kept `settings.json` only when its
   format number was exactly this build's, and answered anything else with

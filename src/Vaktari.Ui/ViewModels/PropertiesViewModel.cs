@@ -21,6 +21,11 @@ public sealed partial class AccessToggleViewModel : ObservableObject
     public string Group => _model.Group;
     public string Label => _model.Label;
 
+    /// <summary>What a screen reader says for the box: the row and the bit
+    /// together, because the visible label splits them into two runs and a
+    /// reader given content that is not a string says nothing at all.</summary>
+    public string Name => $"{Group} {Label}";
+
     [ObservableProperty] private bool _value;
 
     public AccessToggle ToModel() => _model with { Value = Value };

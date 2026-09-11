@@ -35,17 +35,21 @@
                        FontSize="{DynamicResource FontSizeSmall}"
                        Foreground="{DynamicResource ViewDimText}"/>
             <NumericUpDown Value="{Binding StartAt}" Minimum="0" Maximum="99999"
+                         AutomationProperties.Name="Start at"
                            Width="110" FontSize="{DynamicResource FontSizeSmall}"/>
           </StackPanel>
           <TextBox Text="{Binding Pattern}" FontFamily="{DynamicResource AppMonoFamily}"
+                   AutomationProperties.Name="Pattern"
                    FontSize="{DynamicResource FontSizeSmall}"/>
         </DockPanel>
       </StackPanel>
 
       <StackPanel Spacing="8" IsVisible="{Binding !IsNumbered}">
         <TextBox Text="{Binding Find}" PlaceholderText="Find"
+                 AutomationProperties.Name="Find"
                  FontFamily="{DynamicResource AppMonoFamily}" FontSize="{DynamicResource FontSizeSmall}"/>
         <TextBox Text="{Binding Replace}" PlaceholderText="Replace with"
+                 AutomationProperties.Name="Replace with"
                  FontFamily="{DynamicResource AppMonoFamily}" FontSize="{DynamicResource FontSizeSmall}"/>
         <StackPanel Orientation="Horizontal" Spacing="14">
           <CheckBox Content="Regular expression" IsChecked="{Binding UseRegex}"
@@ -92,7 +96,8 @@
     <Border Margin="0,12,0,0" BorderThickness="1"
             BorderBrush="{DynamicResource SeparatorColour}"
             Background="{DynamicResource ViewBackground}">
-      <ListBox ItemsSource="{Binding Preview}" Background="Transparent">
+      <ListBox ItemsSource="{Binding Preview}" Background="Transparent"
+               AutomationProperties.Name="Preview of the new names">
         <ListBox.ItemTemplate>
           <DataTemplate x:DataType="core:RenamePreview">
             <Grid ColumnDefinitions="*,Auto,*" Margin="4,3">
