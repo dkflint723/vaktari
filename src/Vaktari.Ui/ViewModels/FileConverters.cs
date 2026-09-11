@@ -334,6 +334,44 @@ public static class FileConverters
         });
 
     /// <summary>
+    /// The word a row carries while the two sides are compared, or "" for
+    /// a row that looks the same on both. Same shape as Confusable: the row
+    /// supplies its path, the pane supplies the map.
+    /// </summary>
+    public static readonly Avalonia.Data.Converters.IMultiValueConverter CompareWord =
+        new Avalonia.Data.Converters.FuncMultiValueConverter<object?, string>(values =>
+        {
+            var pair = values.ToList();
+
+            if (pair.Count != 2
+                || pair[0] is not string path
+                || pair[1] is not IReadOnlyDictionary<string, CompareMark> marks
+                || !marks.TryGetValue(path, out var mark))
+                return "";
+
+            return mark switch
+            {
+                CompareMark.OnlyHere => "Only here",
+                CompareMark.NewerHere => "Newer",
+                CompareMark.OlderHere => "Older",
+                _ => "Different",
+            };
+        });
+
+    /// <summary>Whether a row carries a compare mark -- for the grid's badge,
+    /// which has a border to hide as well as a word.</summary>
+    public static readonly Avalonia.Data.Converters.IMultiValueConverter CompareMarked =
+        new Avalonia.Data.Converters.FuncMultiValueConverter<object?, bool>(values =>
+        {
+            var pair = values.ToList();
+
+            return pair.Count == 2
+                   && pair[0] is string path
+                   && pair[1] is IReadOnlyDictionary<string, CompareMark> marks
+                   && marks.ContainsKey(path);
+        });
+
+    /// <summary>
     /// How far in a row sits, for a folder opened in place.
     ///
     /// Same shape as CutFade and Confusable: the row supplies its path, the

@@ -101,6 +101,24 @@ public sealed class ConflictPromptTests : IDisposable
         Assert.Equal("They look like the same file.", new ConflictViewModel(new FileConflict(b, a)).Verdict);
     }
 
+    /// <summary>
+    /// **A copy on a FAT stick is the same file.** FAT keeps modification
+    /// times in two-second steps, so a copy there keeps its original's time
+    /// only to within two seconds -- and the prompt called two files the same
+    /// only when their times were exactly equal, so it told somebody their
+    /// own copy had been "changed at the same time".
+    /// </summary>
+    [Fact]
+    public void It_calls_a_copy_a_second_apart_the_same_file()
+    {
+        var stamp = new DateTime(2026, 3, 3, 9, 0, 0, DateTimeKind.Utc);
+
+        var a = Write("target.txt", "same", stamp);
+        var b = Write("source.txt", "same", stamp.AddSeconds(1));
+
+        Assert.Equal("They look like the same file.", new ConflictViewModel(new FileConflict(b, a)).Verdict);
+    }
+
     // ---- a folder is a merge, and says so ----------------------------------
 
     /// <summary>

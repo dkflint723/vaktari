@@ -195,6 +195,7 @@ public static class Commands
         },
         new("ToggleSplit", "Split the window", Tabs, KeyTier.Anywhere, ["F3"]) { Command = s => s.ToggleSplitCommand },
         new("ToggleInfo", "Details panel", Tabs, KeyTier.Anywhere, ["F11"]) { Command = s => s.ToggleInfoCommand },
+        new("CompareSides", "Compare the two sides", Tabs, KeyTier.Anywhere, []) { Command = s => s.ToggleCompareCommand },
 
         // F9 is Dolphin's own key for this panel.
         new("Sidebar", "Sidebar", Tabs, KeyTier.Anywhere, ["Ctrl+B", "F9"]) { Command = s => s.Sidebar.CycleRailCommand },
@@ -226,6 +227,7 @@ public static class Commands
         new("SelectAll", "Select everything", Files, KeyTier.Listing, ["Ctrl+A"]) { Window = host => host.SelectAll(), OnSelection = true },
         new("SelectNone", "Select nothing", Files, KeyTier.Listing, []) { Window = host => host.SelectNone() },
         new("InvertSelection", "Invert the selection", Files, KeyTier.Listing, ["Ctrl+Shift+A"]) { Window = host => host.InvertSelection(), OnSelection = true },
+        new("SelectDifferences", "Select what differs from the other side", Files, KeyTier.Listing, []) { Command = Pane(p => p.SelectDifferencesCommand) },
         new("NewFolder", "New folder", Files, KeyTier.Guarded, ["Ctrl+Shift+N"]) { Command = Pane(p => p.NewFolderCommand) },
         new("NewFile", "New file", Files, KeyTier.Listing, []) { Command = Pane(p => p.NewFileCommand) },
         new("Duplicate", "Duplicate", Files, KeyTier.Listing, []) { Command = Pane(p => p.DuplicateSelectedCommand), OnSelection = true },

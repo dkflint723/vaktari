@@ -13,6 +13,14 @@ should not be trusted for compatibility yet.
 
 ### Added
 
+- **The two sides of a split can be compared.** *Compare the two sides* —
+  in the view-options menu while the window is split, or in the command box
+  — marks each row by what the other side has: *Only here*, *Newer*,
+  *Older*, or *Different*. The status bar counts the marks on the active
+  side, *Select what differs from the other side* selects them, and they
+  follow either side as files arrive, leave or change. It compares one
+  folder level, and hidden files only while both sides show them.
+
 - **Keys can be changed.** Settings ▸ Keyboard lists every command with
   the keys that run it. *Add key* listens for the next key you press; a key
   another command already has is offered to you — take it, or leave it
@@ -153,6 +161,23 @@ should not be trusted for compatibility yet.
   status line.
 
 ### Fixed
+
+- **Undoing a copy into an existing folder no longer takes the folder with
+  it.** Copying a folder onto one of the same name, choosing to merge, and
+  pressing Ctrl+Z sent the whole destination folder to the bin, with the
+  files that were already there; undoing such a move carried those files
+  off to where the moved folder had come from. Undo now takes back only
+  what the copy or move put there. A file that replaced another is still
+  taken back, as before: the version it replaced cannot come back from
+  anywhere, and leaving the copy would make Ctrl+Z reach past it to an
+  older step.
+
+- **The file-clash prompt calls a copy on a FAT stick the same file.** FAT
+  keeps modification times in two-second steps, and the prompt called two
+  files the same only when their times matched exactly, so a copy on a USB
+  stick read as "Both were changed at the same time." It now uses the rule
+  the comparison of the two sides uses: the same size, less than two
+  seconds apart.
 
 - **A folder on a network mount now updates on its own.** On Linux, a
   share mounted over SMB, NFS or SSH — or through the desktop's own file

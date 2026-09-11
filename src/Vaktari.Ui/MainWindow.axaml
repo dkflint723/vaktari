@@ -592,6 +592,13 @@
                             FontSize="{DynamicResource FontSizeSmall}"
                             IsChecked="{Binding ActiveTab.ShowHidden}"/>
 
+                  <!-- Only while split: comparing is between the two sides. -->
+                  <CheckBox in:KeyHint.Command="CompareSides" in:KeyHint.Content="Compare the two sides"
+                            FontSize="{DynamicResource FontSizeSmall}"
+                            IsVisible="{Binding $parent[Window].((vm:ShellViewModel)DataContext).IsSplit}"
+                            IsChecked="{Binding $parent[Window].((vm:ShellViewModel)DataContext).IsComparing, Mode=OneWay}"
+                            Command="{Binding $parent[Window].((vm:ShellViewModel)DataContext).ToggleCompareCommand}"/>
+
                   <!-- The layout, sort and grouping chosen in the bar above are
                        per tab, and there was nothing anywhere that could make
                        one of them the way folders open. This is that missing
@@ -3300,6 +3307,21 @@
                                      FontSize="{DynamicResource FontSizeSmall}"
                                      FontWeight="Bold" TextAlignment="Center"
                                      VerticalAlignment="Center"/>
+                          <!-- What the comparison found, while the two sides are
+                               compared. Right-docked and ahead of the name, like
+                               the compact row's marks, so a long name ellipsizes
+                               and the word survives; hidden, it takes no width. -->
+                          <TextBlock DockPanel.Dock="Right" Margin="6,0,2,0" VerticalAlignment="Center"
+                                     FontSize="{DynamicResource FontSizeTiny}"
+                                     Foreground="{DynamicResource AccentText}"
+                                     IsVisible="{Binding $self.Text, Converter={x:Static StringConverters.IsNotNullOrEmpty}}">
+                            <TextBlock.Text>
+                              <MultiBinding Converter="{x:Static vm:FileConverters.CompareWord}">
+                                <Binding Path="FullPath"/>
+                                <Binding Path="$parent[ListBox].((vm:PaneViewModel)DataContext).CompareMarks"/>
+                              </MultiBinding>
+                            </TextBlock.Text>
+                          </TextBlock>
                           <!-- Left, not stretched. As the DockPanel's fill child this
                                claimed the entire name column, so the gap beside a short
                                filename was still the label — there was nothing in a row
@@ -3653,6 +3675,18 @@
                               </MultiBinding>
                             </TextBlock.IsVisible>
                           </TextBlock>
+                          <!-- What the comparison found, beside the look-alike word. -->
+                          <TextBlock DockPanel.Dock="Right" Margin="6,0,2,0" VerticalAlignment="Center"
+                                     FontSize="{DynamicResource FontSizeTiny}"
+                                     Foreground="{DynamicResource AccentText}"
+                                     IsVisible="{Binding $self.Text, Converter={x:Static StringConverters.IsNotNullOrEmpty}}">
+                            <TextBlock.Text>
+                              <MultiBinding Converter="{x:Static vm:FileConverters.CompareWord}">
+                                <Binding Path="FullPath"/>
+                                <Binding Path="$parent[ListBox].((vm:PaneViewModel)DataContext).CompareMarks"/>
+                              </MultiBinding>
+                            </TextBlock.Text>
+                          </TextBlock>
                           <!-- The icon docks, the name takes what is left. In
                                the StackPanel this replaced, the name was
                                measured with infinite width and its ellipsis
@@ -3875,6 +3909,29 @@
                             <TextBlock Text="&#x2248;" FontWeight="Bold"
                                        FontSize="{DynamicResource FontSizeSmall}"
                                        Foreground="{DynamicResource ViewBackground}"/>
+                          </Border>
+                          <!-- What the comparison found, tile edition: the top-right
+                               corner, the one the other two marks leave free, and
+                               filled for the reason they are: it can sit on a
+                               thumbnail. -->
+                          <Border HorizontalAlignment="Right" VerticalAlignment="Top"
+                                  Background="{DynamicResource AccentColour}"
+                                  CornerRadius="3" Padding="4,0" Margin="0,2,2,0">
+                            <Border.IsVisible>
+                              <MultiBinding Converter="{x:Static vm:FileConverters.CompareMarked}">
+                                <Binding Path="FullPath"/>
+                                <Binding Path="$parent[ListBox].((vm:PaneViewModel)DataContext).CompareMarks"/>
+                              </MultiBinding>
+                            </Border.IsVisible>
+                            <TextBlock FontSize="{DynamicResource FontSizeTiny}"
+                                       Foreground="{DynamicResource ViewBackground}">
+                              <TextBlock.Text>
+                                <MultiBinding Converter="{x:Static vm:FileConverters.CompareWord}">
+                                  <Binding Path="FullPath"/>
+                                  <Binding Path="$parent[ListBox].((vm:PaneViewModel)DataContext).CompareMarks"/>
+                                </MultiBinding>
+                              </TextBlock.Text>
+                            </TextBlock>
                           </Border>
                         </Panel>
                         <!-- **The one name cell that keeps the trailing ellipsis,
@@ -4121,6 +4178,14 @@
         <TextBlock Text="{Binding ActiveStatus}"
                    FontSize="{DynamicResource FontSizeSmall}"
                    Foreground="{DynamicResource ViewDimText}"/>
+        <TextBlock Text="·" Opacity="0.55"
+                   IsVisible="{Binding IsComparing}"
+                   FontSize="{DynamicResource FontSizeSmall}"
+                   Foreground="{DynamicResource ViewDimText}"/>
+        <TextBlock Text="{Binding CompareSummary}"
+                   IsVisible="{Binding IsComparing}"
+                   FontSize="{DynamicResource FontSizeSmall}"
+                   Foreground="{DynamicResource AccentText}"/>
       </StackPanel>
     </Border>
 

@@ -1093,6 +1093,109 @@ public sealed partial class ShellViewModel : ObservableObject, IDisposable
 
     public bool IsSplit => Right is not null;
 
+    /// <summary>
+    /// Whether the two sides are being compared, row by row. Only while
+    /// split: closing the split stops it. See <see cref="Recompare"/>.
+    /// </summary>
+    [ObservableProperty] private bool _isComparing;
+
+    // The two panes whose listings are watched while comparing.
+    private PaneViewModel? _comparedLeft;
+    private PaneViewModel? _comparedRight;
+
+    [RelayCommand]
+    private void ToggleCompare()
+    {
+        if (!IsSplit) return;
+
+        IsComparing = !IsComparing;
+    }
+
+    partial void OnIsComparingChanged(bool value) => Recompare();
+
+    /// <summary>
+    /// Compares the active tab on each side and marks both -- or, when not
+    /// comparing, takes the marks away. Run again whenever either listing
+    /// settles or either side shows another tab.
+    ///
+    /// **Hidden files only when both sides show them.** A side that hides
+    /// them has none in its listing, so comparing it against one that shows
+    /// them would mark every hidden file "only here" when the other folder
+    /// may well have it too.
+    /// </summary>
+    private void Recompare()
+    {
+        var left = IsComparing ? Left.ActiveTab : null;
+        var right = IsComparing ? Right?.ActiveTab : null;
+
+        Watch(ref _comparedLeft, left);
+        Watch(ref _comparedRight, right);
+
+        if (left is not null && right is not null)
+        {
+            var hide = !left.ShowHidden || !right.ShowHidden;
+
+            IEnumerable<FileEntry> Compared(PaneViewModel pane)
+                => hide ? pane.Listed.Where(e => !e.IsConcealed) : pane.Listed;
+
+            var result = FolderComparison.Between(Compared(left), Compared(right));
+
+            left.CompareMarks = result.Left;
+            right.CompareMarks = result.Right;
+        }
+
+        OnPropertyChanged(nameof(CompareSummary));
+    }
+
+    /// <summary>Moves the listing subscription to the pane now compared, and
+    /// takes the marks off the one that no longer is.</summary>
+    private void Watch(ref PaneViewModel? watched, PaneViewModel? now)
+    {
+        if (ReferenceEquals(watched, now)) return;
+
+        if (watched is not null)
+        {
+            watched.ListingSettled -= OnComparedListingSettled;
+            watched.CompareMarks = PaneViewModel.NoMarks;
+        }
+
+        watched = now;
+
+        if (now is not null) now.ListingSettled += OnComparedListingSettled;
+    }
+
+    private void OnComparedListingSettled(object? sender, EventArgs e) => Recompare();
+
+    /// <summary>What the comparison found on the active side, for the status
+    /// bar; empty when not comparing.</summary>
+    public string CompareSummary
+    {
+        get
+        {
+            if (!IsComparing || ActiveTab is not { } pane) return "";
+
+            var counts = pane.CompareMarks.Values
+                .GroupBy(mark => mark)
+                .ToDictionary(g => g.Key, g => g.Count());
+
+            if (counts.Count == 0) return "Compared with the other side: nothing differs";
+
+            var parts = new List<string>(4);
+
+            void Add(CompareMark mark, string words)
+            {
+                if (counts.TryGetValue(mark, out var n)) parts.Add($"{n:N0} {words}");
+            }
+
+            Add(CompareMark.OnlyHere, "only here");
+            Add(CompareMark.NewerHere, "newer here");
+            Add(CompareMark.OlderHere, "older here");
+            Add(CompareMark.Differs, "different");
+
+            return "Compared with the other side: " + string.Join(", ", parts);
+        }
+    }
+
     /// <summary>The other-pane transfers need both a second pane and something
     /// to send. They were gated on the split alone, so an empty-space right-click
     /// in a split window offered them and they returned on the empty selection.</summary>
@@ -2230,6 +2333,9 @@ public sealed partial class ShellViewModel : ObservableObject, IDisposable
     {
         if (e.PropertyName != nameof(PaneGroupViewModel.ActiveTab)) return;
 
+        // A side showing another tab is showing another folder.
+        if (IsComparing) Recompare();
+
         if (ReferenceEquals(sender, ActiveGroup))
         {
             OnPropertyChanged(nameof(ActiveTab));
@@ -2249,6 +2355,7 @@ public sealed partial class ShellViewModel : ObservableObject, IDisposable
         OnPropertyChanged(nameof(ActiveTab));
         OnPropertyChanged(nameof(ActiveStatus));
         OnPropertyChanged(nameof(OtherGroup));
+        OnPropertyChanged(nameof(CompareSummary));
         NotifySelectionMenu();
 
         MarkDirty();
@@ -2256,6 +2363,9 @@ public sealed partial class ShellViewModel : ObservableObject, IDisposable
 
     partial void OnRightChanged(PaneGroupViewModel? value)
     {
+        // Comparing is between two sides; with one there is nothing to compare.
+        if (value is null) IsComparing = false;
+
         // Closing the split leaves the size chooser pointing at a pane that is
         // no longer there, showing a number that belongs to nothing.
         NotifyTargetSizes();

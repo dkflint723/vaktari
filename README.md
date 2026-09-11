@@ -109,6 +109,17 @@ puts it back. If you would rather type a number than find it by scrolling, the
 view-options menu has *Text size* and *Icon size* as steppers, with a chooser
 above them saying whether they act on the left pane, the right one or both.
 
+**The two sides of a split can be compared.** *Compare the two sides*, in the
+view-options menu or the command box, marks every row that differs from the
+other side's folder: *Only here*, *Newer*, *Older*, or *Different* for a file
+and a folder of one name, or two files changed at the same moment at
+different sizes. Two files the same size changed less than two seconds apart
+count as the same, because FAT keeps times in two-second steps. The marks
+follow either side as it changes, the status bar counts them, and *Select
+what differs from the other side* selects them. It compares one level, so two
+folders of the same name are not looked inside, and it compares hidden files
+only while both sides show them. Closing the split stops it.
+
 **The List layout chooses its columns.** Name, Type, Size, Modified and
 Created, with Type and Created off until you ask for them; right-click the
 headings or use *Arrange ▸ Columns*. All five sort. Clicking Size, Modified or

@@ -4514,6 +4514,36 @@ public sealed partial class PaneViewModel : ObservableObject, IDisposable
     [ObservableProperty] private IReadOnlySet<string> _confusable =
         new HashSet<string>(StringComparer.Ordinal);
 
+    /// <summary>
+    /// How each row compares with the other side while the two are being
+    /// compared, keyed by this pane's own paths; empty otherwise. Bound by
+    /// every listing the way <see cref="Confusable"/> is, and for the same
+    /// reason: a new map is what makes every realized row look again.
+    ///
+    /// **Per pane, not the version-control store.** That one is shared and
+    /// keyed by path, which it can afford because no path is in two folders.
+    /// A compare mark depends on what the folder is compared WITH, so two
+    /// windows comparing one folder against two others would overwrite each
+    /// other's marks in a shared store.
+    /// </summary>
+    [ObservableProperty] private IReadOnlyDictionary<string, CompareMark> _compareMarks = NoMarks;
+
+    internal static readonly IReadOnlyDictionary<string, CompareMark> NoMarks =
+        new Dictionary<string, CompareMark>(StringComparer.Ordinal);
+
+    /// <summary>Raised on the UI thread whenever the listing has settled --
+    /// loaded, re-sorted, filtered, or changed on disk -- at the moments the
+    /// look-alike marks are worked out again.</summary>
+    public event EventHandler? ListingSettled;
+
+    /// <summary>The whole listing, whatever the filter box is hiding: what a
+    /// comparison compares.</summary>
+    internal IReadOnlyList<FileEntry> Listed => _all;
+
+    /// <summary>Selects every row the comparison marked.</summary>
+    [RelayCommand]
+    private void SelectDifferences() => ReselectPaths([.. CompareMarks.Keys]);
+
     private void ApplyFilter()
     {
         // Through the same predicate the live watcher uses, so a file arriving
@@ -5276,8 +5306,14 @@ public sealed partial class PaneViewModel : ObservableObject, IDisposable
     /// while its own switch is on.
     /// </remarks>
     private void RefreshConfusable()
-        => Confusable = ConfusableNames.Among(
+    {
+        Confusable = ConfusableNames.Among(
             _all.Select(e => (e.FullPath, FileKind.DisplayName(e, hideExtension: false))));
+
+        // Every place that settles a listing comes through here, which is
+        // what makes it the one place to say so.
+        ListingSettled?.Invoke(this, EventArgs.Empty);
+    }
 
 
 

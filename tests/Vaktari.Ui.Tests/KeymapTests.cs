@@ -150,6 +150,8 @@ public sealed class KeymapTests : OwnedViewModels
         { "PreviousTab", "Shell.PreviousTabCommand" },
         { "ToggleSplit", "Shell.ToggleSplitCommand" },
         { "ToggleInfo", "Shell.ToggleInfoCommand" },
+        { "CompareSides", "Shell.ToggleCompareCommand" },
+        { "SelectDifferences", "Pane.SelectDifferencesCommand" },
         { "Sidebar", "Sidebar.CycleRailCommand" },
         { "Search", "Pane.BeginSearchCommand" },
         { "ToggleFilter", "Pane.ToggleFilterCommand" },

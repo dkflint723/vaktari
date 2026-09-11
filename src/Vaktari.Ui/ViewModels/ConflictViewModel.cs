@@ -203,19 +203,17 @@ public sealed partial class ConflictViewModel : ObservableObject
 
             if (!from.Exists || !to.Exists) return "";
 
-            if (from.Length == to.Length && from.LastWriteTimeUtc == to.LastWriteTimeUtc)
-                return "They look like the same file.";
-
-            var difference = from.LastWriteTimeUtc - to.LastWriteTimeUtc;
-
-            // A second either way is not a meaningful difference, and calling
-            // it one would be a confident answer to a question nobody asked.
-            if (difference.Duration() < TimeSpan.FromSeconds(2))
-                return "Both were changed at the same time.";
-
-            return difference > TimeSpan.Zero
-                ? "The one arriving is newer."
-                : "The one already there is newer.";
+            // **The rule the folder comparison marks rows by**, so the prompt
+            // and the marks cannot disagree -- see FileSameness. It called the
+            // two the same only when their times were exactly equal, which a
+            // copy on a FAT stick never is.
+            return FileSameness.Judge(from.Length, from.LastWriteTimeUtc, to.Length, to.LastWriteTimeUtc) switch
+            {
+                Sameness.Same => "They look like the same file.",
+                Sameness.SameTime => "Both were changed at the same time.",
+                Sameness.FirstNewer => "The one arriving is newer.",
+                _ => "The one already there is newer.",
+            };
         }
         catch (Exception e) when (e is IOException or UnauthorizedAccessException)
         {
