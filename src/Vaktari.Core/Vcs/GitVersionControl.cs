@@ -27,11 +27,31 @@ public sealed class GitVersionControl : IVersionControl
 
     private static bool? _available;
 
+    /// <summary>
+    /// Drops the cached answer to "is git installed", so a test that puts its
+    /// own git first on PATH is not answered from a probe that ran before it
+    /// did. The probe runs once per process and is cached for good reason —
+    /// it is a process spawn — and a test is the only caller that wants it
+    /// twice.
+    /// </summary>
+    internal static void ForgetProbe() => _available = null;
+
+    /// <summary>
+    /// The program to run instead of whatever `git` PATH finds. Null in the
+    /// application. A test that wants to see what git is HANDED puts a
+    /// recording script here — on PATH would not do, because a bare "git" is
+    /// resolved by CreateProcess as git.exe alone and walks straight past a
+    /// git.cmd to the real one.
+    /// </summary>
+    internal static string? ExecutableOverride { get; set; }
+
+    private static string Executable => ExecutableOverride ?? "git";
+
     private static bool Probe()
     {
         try
         {
-            using var process = Process.Start(new ProcessStartInfo("git", "--version")
+            using var process = Process.Start(new ProcessStartInfo(Executable, "--version")
             {
                 RedirectStandardOutput = true,
                 RedirectStandardError = true,
@@ -106,14 +126,23 @@ public sealed class GitVersionControl : IVersionControl
         // -- <folder>     scope to what is on screen. A repo-wide status is one
         //                 call either way, but on a large tree it is a slow one,
         //                 and nothing off screen can be decorated.
-        var arguments =
-            $"-C \"{root}\" --no-optional-locks status --porcelain=v1 -z --ignored=no -- \"{folder}\"";
-
+        // **As a LIST, never as a quoted string.** This was one string with the
+        // two paths in double quotes, and .NET splits that string into argv with
+        // quote rules on every platform — so a folder whose name held a `"`
+        // (legal on Linux) closed the quote early and the rest of the name
+        // became git options. `-c core.fsmonitor=<command>` is honoured by
+        // `git status`, which made browsing into a folder extracted from
+        // somebody else's archive a way to run their command. The other
+        // thirty-nine places this tree starts a process already used
+        // ArgumentList; this was the one that did not.
+        //
+        // --literal-pathspecs, so a folder named `*` or `:` is a folder rather
+        // than a glob or a magic pathspec.
         string output;
 
         try
         {
-            using var process = Process.Start(new ProcessStartInfo("git", arguments)
+            var info = new ProcessStartInfo(Executable)
             {
                 RedirectStandardOutput = true,
                 RedirectStandardError = true,
@@ -134,7 +163,19 @@ public sealed class GitVersionControl : IVersionControl
                 // startup and the status read runs on EVERY listing, so it
                 // flashed on more or less every navigation.
                 CreateNoWindow = true,
-            });
+            };
+
+            foreach (var arg in new[]
+                     {
+                         "--literal-pathspecs",
+                         "-C", root,
+                         "--no-optional-locks",
+                         "status", "--porcelain=v1", "-z", "--ignored=no",
+                         "--", folder,
+                     })
+                info.ArgumentList.Add(arg);
+
+            using var process = Process.Start(info);
 
             if (process is null) return null;
 

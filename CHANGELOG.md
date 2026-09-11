@@ -31,6 +31,18 @@ should not be trusted for compatibility yet.
   carried all of it in memory until Vaktari closed, for an undo nobody was
   going to press a thousand steps back. The bin is what covers anything older.
 
+### Security
+
+- **A folder name can no longer smuggle options to git.** The status call
+  that draws the M, A, D, ? and ! marks handed git its arguments as one quoted
+  string, and a folder whose name held a double quote — legal on Linux — could
+  close that quote early and turn the rest of its name into git options,
+  including one that runs a command. Browsing into a folder unpacked from
+  somebody else's archive was enough. Git now receives each argument as its
+  own argument, the way every other program Vaktari starts already did, and
+  folder names are taken literally rather than as patterns. Windows was never
+  exposed, because Windows will not create such a name.
+
 ### Fixed
 
 - **The licences of what Vaktari is built from now ship with it.** The README
