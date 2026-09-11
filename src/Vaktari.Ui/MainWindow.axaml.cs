@@ -343,6 +343,7 @@ public partial class MainWindow : Window
 
         _shell.ShortcutsRequested += (_, _) => new ShortcutsWindow().ShowDialog(this);
         _shell.TourRequested += (_, _) => new TourWindow().ShowDialog(this);
+        _shell.PaletteRequested += (_, _) => _ = RunFromPaletteAsync();
 
         _shell.RenamePlaceRequested += OnRenamePlaceRequested;
 
@@ -1862,6 +1863,28 @@ public partial class MainWindow : Window
 
     private void OnColumnGripDragCompleted(object? sender, VectorEventArgs e)
         => _shell.CommitColumnWidths();
+
+    /// <summary>
+    /// Opens the command palette and runs what it picked.
+    ///
+    /// **Run AFTER the palette has closed, not from inside it.** Half the
+    /// commands move the keyboard — into the address bar, the filter, a
+    /// rename — and a command run while the palette is still the active
+    /// window puts the caret in a box the palette is about to take the
+    /// focus back from on its way out. The pick is read once the dialog has
+    /// returned, when this window is in front again.
+    /// </summary>
+    private async Task RunFromPaletteAsync()
+    {
+        var palette = new PaletteWindow();
+
+        await palette.ShowDialog(this);
+
+        if (palette.Chosen is { } entry
+            && entry.Command(_shell) is { } command
+            && command.CanExecute(entry.Parameter))
+            command.Execute(entry.Parameter);
+    }
 
     /// <summary>
     /// Keeps a sidebar place from opening a menu with nothing in it.

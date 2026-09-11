@@ -248,6 +248,7 @@ public static class Shortcuts
         new("The application",
         [
             new("F1", "This list"),
+            new("Ctrl+Shift+P", "Any command, by name"),
             new("Ctrl+Shift+,", "Settings"),
         ]),
     ];

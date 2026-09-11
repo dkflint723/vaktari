@@ -1819,6 +1819,14 @@ public sealed partial class ShellViewModel : ObservableObject, IDisposable
     [RelayCommand]
     private void ShowTour() => TourRequested?.Invoke(this, EventArgs.Empty);
 
+    /// <summary>Raised so the window can open the command palette — the same
+    /// shape as the two above. The window runs what was picked, because the
+    /// pick is only known once the palette has closed.</summary>
+    public event EventHandler? PaletteRequested;
+
+    [RelayCommand]
+    private void ShowPalette() => PaletteRequested?.Invoke(this, EventArgs.Empty);
+
     public Func<WindowSession>? GeometryProvider { get; set; }
 
     [ObservableProperty] private string _operationStatus = "";

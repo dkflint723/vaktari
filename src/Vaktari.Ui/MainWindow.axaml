@@ -628,6 +628,16 @@
                           FontSize="{DynamicResource FontSizeSmall}"
                           Command="{Binding $parent[Window].((vm:ShellViewModel)DataContext).ShowTourCommand}"/>
 
+                  <!-- Every command by name, for the ones three levels down a
+                       menu or on a key nobody remembers. Printed with its key
+                       the way the rows above are, for the same circularity
+                       the sheet's row breaks. -->
+                  <Button Content="Commands…  (ctrl+shift+p)" Padding="0" MinHeight="0"
+                          Background="Transparent" BorderThickness="0"
+                          HorizontalAlignment="Left"
+                          FontSize="{DynamicResource FontSizeSmall}"
+                          Command="{Binding $parent[Window].((vm:ShellViewModel)DataContext).ShowPaletteCommand}"/>
+
                   <!-- Ctrl+N was reachable only by already knowing it, which is
                        the same circularity the shortcut sheet above was added
                        to break. -->
@@ -4166,6 +4176,10 @@
     <KeyBinding Gesture="Alt+D"          Command="{Binding ActiveTab.BeginEditPathCommand}"/>
     <!-- KDE's standard "Configure" gesture, so it is where a Plasma user reaches. -->
     <KeyBinding Gesture="Ctrl+Shift+OemComma" Command="{Binding OpenSettingsCommand}"/>
+    <!-- Every command by name. The gesture VS Code and the Windows Files app
+         both use for the same box; free here, and safe as a KeyBinding: no
+         text box wants it. -->
+    <KeyBinding Gesture="Ctrl+Shift+P"        Command="{Binding ShowPaletteCommand}"/>
   </Window.KeyBindings>
 
   <Grid>

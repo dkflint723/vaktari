@@ -13,6 +13,14 @@ should not be trusted for compatibility yet.
 
 ### Added
 
+- **Any command, by name.** Ctrl+Shift+P — or *View options (≡) ▸
+  Commands…* — opens a box: type a few letters of what you want, and Enter
+  runs the highlighted match. Sixty-odd commands are in it, from *New tab*
+  to *Empty the bin*, each printed with the key that also runs it, so the
+  key gets learnt from the box. What needs a file under the pointer or a
+  choice of its own — *Open with*, *Copy to* — stays on the right-click
+  menu.
+
 - **A short tour of the window, and a first run that says where it is.** The
   first time Vaktari runs it writes its settings file and, until now, said
   nothing else. It now says one line on the operation bar: the tour is under
