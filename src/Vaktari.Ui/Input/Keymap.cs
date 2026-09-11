@@ -146,7 +146,7 @@ public sealed class Keymap
                     continue;
                 }
 
-                if (owners.TryGetValue(Folded(gesture), out var holder))
+                if (owners.TryGetValue(KeyChords.Folded(gesture), out var holder))
                 {
                     if (!ReferenceEquals(holder, command))
                         dropped.Add($"{command.Name}: {KeyChords.Readable(gesture)} is already {holder.Name}’s.");
@@ -154,7 +154,7 @@ public sealed class Keymap
                     continue;
                 }
 
-                owners[Folded(gesture)] = command;
+                owners[KeyChords.Folded(gesture)] = command;
                 mine.Add(gesture);
             }
 
@@ -169,13 +169,13 @@ public sealed class Keymap
 
             foreach (var gesture in command.DefaultKeys)
             {
-                if (owners.TryGetValue(Folded(gesture), out var holder))
+                if (owners.TryGetValue(KeyChords.Folded(gesture), out var holder))
                 {
                     dropped.Add($"{command.Name}: {KeyChords.Readable(gesture)} was given to {holder.Name}.");
                     continue;
                 }
 
-                owners[Folded(gesture)] = command;
+                owners[KeyChords.Folded(gesture)] = command;
                 mine.Add(gesture);
             }
 
@@ -193,27 +193,13 @@ public sealed class Keymap
         return new Keymap(keys, owners, ordered, dropped);
     }
 
-    /// <summary>
-    /// A gesture as a key it cannot be told apart from. Avalonia matches the
-    /// pad's plus, minus and point as the top row's, so a keymap that gave
-    /// Ctrl+Add and Ctrl+OemPlus to two commands would hand both keystrokes to
-    /// whichever it asked first.
-    /// </summary>
-    private static KeyGesture Folded(KeyGesture gesture) => gesture.Key switch
-    {
-        Key.Add => new KeyGesture(Key.OemPlus, gesture.KeyModifiers),
-        Key.Subtract => new KeyGesture(Key.OemMinus, gesture.KeyModifiers),
-        Key.Decimal => new KeyGesture(Key.OemPeriod, gesture.KeyModifiers),
-        _ => gesture,
-    };
-
     // ---- asking ---------------------------------------------------------------
 
     /// <summary>The keys a command answers to, in the order they were given.</summary>
     public IReadOnlyList<KeyGesture> KeysOf(string id) => _keys.GetValueOrDefault(id) ?? [];
 
     /// <summary>The command a key runs, or null.</summary>
-    public AppCommand? Owner(KeyGesture gesture) => _owners.GetValueOrDefault(Folded(gesture));
+    public AppCommand? Owner(KeyGesture gesture) => _owners.GetValueOrDefault(KeyChords.Folded(gesture));
 
     /// <summary>
     /// The command a keystroke runs at this tier, and the key it matched. By

@@ -13,6 +13,19 @@ should not be trusted for compatibility yet.
 
 ### Added
 
+- **Keys can be changed.** Settings ▸ Keyboard lists every command with
+  the keys that run it. *Add key* listens for the next key you press; a key
+  another command already has is offered to you — take it, or leave it
+  where it is — rather than moved without asking, and a key that types, or
+  that every list and box needs, is refused with the reason. The F1 sheet,
+  the command box, the tour, the menus and the tooltips all print the keys
+  in force. Only what differs from the shipped keys is written to
+  settings.json, so a key a later release adds still reaches you, and a key
+  the file asks for that cannot be used is listed on the page rather than
+  stopping the window from opening. Before this, Ctrl+D pinning here and
+  deleting in Explorer, and Ctrl+B folding the sidebar here and adding a
+  place in Dolphin, were things the F1 sheet could only explain.
+
 - **Saved searches.** A search worth keeping can be saved to places: Ctrl+D
   in a search, the *Save search* button on the band above the results, or
   *Save this search to places* on the listing's menu. It sits in the sidebar

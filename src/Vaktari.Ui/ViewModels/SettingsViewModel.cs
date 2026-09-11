@@ -50,6 +50,11 @@ public sealed partial class SettingsViewModel : ObservableObject
     /// </summary>
     private SettingsState _original = new();
 
+    /// <summary>The Keyboard page: every command and its keys. Seeded with the
+    /// rest of the dialog and collected with it, so Cancel throws a key away
+    /// like any other change and Restore defaults puts the keys back too.</summary>
+    public KeyboardPage Keyboard { get; } = new();
+
     private readonly Core.IDefaultFileManager? _defaults;
     private readonly Core.FileSystem.IFileIconProvider? _desktopIcons;
     private readonly Core.IFileManagerService? _fileManager;
@@ -92,7 +97,7 @@ public sealed partial class SettingsViewModel : ObservableObject
     }
 
     /// <summary>
-    /// Every control on the six pages, from a state.
+    /// Every control on the seven pages, from a state.
     ///
     /// **Lifted out of the constructor so it can be run a second time.** There
     /// was no way to put the settings back: the constructor read each field
@@ -267,6 +272,8 @@ public sealed partial class SettingsViewModel : ObservableObject
         ShowFilterBar = startup.ShowFilterBar;
         LocationBarEditable = startup.LocationBarEditable;
         ShowFullPathInTitleBar = startup.ShowFullPathInTitleBar;
+
+        Keyboard.Load(current.Keyboard);
     }
 
     // Four booleans rather than one enum property because Avalonia's
@@ -1534,6 +1541,10 @@ public sealed partial class SettingsViewModel : ObservableObject
 
                 BackspaceGoesUp = BackspaceGoesUp,
             },
+
+            // The rows that differ from their shipped keys, and whatever a
+            // newer Vaktari left — see KeyboardPage.Collect.
+            Keyboard = _original.Keyboard with { Bindings = Keyboard.Collect() },
 
             ContextMenu = _original.ContextMenu with
             {

@@ -18,8 +18,9 @@
       <DockPanel>
         <Button DockPanel.Dock="Right" Content="Close" Padding="14,4"
                 IsCancel="True" IsDefault="True" Click="OnClose"/>
-        <TextBlock Text="Escape closes this."
+        <TextBlock Text="Keys that run commands are changed in Settings, on the Keyboard page. Escape closes this."
                    VerticalAlignment="Center"
+                   TextWrapping="Wrap"
                    FontSize="{DynamicResource FontSizeTiny}"
                    Foreground="{DynamicResource ViewDimText}"/>
       </DockPanel>

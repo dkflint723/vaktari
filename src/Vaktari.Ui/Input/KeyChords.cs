@@ -30,6 +30,25 @@ public static class KeyChords
     /// keymap can hold.</summary>
     public static KeyGesture From(Key key, KeyModifiers modifiers) => new(key, modifiers & Modifiers);
 
+    /// <summary>
+    /// A gesture as the key it cannot be told apart from. Avalonia matches the
+    /// pad's plus, minus and point as the top row's, so a keymap that gave
+    /// Ctrl+Add and Ctrl+OemPlus to two commands would hand both keystrokes to
+    /// whichever it asked first.
+    /// </summary>
+    public static KeyGesture Folded(KeyGesture gesture) => gesture.Key switch
+    {
+        Key.Add => new KeyGesture(Key.OemPlus, gesture.KeyModifiers),
+        Key.Subtract => new KeyGesture(Key.OemMinus, gesture.KeyModifiers),
+        Key.Decimal => new KeyGesture(Key.OemPeriod, gesture.KeyModifiers),
+        _ => gesture,
+    };
+
+    /// <summary>Whether two gestures are one key to a keystroke. The keymap
+    /// and the Keyboard page both ask this, so the page cannot give out a key
+    /// the keymap would then take back.</summary>
+    public static bool Same(KeyGesture a, KeyGesture b) => Folded(a).Equals(Folded(b));
+
     // ---- reading ----------------------------------------------------------------
 
     /// <summary>

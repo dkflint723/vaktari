@@ -9,7 +9,7 @@
         Foreground="{DynamicResource ViewText}"
         FontFamily="{DynamicResource AppFontFamily}"
         Width="700" Height="560"
-        MinWidth="520" MinHeight="420"
+        MinWidth="520" MinHeight="450"
         WindowStartupLocation="CenterOwner">
 
   <!-- **This window had no floor at all, and its chrome is worse off without
@@ -28,11 +28,13 @@
 
        520 leaves about 340px of page beside the 176px strip, and each page
        carries 20px margins inside that, so the reading column is the same order
-       as the 350px listing the main window's 560 leaves beside its sidebar. 420
-       is the shortest window that still holds all six rows in ONE column above
-       the footer, with a row of settings beside them. Both numbers are checked
-       against the chrome as it actually measures, in WindowFloorTests, rather
-       than left to rot when a seventh page is added. -->
+       as the 350px listing the main window's 560 leaves beside its sidebar. 450
+       is the shortest window, to the next ten, that still holds all seven rows
+       in ONE column above the footer with a row of settings beside them: the
+       rows measure 48px, so the list is 336px, and 336 + 47 + 60 is 443. It was
+       420 while there were six rows; the seventh, Keyboard, left 37px at 420.
+       Both numbers are checked against the chrome as it actually measures, in
+       WindowFloorTests, rather than left to rot when another page is added. -->
 
   <!-- NO margin on the shell. It used to be 16 all round, which inset the tab
        strip from the window edges so the sidebar colour read as a floating box
@@ -62,7 +64,7 @@
 
                Safe from the rest of the page because Avalonia hands its
                default button an UNHANDLED Enter only, and every control on
-               these six pages that wants the key takes it first: a focused
+               these pages that wants the key takes it first: a focused
                button, a check box, a combo box and a radio button all mark it
                handled and never reach this. What is left is the single-line
                boxes, where Enter has nothing else to mean; the tab headers,
@@ -71,7 +73,10 @@
                key; and a window nobody has tabbed into yet, which has no focus
                at all. Each of those four saves what is already on screen,
                which is what the button says. Counted and pressed on every
-               tab, not reasoned about. -->
+               tab, not reasoned about — the Keyboard page's too, which came
+               later: its buttons press and its search box saves, and a row
+               there that is listening for a key is handed every key before
+               this button can see one (KeyboardPageTests). -->
           <Button Content="Save" Padding="14,4" IsDefault="True" Command="{Binding SaveCommand}"/>
         </StackPanel>
 
@@ -147,10 +152,11 @@
              saying what changed in that version, nothing naming the project,
              and no way to reach either without knowing where to look.
 
-             A flyout on the number itself rather than a seventh page: the
-             page strip is a WrapPanel with no scroller, so a seventh row is
-             taken out of the width every page has (see the floor note at the
-             top of this file), and this is three lines of content. -->
+             A flyout on the number itself rather than a page of its own: the
+             page strip is a WrapPanel with no scroller, so every row it
+             gains is height a short window takes out of the width every page
+             has (see the floor note at the top of this file), and this is
+             three lines of content. -->
         <Button Content="{Binding VersionLine}"
                 AutomationProperties.Name="About this version"
                 Padding="0"
@@ -1272,6 +1278,126 @@
         </StackPanel>
         </ScrollViewer>
       </TabItem>
+      <!-- **Every key was fixed, and the collisions with other programs'
+           habits could only be explained.** Ctrl+D pins here and deletes in
+           Explorer, Ctrl+B folds the sidebar here and adds a place in Dolphin,
+           and the F1 sheet said so — to somebody who had already pressed the
+           key and got the wrong thing. This page moves them.
+
+           Docked rather than scrolled as one: the search box and the line
+           that says what to press must not scroll away from the rows they
+           are about. Each row is two lines — the name over its keys — beside
+           its two buttons, because the page is about 300px wide at the
+           dialog's floor and a name, three chips and two buttons on one line
+           is not. IsSelected is bound so leaving the page stops a row
+           listening; see KeyboardPage for that and the rest of its rules. -->
+      <TabItem Header="Keyboard" IsSelected="{Binding Keyboard.IsOpen, Mode=TwoWay}">
+        <DockPanel Background="{DynamicResource AppBackground}">
+
+          <StackPanel DockPanel.Dock="Top" Spacing="10" Margin="20,16,20,8">
+            <TextBlock Text="Every command, and the keys that run it. Add key listens for the next key you press. A key another command already has is offered to you to take."
+                       FontSize="{DynamicResource FontSizeSmall}"
+                       Foreground="{DynamicResource ViewDimText}"
+                       TextWrapping="Wrap"/>
+
+            <!-- What settings.json asked for and could not have, as the
+                 keymap worded it. Only a file edited by hand ever has any. -->
+            <StackPanel Spacing="2" IsVisible="{Binding Keyboard.HasUnused}">
+              <TextBlock Text="Not used from the settings file:"
+                         FontSize="{DynamicResource FontSizeSmall}"
+                         Foreground="{DynamicResource AccentText}"/>
+              <TextBlock Text="{Binding Keyboard.Unused}"
+                         FontSize="{DynamicResource FontSizeTiny}"
+                         Foreground="{DynamicResource ViewDimText}"
+                         TextWrapping="Wrap"/>
+            </StackPanel>
+
+            <DockPanel>
+              <Button DockPanel.Dock="Right" Content="Reset all keys" Padding="10,4" Margin="8,0,0,0"
+                      Command="{Binding Keyboard.ResetAllCommand}"/>
+              <TextBox Text="{Binding Keyboard.Filter}"
+                       PlaceholderText="Find a command or a key"
+                       AutomationProperties.Name="Find a command or a key"
+                       FontSize="{DynamicResource FontSizeSmall}"/>
+            </DockPanel>
+
+            <!-- What to press, why a key was refused, or what just moved — and
+                 while a key is on offer, the two answers to it. Polite, so a
+                 screen reader says a refusal without anybody going to find it. -->
+            <DockPanel IsVisible="{Binding Keyboard.HasStatus}">
+              <StackPanel DockPanel.Dock="Right" Orientation="Horizontal" Spacing="8" Margin="8,0,0,0"
+                          IsVisible="{Binding Keyboard.IsOffering}">
+                <Button Content="Take it" Padding="10,2" Command="{Binding Keyboard.TakeItCommand}"/>
+                <Button Content="Keep it there" Padding="10,2" Command="{Binding Keyboard.KeepItCommand}"/>
+              </StackPanel>
+              <TextBlock Text="{Binding Keyboard.Status}"
+                         AutomationProperties.LiveSetting="Polite"
+                         VerticalAlignment="Center"
+                         FontSize="{DynamicResource FontSizeSmall}"
+                         Foreground="{DynamicResource AccentText}"
+                         TextWrapping="Wrap"/>
+            </DockPanel>
+          </StackPanel>
+
+          <ScrollViewer HorizontalScrollBarVisibility="Disabled">
+            <ItemsControl ItemsSource="{Binding Keyboard.Groups}" Margin="20,0,20,16">
+              <ItemsControl.ItemTemplate>
+                <DataTemplate x:DataType="vm:KeyGroup">
+                  <StackPanel IsVisible="{Binding IsShown}" Spacing="2" Margin="0,10,0,0">
+                    <TextBlock Text="{Binding Name}"
+                               FontSize="{DynamicResource FontSizeTiny}"
+                               Foreground="{DynamicResource ViewDimText}"/>
+                    <ItemsControl ItemsSource="{Binding Rows}">
+                      <ItemsControl.ItemTemplate>
+                        <DataTemplate x:DataType="vm:KeyRow">
+                          <DockPanel IsVisible="{Binding IsShown}" Margin="0,4">
+                            <StackPanel DockPanel.Dock="Right" Orientation="Horizontal" Spacing="6"
+                                        VerticalAlignment="Top">
+                              <Button Content="{Binding AddLabel}" Padding="8,2"
+                                      Command="{Binding AddCommand}"
+                                      AutomationProperties.Name="{Binding AddName}"/>
+                              <Button Content="Reset" Padding="8,2"
+                                      IsVisible="{Binding IsChanged}"
+                                      Command="{Binding ResetCommand}"
+                                      AutomationProperties.Name="{Binding ResetName}"/>
+                            </StackPanel>
+                            <StackPanel Spacing="3">
+                              <TextBlock Text="{Binding Name}" FontSize="{DynamicResource FontSizeSmall}"
+                                         TextWrapping="Wrap"/>
+                              <ItemsControl ItemsSource="{Binding Keys}">
+                                <ItemsControl.ItemsPanel>
+                                  <ItemsPanelTemplate>
+                                    <WrapPanel/>
+                                  </ItemsPanelTemplate>
+                                </ItemsControl.ItemsPanel>
+                                <ItemsControl.ItemTemplate>
+                                  <DataTemplate x:DataType="vm:KeyChip">
+                                    <Button Content="{Binding Label}" Padding="6,1" Margin="0,0,6,0"
+                                            FontFamily="{DynamicResource AppMonoFamily}"
+                                            FontSize="{DynamicResource FontSizeTiny}"
+                                            Command="{Binding Remove}"
+                                            AutomationProperties.Name="{Binding RemoveName}"
+                                            ToolTip.Tip="{Binding RemoveName}"/>
+                                  </DataTemplate>
+                                </ItemsControl.ItemTemplate>
+                              </ItemsControl>
+                              <TextBlock Text="No key" IsVisible="{Binding !HasKeys}"
+                                         FontSize="{DynamicResource FontSizeTiny}"
+                                         Foreground="{DynamicResource ViewDimText}"/>
+                            </StackPanel>
+                          </DockPanel>
+                        </DataTemplate>
+                      </ItemsControl.ItemTemplate>
+                    </ItemsControl>
+                  </StackPanel>
+                </DataTemplate>
+              </ItemsControl.ItemTemplate>
+            </ItemsControl>
+          </ScrollViewer>
+
+        </DockPanel>
+      </TabItem>
+
       <TabItem Header="Context menu">
         <ScrollViewer HorizontalScrollBarVisibility="Disabled"
                       Background="{DynamicResource AppBackground}">
@@ -1310,11 +1436,10 @@
           </StackPanel>
 
           <!-- **The old wording promised "its keyboard shortcut still works",
-               and for almost everything on this list there is no such shortcut.**
-               Neither Window.KeyBindings nor the code-behind key handler binds
-               Copy to, Move to, Open in new tab, Add selection to places, Copy
-               location, Duplicate or any sort command — hide one of those and it
-               is gone until the box is ticked again.
+               and for almost everything on this list there was no such shortcut.**
+               Nothing bound Copy to, Move to, Open in new tab, Add selection to
+               places, Duplicate or any sort command — hide one of those and it
+               was gone until the box was ticked again.
 
                The two exceptions are named rather than rounded away, because a
                note that undersells is the same defect in the other direction.
@@ -1336,11 +1461,11 @@
                the escape route and this claim about it together, because the
                route is a control in another file.
 
-               Adding the missing gestures instead, so the original sentence
-               came true, was rejected here: the bindings live in MainWindow and
-               need free keys chosen for each, and until that happens this page
-               would still be the thing telling the lie. -->
-          <TextBlock Text="Hiding an entry takes it off the menu without removing the command — but for most of these the menu is the only route. Ctrl+D still adds the current folder to places while Add to places is hidden. While Arrange is hidden, the list view's column headers still sort by name, type, size or modified, and right-clicking those headers still chooses which columns to show. Copy as path still works on ctrl+shift+c. Nothing else here has a shortcut."
+               Keys are the person's to give now, under Keyboard, so the note
+               names which entries are commands — in the palette, and able to
+               take a key there — rather than printing keys that can be moved.
+               -->
+          <TextBlock Text="Hiding an entry takes it off the menu without removing the command — but for most of these the menu is the only route. Add this folder to places and Copy as path keep their keys while hidden, and Duplicate, sorting and grouping stay in the command palette, where any of them can be given a key under Keyboard. While Arrange is hidden, the list view's column headers still sort by name, type, size or modified, and right-clicking those headers still chooses which columns to show."
                      FontSize="{DynamicResource FontSizeTiny}"
                      Foreground="{DynamicResource ViewDimText}"
                      TextWrapping="Wrap"/>

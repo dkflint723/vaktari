@@ -1714,7 +1714,7 @@ public partial class MainWindow : Window
 
             // Here rather than in the dialog, so it lands through the one
             // handler that already applies a save — and so Cancel throws it
-            // away like every other change made on those six pages.
+            // away like every other change made in that dialog.
             if (model.ForgetViewsOnSave) _services.FolderViews.ForgetAll();
             if (model.ForgetRecentOnSave) _services.Recents.ForgetAll();
             if (model.ForgetSearchHistoryOnSave) _services.Searches.ForgetAll();

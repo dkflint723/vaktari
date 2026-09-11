@@ -76,7 +76,7 @@ public static class Tour
             TourLine.Of("ToggleView", "Switch between the list, the small grid and the large grid"),
             TourLine.Fixed("Ctrl + scroll", "Resize the pane under the pointer"),
             TourLine.Fixed("Right-click a heading", "Choose the columns; drag a heading's edge to make it wider"),
-            TourLine.Of("OpenSettings", "Settings — Keyboard is where any key is changed"),
+            TourLine.Of("OpenSettings", "Settings — Keyboard is where a command's keys are changed"),
             TourLine.Of("ShowShortcuts", "Every key, on one sheet"),
         ]),
     ];

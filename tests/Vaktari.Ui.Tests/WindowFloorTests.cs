@@ -197,7 +197,7 @@ public sealed class WindowFloorTests : OwnedViewModels
         var window = SettingsMarkup();
 
         Assert.Equal(520d, (double?)window.Attribute("MinWidth"));
-        Assert.Equal(420d, (double?)window.Attribute("MinHeight"));
+        Assert.Equal(450d, (double?)window.Attribute("MinHeight"));
     }
 
     /// <summary>
@@ -235,8 +235,9 @@ public sealed class WindowFloorTests : OwnedViewModels
     /// taken from the page's own width, and far enough down, off the right edge
     /// of the window entirely. A floor that clears the whole list plus the
     /// footer is a floor that keeps the list one column wide. Measured rather
-    /// than asserted as a constant, so adding a seventh page fails this instead
-    /// of silently costing the floor.
+    /// than asserted as a constant, so adding a page fails this instead of
+    /// silently costing the floor — which is how the seventh, Keyboard, moved
+    /// it: at 420 it left 37px under 336px of pages and the 47px footer.
     /// </summary>
     [AvaloniaFact]
     public void The_settings_floor_keeps_every_page_reachable()
@@ -286,7 +287,7 @@ public sealed class WindowFloorTests : OwnedViewModels
             window.UpdateLayout();
 
             Assert.True(window.Bounds.Width >= 520, $"width fell to {window.Bounds.Width}");
-            Assert.True(window.Bounds.Height >= 420, $"height fell to {window.Bounds.Height}");
+            Assert.True(window.Bounds.Height >= 450, $"height fell to {window.Bounds.Height}");
         }
         finally { window.Close(); }
     }

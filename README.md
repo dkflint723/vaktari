@@ -472,10 +472,19 @@ put one back from another machine, and restore every setting to its default.
 | `Ctrl+F` `Ctrl+E` | search | `→` `←` | open and close a folder in place |
 | `Ctrl+I` | filter the listing | `Menu` `Shift+F10` | the right-click menu |
 | `Escape` | clear the filter | `Ctrl+Shift+,` | settings |
-| `F1` | every key, in the app | | |
+| `F1` | every key, in the app | `Ctrl+Shift+P` | any command, by name |
+
+These are the keys Vaktari ships with, and **Settings ▸ Keyboard changes every
+one that runs a command**: every command is listed with its keys, *Add key*
+listens for the next key you press, and a key another command already has is
+offered to you rather than moved without asking. Only what differs from this
+table is written to settings.json. `Enter`, `Escape`, `Tab`, `Backspace`, the
+arrows, the menu key and `Ctrl+1`…`Ctrl+9` keep their jobs everywhere and
+cannot be given to anything else.
 
 `F1` is the authority — a test checks it against the real bindings in both
-directions, and it prints whichever job `Backspace` is currently doing.
+directions, and it prints the keys in force, any you changed included, and
+whichever job `Backspace` is currently doing.
 
 ## Install
 
@@ -612,8 +621,10 @@ promise yet. Worth knowing before you decide:
 - The Small grid draws no thumbnails, and on Linux Vaktari does not *generate*
   video or PDF thumbnails — it only reads ones your desktop's thumbnailers
   already made.
-- **Keyboard shortcuts cannot be rebound.** `F1` shows the list; nothing
-  changes it.
+- Keys can be changed, but not the ones every list and box shares: `Enter`,
+  `Escape`, `Tab`, `Backspace`, the arrows, the menu key and
+  `Ctrl+1`…`Ctrl+9`. A key is one press — no two-key sequences, and no
+  mouse buttons.
 - Nothing queues: every transfer you start runs at once.
 - Places are re-imported from your desktop at every startup, so a place you
   remove in Vaktari that still exists in Dolphin's or Explorer's own list will
