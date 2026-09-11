@@ -1431,9 +1431,36 @@ public sealed class WindowsFileOperations : IFileOperations
         }
     }
 
+    /// <summary>
+    /// The name a copy is written under until it is whole: beside the target,
+    /// so the final rename never crosses a volume, and marked so a listing can
+    /// tell it from a file and a sweep can tell it from anything worth keeping.
+    /// </summary>
+    internal static string Staging(string target)
+        => Path.Combine(
+            Path.GetDirectoryName(target) ?? "",
+            $".{Path.GetFileName(target)}.vaktari-{Guid.NewGuid():N}");
+
     private static async Task CopyFileAsync(string source, string target, OperationHandle handle)
     {
         var buffer = new byte[BufferSize];
+
+        // **Written beside the target under a staging name, and renamed over
+        // it only once every byte is down.** This wrote straight into the
+        // target, opened Create — which truncates from the first byte — and
+        // deleted it on failure. A copy that died halfway left a file under
+        // the real name that looked complete and was not, until the delete
+        // ran; a crash or a pulled cable meant the delete never ran. And an
+        // Overwrite truncated the ORIGINAL before a single byte of the
+        // replacement had been read, so a source that failed at 60% — a stick
+        // pulled, a share gone, a disk full — left neither file. The comment
+        // that used to sit in the catch said as much: "worse on Replace: the
+        // original was already gone."
+        //
+        // A rename on one volume is atomic, so the target is either the old
+        // file or the whole new one, never a partial, and the original is
+        // untouched until the replacement exists in full.
+        var staging = Staging(target);
 
         try
         {
@@ -1443,7 +1470,7 @@ public sealed class WindowsFileOperations : IFileOperations
             await using (var input = new FileStream(
                 source, FileMode.Open, FileAccess.Read, FileShare.Read, BufferSize, useAsync: true))
             await using (var output = new FileStream(
-                target, FileMode.Create, FileAccess.Write, FileShare.None, BufferSize, useAsync: true))
+                staging, FileMode.CreateNew, FileAccess.Write, FileShare.None, BufferSize, useAsync: true))
             {
                 int read;
                 while ((read = await input.ReadAsync(buffer, handle.Token).ConfigureAwait(false)) > 0)
@@ -1453,19 +1480,24 @@ public sealed class WindowsFileOperations : IFileOperations
                     handle.BytesCopied(read);
                 }
             }
+
+            // Onto the staging file, so what lands under the real name is
+            // already complete in every respect, dates and attributes included.
+            FileMetadata.Carry(source, staging);
+
+            // The target exists here only when the user chose Overwrite, and
+            // Windows refuses to rename over a read-only file.
+            if (File.Exists(target)) ClearReadOnly(target);
+
+            File.Move(staging, target, overwrite: true);
         }
         catch
         {
-            // **A half-written file must not be left under the final name.**
-            // The target is opened Create, so it exists and is truncated from
-            // the first byte — cancel a copy of a large file and what was left
-            // behind looked like the file, opened, and was silently incomplete.
-            // Worse on Replace: the original was already gone.
-            Discard(target);
+            // Only ever the staging file. The target is either the untouched
+            // original or was never created, and both are exactly right.
+            Discard(staging);
             throw;
         }
-
-        FileMetadata.Carry(source, target);
     }
 
     internal enum ItemKind { File, Directory, Link }

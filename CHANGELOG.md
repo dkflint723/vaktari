@@ -45,6 +45,21 @@ should not be trusted for compatibility yet.
 
 ### Fixed
 
+- **Overwriting a file no longer destroys the original before the replacement
+  is complete.** A copy wrote straight into its destination, emptying the file
+  there from the first byte, and deleted it if anything went wrong. So a copy
+  chosen to *Overwrite* that then failed part-way — a memory stick pulled, a
+  share that went away, a disk that filled — left neither the old file nor
+  the new one; and a copy interrupted by a crash or a power cut left a file
+  under the real name that looked complete and was not. A copy is now written
+  beside its destination under a staging name and renamed into place only
+  once every byte is down, which the filesystem does in one step: the
+  destination is always either the file that was there or the whole new one,
+  never a half. If a copy is cancelled or fails, only the staging file goes.
+  A staging file is easy to recognise — it begins with a dot and the name it
+  was going to be, and carries `.vaktari-` — so one left behind by a crash is
+  not mistaken for the real thing.
+
 - **The licences of what Vaktari is built from now ship with it.** The README
   said the licences of SkiaSharp, HarfBuzzSharp and the Inter typeface travel
   with the release, and only Vaktari's own did. A THIRD-PARTY-NOTICES file

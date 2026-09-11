@@ -786,9 +786,32 @@ public sealed class LinuxFileOperations : IFileOperations
         }
     }
 
+    /// <summary>
+    /// The name a copy is written under until it is whole: beside the target,
+    /// so the final rename never crosses a filesystem, and marked so a listing can
+    /// tell it from a file and a sweep can tell it from anything worth keeping.
+    /// </summary>
+    internal static string Staging(string target)
+        => Path.Combine(
+            Path.GetDirectoryName(target) ?? "",
+            $".{Path.GetFileName(target)}.vaktari-{Guid.NewGuid():N}");
+
     private static async Task CopyFileAsync(string source, string target, OperationHandle handle)
     {
         var buffer = new byte[BufferSize];
+
+        // **Written beside the target under a staging name, and renamed over
+        // it only once every byte is down.** This wrote straight into the
+        // target, opened Create — which truncates from the first byte — and
+        // deleted it on failure. A copy that died halfway left a file under
+        // the real name that looked complete and was not, until the delete
+        // ran; a crash meant it never ran. And an Overwrite truncated the
+        // ORIGINAL before a byte of the replacement had been read, so a source
+        // that failed at 60% left neither file. rename(2) on one filesystem is
+        // atomic: the target is the old file or the whole new one, never a
+        // partial, and the original is untouched until the replacement exists
+        // in full.
+        var staging = Staging(target);
 
         try
         {
@@ -798,7 +821,7 @@ public sealed class LinuxFileOperations : IFileOperations
             await using (var input = new FileStream(
                 source, FileMode.Open, FileAccess.Read, FileShare.Read, BufferSize, useAsync: true))
             await using (var output = new FileStream(
-                target, FileMode.Create, FileAccess.Write, FileShare.None, BufferSize, useAsync: true))
+                staging, FileMode.CreateNew, FileAccess.Write, FileShare.None, BufferSize, useAsync: true))
             {
                 int read;
                 while ((read = await input.ReadAsync(buffer, handle.Token).ConfigureAwait(false)) > 0)
@@ -808,33 +831,36 @@ public sealed class LinuxFileOperations : IFileOperations
                     handle.BytesCopied(read);
                 }
             }
+
+            // Onto the staging file, so what lands under the real name is
+            // already complete in every respect — tags, dates and mode.
+            //
+            // **Extended attributes before the permission bits, never after.**
+            // The kernel checks write permission on the inode before it will
+            // take a user.* attribute (xattr(7)), and FileMetadata.Carry is
+            // exactly what takes that permission away — it reproduces a 0400
+            // private key as 0400 — so the reverse order would drop the tags
+            // on precisely the files whose modes are most restrictive. The
+            // same shape as "times before attributes" inside FileMetadata.
+            //
+            // Not reproducible on the Windows agent this was written on; the
+            // order is pinned by reading this file instead. See
+            // ExtendedAttributeTests.The_attributes_are_carried_before_the_mode_is.
+            Xattrs.Carry(source, staging);
+
+            // The executable bit above all: a copied script that will not run
+            // is the loss people notice, and a stream copy always drops it.
+            FileMetadata.Carry(source, staging);
+
+            File.Move(staging, target, overwrite: true);
         }
         catch
         {
-            // **A half-written file must not be left under the final name.**
-            // The target is opened Create, so it exists and is truncated from
-            // the first byte — cancelling a copy of a large file left something
-            // that looked like the file, opened, and was silently incomplete.
-            Discard(target);
+            // Only ever the staging file. The target is either the untouched
+            // original or was never created, and both are exactly right.
+            Discard(staging);
             throw;
         }
-
-        // **Extended attributes before the permission bits, never after.** The
-        // kernel checks write permission on the inode before it will take a
-        // user.* attribute (xattr(7)), and FileMetadata.Carry is exactly what
-        // takes that permission away — it reproduces a 0400 private key as
-        // 0400 — so the reverse order would drop the tags on precisely the
-        // files whose modes are most restrictive. The same shape as "times
-        // before attributes" inside FileMetadata itself.
-        //
-        // Not reproducible on the Windows agent this was written on; the order
-        // is pinned by reading this file instead. See
-        // ExtendedAttributeTests.The_attributes_are_carried_before_the_mode_is.
-        Xattrs.Carry(source, target);
-
-        // The executable bit above all: a copied script that will not run is
-        // the loss people notice, and a stream copy always drops it.
-        FileMetadata.Carry(source, target);
     }
 
     /// <summary>

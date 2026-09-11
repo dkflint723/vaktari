@@ -294,10 +294,20 @@ public sealed class ExtendedAttributeTests : IDisposable
 
         var landed = Path.Combine(destination, "notes.txt");
 
+        // **The attributes go onto the staging file, which then BECOMES the
+        // new file.** A copy lands under a staging name beside its target and
+        // is renamed over it once whole, so the write is recorded against
+        // that name; what matters is that it was in the target's folder and
+        // that the rename then put it under the real name.
         var written = Assert.Single(
-            _written, w => w.Path == landed && w.Name == "user.xdg.tags");
+            _written,
+            w => w.Name == "user.xdg.tags"
+                 && Path.GetDirectoryName(w.Path) == destination
+                 && (w.Path == landed
+                     || Path.GetFileName(w.Path).StartsWith(".notes.txt.vaktari-", StringComparison.Ordinal)));
 
         Assert.True(written.Existed, "setxattr needs the copy to be there already");
+        Assert.True(File.Exists(landed), "the staged copy was never renamed into place");
     }
 
     /// <summary>
@@ -429,8 +439,11 @@ public sealed class ExtendedAttributeTests : IDisposable
     {
         var source = RepoSource.Read("src", "Vaktari.Linux", "LinuxFileOperations.cs");
 
-        var attributes = source.IndexOf("Xattrs.Carry(source, target);", StringComparison.Ordinal);
-        var mode = source.IndexOf("FileMetadata.Carry(source, target);", StringComparison.Ordinal);
+        // The second argument is whatever the copy is writing at the time —
+        // it was the target and is now the staging file it lands under — and
+        // the order is the invariant, not the name.
+        var attributes = source.IndexOf("Xattrs.Carry(source, ", StringComparison.Ordinal);
+        var mode = source.IndexOf("FileMetadata.Carry(source, ", StringComparison.Ordinal);
 
         Assert.True(attributes >= 0, "the copy no longer carries extended attributes at all");
         Assert.True(mode >= 0, "the copy no longer carries the mode at all");
