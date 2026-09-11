@@ -39,22 +39,13 @@ public sealed class SingleInstance : IDisposable
     /// </summary>
     internal static string? RuntimeDirectoryOverride { get; set; }
 
-    private static string RuntimeDirectory
-    {
-        get
-        {
-            if (RuntimeDirectoryOverride is { } test) return test;
-
-            // XDG_RUNTIME_DIR is per-session and cleared on logout, so a stale
-            // lock cannot survive a reboot and block every future start.
-            var runtime = Environment.GetEnvironmentVariable("XDG_RUNTIME_DIR");
-
-            if (!string.IsNullOrWhiteSpace(runtime) && Directory.Exists(runtime))
-                return runtime;
-
-            return Path.GetTempPath();
-        }
-    }
+    /// <summary>
+    /// XDG_RUNTIME_DIR where the session has one, and a folder of the user's
+    /// own where it has not. **It was /tmp** where it has not, which every
+    /// account on the machine shares — see <see cref="PrivateDirectory"/>
+    /// for what that allowed.
+    /// </summary>
+    private static string RuntimeDirectory => RuntimeDirectoryOverride ?? PrivateDirectory.Runtime();
 
     internal static string LockPath => Path.Combine(RuntimeDirectory, "vaktari.lock");
     internal static string SocketPath => Path.Combine(RuntimeDirectory, "vaktari.sock");
@@ -67,11 +58,15 @@ public sealed class SingleInstance : IDisposable
     {
         try
         {
-            _lock = new FileStream(LockPath, FileMode.OpenOrCreate,
-                FileAccess.ReadWrite, FileShare.None);
+            _lock = PrivateDirectory.OpenLock(LockPath);
         }
-        catch (IOException)
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
         {
+            // IOException is the ordinary answer: another copy holds it.
+            // UnauthorizedAccessException is a lock that cannot be opened at
+            // all, and was measured escaping here — **a read-only lock file
+            // crashed the start** rather than falling through to Program,
+            // which hands over if anyone answers and opens a window if not.
             return false;
         }
 

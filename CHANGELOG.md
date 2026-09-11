@@ -58,6 +58,20 @@ should not be trusted for compatibility yet.
   any of them to a newer release is a deliberate change to the code, made
   with a look at what changed.
 
+- **On Linux, the files that keep Vaktari to one window no longer go to
+  /tmp.** A session that sets no `XDG_RUNTIME_DIR` — a login over SSH, a
+  container, some display managers — had the single-instance lock and its
+  socket written to /tmp, which every account on the machine shares. Another
+  user could hold the lock's name so that every start of Vaktari was told a
+  copy was already running and handed its folders to nobody, or take the
+  socket's name and be handed them instead. Those sessions now use
+  `~/.cache/vaktari/run`, created for this user alone (and tightened if it
+  is found otherwise); a link planted where the lock should be is no longer
+  followed; and a lock file that cannot be opened at all makes Vaktari open
+  a window rather than crash before one appears. Sessions with
+  `XDG_RUNTIME_DIR` — nearly all desktop logins — were never affected, and
+  Windows keeps its per-user temp folder.
+
 ### Fixed
 
 - **Overwriting a file no longer destroys the original before the replacement

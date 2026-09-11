@@ -170,6 +170,37 @@ public sealed class SingleInstanceHandoverTests : IDisposable
     }
 
     /// <summary>
+    /// A lock file that cannot be opened at all — read-only here; owned by
+    /// somebody else in the /tmp days — is an answer, not a crash. Program
+    /// takes false as "hand over if anyone answers, open a window if not",
+    /// and either is better than a start that dies before the window.
+    /// </summary>
+    [Fact]
+    public void A_lock_that_cannot_be_opened_is_reported_not_thrown()
+    {
+        File.WriteAllText(SingleInstance.LockPath, "");
+
+        if (OperatingSystem.IsWindows())
+            File.SetAttributes(SingleInstance.LockPath, FileAttributes.ReadOnly);
+        else
+            File.SetUnixFileMode(SingleInstance.LockPath, UnixFileMode.UserRead);
+
+        try
+        {
+            using var launch = new SingleInstance();
+
+            Assert.False(launch.TryAcquire());
+        }
+        finally
+        {
+            if (OperatingSystem.IsWindows())
+                File.SetAttributes(SingleInstance.LockPath, FileAttributes.Normal);
+            else
+                File.SetUnixFileMode(SingleInstance.LockPath, UnixFileMode.UserRead | UnixFileMode.UserWrite);
+        }
+    }
+
+    /// <summary>
     /// The owner does clean up after itself: a socket file left behind would be
     /// connected to by the next launch, which would then believe it had handed
     /// its folder to a process that no longer exists.
