@@ -413,14 +413,52 @@ public sealed partial class SidebarViewModel : ObservableObject, IDisposable
         // Importing reads every .lnk in Links and Network Shortcuts and
         // resolves each one through the shell, which is a lot of disk before
         // the window has drawn anything.
-        await Task.Run(() => places.ImportExistingAsync(CancellationToken.None).AsTask())
-                  .ConfigureAwait(false);
+        try
+        {
+            await Task.Run(() => places.ImportExistingAsync(CancellationToken.None).AsTask())
+                      .ConfigureAwait(false);
+        }
+        catch (Exception ex)
+        {
+            // **An import that throws must not cost the sidebar its rows.** It
+            // is one bookmarks file, or one folder of shortcuts; the rows are
+            // built from the mount table and the user's own folders, which
+            // are still there to read. Before this the exception left here
+            // with nothing awaiting it — the shell starts this fire-and-forget
+            // — and the sidebar stayed empty with nothing anywhere to say why.
+            LastImportError = ex;
+            Quiet.Swallowed("places-import", ex);
+        }
 
         await ReloadAsync().ConfigureAwait(false);
     }
 
     private Task? _reloading;
     private bool _reloadDirty;
+
+    /// <summary>
+    /// Why the startup import died, when it did. Its own property rather than
+    /// a share of <see cref="LastReloadError"/>: the rebuild that follows a
+    /// dead import finishes, and a finished rebuild is entitled to say so
+    /// without erasing what the import had said.
+    /// </summary>
+    public Exception? LastImportError { get; private set; }
+
+    /// <summary>
+    /// Why the last rebuild did not finish — null once one has. **A rebuild
+    /// that throws leaves the sidebar exactly as it was, which at startup is
+    /// empty, and said nothing about it**: the startup import is started
+    /// fire-and-forget, so an exception from it had nowhere to go. Kept so a
+    /// test on a machine that is not this one can say what happened rather
+    /// than that rows were missing; the log gets it too.
+    /// </summary>
+    public Exception? LastReloadError { get; private set; }
+
+    /// <summary>Whether a rebuild is in flight right now.</summary>
+    public bool IsReloading
+    {
+        get { lock (_reloadGate) return _reloading is not null; }
+    }
 
     /// <summary>
     /// Rebuilds the sidebar, coalescing overlapping requests.
@@ -587,9 +625,17 @@ public sealed partial class SidebarViewModel : ObservableObject, IDisposable
             try
             {
                 await ReloadOnceAsync(places).ConfigureAwait(false);
+                LastReloadError = null;
             }
-            catch
+            catch (Exception ex)
             {
+                // Recorded and logged on the way out, and still thrown: a
+                // caller that awaits a reload — an unpin, an eject — is owed
+                // the failure. See LastReloadError for the caller that is not
+                // there to be owed it.
+                LastReloadError = ex;
+                Quiet.Swallowed("places-reload", ex);
+
                 lock (_reloadGate) _reloading = null;
                 throw;
             }
