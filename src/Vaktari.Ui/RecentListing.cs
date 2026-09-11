@@ -81,7 +81,10 @@ public static class VirtualPaths
     /// which contain none of ':', '/', '' or '%', so Normalise has nothing to
     /// rewrite and no separator is found to call a parent.
     /// </summary>
-    public const string SearchPrefix = "vaktari:search:";
+    // Read from Core rather than restated: the two places providers turn a
+    // pinned search into a row, and they sit below this assembly. One literal,
+    // where the lowest reader of it is.
+    public const string SearchPrefix = Core.Places.PinnedPlaces.SearchPrefix;
 
     private const string Here = "here";
     private const string Everywhere = "everywhere";

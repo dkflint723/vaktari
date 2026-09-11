@@ -672,7 +672,7 @@ public sealed class SearchHistoryTests : OwnedViewModels
         var pane = Pane(history);
 
         Assert.False(pane.HasSearchSteps);
-        Assert.Equal("Search files  (ctrl+f)", pane.SearchTip);
+        Assert.Equal("Search files  (ctrl+f or ctrl+e)", pane.SearchTip);
 
         await pane.NavigateAsync(VirtualPaths.Search("report", Folder, scoped: true));
 
@@ -1163,8 +1163,8 @@ public sealed class SearchHistoryTests : OwnedViewModels
     private static XElement SearchButton()
         => XDocument.Parse(RepoSource.Ui("MainWindow.axaml"))
             .Descendants(Avalonia + "Button")
-            .Single(b => (string?)b.Attribute("AutomationProperties.Name")
-                         == "Search files  (ctrl+f)");
+            .Single(b => (string?)b.Attribute(XNamespace.Get("clr-namespace:Vaktari.Ui.Input") + "KeyHint.Name")
+                         == "Search files");
 
     /// <summary>
     /// The settings page carries both halves.
@@ -1209,10 +1209,17 @@ public sealed class SearchHistoryTests : OwnedViewModels
     /// </summary>
     [Fact]
     public void The_dialog_is_told_how_many_searches_are_held()
-        => Assert.Contains(
-            "_services.Searches,\n            _services.SettingsStore.ReadOnlyReason);",
-            RepoSource.Ui("MainWindow.axaml.cs"),
-            StringComparison.Ordinal);
+    {
+        // The whole constructor call, however many arguments follow: this
+        // pinned the exact tail twice and was broken twice by an argument
+        // added after it — the read-only note, then the update line.
+        var source = RepoSource.Ui("MainWindow.axaml.cs");
+        var call = source[source.IndexOf("new SettingsViewModel(", StringComparison.Ordinal)..];
+
+        call = call[..call.IndexOf(");", StringComparison.Ordinal)];
+
+        Assert.Contains("_services.Searches", call, StringComparison.Ordinal);
+    }
 
     /// <summary>
     /// Emptying it on Save reaches the real store, through the one handler that

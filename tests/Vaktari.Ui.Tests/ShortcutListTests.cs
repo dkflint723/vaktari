@@ -2,6 +2,7 @@ using Avalonia.Controls;
 using Avalonia.Headless.XUnit;
 using Avalonia.VisualTree;
 using Vaktari.Ui.ViewModels;
+using Vaktari.Ui.Input;
 using Xunit;
 
 namespace Vaktari.Ui.Tests;
@@ -52,6 +53,16 @@ public sealed class ShortcutListTests
             var data = new TheoryData<string>();
             var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
 
+            // Every key the shipped keymap gives a command, in the spelling
+            // settings.json stores — so the sheet's printer is checked against
+            // this file's own Readable below rather than against itself.
+            foreach (var command in Commands.All)
+                foreach (var key in Keymap.Default.KeysOf(command.Id))
+                    if (seen.Add(KeyChords.Store(key))) data.Add(KeyChords.Store(key));
+
+            // And the fixed keys: the ones a box's own KeyBindings answer, and
+            // the ones the window's key handler answers with rules no keymap
+            // can express.
             foreach (var line in Markup().Split('\n'))
             {
                 if (!line.Contains("KeyBinding", StringComparison.Ordinal)) continue;
@@ -219,13 +230,9 @@ public sealed class ShortcutListTests
                 .Split(" / ", StringSplitOptions.TrimEntries)
                 .Contains("F3", StringComparer.OrdinalIgnoreCase));
 
-        // Both spellings moved out of the markup and into OnWindowKeyDown, so
-        // that a rename bar can refuse them: a KeyBinding is dispatched before
-        // the window's own handler runs at all.
-        var searchKeys = KeyBindingSites.Markup()
-            .Concat(KeyBindingSites.CodeBehind())
-            .Where(b => b.Value.Contains("BeginSearch", StringComparison.Ordinal))
-            .Select(b => Readable(b.Key))
+        // The keymap is the bindings: every key the window answers comes from it.
+        var searchKeys = Keymap.Default.KeysOf("Search")
+            .Select(k => Readable(KeyChords.Store(k)))
             .ToList();
 
         Assert.NotEmpty(searchKeys);
@@ -259,13 +266,11 @@ public sealed class ShortcutListTests
                 .Split(" / ", StringSplitOptions.TrimEntries)
                 .Contains("Ctrl+D", StringComparer.OrdinalIgnoreCase));
 
-        // TrashSelected rather than "Trash": the question is which key moves
-        // the selection to the bin, and emptying it is a different verb that
+        // Trash rather than EmptyTrash: the question is which key moves the
+        // selection to the bin, and emptying it is a different verb that
         // shares the word.
-        var binKeys = KeyBindingSites.Markup()
-            .Concat(KeyBindingSites.CodeBehind())
-            .Where(b => b.Value.Contains("TrashSelected", StringComparison.Ordinal))
-            .Select(b => Readable(b.Key))
+        var binKeys = Keymap.Default.KeysOf("Trash")
+            .Select(k => Readable(KeyChords.Store(k)))
             .ToList();
 
         Assert.NotEmpty(binKeys);
@@ -308,10 +313,8 @@ public sealed class ShortcutListTests
         // PinCurrent rather than "Pin": the question is which key adds the
         // folder you are standing in, and the menu's own row — which pins the
         // SELECTION — is not a key at all.
-        var pinKeys = KeyBindingSites.Markup()
-            .Concat(KeyBindingSites.CodeBehind())
-            .Where(b => b.Value.Contains("PinCurrent", StringComparison.Ordinal))
-            .Select(b => Readable(b.Key))
+        var pinKeys = Keymap.Default.KeysOf("PinCurrent")
+            .Select(k => Readable(KeyChords.Store(k)))
             .ToList();
 
         Assert.NotEmpty(pinKeys);
@@ -344,6 +347,7 @@ public sealed class ShortcutListTests
         // their work inline, and by the stricter reading they look unbound.
         var bound = KeyBindingSites.Markup().Keys
             .Concat(KeyBindingSites.CodeBehindHandled())
+            .Concat(Commands.All.SelectMany(c => Keymap.Default.KeysOf(c.Id)).Select(KeyChords.Store))
             .Select(Readable)
             .ToList();
 

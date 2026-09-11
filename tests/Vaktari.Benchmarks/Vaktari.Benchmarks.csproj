@@ -1,0 +1,29 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- Measurements, not tests: run by hand in Release when a number is wanted.
+         dotnet run -c Release - -project tests/Vaktari.Benchmarks
+       (see BUILDING.md §7). Not a test project, so `dotnet test` on the
+       solution walks past it; not published, so the trim and AOT analysers
+       the shared props turn on are switched off here the way the test
+       projects switch them off, and for the same reason — BenchmarkDotNet is
+       reflection by design and none of it ships. -->
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <IsTestProject>false</IsTestProject>
+    <IsPackable>false</IsPackable>
+    <IsAotCompatible>false</IsAotCompatible>
+    <EnableTrimAnalyzer>false</EnableTrimAnalyzer>
+    <EnableAotAnalyzer>false</EnableAotAnalyzer>
+    <EnableSingleFileAnalyzer>false</EnableSingleFileAnalyzer>
+    <RootNamespace>Vaktari.Benchmarks</RootNamespace>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="BenchmarkDotNet" Version="0.15.8" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="../../src/Vaktari.Core/Vaktari.Core.csproj" />
+  </ItemGroup>
+
+</Project>

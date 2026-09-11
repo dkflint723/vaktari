@@ -8,6 +8,7 @@ using Avalonia.VisualTree;
 using Vaktari.Core.FileSystem;
 using Vaktari.Ui;
 using Vaktari.Ui.ViewModels;
+using Vaktari.Ui.Input;
 using Xunit;
 
 namespace Vaktari.Ui.Tests;
@@ -251,13 +252,8 @@ public sealed class RenamePromptTenancyTests
     [Fact]
     public void Neither_rename_gesture_is_a_window_key_binding()
     {
-        var bindings = XDocument.Parse(RepoSource.Ui("MainWindow.axaml"))
-            .Descendants(Avalonia + "KeyBinding")
-            .Select(b => (string?)b.Attribute("Gesture"))
-            .ToList();
-
-        Assert.DoesNotContain("F2", bindings);
-        Assert.DoesNotContain("Shift+F2", bindings);
+        Assert.Equal(KeyTier.Listing, Keymap.Default.Owner(new KeyGesture(Key.F2))?.Tier);
+        Assert.Equal(KeyTier.Listing, Keymap.Default.Owner(new KeyGesture(Key.F2, KeyModifiers.Shift))?.Tier);
     }
 
     [Fact]
@@ -267,20 +263,17 @@ public sealed class RenamePromptTenancyTests
             RepoSource.Ui("MainWindow.axaml.cs"),
             "private void OnWindowKeyDown(object? sender, KeyEventArgs e)");
 
-        var rename = body.IndexOf("case Key.F2 when e.KeyModifiers == KeyModifiers.None:",
-                                  StringComparison.Ordinal);
-        var bulk = body.IndexOf("case Key.F2 when e.KeyModifiers == KeyModifiers.Shift:",
-                                StringComparison.Ordinal);
+        var rename = body.IndexOf("if (RenameHasTheKeyboard()) return;", StringComparison.Ordinal);
+        var guard = body.IndexOf("if (FocusManager?.GetFocusedElement() is TextBox) return;",
+                                 StringComparison.Ordinal);
+        var listing = body.IndexOf("DispatchKeymap(e, Input.KeyTier.Listing)", StringComparison.Ordinal);
 
-        Assert.True(rename > 0, "F2 is not handled in the guarded key handler");
-        Assert.True(bulk > 0, "Shift+F2 is not handled in the guarded key handler");
+        Assert.True(rename > 0, "the rename guard is not in this handler any more");
+        Assert.True(guard > rename, "the text-box guard sits ahead of the rename guard");
+        Assert.True(listing > guard, "the listing's commands are answered ahead of the text-box guard");
 
-        // Through the commands, not the methods: the shortcut-inventory tests
-        // read the bound name out of this file with a `.XCommand.Execute(`
-        // pattern, and calling the method directly would compile and turn them
-        // red.
-        Assert.Contains("pane.BeginRenameCommand.Execute(null);", body);
-        Assert.Contains("_shell.BatchRenameCommand.Execute(null);", body);
+        Assert.Equal("Rename", Keymap.Default.Owner(new KeyGesture(Key.F2))?.Id);
+        Assert.Equal("BatchRename", Keymap.Default.Owner(new KeyGesture(Key.F2, KeyModifiers.Shift))?.Id);
     }
 
     /// <summary>
@@ -293,48 +286,23 @@ public sealed class RenamePromptTenancyTests
     {
         string[] moved = ["Ctrl+I", "Ctrl+Shift+N", "Ctrl+H", "Ctrl+D", "Ctrl+F", "Ctrl+E"];
 
-        var bindings = XDocument.Parse(RepoSource.Ui("MainWindow.axaml"))
-            .Descendants(Avalonia + "KeyBinding")
-            .Select(b => (string?)b.Attribute("Gesture"))
-            .ToList();
+        foreach (var gesture in moved)
+            Assert.True(Keymap.Default.Owner(KeyChords.Parse(gesture)!) is { Tier: KeyTier.Guarded },
+                        $"{gesture} is not one of the guarded commands' keys");
 
         var body = RepoSource.Body(
             RepoSource.Ui("MainWindow.axaml.cs"),
             "private void OnWindowKeyDown(object? sender, KeyEventArgs e)");
 
+        var rename = body.IndexOf("if (RenameHasTheKeyboard()) return;", StringComparison.Ordinal);
+        var guarded = body.IndexOf("DispatchKeymap(e, Input.KeyTier.Guarded)", StringComparison.Ordinal);
         var guard = body.IndexOf("if (FocusManager?.GetFocusedElement() is TextBox) return;",
                                  StringComparison.Ordinal);
 
-        Assert.True(guard > 0, "the focused-text-box guard is not in this handler any more");
-
-        foreach (var gesture in moved)
-        {
-            // Every KeyBinding in the file, not only the window's: a gesture
-            // moved to a pane's own TextBox KeyBindings would be claimed ahead
-            // of this handler in exactly the same way.
-            Assert.False(bindings.Contains(gesture),
-                         $"{gesture} is a KeyBinding in the markup again, so the rename "
-                         + "bar cannot refuse it — handle it in OnWindowKeyDown.");
-
-            Assert.Contains(gesture, KeyBindingSites.CodeBehindHandled());
-        }
-
-        // Above the guard, not below it: two of the six are answered while a
-        // text box has focus on purpose.
-        foreach (var label in new[]
-                 {
-                     "case Key.I when e.KeyModifiers == KeyModifiers.Control:",
-                     "case Key.N when e.KeyModifiers == (KeyModifiers.Control | KeyModifiers.Shift):",
-                     "case Key.H when e.KeyModifiers == KeyModifiers.Control:",
-                     "case Key.D when e.KeyModifiers == KeyModifiers.Control:",
-                     "case Key.E when e.KeyModifiers == KeyModifiers.Control:",
-                     "case Key.F when e.KeyModifiers == KeyModifiers.Control:",
-                 })
-        {
-            var at = body.IndexOf(label, StringComparison.Ordinal);
-
-            Assert.True(at > 0, $"{label} is not in the guarded key handler");
-            Assert.True(at < guard, $"{label} sits behind the focused-text-box guard");
-        }
+        // Behind the rename guard, so the bar can refuse them; above the
+        // text-box guard, because two of the six are answered while a text box
+        // has focus on purpose.
+        Assert.True(rename > 0 && guarded > rename, "the guarded commands are answered ahead of the rename guard");
+        Assert.True(guard > guarded, "the guarded commands sit behind the focused-text-box guard");
     }
 }

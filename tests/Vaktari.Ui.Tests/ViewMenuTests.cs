@@ -7,6 +7,7 @@ using Vaktari.Core.FileSystem;
 using Vaktari.Core.Session;
 using Vaktari.Core.Settings;
 using Vaktari.Ui.ViewModels;
+using Vaktari.Ui.Input;
 using Xunit;
 
 namespace Vaktari.Ui.Tests;
@@ -45,6 +46,7 @@ public sealed class ViewMenuTests : OwnedViewModels
 {
     private static readonly XNamespace Avalonia = "https://github.com/avaloniaui";
     private static readonly XNamespace Xaml = "http://schemas.microsoft.com/winfx/2006/xaml";
+    private static readonly XNamespace In = "clr-namespace:Vaktari.Ui.Input";
 
     // ---- statics this file borrows -----------------------------------------
 
@@ -147,9 +149,14 @@ public sealed class ViewMenuTests : OwnedViewModels
     /// class comment for the three gestures this caught.
     /// </summary>
     private static KeyGesture Gesture(XElement row)
-        => KeyGesture.Parse((string?)row.Attribute("InputGesture")
+    {
+        var id = (string?)row.Attribute(In + "KeyHint.Command")
             ?? throw new InvalidOperationException(
-                $"the '{MenuLabels.Plain((string?)row.Attribute("Header"))}' row prints no gesture"));
+                $"the '{MenuLabels.Plain((string?)row.Attribute("Header"))}' row names no command for its key");
+
+        return Keymap.Default.KeysOf(id).FirstOrDefault()
+            ?? throw new InvalidOperationException($"the {id} command has no key for its row to print");
+    }
 
     /// <summary>
     /// The pane member a <c>{Binding ActiveTab.Something}</c> attribute names.

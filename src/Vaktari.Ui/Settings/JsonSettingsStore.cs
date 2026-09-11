@@ -182,10 +182,22 @@ public sealed class JsonSettingsStore : ISettingsStore
     /// <summary>
     /// Writes the defaults out once, on a first run, so the file exists and can
     /// be read or hand-edited before any dialog is built. Never overwrites.
+    ///
+    /// True when it wrote the file — which is how the application knows it is
+    /// being run for the first time. Nothing else about a fresh install can be
+    /// told from a machine whose owner has simply never opened Settings, and
+    /// the write is the one thing a first run does that a second cannot. A
+    /// file this build refuses to write (see <see cref="ReadOnlyReason"/>) is
+    /// not a first run either: it is a downgrade, and the answer is what is on
+    /// disk afterwards rather than what was attempted.
     /// </summary>
-    public void EnsureFileExists(SettingsState settings)
+    public bool EnsureFileExists(SettingsState settings)
     {
-        if (!File.Exists(_path)) Save(settings);
+        if (File.Exists(_path)) return false;
+
+        Save(settings);
+
+        return File.Exists(_path);
     }
 
     /// <summary>

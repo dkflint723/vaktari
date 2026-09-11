@@ -413,14 +413,52 @@ public sealed partial class SidebarViewModel : ObservableObject, IDisposable
         // Importing reads every .lnk in Links and Network Shortcuts and
         // resolves each one through the shell, which is a lot of disk before
         // the window has drawn anything.
-        await Task.Run(() => places.ImportExistingAsync(CancellationToken.None).AsTask())
-                  .ConfigureAwait(false);
+        try
+        {
+            await Task.Run(() => places.ImportExistingAsync(CancellationToken.None).AsTask())
+                      .ConfigureAwait(false);
+        }
+        catch (Exception ex)
+        {
+            // **An import that throws must not cost the sidebar its rows.** It
+            // is one bookmarks file, or one folder of shortcuts; the rows are
+            // built from the mount table and the user's own folders, which
+            // are still there to read. Before this the exception left here
+            // with nothing awaiting it — the shell starts this fire-and-forget
+            // — and the sidebar stayed empty with nothing anywhere to say why.
+            LastImportError = ex;
+            Quiet.Swallowed("places-import", ex);
+        }
 
         await ReloadAsync().ConfigureAwait(false);
     }
 
     private Task? _reloading;
     private bool _reloadDirty;
+
+    /// <summary>
+    /// Why the startup import died, when it did. Its own property rather than
+    /// a share of <see cref="LastReloadError"/>: the rebuild that follows a
+    /// dead import finishes, and a finished rebuild is entitled to say so
+    /// without erasing what the import had said.
+    /// </summary>
+    public Exception? LastImportError { get; private set; }
+
+    /// <summary>
+    /// Why the last rebuild did not finish — null once one has. **A rebuild
+    /// that throws leaves the sidebar exactly as it was, which at startup is
+    /// empty, and said nothing about it**: the startup import is started
+    /// fire-and-forget, so an exception from it had nowhere to go. Kept so a
+    /// test on a machine that is not this one can say what happened rather
+    /// than that rows were missing; the log gets it too.
+    /// </summary>
+    public Exception? LastReloadError { get; private set; }
+
+    /// <summary>Whether a rebuild is in flight right now.</summary>
+    public bool IsReloading
+    {
+        get { lock (_reloadGate) return _reloading is not null; }
+    }
 
     /// <summary>
     /// Rebuilds the sidebar, coalescing overlapping requests.
@@ -587,9 +625,17 @@ public sealed partial class SidebarViewModel : ObservableObject, IDisposable
             try
             {
                 await ReloadOnceAsync(places).ConfigureAwait(false);
+                LastReloadError = null;
             }
-            catch
+            catch (Exception ex)
             {
+                // Recorded and logged on the way out, and still thrown: a
+                // caller that awaits a reload — an unpin, an eject — is owed
+                // the failure. See LastReloadError for the caller that is not
+                // there to be owed it.
+                LastReloadError = ex;
+                Quiet.Swallowed("places-reload", ex);
+
                 lock (_reloadGate) _reloading = null;
                 throw;
             }
@@ -772,8 +818,10 @@ public sealed partial class SidebarViewModel : ObservableObject, IDisposable
             OpenedAt: arrived.Count == 1 ? arrived[0] : null);
     }
 
-    public Task PinAsync(string path)
-        => _places?.PinAsync(path, null, CancellationToken.None).AsTask() ?? Task.CompletedTask;
+    /// <summary>Pins a path, under a label when the caller has a better one
+    /// than the path's tail — a saved search's question, say.</summary>
+    public Task PinAsync(string path, string? label = null)
+        => _places?.PinAsync(path, label, CancellationToken.None).AsTask() ?? Task.CompletedTask;
 
     /// <summary>
     /// Takes a place back off the list, and rebuilds it so the row goes.
@@ -937,6 +985,16 @@ public sealed partial class PlaceItemViewModel(Place place) : ObservableObject
     public string Label { get; } = place.Label;
     public string Path { get; } = place.Path;
     public string Icon { get; } = place.Icon;
+
+    /// <summary>
+    /// What the row's tooltip says: the folder, for a folder — and for a
+    /// saved search, where it looks, since its Path is an internal scheme
+    /// that reads as nothing. The same words the magnifier's history rows
+    /// hover, so a search reads alike in both places it can be reached from.
+    /// </summary>
+    public string Where => Core.Places.PinnedPlaces.IsSearch(Path)
+        ? PaneViewModel.SearchStepWhere(Path)
+        : Path;
 
     /// <summary>
     /// Whether the bin is holding anything. Meaningless on every other row.

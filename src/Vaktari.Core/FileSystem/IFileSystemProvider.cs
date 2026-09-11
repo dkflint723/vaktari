@@ -74,7 +74,14 @@ public interface IFileSystemProvider
 
     ValueTask<FileEntry?> GetEntryAsync(string path, CancellationToken ct);
 
-    /// <summary>Live change notifications. Dispose to stop watching.</summary>
+    /// <summary>
+    /// Live change notifications. Dispose to stop watching.
+    ///
+    /// Live as far as the platform can make them: a folder on a mount that
+    /// delivers no notifications is read on a timer instead, through
+    /// <see cref="PollingWatch"/>, and the differences arrive by the same
+    /// call.
+    /// </summary>
     IDisposable Watch(string path, Action<FileSystemChange> onChange);
 
     /// <summary>

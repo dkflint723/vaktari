@@ -155,8 +155,8 @@ public sealed partial class PaneViewModel
     /// to a menu with nothing in it.
     /// </summary>
     public string SearchTip => HasSearchSteps
-        ? "Search files  (ctrl+f)  —  right-click for recent searches"
-        : "Search files  (ctrl+f)";
+        ? Vaktari.Ui.Input.Keymap.Current.Labelled("Search files", "Search") + "  —  right-click for recent searches"
+        : Vaktari.Ui.Input.Keymap.Current.Labelled("Search files", "Search");
 
     /// <summary>
     /// Records a search, when the setting allows one.

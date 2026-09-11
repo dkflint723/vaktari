@@ -325,12 +325,12 @@ public sealed class SearchKeyboardTests : OwnedViewModels
     [InlineData("Ctrl+E")]
     public void Both_shortcuts_open_the_field(string gesture)
     {
-        var bound = KeyBindingSites.CodeBehind()
-            .Where(b => b.Key == gesture)
-            .Select(b => b.Value)
-            .ToList();
+        var owner = Vaktari.Ui.Input.Keymap.Default.Owner(Vaktari.Ui.Input.KeyChords.Parse(gesture)!);
 
-        Assert.Contains(bound, c => c.Contains("BeginSearch", StringComparison.Ordinal));
+        // Search runs the pane's BeginSearch, pinned with the rest of the table
+        // in KeymapTests; guarded, so an open rename box refuses it.
+        Assert.Equal("Search", owner?.Id);
+        Assert.Equal(Vaktari.Ui.Input.KeyTier.Guarded, owner!.Tier);
     }
 
     private static async Task WaitUntil(Func<bool> done)

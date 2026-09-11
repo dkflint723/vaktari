@@ -207,6 +207,12 @@ answer about capitals — because what is kept is the whole search rather than
 the words in it. Twelve are offered, fifty are kept, and it can be switched off
 and emptied from Settings.
 
+**A search worth keeping can be saved to places.** `Ctrl+D` in a search, the
+*Save search* button on the band above the results, or *Save this search to
+places* on the listing's menu puts it in the sidebar with a magnifier, named
+for its question and where it looks. Clicking it asks the question again;
+rename or remove it like any other pinned place.
+
 **Filter the listing you are looking at** with `Ctrl+I`, and nothing on screen
 moves. `*` and `?` work as patterns here too, so `*.png` hides everything else;
 the count underneath reads "filtered to 2 of 3"; and a filter that matches
@@ -466,10 +472,19 @@ put one back from another machine, and restore every setting to its default.
 | `Ctrl+F` `Ctrl+E` | search | `→` `←` | open and close a folder in place |
 | `Ctrl+I` | filter the listing | `Menu` `Shift+F10` | the right-click menu |
 | `Escape` | clear the filter | `Ctrl+Shift+,` | settings |
-| `F1` | every key, in the app | | |
+| `F1` | every key, in the app | `Ctrl+Shift+P` | any command, by name |
+
+These are the keys Vaktari ships with, and **Settings ▸ Keyboard changes every
+one that runs a command**: every command is listed with its keys, *Add key*
+listens for the next key you press, and a key another command already has is
+offered to you rather than moved without asking. Only what differs from this
+table is written to settings.json. `Enter`, `Escape`, `Tab`, `Backspace`, the
+arrows, the menu key and `Ctrl+1`…`Ctrl+9` keep their jobs everywhere and
+cannot be given to anything else.
 
 `F1` is the authority — a test checks it against the real bindings in both
-directions, and it prints whichever job `Backspace` is currently doing.
+directions, and it prints the keys in force, any you changed included, and
+whichever job `Backspace` is currently doing.
 
 ## Install
 
@@ -522,6 +537,17 @@ and your own `scripts\` folder alone, under `%LOCALAPPDATA%\vaktari`, so
 reinstalling or
 upgrading picks up where you left off. Delete that folder by hand if you want
 them gone — but note what is in it first.
+
+### Portable
+
+Vaktari can carry its state with it. Make a folder named `portable` beside
+the executable — next to `vaktari.exe` in a copy of the installed folder, or
+next to `vaktari` in the unpacked tarball — and everything it would keep under
+`%LOCALAPPDATA%\vaktari` or `~/.local/state/vaktari` goes in there instead:
+tabs, places, folder views, settings, recents and the log. Nothing is written
+outside it except the single-instance lock, which lives in the per-user
+runtime folder and is named for the portable folder, so a copy on a stick and
+an installed copy run side by side rather than handing folders to each other.
 
 ### Building it yourself
 
@@ -595,16 +621,20 @@ promise yet. Worth knowing before you decide:
 - The Small grid draws no thumbnails, and on Linux Vaktari does not *generate*
   video or PDF thumbnails — it only reads ones your desktop's thumbnailers
   already made.
-- **Keyboard shortcuts cannot be rebound.** `F1` shows the list; nothing
-  changes it.
+- Keys can be changed, but not the ones every list and box shares: `Enter`,
+  `Escape`, `Tab`, `Backspace`, the arrows, the menu key and
+  `Ctrl+1`…`Ctrl+9`. A key is one press — no two-key sequences, and no
+  mouse buttons.
 - Nothing queues: every transfer you start runs at once.
 - Places are re-imported from your desktop at every startup, so a place you
   remove in Vaktari that still exists in Dolphin's or Explorer's own list will
   come back.
 - Inside a git submodule or a linked worktree, the version-control marks wait
   for `F5` after a commit rather than updating on their own.
-- Accessibility is partial: the main window carries automation names, the
-  Settings dialog does not.
+- Accessibility is partial. A test holds every dialog to naming each box,
+  dropdown, list and button for a screen reader. The main window is not held
+  to it: the rows of its file lists are named, but its lists and its search,
+  filter, path, rename and prompt boxes are not.
 
 Bugs and ideas are welcome on the
 [issue tracker](https://github.com/dkflint723/vaktari/issues). For a bug,

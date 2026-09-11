@@ -1,0 +1,52 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:vm="clr-namespace:Vaktari.Ui.ViewModels"
+        x:Class="Vaktari.Ui.PaletteWindow"
+        Title="Commands"
+        Background="{DynamicResource AppBackground}"
+        Foreground="{DynamicResource ViewText}"
+        FontFamily="{DynamicResource AppFontFamily}"
+        Width="520" Height="440"
+        CanResize="False"
+        WindowStartupLocation="CenterOwner">
+
+  <!-- A box and the list under it, nothing else: the point is to type a
+       few letters and press Enter. The keys are printed beside each name
+       the way the sheet prints them, so the way to skip this box next time
+       is learnt from the box itself. -->
+  <DockPanel Margin="12">
+
+    <TextBox x:Name="Query" DockPanel.Dock="Top"
+             PlaceholderText="Type a command"
+             AutomationProperties.Name="Command to run"
+             FontSize="{DynamicResource FontSizeBase}"
+             Margin="0,0,0,8"/>
+
+    <TextBlock DockPanel.Dock="Bottom"
+               Text="Enter runs the highlighted one; Escape closes this."
+               FontSize="{DynamicResource FontSizeTiny}"
+               Foreground="{DynamicResource ViewDimText}"
+               Margin="0,8,0,0"/>
+
+    <ListBox x:Name="Matches"
+             AutomationProperties.Name="Matching commands"
+             SelectionMode="Single">
+      <ListBox.ItemTemplate>
+        <DataTemplate x:DataType="vm:PaletteRow">
+          <DockPanel>
+            <TextBlock DockPanel.Dock="Right" Text="{Binding Keys}"
+                       FontFamily="{DynamicResource AppMonoFamily}"
+                       FontSize="{DynamicResource FontSizeSmall}"
+                       Foreground="{DynamicResource ViewDimText}"
+                       VerticalAlignment="Center"
+                       Margin="12,0,0,0"/>
+            <TextBlock Text="{Binding Name}"
+                       FontSize="{DynamicResource FontSizeBase}"
+                       VerticalAlignment="Center"/>
+          </DockPanel>
+        </DataTemplate>
+      </ListBox.ItemTemplate>
+    </ListBox>
+
+  </DockPanel>
+</Window>

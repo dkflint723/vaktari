@@ -174,15 +174,16 @@ public sealed class VirtualListingActionTests : OwnedViewModels
     /// (The declaration this anchors to became <c>private async Task
     /// PinCurrentAsync()</c> when the gesture started reporting what it did —
     /// the command it generates is still <c>PinCurrentCommand</c>, which is
-    /// what the key handler and the menu bind. What it asserts is unchanged.
-    /// The behaviour is also driven end to end in
-    /// <c>PinSaysWhatItDidTests</c>, which this outlived by reading the guard
-    /// that no window is needed to see.)
+    /// what the key handler and the menu bind. The guard grew a second clause
+    /// when a search became a place: a real folder OR a search listing, and
+    /// nothing else. The behaviour is also driven end to end in
+    /// <c>PinSaysWhatItDidTests</c> and <c>SavedSearchTests</c>, which this
+    /// outlived by reading the guard that no window is needed to see.)
     /// </summary>
     [Fact]
     public void And_ctrl_d_pins_nothing_there()
         => Assert.Contains(
-            "ActiveTab is { IsRealFolder: true, CurrentPath: { Length: > 0 } path }",
+            "(pane.IsRealFolder || pane.IsSearchListing)",
             RepoSource.Body(
                 RepoSource.Ui("ViewModels", "ShellViewModel.cs"),
                 "private async Task PinCurrentAsync()"));

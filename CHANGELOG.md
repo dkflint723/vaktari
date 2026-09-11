@@ -13,6 +13,70 @@ should not be trusted for compatibility yet.
 
 ### Added
 
+- **Keys can be changed.** Settings ▸ Keyboard lists every command with
+  the keys that run it. *Add key* listens for the next key you press; a key
+  another command already has is offered to you — take it, or leave it
+  where it is — rather than moved without asking, and a key that types, or
+  that every list and box needs, is refused with the reason. The F1 sheet,
+  the command box, the tour, the menus and the tooltips all print the keys
+  in force. Only what differs from the shipped keys is written to
+  settings.json, so a key a later release adds still reaches you, and a key
+  the file asks for that cannot be used is listed on the page rather than
+  stopping the window from opening. Before this, Ctrl+D pinning here and
+  deleting in Explorer, and Ctrl+B folding the sidebar here and adding a
+  place in Dolphin, were things the F1 sheet could only explain.
+
+- **Saved searches.** A search worth keeping can be saved to places: Ctrl+D
+  in a search, the *Save search* button on the band above the results, or
+  *Save this search to places* on the listing's menu. It sits in the sidebar
+  with a magnifier, named for its question and where it looks, and clicking
+  it asks the question again — the whole search, folder and capitals
+  included. Rename or remove it like any pinned place. Before this the
+  gesture that keeps a folder refused a search, and the magnifier's history
+  kept twelve and forgot the rest.
+
+- **Portable mode.** A folder named `portable` beside the executable makes
+  Vaktari keep everything in it — tabs, places, folder views, settings,
+  recents, the log — instead of under `%LOCALAPPDATA%` or `~/.local/state`,
+  so a copy on a stick carries its state with it and leaves nothing behind
+  on the machines it visits. A portable copy and an installed one run side
+  by side; before this the second to start handed its folder to the first
+  and quit.
+
+- **Any command, by name.** Ctrl+Shift+P — or *View options (≡) ▸
+  Commands…* — opens a box: type a few letters of what you want, and Enter
+  runs the highlighted match. Sixty-odd commands are in it, from *New tab*
+  to *Empty the bin*, each printed with the key that also runs it, so the
+  key gets learnt from the box. What needs a file under the pointer or a
+  choice of its own — *Open with*, *Copy to* — stays on the right-click
+  menu.
+
+- **A short tour of the window, and a first run that says where it is.** The
+  first time Vaktari runs it writes its settings file and, until now, said
+  nothing else. It now says one line on the operation bar: the tour is under
+  *View options (≡) ▸ Take the tour*. The tour is three cards — the window,
+  finding things, making it yours — each a handful of keys, and every key on
+  it is one the F1 sheet lists. It is there for anybody, any time, not only
+  the first time.
+
+- **The list's columns can be dragged wider or narrower.** The right edge of
+  the Type, Size, Modified and Created headings is a grip: drag it and the
+  column follows, in every pane, and the width is kept across a restart. A
+  date that trimmed its year at the designed width, or a size column with
+  room to spare, is now yours to set; *Reset column widths* on the headings'
+  right-click menu puts the four back. The columns keep their order — moving
+  one to a different place in the row is not in this release.
+
+- **Vaktari can tell you when a newer release exists — if you ask it to.**
+  Settings ▸ General ▸ Updates has a box, off by default. With it on,
+  Vaktari asks github.com once a day whether a newer release exists, sending
+  nothing but the request — no version, no identifier — and never downloads
+  anything: a newer release is a line on the status bar and on the settings
+  footer's version line, whose "What is new" opens the release notes. A file
+  manager stays installed for years, and the fixes in this changelog are
+  worth a line to somebody who never reads a changelog. A development build
+  never asks.
+
 - **A crash leaves evidence, and Settings can hand it over.** Vaktari keeps a
   small log beside its settings now — a megabyte at a time, three kept — with
   every path in it reduced to the file's name and a short code for its folder,
@@ -89,6 +153,15 @@ should not be trusted for compatibility yet.
   status line.
 
 ### Fixed
+
+- **A folder on a network mount now updates on its own.** On Linux, a
+  share mounted over SMB, NFS or SSH — or through the desktop's own file
+  dialogs, which mount through gvfs or KIO — delivers no change
+  notifications for what other machines do to it, so a file put there from
+  elsewhere never appeared until you pressed F5, which on a share is exactly
+  where somebody else is putting files for you to see. Such folders are now
+  re-read every five seconds and the differences applied as if the
+  notifications had arrived. Local folders are watched as before.
 
 - **Pause reaches every running operation, not only the newest.** The
   transfer bar follows whichever operation started last, and its Pause did

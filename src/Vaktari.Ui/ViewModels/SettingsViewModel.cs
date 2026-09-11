@@ -50,6 +50,11 @@ public sealed partial class SettingsViewModel : ObservableObject
     /// </summary>
     private SettingsState _original = new();
 
+    /// <summary>The Keyboard page: every command and its keys. Seeded with the
+    /// rest of the dialog and collected with it, so Cancel throws a key away
+    /// like any other change and Restore defaults puts the keys back too.</summary>
+    public KeyboardPage Keyboard { get; } = new();
+
     private readonly Core.IDefaultFileManager? _defaults;
     private readonly Core.FileSystem.IFileIconProvider? _desktopIcons;
     private readonly Core.IFileManagerService? _fileManager;
@@ -63,11 +68,15 @@ public sealed partial class SettingsViewModel : ObservableObject
         Core.FileSystem.IFolderViewStore? folderViews = null,
         Core.FileSystem.IRecentStore? recents = null,
         Core.Search.ISearchHistory? searches = null,
-        string? settingsFileNote = null)
+        string? settingsFileNote = null,
+        string? updateAvailable = null)
     {
         // The footer line, seeded: a file this build must not write is said
         // where the Save button is, not only on the status bar at startup.
         _settingsFileStatus = settingsFileNote ?? "";
+
+        // And the version line, which is where "What is new" is the link.
+        _updateAvailable = updateAvailable;
 
         _rememberedViews = folderViews?.Remembered ?? 0;
         _recentCount = recents?.Count ?? 0;
@@ -88,7 +97,7 @@ public sealed partial class SettingsViewModel : ObservableObject
     }
 
     /// <summary>
-    /// Every control on the six pages, from a state.
+    /// Every control on the seven pages, from a state.
     ///
     /// **Lifted out of the constructor so it can be run a second time.** There
     /// was no way to put the settings back: the constructor read each field
@@ -116,6 +125,7 @@ public sealed partial class SettingsViewModel : ObservableObject
         RememberViewPerFolder = general.RememberViewPerFolder;
         ShowTooltips = general.ShowTooltips;
         RememberRecent = general.RememberRecent;
+        CheckForUpdates = general.CheckForUpdates;
 
         // Inverted HERE and nowhere else. GeneralSettings.ForgetSearches is
         // named for its zero value because deserialization does not run
@@ -262,6 +272,8 @@ public sealed partial class SettingsViewModel : ObservableObject
         ShowFilterBar = startup.ShowFilterBar;
         LocationBarEditable = startup.LocationBarEditable;
         ShowFullPathInTitleBar = startup.ShowFullPathInTitleBar;
+
+        Keyboard.Load(current.Keyboard);
     }
 
     // Four booleans rather than one enum property because Avalonia's
@@ -318,6 +330,9 @@ public sealed partial class SettingsViewModel : ObservableObject
     [ObservableProperty] private bool _rememberViewPerFolder;
     [ObservableProperty] private bool _showTooltips;
     [ObservableProperty] private bool _rememberRecent;
+
+    /// <summary>Off by default; see GeneralSettings.CheckForUpdates.</summary>
+    [ObservableProperty] private bool _checkForUpdates;
 
     /// <summary>The positive half of <c>GeneralSettings.ForgetSearches</c>,
     /// which is named for its zero value so an upgrading settings.json keeps
@@ -976,7 +991,13 @@ public sealed partial class SettingsViewModel : ObservableObject
     /// the two cannot disagree — asking the assembly twice by two routes is
     /// exactly how a window and a command line end up naming different builds.
     /// </summary>
-    public string VersionLine => $"Vaktari {Program.Version}";
+    public string VersionLine => _updateAvailable is { } newer
+        ? $"Vaktari {Program.Version} — {newer} is available"
+        : $"Vaktari {Program.Version}";
+
+    /// <summary>A newer release the once-a-day check found this run, or null.
+    /// Handed in by the window, which is where the check lives.</summary>
+    private readonly string? _updateAvailable;
 
     // ---- and what that version IS -------------------------------------------
 
@@ -1431,6 +1452,7 @@ public sealed partial class SettingsViewModel : ObservableObject
                 RememberViewPerFolder = RememberViewPerFolder,
                 ShowTooltips = ShowTooltips,
                 RememberRecent = RememberRecent,
+                CheckForUpdates = CheckForUpdates,
                 ForgetSearches = !RememberSearches,
                 TabSwitchesSplitPanes = TabSwitchesSplitPanes,
                 ClosingSplitDiscardsOtherPane = ClosingSplitDiscardsOtherPane,
@@ -1519,6 +1541,10 @@ public sealed partial class SettingsViewModel : ObservableObject
 
                 BackspaceGoesUp = BackspaceGoesUp,
             },
+
+            // The rows that differ from their shipped keys, and whatever a
+            // newer Vaktari left — see KeyboardPage.Collect.
+            Keyboard = _original.Keyboard with { Bindings = Keyboard.Collect() },
 
             ContextMenu = _original.ContextMenu with
             {

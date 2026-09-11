@@ -1,6 +1,7 @@
 using System.Reflection;
 using System.Xml;
 using System.Xml.Linq;
+using Vaktari.Ui.Input;
 using Xunit;
 
 namespace Vaktari.Ui.Tests;
@@ -28,6 +29,7 @@ public class MarkupRulesTests
 {
     private static readonly XNamespace Avalonia = "https://github.com/avaloniaui";
     private static readonly XNamespace X = "http://schemas.microsoft.com/winfx/2006/xaml";
+    private static readonly XNamespace In = "clr-namespace:Vaktari.Ui.Input";
 
     private static XDocument Markup()
     {
@@ -235,41 +237,43 @@ public class MarkupRulesTests
     {
         var doc = Markup();
 
-        // Ctrl+A and Ctrl+Shift+A are handled in OnWindowKeyDown too: both go
-        // through the ListBox's own bulk selection path, because filling the
-        // bound collection row by row fires a change per file and each one
-        // refreshes the details panel.
-        // These run something other than a pane command — the listing's own
-        // bulk selection path, a confirm prompt, a preview toggle — so they
-        // have no `pane.XxxCommand.Execute` line for the reader below to find.
-        var shapedDifferently = new[]
-        {
-            "Enter", "Delete", "Alt+Enter", "Shift+Delete", "Space", "Ctrl+A", "Ctrl+Shift+A",
-        };
-
-        // **The clipboard rows advertise Ctrl+X, Ctrl+C and Ctrl+V and no
-        // KeyBinding implements them any more.** That is deliberate: as markup
-        // bindings they were claimed before the focused text box saw them, so
-        // the address bar could not copy or paste. Read out of the switch that
-        // does implement them rather than added to the list above, so deleting
-        // the case still fails this test.
-        var bound = doc.Descendants(Avalonia + "KeyBinding")
-            .Select(k => (string?)k.Attribute("Gesture"))
-            .OfType<string>()
-            .Concat(shapedDifferently)
-            .Concat(KeyBindingSites.CodeBehind().Keys)
-            .ToHashSet(StringComparer.OrdinalIgnoreCase);
-
-        var lying = doc.Descendants(Avalonia + "MenuItem")
-            .Select(m => (Item: m, Gesture: (string?)m.Attribute("InputGesture")))
-            .Where(x => x.Gesture is not null && !bound.Contains(x.Gesture))
-            .Select(x => $"{Where(x.Item)} shows {x.Gesture}")
+        // A row names a COMMAND and the keymap prints its key, so the key
+        // cannot be missing — only the command can, and a name no command has
+        // would print nothing at all, with nothing anywhere to say so.
+        var hinted = doc.Descendants(Avalonia + "MenuItem")
+            .Select(m => (Item: m, Command: (string?)m.Attribute(In + "KeyHint.Command")))
+            .Where(x => x.Command is not null)
             .ToList();
 
-        Assert.True(lying.Count == 0,
-            "These menu rows advertise a keyboard shortcut that no KeyBinding "
-            + "implements, so pressing it does nothing: "
-            + string.Join("; ", lying));
+        Assert.True(hinted.Count >= 25, $"only {hinted.Count} menu rows take their key from the keymap");
+
+        var unknown = hinted
+            .Where(x => Commands.Find(x.Command!) is null)
+            .Select(x => $"{Where(x.Item)} names {x.Command}")
+            .ToList();
+
+        Assert.True(unknown.Count == 0,
+            "These menu rows name a command the keymap does not have, so they print no key: "
+            + string.Join("; ", unknown));
+
+        // **And no row spells a key out.** A literal gesture is a promise
+        // about a key somebody can now move; the only one left is Enter on
+        // Open, which is the grammar of every list and no command's key.
+        var literal = doc.Descendants(Avalonia + "MenuItem")
+            .Select(m => (Item: m, Gesture: (string?)m.Attribute("InputGesture")))
+            .Where(x => x.Gesture is not null)
+            .ToList();
+
+        var movable = literal
+            .Where(x => KeyChords.Parse(x.Gesture) is not { } g || !KeyChords.IsReserved(g))
+            .Select(x => $"{Where(x.Item)} prints {x.Gesture}")
+            .ToList();
+
+        Assert.True(movable.Count == 0,
+            "These menu rows print a key a command can be given — name the command with "
+            + "in:KeyHint.Command instead: " + string.Join("; ", movable));
+
+        Assert.Single(literal);
     }
 
     /// <summary>A guard on the guards: if the resource stops being embedded, or

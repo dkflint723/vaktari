@@ -48,10 +48,13 @@ public sealed class DiscoverabilityTests
 
         Assert.True(at > 0, "the place row is not written the way this test looks for it");
 
-        // Within the same element, not somewhere else in the file.
+        // Within the same element, not somewhere else in the file. Where
+        // rather than Path since a saved search joined the rows: its path is
+        // an internal scheme, and Where is that path for a folder and the
+        // folder it looks under for a search.
         var element = markup[at..markup.IndexOf('>', at)];
 
-        Assert.Contains("ToolTip.Tip=\"{Binding Path}\"", element);
+        Assert.Contains("ToolTip.Tip=\"{Binding Where}\"", element);
     }
 
     /// <summary>
@@ -63,9 +66,13 @@ public sealed class DiscoverabilityTests
     {
         var markup = Markup("MainWindow.axaml");
 
+        // The button on the view menu; the key is the keymap's now, and asked
+        // of it below.
         var routes = markup.Split("ShowShortcutsCommand").Length - 1;
 
-        Assert.True(routes >= 2,
+        Assert.NotEmpty(Vaktari.Ui.Input.Keymap.Default.KeysOf("ShowShortcuts"));
+
+        Assert.True(routes >= 1,
             "the shortcut sheet is reachable only by pressing F1, so the list of "
             + "keys is behind one of the keys it lists");
     }

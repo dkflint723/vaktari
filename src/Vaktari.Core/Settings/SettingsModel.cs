@@ -175,6 +175,18 @@ public sealed record GeneralSettings
     /// </summary>
     public bool ClosingSplitDiscardsOtherPane { get; init; }
 
+    // ---- keeping up ---------------------------------------------------------
+
+    /// <summary>
+    /// Whether Vaktari asks github.com, once a day, whether a newer release
+    /// exists. **Off unless turned on**: a request on the user's network that
+    /// they did not choose is not a default, and false is also the zero value
+    /// the deserializer leaves for a file written before this existed — see
+    /// <see cref="MixFoldersWithFiles"/> for that rule. Nothing is ever
+    /// downloaded; the answer is a line and a link.
+    /// </summary>
+    public bool CheckForUpdates { get; init; }
+
     // ---- what gets remembered ---------------------------------------------
 
     /// <summary>
@@ -311,6 +323,10 @@ public sealed record CompactViewSettings
     public int Spacing { get; init; }
 }
 
+/// <summary>The four details columns whose width a heading's grip can drag.
+/// The name column has no width of its own — it takes what the others leave.</summary>
+public enum DetailsColumn { Type, Size, Modified, Created }
+
 public sealed record DetailsViewSettings
 {
     public FolderSizeMode FolderSize { get; init; } = FolderSizeMode.ItemCount;
@@ -321,6 +337,48 @@ public sealed record DetailsViewSettings
     // Column visibility is NOT here. It lives on TabState: a reference listing
     // beside a working one wants different columns, and a choice made on one
     // side of a split must not move the other.
+
+    /// <summary>
+    /// The widths somebody has dragged the four columns to, in pixels at 100%,
+    /// before the interface size and the pane's own zoom multiply them.
+    ///
+    /// **Zero means "as designed", and is named for it like
+    /// <see cref="ViewSettings.InterfaceTextScale"/>**: a settings.json written
+    /// before these existed has no key for them, deserialization does not run
+    /// initializers, and the columns of every upgrading install therefore
+    /// arrive as zero — which has to be the width they always had. The
+    /// designed widths live where they are drawn from, in the Ui's metric
+    /// pipeline, rather than being restated here.
+    ///
+    /// Here rather than on TabState, unlike which columns to SHOW: a width is
+    /// a fact about how much room a date or a size needs to be read, and that
+    /// is the same in a reference listing as in a working one. A choice about
+    /// room made on one side of a split is a choice about the other side too.
+    /// </summary>
+    public double TypeColumn { get; init; }
+    public double SizeColumn { get; init; }
+    public double ModifiedColumn { get; init; }
+    public double CreatedColumn { get; init; }
+
+    /// <summary>The chosen width of a column, or zero when none has been.</summary>
+    public double Width(DetailsColumn column) => column switch
+    {
+        DetailsColumn.Type => TypeColumn,
+        DetailsColumn.Size => SizeColumn,
+        DetailsColumn.Modified => ModifiedColumn,
+        DetailsColumn.Created => CreatedColumn,
+        _ => throw new ArgumentOutOfRangeException(nameof(column), column, "not a details column"),
+    };
+
+    /// <summary>The same settings with one column's width replaced.</summary>
+    public DetailsViewSettings WithWidth(DetailsColumn column, double width) => column switch
+    {
+        DetailsColumn.Type => this with { TypeColumn = width },
+        DetailsColumn.Size => this with { SizeColumn = width },
+        DetailsColumn.Modified => this with { ModifiedColumn = width },
+        DetailsColumn.Created => this with { CreatedColumn = width },
+        _ => throw new ArgumentOutOfRangeException(nameof(column), column, "not a details column"),
+    };
 }
 
 /// <summary>
@@ -635,6 +693,29 @@ public sealed record SettingsState
     public NavigationSettings Navigation { get; init; } = new();
     public ContextMenuSettings ContextMenu { get; init; } = new();
     public TrashSettings Trash { get; init; } = new();
+    public KeyboardSettings Keyboard { get; init; } = new();
+}
+
+/// <summary>
+/// The keys somebody has chosen, where they differ from the ones Vaktari
+/// ships with.
+///
+/// **Only the differences are stored.** A command that is absent here answers
+/// to its default keys, so a key Vaktari adds in a later release reaches
+/// everybody who never touched that command — which a file holding the whole
+/// keymap would have frozen out. An entry replaces the command's defaults
+/// entirely; an empty list is a command with no key at all.
+///
+/// Keys are stored the way Avalonia writes them — <c>Ctrl+Shift+OemComma</c>,
+/// <c>Alt+Left</c> — and read back by the Ui's own parser, which also takes
+/// the way the F1 sheet prints them, so a hand-edited file can say either.
+/// An entry naming a command this build does not know is kept, not dropped:
+/// it belongs to a newer Vaktari, and saving from this one must not erase it.
+/// </summary>
+public sealed record KeyboardSettings
+{
+    /// <summary>Command id to the keys it answers to. See the record's summary.</summary>
+    public Dictionary<string, List<string>> Bindings { get; init; } = new(StringComparer.Ordinal);
 }
 
 /// <summary>
@@ -683,7 +764,23 @@ public static class SettingsRepair
         Navigation = ReferenceEquals(settings.Navigation, null) ? new() : settings.Navigation,
         ContextMenu = ReferenceEquals(settings.ContextMenu, null) ? new() : settings.ContextMenu,
         Trash = ReferenceEquals(settings.Trash, null) ? new() : settings.Trash,
+        Keyboard = Complete(settings.Keyboard),
     };
+
+    /// <summary>
+    /// The keyboard group, and the one collection inside it. A file that
+    /// names <c>"keyboard": {}</c> and no bindings arrives with a null
+    /// dictionary, for the reason the class summary gives — and every read of
+    /// the keymap would dereference it.
+    /// </summary>
+    private static KeyboardSettings Complete(KeyboardSettings keyboard)
+    {
+        if (ReferenceEquals(keyboard, null)) return new KeyboardSettings();
+
+        return ReferenceEquals(keyboard.Bindings, null)
+            ? keyboard with { Bindings = new Dictionary<string, List<string>>(StringComparer.Ordinal) }
+            : keyboard;
+    }
 
     /// <summary>
     /// The same hazard one level down, on STRINGS rather than groups.

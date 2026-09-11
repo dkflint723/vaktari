@@ -93,20 +93,15 @@ public sealed class AddressBarKeysTests
     [MemberData(nameof(TextEditingGestures))]
     public void No_text_editing_gesture_is_a_window_key_binding(string gesture)
     {
-        var path = Path.Combine(Repo(), "src", "Vaktari.Ui", "MainWindow.axaml");
-        var window = XDocument.Load(path).Root!;
+        // The keys that answer anywhere become the window's KeyBindings when it
+        // opens, so a shipped one of these there would step back in front of
+        // the address bar. A key somebody CHOOSES is given back to a focused
+        // box instead — see KeymapTests.
+        var owner = Vaktari.Ui.Input.Keymap.Default.Owner(Vaktari.Ui.Input.KeyChords.Parse(gesture)!);
 
-        var bound = window
-            .Elements(Avalonia + "Window.KeyBindings")
-            .Elements(Avalonia + "KeyBinding")
-            .Select(k => (string?)k.Attribute("Gesture"))
-            .OfType<string>()
-            .ToList();
-
-        Assert.False(
-            bound.Contains(gesture, StringComparer.OrdinalIgnoreCase),
-            $"{gesture} is a Window.KeyBinding again, so the address bar cannot use it "
-            + "— handle it in OnWindowKeyDown, behind the focused-text-box guard.");
+        Assert.False(owner is { Tier: Vaktari.Ui.Input.KeyTier.Anywhere },
+            $"{gesture} runs {owner?.Name} from anywhere in the window, so the address bar cannot use it "
+            + "— give that command the listing's tier, behind the focused-text-box guard.");
     }
 
     /// <summary>

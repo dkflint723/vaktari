@@ -65,6 +65,17 @@ public sealed class SidebarKeysTests : OwnedViewModels
         window.Show();
         Settle();
 
+        // **The stops these tests capture have to be the sidebar's rows, and
+        // the rows arrive from the pool after the window opens.** Measured on
+        // this desktop with this wait taken out and the failure made to say
+        // what it saw: Home_and_End_reach_the_ends captured 7 stops, every one
+        // of them the panel's own buttons, and there were 20 by the time Home
+        // was pressed — Home landed on the first section heading, which was
+        // not among the 7. Without the wait it failed 3 of 6 runs of the
+        // key-related set, while the class alone passed 5 of 5. The shape
+        // SidebarReady exists for.
+        SidebarReady(window);
+
         return window;
     }
 
@@ -314,7 +325,9 @@ public sealed class SidebarKeysTests : OwnedViewModels
             RepoSource.Ui("MainWindow.axaml.cs"),
             "private void OnWindowKeyDown(object? sender, KeyEventArgs e)");
 
-        var f6 = body.IndexOf("e.Key == Key.F6", StringComparison.Ordinal);
+        var f6 = body.IndexOf("DispatchKeymap(e, Input.KeyTier.Guarded)", StringComparison.Ordinal);
+
+        Assert.Equal("NextRegion", Vaktari.Ui.Input.Keymap.Default.Owner(new KeyGesture(Key.F6))?.Id);
         var sidebar = body.IndexOf("CurrentRegion() == Input.KeyboardRegion.Sidebar",
                                    StringComparison.Ordinal);
 

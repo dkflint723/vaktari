@@ -231,8 +231,21 @@ public sealed class LinuxFileSystemProvider : IFileSystemProvider
         }
     }
 
+    /// <summary>Stands in for /proc/mounts, for the tests that decide where a
+    /// folder lives — the same seam the places provider has.</summary>
+    internal Func<IEnumerable<string>>? MountLines { get; init; }
+
     public IDisposable Watch(string path, Action<FileSystemChange> onChange)
     {
+        // **A folder on a network mount never updated on its own.** inotify
+        // reports what passed through this kernel, and a file written by
+        // another machine — or by the desktop's own gvfs or KIO daemon behind
+        // a FUSE mount — is not that, so a share sat as it was until F5.
+        // Polled instead, every five seconds, which is what Dolphin and
+        // Nautilus do on the same mounts.
+        if (MountTable.IsOnNetworkMount(MountLines is { } fake ? fake() : MountTable.Lines(), path))
+            return new PollingWatch(path, onChange);
+
         // inotify via FileSystemWatcher for now. Watch out for the default
         // fs.inotify.max_user_watches ceiling if this is ever made recursive.
         var watcher = new FileSystemWatcher(path)

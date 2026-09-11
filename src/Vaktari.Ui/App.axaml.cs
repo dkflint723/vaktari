@@ -29,7 +29,13 @@ public partial class App : Application
             // default is not a decision".
             desktop.ShutdownMode = Avalonia.Controls.ShutdownMode.OnLastWindowClose;
 
-            desktop.MainWindow = new MainWindow();
+            var window = new MainWindow();
+
+            desktop.MainWindow = window;
+
+            // Asked now and answered later, from the network onto a bar that
+            // is on screen by then — and only if the setting says so.
+            _ = window.CheckForUpdatesAsync();
         }
 
         base.OnFrameworkInitializationCompleted();

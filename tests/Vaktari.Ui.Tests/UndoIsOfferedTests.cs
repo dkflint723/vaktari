@@ -19,6 +19,7 @@ namespace Vaktari.Ui.Tests;
 public sealed class UndoIsOfferedTests : OwnedViewModels
 {
     private static readonly XNamespace Avalonia = "https://github.com/avaloniaui";
+    private static readonly XNamespace In = "clr-namespace:Vaktari.Ui.Input";
 
     private (PaneViewModel Pane, History Ops) Pane()
     {
@@ -168,7 +169,7 @@ public sealed class UndoIsOfferedTests : OwnedViewModels
             // nothing will.
             Assert.Contains("Label", (string?)row.Attribute("Header") ?? "");
             Assert.Contains("Can", (string?)row.Attribute("IsEnabled") ?? "");
-            Assert.Contains("Ctrl+", (string?)row.Attribute("InputGesture") ?? "");
+            Assert.Contains((string?)row.Attribute(In + "KeyHint.Command"), new[] { "Undo", "Redo" });
         }
     }
 

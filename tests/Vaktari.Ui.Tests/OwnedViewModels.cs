@@ -1,3 +1,9 @@
+using Avalonia.Controls;
+using Avalonia.Controls.Primitives;
+using Avalonia.Threading;
+using Avalonia.VisualTree;
+using Xunit;
+
 namespace Vaktari.Ui.Tests;
 
 /// <summary>
@@ -42,6 +48,66 @@ public abstract class OwnedViewModels : IDisposable
         if (_searchBorrowed) Vaktari.Ui.ViewModels.PaneViewModel.Search = _searchBefore;
 
         if (_historyBorrowed) Vaktari.Ui.ViewModels.PaneViewModel.Searches = _historyBefore;
+    }
+
+    /// <summary>
+    /// Pumps until the sidebar has a place row on screen, or gives up after
+    /// five seconds and says what the sidebar held instead.
+    ///
+    /// **The rows arrive from the thread pool after the window has opened.**
+    /// The shell starts the places import fire-and-forget, the import reads
+    /// the mount table and the user's folders on the pool, and the rows are
+    /// posted back when it is done — so a test that pumps twice and looks is
+    /// looking at a moment, not at the sidebar. On this desktop and under WSL
+    /// the moment was always late enough; measured on the two-core Ubuntu
+    /// runner the first time the Ui suite ran there, six tests looked before
+    /// the import had finished and found no Home row, no This PC row and
+    /// nothing for F6 to land on. A bounded wait on the condition is what a
+    /// test about the rows has to make, on every machine.
+    ///
+    /// **A place row is a Button whose DataContext is a place, and the first
+    /// version of this wait did not say so.** It waited for any visible
+    /// Button that was not a section heading — and the sidebar holds several
+    /// that are there before the import has produced anything: Scan, Share,
+    /// the "+" on the remotes section. One of those satisfied it at once, so
+    /// it waited for nothing, and the same six tests failed on the same
+    /// runner with it in place, none of them with this method's message.
+    /// The message now carries the sidebar's own account — the groups it
+    /// holds, whether a rebuild is still running, and the exception if one
+    /// died — because the runner is the only machine that can measure this,
+    /// and "no rows" was all it had said.
+    /// </summary>
+    protected static void SidebarReady(Window window)
+    {
+        var panel = window.FindControl<Border>("SidebarPanel");
+
+        Assert.NotNull(panel);
+
+        static bool HasRow(Border panel)
+            => panel.GetVisualDescendants().OfType<Button>()
+                    .Any(b => b.IsVisible && b.DataContext is Vaktari.Ui.ViewModels.PlaceItemViewModel);
+
+        for (var i = 0; i < 500 && !HasRow(panel!); i++)
+        {
+            Dispatcher.UIThread.RunJobs();
+            Dispatcher.UIThread.RunJobs(DispatcherPriority.Input);
+            Dispatcher.UIThread.RunJobs(DispatcherPriority.Background);
+            Thread.Sleep(10);
+        }
+
+        if (HasRow(panel!)) return;
+
+        var sidebar = (window.DataContext as Vaktari.Ui.ViewModels.ShellViewModel)?.Sidebar;
+
+        var groups = sidebar is null
+            ? "no shell on the window"
+            : string.Join(", ", sidebar.Groups.Select(g => $"{g.Label}: {g.Places.Count} rows"));
+
+        Assert.Fail(
+            "the sidebar showed no place row within five seconds — "
+            + $"groups [{groups}]; rebuilding: {sidebar?.IsReloading}; "
+            + $"import error: {sidebar?.LastImportError?.ToString() ?? "none"}; "
+            + $"rebuild error: {sidebar?.LastReloadError?.ToString() ?? "none"}");
     }
 
     private Vaktari.Core.Search.ISearchProvider? _searchBefore;

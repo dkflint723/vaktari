@@ -49,11 +49,18 @@ public sealed class SidebarReloadTests : OwnedViewModels
         public string Label { get; set; } = "first";
         public int Asked { get; private set; }
 
+        /// <summary>When set, the import and the listing die the way a
+        /// provider on a machine nobody tested on would.</summary>
+        public bool ImportThrows { get; set; }
+        public bool ListingThrows { get; set; }
+
         public event EventHandler? PlacesChanged;
 
         public ValueTask<IReadOnlyList<PlaceGroup>> GetPlacesAsync(CancellationToken ct)
         {
             Asked++;
+
+            if (ListingThrows) throw new IOException("the mount table would not be read");
 
             return ValueTask.FromResult<IReadOnlyList<PlaceGroup>>(
             [
@@ -81,7 +88,11 @@ public sealed class SidebarReloadTests : OwnedViewModels
         public ValueTask RenameAsync(string id, string label, CancellationToken ct)
             => ValueTask.CompletedTask;
         public ValueTask ReorderAsync(IReadOnlyList<string> orderedIds, CancellationToken ct) => ValueTask.CompletedTask;
-        public ValueTask<int> ImportExistingAsync(CancellationToken ct) => ValueTask.FromResult(0);
+
+        public ValueTask<int> ImportExistingAsync(CancellationToken ct)
+            => ImportThrows
+                ? throw new InvalidOperationException("the bookmarks file would not parse")
+                : ValueTask.FromResult(0);
 
         public void Raise() => PlacesChanged?.Invoke(this, EventArgs.Empty);
     }
@@ -171,5 +182,65 @@ public sealed class SidebarReloadTests : OwnedViewModels
 
         Assert.Contains(
             "third", shell.Sidebar.Groups.SelectMany(g => g.Places).Select(p => p.Label));
+    }
+
+    // ---- what a failure leaves behind -----------------------------------------
+
+    /// <summary>
+    /// **An import that throws must not cost the sidebar its rows.** The
+    /// startup import is one bookmarks file; the rows come from the mount
+    /// table and the user's folders, which are still there to read. Before
+    /// this the exception left InitializeAsync with nothing awaiting it — the
+    /// shell starts it fire-and-forget — and the sidebar stayed empty with
+    /// nothing anywhere to say why.
+    ///
+    /// The provider is told to throw BEFORE the shell exists: Start runs the
+    /// import, so a flag set afterwards would test a second import that
+    /// nothing in the application runs.
+    /// </summary>
+    [AvaloniaFact]
+    public async Task An_import_that_throws_does_not_cost_the_sidebar_its_rows()
+    {
+        var places = new Changing { ImportThrows = true };
+        var shell = Own(new ShellViewModel(new Inert(), places: places));
+
+        await shell.Sidebar.InitializeAsync();
+        Avalonia.Threading.Dispatcher.UIThread.RunJobs();
+
+        Assert.NotEmpty(shell.Sidebar.Groups);
+
+        // Kept on its own property: the rebuild that followed finished, and
+        // says so by clearing ITS error, which must not erase the import's.
+        Assert.IsType<InvalidOperationException>(shell.Sidebar.LastImportError);
+        Assert.Null(shell.Sidebar.LastReloadError);
+    }
+
+    /// <summary>
+    /// A rebuild that throws is still thrown to whoever awaited it — an unpin
+    /// is owed the failure — and is kept for whoever did not: the sidebar says
+    /// what killed it, and that nothing is still running, which is what a
+    /// test on a machine nobody has sat at needs to read out.
+    /// </summary>
+    [AvaloniaFact]
+    public async Task A_rebuild_that_throws_says_so_and_is_not_still_running()
+    {
+        var (shell, places) = Fresh();
+
+        await shell.Sidebar.ReloadAsync();
+
+        places.ListingThrows = true;
+
+        await Assert.ThrowsAsync<IOException>(() => shell.Sidebar.ReloadAsync());
+
+        Assert.IsType<IOException>(shell.Sidebar.LastReloadError);
+        Assert.False(shell.Sidebar.IsReloading);
+
+        // And a rebuild that finishes clears it, so the account is of the LAST
+        // rebuild rather than of any that ever failed.
+        places.ListingThrows = false;
+
+        await shell.Sidebar.ReloadAsync();
+
+        Assert.Null(shell.Sidebar.LastReloadError);
     }
 }

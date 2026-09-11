@@ -39,14 +39,13 @@ public sealed class PreviewKeyTests
     [Fact]
     public void Space_is_not_a_window_key_binding()
     {
-        var gestures = Markup()
-            .Descendants(Avalonia + "KeyBinding")
-            .Select(k => (string?)k.Attribute("Gesture"))
-            .OfType<string>()
-            .ToList();
+        // The command Space runs is answered behind the rename and text-box
+        // guards: the listing's tier, never the window's KeyBindings.
+        var owner = Vaktari.Ui.Input.Keymap.Default.Owner(
+            new global::Avalonia.Input.KeyGesture(global::Avalonia.Input.Key.Space));
 
-        Assert.DoesNotContain(
-            "Space", gestures, StringComparer.OrdinalIgnoreCase);
+        Assert.Equal("Preview", owner?.Id);
+        Assert.Equal(Vaktari.Ui.Input.KeyTier.Listing, owner!.Tier);
     }
 
     /// <summary>

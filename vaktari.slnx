@@ -10,5 +10,6 @@
     <Project Path="tests/Vaktari.Linux.Tests/Vaktari.Linux.Tests.csproj" />
     <Project Path="tests/Vaktari.Ui.Tests/Vaktari.Ui.Tests.csproj" />
     <Project Path="tests/Vaktari.Windows.Tests/Vaktari.Windows.Tests.csproj" />
+    <Project Path="tests/Vaktari.Benchmarks/Vaktari.Benchmarks.csproj" />
   </Folder>
 </Solution>

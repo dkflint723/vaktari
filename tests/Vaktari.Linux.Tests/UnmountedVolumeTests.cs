@@ -20,13 +20,14 @@ namespace Vaktari.Linux.Tests;
 /// </summary>
 public sealed class UnmountedVolumeTests
 {
-    private static LinuxPlacesProvider Provider(string[] mounts, string[] devices)
+    private static LinuxPlacesProvider Provider(string[] mounts, string[] devices, string[]? swaps = null)
         // Its own state directory, so a test never reads or writes the pins of
         // whoever is running it.
         => new(Directory.CreateTempSubdirectory("vaktari-places").FullName)
         {
             MountLines = () => mounts,
             FilesystemDevices = () => devices,
+            SwapLines = () => swaps ?? [],
             VolumeLabels = () => new Dictionary<string, string>
             {
                 ["/dev/sdb1"] = "STICK",
@@ -132,6 +133,76 @@ public sealed class UnmountedVolumeTests
         // And the flag is about this row rather than about devices: a mounted
         // volume is not something to offer to mount.
         Assert.False(root.CanMount);
+    }
+
+    /// <summary>
+    /// **Two of them took the whole sidebar down.** Both carry an empty path,
+    /// and the provider's name table was built with ToDictionary over every
+    /// row — so the second empty key threw, from inside a rebuild the
+    /// sidebar had started fire-and-forget, and the sidebar stayed empty with
+    /// nothing anywhere to say why. MEASURED on the Ubuntu CI runner, the
+    /// first machine this ran on with two unmounted filesystems; an ordinary
+    /// desktop with an EFI partition under /boot and a swap partition is
+    /// that machine. Under WSL there was one and nothing showed.
+    /// </summary>
+    [Fact]
+    public async Task Two_unmounted_volumes_are_both_listed_rather_than_taking_the_sidebar_down()
+    {
+        var provider = Provider(
+            mounts: ["/dev/sda2 / ext4 rw 0 0"],
+            devices: ["/dev/sda2", "/dev/sdb1", "/dev/sdc1"]);
+
+        var places = await Devices(provider);
+
+        Assert.Equal(2, places.Count(p => !p.IsAvailable));
+
+        // And a row with no path has no name to be asked for.
+        Assert.Null(provider.NameFor(""));
+    }
+
+    /// <summary>
+    /// Two mounts at one mount point are a legal stack — a bind mount, an
+    /// overlay — and were the same fault one step along: two rows with one
+    /// path, and a table that throws on the second. The first is named.
+    /// </summary>
+    [Fact]
+    public async Task Two_mounts_at_one_mount_point_are_named_once()
+    {
+        var provider = Provider(
+            mounts:
+            [
+                "/dev/sda2 / ext4 rw 0 0",
+                "/dev/sdb1 /mnt/data ext4 rw 0 0",
+                "/dev/sdc1 /mnt/data ext4 rw 0 0",
+            ],
+            devices: ["/dev/sda2", "/dev/sdb1", "/dev/sdc1"]);
+
+        await Devices(provider);
+
+        Assert.Equal("STICK", provider.NameFor("/mnt/data"));
+    }
+
+    /// <summary>
+    /// **A swap partition has a UUID and is not a volume.** by-uuid lists it
+    /// beside the filesystems, so it was offered as a drive named by its
+    /// device — "sdc" on the Fedora this was written on — with a Mount action
+    /// udisksctl refuses. /proc/swaps says which devices are swap, header
+    /// line and all.
+    /// </summary>
+    [Fact]
+    public async Task A_swap_partition_is_not_offered_as_a_volume()
+    {
+        var places = await Devices(Provider(
+            mounts: ["/dev/sda2 / ext4 rw 0 0"],
+            devices: ["/dev/sda2", "/dev/sdb1", "/dev/sdc3"],
+            swaps:
+            [
+                "Filename\t\t\t\tType\t\tSize\t\tUsed\t\tPriority",
+                "/dev/sdc3                               partition\t8388604\t\t0\t\t-2",
+            ]));
+
+        Assert.DoesNotContain(places, p => p.Id == "unmounted:/dev/sdc3");
+        Assert.Contains(places, p => p.Id == "unmounted:/dev/sdb1");
     }
 
     /// <summary>

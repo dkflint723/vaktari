@@ -63,6 +63,49 @@ internal static class MountTable
         is "cifs" or "smb3" or "nfs" or "nfs4" or "fuse.sshfs" or "fuse.kio" or "fuse.gvfsd-fuse";
 
     /// <summary>
+    /// Whether a folder sits on a network filesystem, by the DEEPEST mount
+    /// point that contains it: a local disk mounted inside a share is local,
+    /// and a share mounted inside a local folder is not. Decides whether the
+    /// folder is watched or polled — see <c>LinuxFileSystemProvider.Watch</c>.
+    ///
+    /// A mount point is under the path only at a separator: /mnt/nas contains
+    /// /mnt/nas/photos and not /mnt/nasty. Either separator, because this is
+    /// also exercised on a Windows desktop against a real temporary folder.
+    /// </summary>
+    internal static bool IsOnNetworkMount(IEnumerable<string> lines, string path)
+    {
+        var deepest = -1;
+        var network = false;
+
+        foreach (var line in lines)
+        {
+            var parts = line.Split(' ');
+            if (parts.Length < 3) continue;
+
+            var mountPoint = Unescape(parts[1]).TrimEnd('/', '\\');
+
+            if (mountPoint.Length == 0) mountPoint = "/";
+
+            // A path that starts with the mount point and is not equal to it
+            // is longer than it, so the character after is there to read.
+            var under = string.Equals(path, mountPoint, StringComparison.Ordinal)
+                        || (path.StartsWith(mountPoint, StringComparison.Ordinal)
+                            && (mountPoint == "/" || path[mountPoint.Length] is '/' or '\\'));
+
+            if (!under || mountPoint.Length <= deepest) continue;
+
+            deepest = mountPoint.Length;
+            network = IsNetworkFs(parts[2]);
+        }
+
+        return network;
+    }
+
+    /// <summary>The table as text, for the callers that take it as an argument.</summary>
+    internal static IEnumerable<string> Lines()
+        => File.Exists("/proc/mounts") ? File.ReadLines("/proc/mounts") : [];
+
+    /// <summary>
     /// Which mounts exist, as one comparable string.
     ///
     /// **Filtered before it is signed, which is not an optimisation.** snapd and

@@ -65,6 +65,10 @@ public sealed class LabelCasingTests
     [
         "Content", "Text", "Header", "ToolTip.Tip", "PlaceholderText", "Watermark",
         "Title", "AutomationProperties.Name", "AutomationProperties.HelpText",
+
+        // The words a key is printed after, which KeyHint writes into the
+        // tooltip, the accessible name or the content — the label, minus the key.
+        "KeyHint.Tip", "KeyHint.Name", "KeyHint.Content",
     ];
 
     private static readonly XNamespace Avalonia = "https://github.com/avaloniaui";

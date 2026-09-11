@@ -156,15 +156,18 @@ public sealed class WindowsPlacesProvider : IPlacesProvider, IDisposable
         {
             if (!seen.Add(PathRules.Normalise(pin.Path))) continue;
 
+            // A saved search is a pin too — always openable, drawn with the
+            // magnifier. PinnedPlaces holds the rule, beside the Linux twin's
+            // use of it.
             places.Add(new Place
             {
                 Id = "pin:" + pin.Path,
                 Label = pin.Label,
                 Path = pin.Path,
                 Kind = PlaceKind.Bookmark,
-                Icon = "bookmark",
+                Icon = PinnedPlaces.Icon(pin.Path),
                 IsUserPinned = true,
-                IsAvailable = Directory.Exists(pin.Path),
+                IsAvailable = PinnedPlaces.IsAvailable(pin.Path),
             });
         }
 

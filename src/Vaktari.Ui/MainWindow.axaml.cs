@@ -43,6 +43,36 @@ public partial class MainWindow : Window
 
     internal WindowServices Services => _services;
 
+    /// <summary>
+    /// The once-a-day question to the releases page, when the setting asks
+    /// for it — from App once the founder exists, and from a settings save
+    /// that turns it on.
+    ///
+    /// **Off means nothing is asked**, not asked and discarded: the request
+    /// is the thing the setting is about. The cadence and the silences are
+    /// the check's own (see ReleaseCheck). The answer goes on the operation
+    /// bar, the one line that stays until dismissed, and onto the settings
+    /// footer's version line, where "What is new" is the link.
+    /// </summary>
+    /// <param name="running">The version to compare against; the build's
+    /// own unless a test says otherwise, since a test host reports 0.0.0
+    /// and a development build never asks.</param>
+    internal async Task CheckForUpdatesAsync(string? running = null)
+    {
+        if (!AppSettings.Current.General.CheckForUpdates) return;
+
+        var found = await Task
+            .Run(() => _services.Updates.CheckAsync(running ?? Program.Version, CancellationToken.None))
+            .ConfigureAwait(true);
+
+        if (found is null) return;
+
+        _services.UpdateAvailable = found;
+
+        Shell.OperationStatus =
+            $"Vaktari {found.Version} is available — Settings ▸ Vaktari {Program.Version} ▸ What is new";
+    }
+
     private readonly Vaktari.Core.FileSystem.IApplicationLauncher? _launcher;
     private readonly IPlatform _platform;
 
@@ -189,6 +219,20 @@ public partial class MainWindow : Window
 
         Thumbnails.IconLoader.SourceChanged += _onIconSourceChanged;
 
+        // **A first run got a settings file and nothing else.** The one line
+        // that stays until dismissed says where the tour is; the tour itself
+        // is on the view menu for anybody, any time, which is why this is a
+        // line rather than a dialog — a file manager that opens on a dialog
+        // has not opened. Founder only: a second window of a first run is not
+        // a second first run.
+        //
+        // FIRST of the three startup lines, deliberately: it is the quietest,
+        // so anything louder said below — a crash, a file this build will not
+        // write — is posted after it and wins the one slot.
+        if (founder && _services.FirstRun)
+            Dispatcher.UIThread.Post(() => Shell.OperationStatus =
+                "Welcome to Vaktari — the tour is under View options (≡) ▸ Take the tour");
+
         // **The previous run ended in a crash, and until now nothing said
         // so.** The marker is taken exactly once, so only the first window of
         // the next run says it; the operation bar is the one line that stays
@@ -267,6 +311,10 @@ public partial class MainWindow : Window
         // write. Through the same store the settings dialog saves with, so the
         // two routes cannot disagree about where preferences live.
         _shell.DefaultViewChanged += (_, settings) => _services.SettingsStore.Save(settings);
+
+        // A dragged column width, once the drag has ended: the same route for
+        // the same reason.
+        _shell.ColumnWidthsChanged += (_, settings) => _services.SettingsStore.Save(settings);
         _shell.EmptyTrashRequested += (_, _) => AskConfirmEmptyTrash();
 
         // Exactly what Delete does, so the menu and the key cannot disagree
@@ -294,6 +342,8 @@ public partial class MainWindow : Window
             new ConnectionWindow(info).ShowDialog(this);
 
         _shell.ShortcutsRequested += (_, _) => new ShortcutsWindow().ShowDialog(this);
+        _shell.TourRequested += (_, _) => new TourWindow().ShowDialog(this);
+        _shell.PaletteRequested += (_, _) => _ = RunFromPaletteAsync();
 
         _shell.RenamePlaceRequested += OnRenamePlaceRequested;
 
@@ -360,6 +410,11 @@ public partial class MainWindow : Window
 
         _shell.ScaleApplier = ApplyScales;
         DataContext = _shell;
+
+        // The keys that answer anywhere in the window, from the keymap in
+        // force — and again whenever a save moves one. See MainWindow.Keyboard.cs.
+        InstallKeymap();
+        WatchKeymap();
 
         // The rename keys are answered on the window's tunnel now, because the
         // box they belong to is drawn by the listing's item template rather
@@ -1443,7 +1498,8 @@ public partial class MainWindow : Window
             _services.FolderViews,
             _services.Recents,
             _services.Searches,
-            _services.SettingsStore.ReadOnlyReason);
+            _services.SettingsStore.ReadOnlyReason,
+            _services.UpdateAvailable?.Version);
 
         // The pane already holds the detected list, ordered and cached, so the
         // dialog borrows it rather than probing the disk again as it opens.
@@ -1652,9 +1708,13 @@ public partial class MainWindow : Window
             Thumbnails.IconLoader.Invalidate();
             _services.SettingsStore.Save(model.Result);
 
+            // Turned on just now: ask now rather than tomorrow. The check's
+            // own cadence keeps a save that leaves it on from asking twice.
+            if (model.Result.General.CheckForUpdates) _ = CheckForUpdatesAsync();
+
             // Here rather than in the dialog, so it lands through the one
             // handler that already applies a save — and so Cancel throws it
-            // away like every other change made on those six pages.
+            // away like every other change made in that dialog.
             if (model.ForgetViewsOnSave) _services.FolderViews.ForgetAll();
             if (model.ForgetRecentOnSave) _services.Recents.ForgetAll();
             if (model.ForgetSearchHistoryOnSave) _services.Searches.ForgetAll();
@@ -1785,6 +1845,47 @@ public partial class MainWindow : Window
     {
         if (sender is Control { DataContext: PaneGroupViewModel group })
             group.ResizeInfoBy(e.Vector.X);
+    }
+
+    /// <summary>
+    /// Widens or narrows a details column as the grip on its heading is
+    /// dragged. The same plumbing as the two handles above — which column,
+    /// from the Thumb's Tag, and how far — with the arithmetic in the shell.
+    ///
+    /// **The pane's own zoom goes with it.** The grip reports pixels on
+    /// screen and the width is kept at 100%, and it is THIS pane's scale the
+    /// column under the pointer was drawn at: in a split at two zooms, the
+    /// other side's would move the column a different distance from the
+    /// pointer. From the DataContext rather than a name for the reason the
+    /// info handle gives: in split view there are two of these, and a name
+    /// would find one.
+    /// </summary>
+    private void OnColumnGripDragDelta(object? sender, VectorEventArgs e)
+    {
+        if (sender is Control { DataContext: PaneViewModel pane, Tag: string column })
+            _shell.ResizeColumn(Enum.Parse<DetailsColumn>(column), e.Vector.X, pane.FontScale);
+    }
+
+    private void OnColumnGripDragCompleted(object? sender, VectorEventArgs e)
+        => _shell.CommitColumnWidths();
+
+    /// <summary>
+    /// Opens the command palette and runs what it picked.
+    ///
+    /// **Run AFTER the palette has closed, not from inside it.** Half the
+    /// commands move the keyboard — into the address bar, the filter, a
+    /// rename — and a command run while the palette is still the active
+    /// window puts the caret in a box the palette is about to take the
+    /// focus back from on its way out. The pick is read once the dialog has
+    /// returned, when this window is in front again.
+    /// </summary>
+    private async Task RunFromPaletteAsync()
+    {
+        var palette = new PaletteWindow();
+
+        await palette.ShowDialog(this);
+
+        palette.Chosen?.Run(this);
     }
 
     /// <summary>
@@ -4851,6 +4952,8 @@ public partial class MainWindow : Window
 
         Thumbnails.IconLoader.SourceChanged -= _onIconSourceChanged;
 
+        UnwatchKeymap();
+
         _shell.Dispose();
     }
 
@@ -6080,35 +6183,31 @@ public partial class MainWindow : Window
             ClosePrompt();
         }
 
-        // F6 moves the keyboard between the listing, the address bar and the
-        // sidebar.
-        //
-        // **It only ever went one place.** Explorer cycles three regions and
-        // Dolphin's F6 is Replace Location; here it put the keyboard in the
-        // listing and did nothing else — so pressed from the listing, which is
-        // where it had just put you, it did nothing at all.
+        // The guarded commands: F6 between the regions, and the filter,
+        // new-folder, hidden-files, pin and search keys. See KeyTier.Guarded.
         //
         // **Above the text-box guard, deliberately.** Leaving a text box is
-        // most of what this key is FOR: behind that guard the second step of
-        // the cycle could never be taken, because the address bar is a text box
+        // most of what F6 is FOR: behind that guard the second step of the
+        // cycle could never be taken, because the address bar is a text box
         // and F6 pressed in it would be swallowed. Three consequences follow,
         // each an accepted cost rather than an oversight — F6 from the path bar
         // discards a half-typed path, which is what clicking away already does;
         // F6 from the search field closes it when the draft is empty, which is
         // that field's own lost-focus rule; and F6 from the filter opens the
-        // path bar with the filter text intact.
+        // path bar with the filter text intact. Ctrl+F from the address bar
+        // moving to the search field, and Ctrl+I from inside the filter putting
+        // it away, are answered from inside a box for the same reason.
         //
-        // The rename bar is a text box too, and F6 must not pull the keyboard
-        // out from under a name being typed — but that is already answered by
-        // the rename guard higher up, which returns before this is reached. No
-        // clause of its own here, because one that cannot fail is one the next
-        // reader has to work out is decorative.
-        if (e.Key == Key.F6 && e.KeyModifiers == KeyModifiers.None)
-        {
-            e.Handled = true;
-            GoToRegion(Input.FocusCycle.Next(CurrentRegion(), SidebarShowing));
-            return;
-        }
+        // **And above the sidebar's own keys**, or the panel F6 delivers you to
+        // would be one F6 could not take you out of. None of these commands can
+        // be given a key the sidebar claims: those are the arrows, Home, End
+        // and the menu key, which KeyChords.IsReserved keeps from every command.
+        //
+        // The rename box is a text box too, and none of these may pull the
+        // keyboard out from under a name being typed — but that is already
+        // answered by the rename guard higher up, which returns before this is
+        // reached.
+        if (DispatchKeymap(e, Input.KeyTier.Guarded)) return;
 
         // The sidebar answers its own keys while it has the keyboard.
         //
@@ -6173,60 +6272,6 @@ public partial class MainWindow : Window
             }
         }
 
-        // The six gestures that could not be Window KeyBindings.
-        //
-        // **All six fired straight through an open rename bar.** A KeyBinding
-        // is dispatched before this handler runs at all — before the key is
-        // even routed — so the prompt guard at the top was structurally unable
-        // to see them, the same fault F2 and Space were lifted out of the
-        // markup for. Ctrl+H flipped the hidden files in behind the bar,
-        // Ctrl+I opened the filter and pulled the caret into it so the rest of
-        // the name was typed somewhere else, Ctrl+F swapped the listing for a
-        // search, Ctrl+D pinned the folder, and Ctrl+Shift+N made a folder
-        // whose own rename request the one-tenant rule then refused — so it was
-        // created and left with the name the file system gave it.
-        //
-        // ABOVE the text-box guard, and a switch of its own because of it.
-        // These are not gestures a text cursor owns, and two of them are
-        // deliberately answered while one has focus: Ctrl+F from the path box
-        // moves the keyboard to the search field on purpose, and Ctrl+I from
-        // inside the filter box is how the filter is put away again. Behind the
-        // guard — which is where the switch at the bottom of this method sits —
-        // both would have been silently dropped, and the fix for a prompt bug
-        // would have taken two working keys away.
-        //
-        // Case labels rather than `if`s, and `.XxxCommand.Execute(null)` rather
-        // than the method: the shortcuts sheet is cross-checked against this
-        // file, and it reads case labels and that call shape.
-        switch (e.Key)
-        {
-            case Key.I when e.KeyModifiers == KeyModifiers.Control:
-                e.Handled = true;
-                _shell.ActiveTab?.ToggleFilterCommand.Execute(null);
-                return;
-
-            case Key.N when e.KeyModifiers == (KeyModifiers.Control | KeyModifiers.Shift):
-                e.Handled = true;
-                _shell.ActiveTab?.NewFolderCommand.Execute(null);
-                return;
-
-            case Key.H when e.KeyModifiers == KeyModifiers.Control:
-                e.Handled = true;
-                _shell.ActiveTab?.ToggleHiddenCommand.Execute(null);
-                return;
-
-            case Key.D when e.KeyModifiers == KeyModifiers.Control:
-                e.Handled = true;
-                _shell.PinCurrentCommand.Execute(null);
-                return;
-
-            case Key.E when e.KeyModifiers == KeyModifiers.Control:
-            case Key.F when e.KeyModifiers == KeyModifiers.Control:
-                e.Handled = true;
-                _shell.ActiveTab?.BeginSearchCommand.Execute(null);
-                return;
-        }
-
         // Any focused text box owns the keyboard. Checking the type rather
         // than named controls, because the path and filter boxes now live
         // inside a per-pane template and have no generated fields — and it
@@ -6234,28 +6279,11 @@ public partial class MainWindow : Window
         // boxes are handled by their own KeyBindings in the markup.
         if (FocusManager?.GetFocusedElement() is TextBox) return;
 
-        // Space previews the selection.
-        //
-        // **Handled here rather than as a Window KeyBinding**, which is where it
-        // lived. Markup KeyBindings are dispatched by the window's own key
-        // handling, AHEAD of this handler — so every guard above was
-        // structurally unable to save it, and typing a space while renaming a
-        // file to "My Report" flipped a preview overlay open instead of typing
-        // the space. The rename guard and the text-box guard now both apply,
-        // because the gesture finally goes through them.
-        if (e.Key == Key.Space && e.KeyModifiers == KeyModifiers.None)
-        {
-            // **Not while a name is being typed.** Space is part of a filename
-            // far more often than it is a shortcut: "new folder" toggled the
-            // preview on the fourth keystroke and discarded the prefix, so
-            // every two-word name in the folder was unreachable by typing.
-            // Left unhandled, so the type-ahead handler downstream gets it.
-            if (_shell.ActiveTab?.IsTypeAheadActive == true) return;
-
-            e.Handled = true;
-            _shell.ActiveTab?.TogglePreview();
-            return;
-        }
+        // The listing's own commands: preview, rename, delete, the clipboard,
+        // undo, select and properties. Behind the text-box guard above, so a
+        // focused box keeps every key a text cursor owns — see KeyTier.Listing
+        // for what each of them did as a window KeyBinding.
+        if (DispatchKeymap(e, Input.KeyTier.Listing)) return;
 
         // **The Menu key and Shift+F10 open the context menu**, which nothing
         // did: there was no Key.Apps handler, no F10, and no ContextRequested
@@ -6366,16 +6394,6 @@ public partial class MainWindow : Window
 
         switch (e.Key)
         {
-            // **Through the shell, not straight to the window.** Calling
-            // ShowProperties() here went round the gate that keeps the sheet
-            // out of the bin and Recent — both hold rows naming where a file
-            // USED to be — so the menu entry was correctly greyed out while
-            // Alt+Enter opened the sheet on a path that is not there.
-            case Key.Enter when e.KeyModifiers.HasFlag(KeyModifiers.Alt):
-                e.Handled = true;
-                _shell.ShowPropertiesCommand.Execute(null);
-                break;
-
             case Key.Enter:
                 e.Handled = true;
                 _ = pane.OpenSelectedAsync();
@@ -6424,117 +6442,6 @@ public partial class MainWindow : Window
                     ? pane.GoUpAsync()
                     : pane.GoBackAsync();
 
-                break;
-
-            // Rename, and rename in bulk.
-            //
-            // **F2 re-entered the rename bar that was already open.** Both were
-            // Window KeyBindings, and a KeyBinding is dispatched ahead of this
-            // handler — so the prompt guard at the top was structurally unable
-            // to see them. Pressing F2 again discarded the name being typed and
-            // re-pointed the bar at the listing's CURRENT selection, which is a
-            // different file the moment another row has been clicked: the bar
-            // is inline, non-modal, and the listing behind it stays live.
-            // Shift+F2 opened the batch dialog over the top of the open bar.
-            //
-            // Handled here, both sit behind the prompt guard and behind the
-            // rule that a focused text box owns the keyboard — so F2 while the
-            // address or filter box has focus no longer renames a row hidden
-            // behind that box. The modifiers are spelled out on both arms so
-            // the pair matches exactly the two gestures the markup bound and
-            // nothing more.
-            case Key.F2 when e.KeyModifiers == KeyModifiers.Shift:
-                e.Handled = true;
-                _shell.BatchRenameCommand.Execute(null);
-                break;
-
-            case Key.F2 when e.KeyModifiers == KeyModifiers.None:
-                e.Handled = true;
-                pane.BeginRenameCommand.Execute(null);
-                break;
-
-
-            // Delete trashes, which is recoverable. Shift+Delete is
-            // irreversible. Both prompts are now preferences, but they default
-            // the way they always behaved: trash silently, confirm the
-            // permanent one.
-            // Ctrl+A had no equivalent anywhere in the application — a file
-            // manager with rubber-band selection and no select-all. Routed
-            // through the ListBox rather than the view model so the framework's
-            // bulk path does the work: filling the bound collection item by item
-            // would fire CollectionChanged once per file, and each one refreshes
-            // the details panel and recomputes the summary.
-            case Key.A when e.KeyModifiers == (KeyModifiers.Control | KeyModifiers.Shift):
-                if (FocusManager?.GetFocusedElement() is TextBox) break;
-
-                InvertSelection();
-                e.Handled = true;
-                break;
-
-            case Key.A when e.KeyModifiers.HasFlag(KeyModifiers.Control):
-                if (FocusManager?.GetFocusedElement() is TextBox) break;
-
-                if (ActiveListing() is { } everything) SelectWholeFolder(everything, pane);
-
-                e.Handled = true;
-                break;
-
-            case Key.Delete when e.KeyModifiers.HasFlag(KeyModifiers.Shift):
-                e.Handled = true;
-                PermanentlyDelete(pane);
-                break;
-
-            case Key.Delete:
-                e.Handled = true;
-
-                if (AppSettings.Current.General.ConfirmMoveToTrash)
-                    AskConfirmTrash();
-                else
-                    pane.TrashSelectedCommand.Execute(null);
-
-                break;
-
-            // **The only place the clipboard is bound.** These three were also
-            // Window.KeyBindings, and a KeyBinding is dispatched ahead of this
-            // handler — so the text-box guard above could never save them and
-            // the address bar could not copy or paste. Ctrl+V pasted FILES into
-            // the folder behind the box; Ctrl+C replaced the system clipboard
-            // with the listing's selection, destroying the path you were about
-            // to paste; Ctrl+X armed a move of it. Handled here, the guard
-            // applies and a focused TextBox keeps its own keys.
-            case Key.C when e.KeyModifiers == KeyModifiers.Control:
-                e.Handled = true;
-                pane.CopySelectionToClipboardCommand.Execute(null);
-                break;
-
-            case Key.X when e.KeyModifiers == KeyModifiers.Control:
-                e.Handled = true;
-                pane.CutSelectionToClipboardCommand.Execute(null);
-                break;
-
-            case Key.V when e.KeyModifiers == KeyModifiers.Control:
-                e.Handled = true;
-                pane.PasteCommand.Execute(null);
-                break;
-
-            // Undo and redo of FILE operations, and they moved here for a
-            // sharper reason than the clipboard did: as Window.KeyBindings,
-            // pressing Ctrl+Z to take back a mistyped character in the address
-            // bar reversed the last copy, move or delete on disk instead. A
-            // text box gets its own undo stack back, and this one now only
-            // fires when the keyboard is in the listing.
-            //
-            // Shift before the plain one: KeyModifiers is a flags enum and
-            // Ctrl+Shift+Z would otherwise never be reached.
-            case Key.Z when e.KeyModifiers == (KeyModifiers.Control | KeyModifiers.Shift):
-            case Key.Y when e.KeyModifiers == KeyModifiers.Control:
-                e.Handled = true;
-                pane.RedoCommand.Execute(null);
-                break;
-
-            case Key.Z when e.KeyModifiers == KeyModifiers.Control:
-                e.Handled = true;
-                pane.UndoCommand.Execute(null);
                 break;
         }
     }

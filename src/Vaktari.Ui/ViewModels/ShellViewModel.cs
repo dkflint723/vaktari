@@ -1413,6 +1413,17 @@ public sealed partial class ShellViewModel : ObservableObject, IDisposable
         => Menu.ShowAddToPlaces
            && ActiveTab?.HasDirectorySelected != true
            && ActiveTab?.IsRealFolder == true;
+
+    /// <summary>
+    /// The same slot, in a search listing: the row reads "save this search"
+    /// there rather than "add this folder", because a search is not a folder
+    /// and a row that called it one would be the reader's homework again.
+    /// Same command behind both — PinCurrent knows which it is standing in.
+    /// </summary>
+    public bool ShowSaveSearchToPlaces
+        => Menu.ShowAddToPlaces
+           && ActiveTab?.HasDirectorySelected != true
+           && ActiveTab?.IsSearchListing == true;
     public bool ShowCopyLocationInMenu => Menu.ShowCopyLocation;
 
     /// <summary>
@@ -1526,6 +1537,85 @@ public sealed partial class ShellViewModel : ObservableObject, IDisposable
         // and this is exactly the change that moves the size a pane draws at
         // without touching the pane's own zoom.
         NotifyTargetSizes();
+    }
+
+    // ---- column widths --------------------------------------------------------
+
+    /// <summary>
+    /// Raised once a dragged column width is in force and the drag has ended,
+    /// so the window can write it out through the settings store it owns — the
+    /// same shape as <see cref="DefaultViewChanged"/>, for the same reason:
+    /// the shell has no store of its own.
+    ///
+    /// At the END of the drag and not on every move: a drag is a hundred
+    /// events, and each one written to disk is a hundred atomic rewrites of
+    /// settings.json for one gesture.
+    /// </summary>
+    public event EventHandler<Core.Settings.SettingsState>? ColumnWidthsChanged;
+
+    /// <summary>
+    /// Moves one details column's width by how far its grip was dragged.
+    ///
+    /// **The four metadata columns were fixed widths, in a file manager.**
+    /// Every table a person has used lets a heading's edge be dragged, and a
+    /// date column that cannot be widened is a date column that trims the year
+    /// off at every size the designed width did not anticipate — a long
+    /// relative date, a mono font with wide digits, a size in a language with
+    /// a longer unit.
+    ///
+    /// The grip reports pixels on screen; the width is kept at 100%, so the
+    /// pixels are divided by what the column was drawn at — the pane's own
+    /// zoom times the interface size, exactly the product
+    /// <see cref="PaneScale.Compute"/> multiplies the width by on the way out.
+    /// Skipping the division would move a column at 200% half as far as the
+    /// pointer, and the grip would slide out from under it.
+    ///
+    /// Every pane takes the width at once, through the same re-apply a zoom
+    /// notch runs, because the width is one preference and not a property of
+    /// the pane that was dragged. The file is written when the drag ends: see
+    /// <see cref="ColumnWidthsChanged"/>.
+    /// </summary>
+    public void ResizeColumn(Core.Settings.DetailsColumn column, double deltaPixels, double paneFontScale)
+    {
+        var scale = paneFontScale * InterfaceText.Scale;
+        var details = Settings.AppSettings.Current.Views.Details;
+        var current = PaneScale.ColumnWidth(details, column);
+
+        var next = Math.Clamp(
+            Math.Round(current + deltaPixels / scale, 1),
+            PaneScale.ColumnMin, PaneScale.ColumnMax);
+
+        SetColumnWidths(details.WithWidth(column, next));
+    }
+
+    /// <summary>The drag has ended; what it left is written out.</summary>
+    public void CommitColumnWidths()
+        => ColumnWidthsChanged?.Invoke(this, Settings.AppSettings.Current);
+
+    /// <summary>
+    /// Every column back to its designed width, and written out at once — the
+    /// only way back after a drag went too far, short of restoring every
+    /// setting in the dialog.
+    /// </summary>
+    [RelayCommand]
+    private void ResetColumnWidths()
+    {
+        SetColumnWidths(Settings.AppSettings.Current.Views.Details with
+        {
+            TypeColumn = 0, SizeColumn = 0, ModifiedColumn = 0, CreatedColumn = 0,
+        });
+
+        CommitColumnWidths();
+    }
+
+    private void SetColumnWidths(Core.Settings.DetailsViewSettings details)
+    {
+        Settings.AppSettings.Apply(Settings.AppSettings.Current with
+        {
+            Views = Settings.AppSettings.Current.Views with { Details = details },
+        });
+
+        RefreshPaneScales();
     }
 
     /// <summary>
@@ -1732,6 +1822,21 @@ public sealed partial class ShellViewModel : ObservableObject, IDisposable
 
     [RelayCommand]
     private void ShowShortcuts() => ShortcutsRequested?.Invoke(this, EventArgs.Empty);
+
+    /// <summary>Raised so the window can show the tour — the same shape as
+    /// the sheet above, for the same reason.</summary>
+    public event EventHandler? TourRequested;
+
+    [RelayCommand]
+    private void ShowTour() => TourRequested?.Invoke(this, EventArgs.Empty);
+
+    /// <summary>Raised so the window can open the command palette — the same
+    /// shape as the two above. The window runs what was picked, because the
+    /// pick is only known once the palette has closed.</summary>
+    public event EventHandler? PaletteRequested;
+
+    [RelayCommand]
+    private void ShowPalette() => PaletteRequested?.Invoke(this, EventArgs.Empty);
 
     public Func<WindowSession>? GeometryProvider { get; set; }
 
@@ -2994,7 +3099,14 @@ public sealed partial class ShellViewModel : ObservableObject, IDisposable
         // Null, not an early return: the refusal is a line the helper writes,
         // and a listing with no folder in it is one of the two things this can
         // have to say.
-        var here = ActiveTab is { IsRealFolder: true, CurrentPath: { Length: > 0 } path }
+        //
+        // **A search is a place too.** It was refused with the bin and This
+        // PC as "a view rather than a folder" — and it is a view, but one the
+        // panes can open again from its path alone, which is exactly what a
+        // place is for. The right-click history keeps twelve and forgets the
+        // rest; this is how a question worth keeping is kept.
+        var here = ActiveTab is { CurrentPath: { Length: > 0 } path } pane
+                   && (pane.IsRealFolder || pane.IsSearchListing)
             ? path
             : null;
 
@@ -3030,13 +3142,18 @@ public sealed partial class ShellViewModel : ObservableObject, IDisposable
         // falls back to the current listing — when nothing is selected, and in
         // the bin whatever is — and in the bin that fallback is the scheme
         // itself. The length alone answers Ctrl+D, which hands over a null.
-        if (path is not { Length: > 0 } || VirtualPaths.IsVirtual(path))
+        // A search is the one view that IS a place: see PinCurrentAsync.
+        var search = path is { Length: > 0 } && VirtualPaths.IsSearch(path);
+
+        if (path is not { Length: > 0 } || (VirtualPaths.IsVirtual(path) && !search))
         {
             pane.Status = Input.PinPlan.OnlyFolders;
             return;
         }
 
-        var name = PathRules.LeafName(path);
+        // The question and where it was asked, for a search — the tail of its
+        // path is the scheme's own punctuation, not a name.
+        var name = search ? PaneViewModel.SearchStepName(path) : PathRules.LeafName(path);
 
         if (Sidebar.Groups.SelectMany(g => g.Places).Any(p => PathRules.Same(p.Path, path)))
         {
@@ -3044,9 +3161,9 @@ public sealed partial class ShellViewModel : ObservableObject, IDisposable
             return;
         }
 
-        await Sidebar.PinAsync(path).ConfigureAwait(true);
+        await Sidebar.PinAsync(path, search ? name : null).ConfigureAwait(true);
 
-        pane.Status = $"pinned {name} to places";
+        pane.Status = search ? $"saved the search {name} to places" : $"pinned {name} to places";
     }
 
     /// <summary>

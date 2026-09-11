@@ -242,8 +242,11 @@ public sealed class ColumnChooserTests : OwnedViewModels
     [AvaloniaFact]
     public void The_type_column_took_the_empty_slot_in_both_grids()
     {
+        // The heading's resize grip shares its cell and is not a cell: see
+        // ColumnWidthTests for what it is.
         var inColumnThree = Markup()
             .Descendants()
+            .Where(e => e.Name != Avalonia + "Thumb")
             .Count(e => (string?)e.Attribute("Grid.Column") == "3");
 
         Assert.Equal(2, inColumnThree);
@@ -339,6 +342,10 @@ public sealed class ColumnChooserTests : OwnedViewModels
             var sidebar = window.FindControl<Border>("SidebarPanel");
 
             Assert.NotNull(sidebar);
+
+            // A row to park on has to have arrived from the pool first: see
+            // SidebarReady.
+            SidebarReady(window);
 
             // The same rule FirstSidebarRow uses: a section heading is a
             // ToggleButton and is not a row.

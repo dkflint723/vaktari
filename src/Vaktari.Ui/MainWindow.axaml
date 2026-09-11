@@ -215,6 +215,33 @@
       <Setter Property="FontSize" Value="{DynamicResource FontSizeBase}"/>
     </Style>
 
+    <!-- **The grip on a details heading's right edge.** The four metadata
+         columns were fixed widths; every table a person has used lets a
+         heading's edge be dragged. The same shape as the sidebar's handle and
+         the details panel's, for the same reason: a Thumb reports how far it
+         was dragged and changes nothing itself, and the width is moved in the
+         handler. Transparent because the edge of the column is the line
+         somebody reaches for and a drawn bar would be a fifth column; six
+         pixels wide so it can be found with a pointer, and the cursor
+         announces it. Right-aligned in the SAME grid cell as its heading,
+         drawn after it so it is on top of the heading's last six pixels.
+
+         A Style rather than four copies of the template, so that the one
+         template, width and cursor cannot drift between the four; what
+         differs per column — which column, its heading's visibility and its
+         name to a screen reader — stays on each Thumb. -->
+    <Style Selector="Thumb.columnGrip">
+      <Setter Property="Width" Value="6"/>
+      <Setter Property="HorizontalAlignment" Value="Right"/>
+      <Setter Property="Background" Value="Transparent"/>
+      <Setter Property="Cursor" Value="SizeWestEast"/>
+      <Setter Property="Template">
+        <ControlTemplate>
+          <Border Background="{TemplateBinding Background}"/>
+        </ControlTemplate>
+      </Setter>
+    </Style>
+
   </Window.Styles>
 
   <Window.Resources>
@@ -494,8 +521,8 @@
             <ToggleButton Classes="seg"
                           IsVisible="{Binding ShowsWindowControls}"
                           IsChecked="{Binding IsInfoVisible}" IsEnabled="{Binding IsInfoToggleEnabled}"
-                          AutomationProperties.Name="Details panel for this side  (f11)"
-                          ToolTip.Tip="Details panel for this side  (f11)">
+                          in:KeyHint.Command="ToggleInfo" in:KeyHint.Name="Details panel for this side"
+                          in:KeyHint.Tip="Details panel for this side">
               <!-- Inset by half the stroke. Drawn on the 0..12 edges the outline
                    is clipped to half its width on all four sides, which is why
                    the design's own geometry starts at 0.7. -->
@@ -511,7 +538,7 @@
                           IsVisible="{Binding ShowsWindowControls}"
                           IsChecked="{Binding $parent[Window].((vm:ShellViewModel)DataContext).IsSplit, Mode=OneWay}"
                           Command="{Binding $parent[Window].((vm:ShellViewModel)DataContext).ToggleSplitCommand}"
-                          AutomationProperties.Name="Split view  (f3)" ToolTip.Tip="Split view  (f3)">
+                          in:KeyHint.Command="ToggleSplit" in:KeyHint.Name="Split view" in:KeyHint.Tip="Split view">
               <!-- A 24-unit box at 13px with a 1.8 stroke, where the panel
                    toggle is a 12-unit box at 12px with 1.4. The design draws
                    these two at different weights on purpose: the split is the
@@ -561,7 +588,7 @@
 
                   <!-- A view setting, so it belongs with the view settings
                        rather than occupying every path bar permanently. -->
-                  <CheckBox Content="Show hidden files  (ctrl+h)"
+                  <CheckBox in:KeyHint.Command="ToggleHidden" in:KeyHint.Content="Show hidden files"
                             FontSize="{DynamicResource FontSizeSmall}"
                             IsChecked="{Binding ActiveTab.ShowHidden}"/>
 
@@ -591,16 +618,36 @@
                           FontSize="{DynamicResource FontSizeSmall}"
                           Command="{Binding $parent[Window].((vm:ShellViewModel)DataContext).ShowShortcutsCommand}"/>
 
+                  <!-- The window in three cards. Here for anybody, any time,
+                       and not only on a first run: the first run's status
+                       line points HERE rather than opening it, because a file
+                       manager that opens on a dialog has not opened. -->
+                  <Button Content="Take the tour…" Padding="0" MinHeight="0"
+                          Background="Transparent" BorderThickness="0"
+                          HorizontalAlignment="Left"
+                          FontSize="{DynamicResource FontSizeSmall}"
+                          Command="{Binding $parent[Window].((vm:ShellViewModel)DataContext).ShowTourCommand}"/>
+
+                  <!-- Every command by name, for the ones three levels down a
+                       menu or on a key nobody remembers. Printed with its key
+                       the way the rows above are, for the same circularity
+                       the sheet's row breaks. -->
+                  <Button in:KeyHint.Command="ShowPalette" in:KeyHint.Content="Commands…" Padding="0" MinHeight="0"
+                          Background="Transparent" BorderThickness="0"
+                          HorizontalAlignment="Left"
+                          FontSize="{DynamicResource FontSizeSmall}"
+                          Command="{Binding $parent[Window].((vm:ShellViewModel)DataContext).ShowPaletteCommand}"/>
+
                   <!-- Ctrl+N was reachable only by already knowing it, which is
                        the same circularity the shortcut sheet above was added
                        to break. -->
-                  <Button Content="New window  (ctrl+n)" Padding="0" MinHeight="0"
+                  <Button in:KeyHint.Command="NewWindow" in:KeyHint.Content="New window" Padding="0" MinHeight="0"
                           Background="Transparent" BorderThickness="0"
                           HorizontalAlignment="Left"
                           FontSize="{DynamicResource FontSizeSmall}"
                           Command="{Binding $parent[Window].((vm:ShellViewModel)DataContext).NewWindowCommand}"/>
 
-                                    <CheckBox Content="Sidebar  (ctrl+b or f9)"
+                                    <CheckBox in:KeyHint.Command="Sidebar" in:KeyHint.Content="Sidebar"
                             FontSize="{DynamicResource FontSizeSmall}"
                             IsChecked="{Binding $parent[Window].((vm:ShellViewModel)DataContext).Sidebar.IsPanelVisible, Mode=OneWay}"
                             Command="{Binding $parent[Window].((vm:ShellViewModel)DataContext).Sidebar.CycleRailCommand}"/>
@@ -731,7 +778,7 @@
                        can change back, the other is a preference that persists. -->
                   <Button Content="Settings…" HorizontalAlignment="Stretch"
                           FontSize="{DynamicResource FontSizeSmall}"
-                          AutomationProperties.Name="Application settings  (ctrl+shift+,)" ToolTip.Tip="Application settings  (ctrl+shift+,)"
+                          in:KeyHint.Command="OpenSettings" in:KeyHint.Name="Application settings" in:KeyHint.Tip="Application settings"
                           Command="{Binding $parent[Window].((vm:ShellViewModel)DataContext).OpenSettingsCommand}"/>
                 </StackPanel>
               </Flyout>
@@ -912,7 +959,7 @@
                           Foreground="{DynamicResource ViewDimText}"
                           Background="Transparent" BorderThickness="0"
                           Padding="6,3" Margin="11,0,0,0" VerticalAlignment="Center"
-                          AutomationProperties.Name="Close tab  (ctrl+w)" ToolTip.Tip="Close tab  (ctrl+w)"
+                          in:KeyHint.Command="CloseTab" in:KeyHint.Name="Close tab" in:KeyHint.Tip="Close tab"
                           Command="{Binding $parent[Window].((vm:ShellViewModel)DataContext).CloseTabCommand}"
                           CommandParameter="{Binding}"/>
 
@@ -937,7 +984,7 @@
                                 Command="{Binding $parent[Window].((vm:ShellViewModel)DataContext).DuplicateTabCommand}"
                                 CommandParameter="{Binding}"/>
                       <Separator/>
-                      <MenuItem Header="_Close" InputGesture="Ctrl+W"
+                      <MenuItem Header="_Close" in:KeyHint.Command="CloseTab"
                                 Command="{Binding $parent[Window].((vm:ShellViewModel)DataContext).CloseTabCommand}"
                                 CommandParameter="{Binding}"/>
                       <MenuItem Header="Close _other tabs"
@@ -947,7 +994,7 @@
                                 Command="{Binding $parent[Window].((vm:ShellViewModel)DataContext).CloseTabsToTheRightCommand}"
                                 CommandParameter="{Binding}"/>
                       <Separator/>
-                      <MenuItem Header="Reopen closed _tab" InputGesture="Ctrl+Shift+T"
+                      <MenuItem Header="Reopen closed _tab" in:KeyHint.Command="ReopenClosedTab"
                                 Command="{Binding $parent[Window].((vm:ShellViewModel)DataContext).ReopenClosedTabCommand}"/>
                     </ContextMenu>
                   </DockPanel.ContextMenu>
@@ -964,7 +1011,7 @@
                   Background="Transparent" BorderThickness="0"
                   Padding="10,2" Margin="6,0,0,4" VerticalAlignment="Center"
                   Command="{Binding NewTabHereCommand}"
-                  AutomationProperties.Name="New tab in this pane  (ctrl+t)" ToolTip.Tip="New tab in this pane  (ctrl+t)"/>
+                  in:KeyHint.Command="NewTab" in:KeyHint.Name="New tab in this pane" in:KeyHint.Tip="New tab in this pane"/>
           </StackPanel>
           </ScrollViewer>
          </DockPanel>
@@ -993,7 +1040,7 @@
                  opacity. -->
             <Button DockPanel.Dock="Left" Width="30"
                     Background="Transparent" BorderThickness="0"
-                    AutomationProperties.Name="Back  (alt+left)" ToolTip.Tip="Back  (alt+left)"
+                    in:KeyHint.Command="GoBack" in:KeyHint.Name="Back" in:KeyHint.Tip="Back"
                     Command="{Binding ActiveTab.GoBackCommand}"
                     IsEnabled="{Binding ActiveTab.CanGoBack}">
               <!-- **Back and Forward exposed one step each**, out of a
@@ -1037,7 +1084,7 @@
             </Button>
             <Button DockPanel.Dock="Left" Width="30"
                     Background="Transparent" BorderThickness="0"
-                    AutomationProperties.Name="Forward  (alt+right)" ToolTip.Tip="Forward  (alt+right)"
+                    in:KeyHint.Command="GoForward" in:KeyHint.Name="Forward" in:KeyHint.Tip="Forward"
                     Command="{Binding ActiveTab.GoForwardCommand}"
                     IsEnabled="{Binding ActiveTab.CanGoForward}">
               <!-- **Back and Forward exposed one step each**, out of a
@@ -1141,7 +1188,7 @@
 
             <Button DockPanel.Dock="Left" Width="30" Margin="0,0,6,0"
                     Background="Transparent" BorderThickness="0"
-                    AutomationProperties.Name="Up one folder  (alt+up)" ToolTip.Tip="Up one folder  (alt+up)"
+                    in:KeyHint.Command="GoUp" in:KeyHint.Name="Up one folder" in:KeyHint.Tip="Up one folder"
                     Command="{Binding ActiveTab.GoUpCommand}"
                     IsEnabled="{Binding ActiveTab.CanGoUp}">
               <Path Data="M5 15 L12 8 L19 15" Stroke="{DynamicResource ViewText}"
@@ -1173,7 +1220,7 @@
                         Width="{DynamicResource ChromeStepWidth}"
                         Height="{DynamicResource ChromeRowHeight}" Padding="0"
                         Background="Transparent" BorderThickness="0"
-                        AutomationProperties.Name="Search files  (ctrl+f)"
+                        in:KeyHint.Command="Search" in:KeyHint.Name="Search files"
                         ToolTip.Tip="{Binding ActiveTab.SearchTip}">
                   <!-- **Nothing recorded what had been searched for**, so a
                        question was retyped every time it was asked again — and
@@ -1252,7 +1299,7 @@
                          a gesture written INSIDE a label — "Search files
                          (ctrl+f)" — stays lower case, because there the words
                          are the label and the gesture is an aside. -->
-                    <TextBlock DockPanel.Dock="Right" Text="Ctrl+F" Margin="6,0,8,0"
+                    <TextBlock DockPanel.Dock="Right" in:KeyHint.Command="Search" Margin="6,0,8,0"
                                VerticalAlignment="Center"
                                FontSize="{DynamicResource FontSizeTiny}"
                                Foreground="{DynamicResource ViewDimText}"
@@ -1299,8 +1346,8 @@
                             IsChecked="{Binding ActiveTab.IsFilterVisible, Mode=OneWay}"
                             Command="{Binding ActiveTab.ToggleFilterCommand}"
                             IsVisible="{Binding !ActiveTab.IsFilterVisible}"
-                            AutomationProperties.Name="Filter the listing  (ctrl+i)"
-                            ToolTip.Tip="Filter the listing  (ctrl+i)">
+                            in:KeyHint.Command="ToggleFilter" in:KeyHint.Name="Filter the listing"
+                            in:KeyHint.Tip="Filter the listing">
                 <StackPanel Orientation="Horizontal" Spacing="7">
                   <Path Data="M3 6 H21 M6.5 12 H17.5 M10 18 H14"
                         Stroke="{DynamicResource ViewDimText}" StrokeThickness="1.03"
@@ -1374,7 +1421,7 @@
               <Panel.ContextFlyout>
                 <MenuFlyout>
                   <MenuItem Header="_Copy address" Command="{Binding ActiveTab.CopyAddressCommand}"/>
-                  <MenuItem Header="_Edit address" InputGesture="Ctrl+L" Command="{Binding ActiveTab.BeginEditPathCommand}"/>
+                  <MenuItem Header="_Edit address" in:KeyHint.Command="EditPath" Command="{Binding ActiveTab.BeginEditPathCommand}"/>
                 </MenuFlyout>
               </Panel.ContextFlyout>
 
@@ -1392,7 +1439,7 @@
               <Border Background="Transparent"
                       IsVisible="{Binding !ActiveTab.IsPathEditing}"
                       local:DoubleClick.Command="{Binding ActiveTab.BeginEditPathCommand}"
-                      ToolTip.Tip="Double-click to edit the path  (ctrl+l)"/>
+                      in:KeyHint.Command="EditPath" in:KeyHint.Tip="Double-click to edit the path"/>
 
               <DockPanel IsVisible="{Binding !ActiveTab.IsPathEditing}">
                 <!-- The tooltip carries the path in full, because the bar
@@ -1897,10 +1944,10 @@
                    collapses none of them. -->
               <Separator IsVisible="{Binding ActiveTab.HasSelection}"/>
               <MenuItem Header="_Cut"   Command="{Binding ActiveTab.CutSelectionToClipboardCommand}"
-                                      InputGesture="Ctrl+X"
+                                      in:KeyHint.Command="Cut"
                                       IsVisible="{Binding ActiveTab.CanActOnSelection}"/>
               <MenuItem Header="Cop_y"  Command="{Binding ActiveTab.CopySelectionToClipboardCommand}"
-                                      InputGesture="Ctrl+C"
+                                      in:KeyHint.Command="Copy"
                                       IsVisible="{Binding ActiveTab.HasSelection}"/>
               <!-- **Back at the top level, where they were before the menu was
                    consolidated.** Pushing these four behind "More" made the
@@ -1914,7 +1961,7 @@
                    and matching the vernacular costs nothing. -->
               <MenuItem Header="Copy as pat_h"
                                       Command="{Binding $parent[Window].((vm:ShellViewModel)DataContext).CopyLocationCommand}"
-                                      InputGesture="Ctrl+Shift+C"
+                                      in:KeyHint.Command="CopyLocation"
                                       IsVisible="{Binding $parent[Window].((vm:ShellViewModel)DataContext).ShowCopyLocationInMenu}"/>
               <!-- **Live with an empty clipboard.** Picking it posted
                    "clipboard has no files", which is an answer the row could
@@ -1924,7 +1971,7 @@
                    the entries under it between two right-clicks in the same
                    folder. -->
               <MenuItem Header="_Paste" Command="{Binding ActiveTab.PasteCommand}"
-                                      InputGesture="Ctrl+V"
+                                      in:KeyHint.Command="Paste"
                                       IsEnabled="{Binding ActiveTab.CanPaste}"
                                       IsVisible="{Binding !ActiveTab.IsTrashListing}"/>
               <MenuItem x:Name="CopyToMenu" Header="Copy to"
@@ -2019,15 +2066,15 @@
                                       Command="{Binding ActiveTab.CreateShortcutCommand}"
                                       IsVisible="{Binding ActiveTab.CanCreateShortcut}"/>
               <MenuItem Header="_Rename"        Command="{Binding ActiveTab.BeginRenameCommand}"
-                                      InputGesture="F2"
+                                      in:KeyHint.Command="Rename"
                                       IsVisible="{Binding ActiveTab.CanActOnSelection}"/>
               <MenuItem Header="Rename in _bulk…"
                                       Command="{Binding $parent[Window].((vm:ShellViewModel)DataContext).BatchRenameCommand}"
-                                      InputGesture="Shift+F2"
+                                      in:KeyHint.Command="BatchRename"
                                       IsVisible="{Binding ActiveTab.CanRenameInBulk}"/>
               <MenuItem Header="{Binding $parent[Window].((vm:ShellViewModel)DataContext).BinMoveLabel}"
                                       Command="{Binding $parent[Window].((vm:ShellViewModel)DataContext).TrashSelectionCommand}"
-                                      InputGesture="Delete"
+                                      in:KeyHint.Command="Trash"
                                       IsVisible="{Binding ActiveTab.CanActOnSelection}"/>
               <!-- **In the bin there was one way out for one file, and it was
                    putting it back.** Restore and Empty were the whole menu, so
@@ -2042,7 +2089,7 @@
               <Separator IsVisible="{Binding ActiveTab.CanPurgeFromBin}"/>
               <MenuItem Header="_Delete permanently"
                                       Command="{Binding ActiveTab.PurgeFromTrashCommand}"
-                                      InputGesture="Shift+Delete"
+                                      in:KeyHint.Command="DeletePermanently"
                                       IsVisible="{Binding ActiveTab.CanPurgeFromBin}"/>
 
               <!-- **Undo was a key and nothing else.** No menu anywhere in the
@@ -2064,11 +2111,11 @@
               <MenuItem Header="{Binding ActiveTab.UndoLabel}"
                                       Command="{Binding ActiveTab.UndoCommand}"
                                       IsEnabled="{Binding ActiveTab.CanUndo}"
-                                      InputGesture="Ctrl+Z"/>
+                                      in:KeyHint.Command="Undo"/>
               <MenuItem Header="{Binding ActiveTab.RedoLabel}"
                                       Command="{Binding ActiveTab.RedoCommand}"
                                       IsEnabled="{Binding ActiveTab.CanRedo}"
-                                      InputGesture="Ctrl+Y"/>
+                                      in:KeyHint.Command="Redo"/>
               <Separator/>
               <!--
                    One "New" rather than three top-level entries that all create
@@ -2077,7 +2124,7 @@
               <MenuItem Header="_New"
                                       IsVisible="{Binding !ActiveTab.IsTrashListing}">
                 <MenuItem Header="New _folder"          Command="{Binding ActiveTab.NewFolderCommand}"
-                                        InputGesture="Ctrl+Shift+N"/>
+                                        in:KeyHint.Command="NewFolder"/>
                 <MenuItem x:Name="NewFileMenu" Header="New f_ile" ItemsSource="{Binding ActiveTab.NewFileKinds}">
                                 <MenuItem.ItemTemplate>
                                   <DataTemplate x:DataType="fs:NewFileKind">
@@ -2122,15 +2169,15 @@
                    goes looking for it in a menu. -->
               <MenuItem Header="Re_fresh"
                                       Command="{Binding ActiveTab.RefreshCommand}"
-                                      InputGesture="F5"/>
+                                      in:KeyHint.Command="Refresh"/>
               <!-- **Selection had exactly one command and no menu home.**
                    Ctrl+A worked and was findable only by knowing it; there was
                    no way at all to clear a selection or invert one. Together
                    because they are one decision about what is chosen. -->
               <MenuItem Header="Se_lect">
-                <MenuItem Header="_All" InputGesture="Ctrl+A" Click="OnSelectAllClicked"/>
+                <MenuItem Header="_All" in:KeyHint.Command="SelectAll" Click="OnSelectAllClicked"/>
                 <MenuItem Header="_None" Click="OnSelectNoneClicked"/>
-                <MenuItem Header="_Invert" InputGesture="Ctrl+Shift+A" Click="OnInvertSelectionClicked"/>
+                <MenuItem Header="_Invert" in:KeyHint.Command="InvertSelection" Click="OnInvertSelectionClicked"/>
               </MenuItem>
               <!-- **How the listing is drawn had no menu anywhere.** The three
                    layouts were the chip at the top right and Ctrl+Shift+1..3;
@@ -2175,15 +2222,15 @@
                 <MenuItem Header="_List" ToggleType="Radio"
                           IsChecked="{Binding ActiveTab.IsDetailsView, Mode=OneWay}"
                           Command="{Binding ActiveTab.ShowAsDetailsCommand}"
-                          InputGesture="Ctrl+Shift+D1"/>
+                          in:KeyHint.Command="ShowAsDetails"/>
                 <MenuItem Header="_Small grid" ToggleType="Radio"
                           IsChecked="{Binding ActiveTab.IsCompactView, Mode=OneWay}"
                           Command="{Binding ActiveTab.ShowAsCompactCommand}"
-                          InputGesture="Ctrl+Shift+D2"/>
+                          in:KeyHint.Command="ShowAsCompact"/>
                 <MenuItem Header="L_arge grid" ToggleType="Radio"
                           IsChecked="{Binding ActiveTab.IsGridView, Mode=OneWay}"
                           Command="{Binding ActiveTab.ShowAsGridCommand}"
-                          InputGesture="Ctrl+Shift+D3"/>
+                          in:KeyHint.Command="ShowAsGrid"/>
                 <Separator/>
                 <!-- The command, not a two-way bind on ShowHidden: with both,
                      the click would flip the property and then flip it back.
@@ -2191,7 +2238,7 @@
                 <MenuItem Header="S_how hidden files" ToggleType="CheckBox"
                           IsChecked="{Binding ActiveTab.ShowHidden, Mode=OneWay}"
                           Command="{Binding ActiveTab.ToggleHiddenCommand}"
-                          InputGesture="Ctrl+H"/>
+                          in:KeyHint.Command="ToggleHidden"/>
               </MenuItem>
               <MenuItem Header="Arran_ge"
                                       IsVisible="{Binding $parent[Window].((vm:ShellViewModel)DataContext).ShowSortByInMenu}">
@@ -2285,6 +2332,11 @@
                                           IsChecked="{Binding ActiveTab.IsCreatedColumnShown, Mode=OneWay}"
                                           Command="{Binding ActiveTab.ToggleCreatedColumnCommand}"/>
                                 <Separator/>
+                                <!-- The grips are a pointer's; this row is how
+                                     a keyboard undoes what one did. -->
+                                <MenuItem Header="Reset column _widths"
+                                          Command="{Binding $parent[Window].((vm:ShellViewModel)DataContext).ResetColumnWidthsCommand}"/>
+                                <Separator/>
                                 <MenuItem Header="A narrow pane drops columns to keep the name readable."
                                           IsEnabled="False"/>
                               </MenuItem>
@@ -2297,7 +2349,7 @@
                    depends on which shape is showing. -->
               <MenuItem Header="Open terminal here"
                                       Command="{Binding ActiveTab.OpenTerminalHereCommand}"
-                                      InputGesture="F4"
+                                      in:KeyHint.Command="OpenTerminalHere"
                                       IsVisible="{Binding ActiveTab.ShowOneTerminal}"/>
               <MenuItem x:Name="TerminalMenu" Header="Open terminal here"
                                       ItemsSource="{Binding ActiveTab.Terminals}"
@@ -2354,8 +2406,16 @@
                                       IsVisible="{Binding $parent[Window].((vm:ShellViewModel)DataContext).ShowAddSelectionToPlaces}"/>
               <MenuItem Header="Add this folder to places"
                                       Command="{Binding $parent[Window].((vm:ShellViewModel)DataContext).PinCurrentCommand}"
-                                      InputGesture="Ctrl+D"
+                                      in:KeyHint.Command="PinCurrent"
                                       IsVisible="{Binding $parent[Window].((vm:ShellViewModel)DataContext).ShowAddCurrentToPlaces}"/>
+              <!-- The same slot in a search listing, under the words that are
+                   true there: a search is not a folder, and the row that
+                   saves it must not call it one. The same command — it knows
+                   what it is standing in. -->
+              <MenuItem Header="Save this search to places"
+                                      Command="{Binding $parent[Window].((vm:ShellViewModel)DataContext).PinCurrentCommand}"
+                                      in:KeyHint.Command="PinCurrent"
+                                      IsVisible="{Binding $parent[Window].((vm:ShellViewModel)DataContext).ShowSaveSearchToPlaces}"/>
               <!-- Gated on the one entry it introduces. Ungated it drew a rule
                    with nothing under it in every listing that is not the recent
                    one — which is most of them, including every ordinary folder —
@@ -2418,7 +2478,7 @@
               <MenuItem Header="Prop_erties"
                                       Command="{Binding $parent[Window].((vm:ShellViewModel)DataContext).ShowPropertiesCommand}"
                                       IsVisible="{Binding $parent[Window].((vm:ShellViewModel)DataContext).CanShowProperties}"
-                                      InputGesture="Alt+Enter"/>
+                                      in:KeyHint.Command="Properties"/>
               <!-- **The machine's own menu: 7-Zip, VLC, Send to, Restore
                    previous versions.** Those are COM handlers registered by
                    installed applications, not a list anybody can write down, so
@@ -2616,6 +2676,21 @@
                              Margin="0,6,0,0" TextTrimming="CharacterEllipsis"
                              Foreground="{DynamicResource ViewDimText}"
                              FontSize="{DynamicResource FontSizeSmall}"/>
+                  <!-- **A question worth keeping had nowhere to be kept.** The
+                       magnifier's history holds twelve and forgets the rest,
+                       so a search somebody runs every week was retyped every
+                       week or fished out of a list that was shortening under
+                       it. This saves it to places, where it sits with a
+                       magnifier and asks its question again when clicked —
+                       the same PinCurrent that Ctrl+D runs, which knows it is
+                       standing in a search. Through the window, because the
+                       band is the pane's and the sidebar is the shell's. -->
+                  <Button x:Name="SearchSave" DockPanel.Dock="Right"
+                          Command="{Binding $parent[Window].((vm:ShellViewModel)DataContext).PinCurrentCommand}"
+                          Content="Save search" Padding="10,3" MinWidth="0" Margin="8,0,0,0"
+                          FontSize="{DynamicResource FontSizeSmall}"
+                          AutomationProperties.Name="Save this search to places"
+                          in:KeyHint.Command="PinCurrent" in:KeyHint.Tip="Keep this search in the sidebar, to ask again with one click"/>
                   <Button x:Name="SearchStop" DockPanel.Dock="Right"
                           IsVisible="{Binding IsLoading}"
                           Command="{Binding StopSearchCommand}"
@@ -2701,6 +2776,14 @@
                               ToggleType="CheckBox"
                               IsChecked="{Binding IsCreatedColumnShown, Mode=OneWay}"
                               Command="{Binding ToggleCreatedColumnCommand}"/>
+                    <Separator/>
+                    <!-- The way back from a drag that went too far, short of
+                         restoring every setting in the dialog. Through the
+                         window, unlike the four toggles above: the widths are
+                         one preference for every pane, which is what the
+                         toggles must not be — see the note on them. -->
+                    <MenuItem Header="Reset column _widths"
+                              Command="{Binding $parent[Window].((vm:ShellViewModel)DataContext).ResetColumnWidthsCommand}"/>
                     <Separator/>
                     <!-- Says the other half out loud. A ticked column that is
                          not on screen looks like a bug, and this is the one
@@ -2841,6 +2924,19 @@
                       <Run Text="Type"/><Run Text="{Binding KindSortGlyph}"/>
                     </TextBlock>
                   </Button>
+                  <!-- Each grip hides WITH its heading, and that is not
+                       tidiness: the cell is Auto, so a grip left visible in a
+                       column that is off keeps the cell six pixels wide with
+                       nothing in it, and the rows — whose cell really is
+                       empty — draw six pixels left of the headings from there
+                       on. Measured in a headless window at 1800px with the
+                       created column off: 0 wide with the binding, 6 without.
+                       See Thumb.columnGrip for the rest of the shape. -->
+                  <Thumb Grid.Column="3" Classes="columnGrip" Tag="Type"
+                         IsVisible="{Binding ShowType}"
+                         AutomationProperties.Name="Resize the type column"
+                         DragDelta="OnColumnGripDragDelta"
+                         DragCompleted="OnColumnGripDragCompleted"/>
                   <Button Grid.Column="4" Width="{DynamicResource ColSize}" Command="{Binding SortByCommand}" CommandParameter="size"
                           AutomationProperties.Name="Sort by size"
                           IsVisible="{Binding ShowSize}"
@@ -2851,6 +2947,11 @@
                       <Run Text="Size"/><Run Text="{Binding SizeSortGlyph}"/>
                     </TextBlock>
                   </Button>
+                  <Thumb Grid.Column="4" Classes="columnGrip" Tag="Size"
+                         IsVisible="{Binding ShowSize}"
+                         AutomationProperties.Name="Resize the size column"
+                         DragDelta="OnColumnGripDragDelta"
+                         DragCompleted="OnColumnGripDragCompleted"/>
                   <Button Grid.Column="5" Width="{DynamicResource ColModified}" Command="{Binding SortByCommand}" CommandParameter="modified"
                           AutomationProperties.Name="Sort by date modified"
                           IsVisible="{Binding ShowModified}"
@@ -2861,6 +2962,11 @@
                       <Run Text="Modified"/><Run Text="{Binding ModifiedSortGlyph}"/>
                     </TextBlock>
                   </Button>
+                  <Thumb Grid.Column="5" Classes="columnGrip" Tag="Modified"
+                         IsVisible="{Binding ShowModified}"
+                         AutomationProperties.Name="Resize the date modified column"
+                         DragDelta="OnColumnGripDragDelta"
+                         DragCompleted="OnColumnGripDragCompleted"/>
                   <!-- **When the file was made, which nothing in the window
                        could say.** A heading rather than a label, because every
                        other heading in this band sorts and one that did not
@@ -2876,6 +2982,11 @@
                       <Run Text="Created"/><Run Text="{Binding CreatedSortGlyph}"/>
                     </TextBlock>
                   </Button>
+                  <Thumb Grid.Column="6" Classes="columnGrip" Tag="Created"
+                         IsVisible="{Binding ShowCreated}"
+                         AutomationProperties.Name="Resize the date created column"
+                         DragDelta="OnColumnGripDragDelta"
+                         DragCompleted="OnColumnGripDragCompleted"/>
                 </Grid>
               </Border>
 
@@ -3964,131 +4075,15 @@
 
   </Window.Resources>
 
-  <Window.KeyBindings>
-    <KeyBinding Gesture="Ctrl+T"         Command="{Binding NewTabCommand}"/>
-    <!-- In markup rather than OnWindowKeyDown because it acts on the window as
-         a whole and needs no focus test: Ctrl+N means "another window on this
-         folder" wherever the caret happens to be, which is exactly what a
-         KeyBinding expresses. It is also what ShortcutListTests reads, in both
-         directions. -->
-    <KeyBinding Gesture="Ctrl+N"         Command="{Binding NewWindowCommand}"/>
-    <KeyBinding Gesture="Ctrl+W"         Command="{Binding CloseTabCommand}"/>
-    <!-- What every browser answers, and both references. Closing a tab used to
-         throw its state away, so there was nothing to put back. -->
-    <KeyBinding Gesture="Ctrl+Shift+T"   Command="{Binding ReopenClosedTabCommand}"/>
-    <KeyBinding Gesture="Ctrl+Q"         Command="{Binding QuitCommand}"/>
-    <KeyBinding Gesture="Ctrl+Tab"       Command="{Binding NextTabCommand}"/>
-    <KeyBinding Gesture="Ctrl+Shift+Tab" Command="{Binding PreviousTabCommand}"/>
-    <!-- **The other way every browser moves through tabs, and it did nothing.**
-         Ctrl+Tab has always worked; Ctrl+Page was simply missing, and it is the
-         pair somebody who lives in a browser reaches for. Measured against a
-         listing long enough to scroll: the ScrollViewer claims plain Page but
-         not a modified one, so these two do not fight the listing's own paging.
-         -->
-    <KeyBinding Gesture="Ctrl+PageDown"  Command="{Binding NextTabCommand}"/>
-    <KeyBinding Gesture="Ctrl+PageUp"    Command="{Binding PreviousTabCommand}"/>
-
-    <!-- **No key went straight to a layout.** F8 cycles the three in order, so
-         reaching the one you want from the one you are in costs up to two
-         presses through a layout you did not ask for — and the three are
-         otherwise reachable only by the toolbar chip, with the mouse. Explorer
-         numbers its views on Ctrl+Shift; the numbers here follow the chip on
-         screen, left to right, because that is the order the person can see. -->
-    <KeyBinding Gesture="Ctrl+Shift+D1"  Command="{Binding ActiveTab.ShowAsDetailsCommand}"/>
-    <KeyBinding Gesture="Ctrl+Shift+D2"  Command="{Binding ActiveTab.ShowAsCompactCommand}"/>
-    <KeyBinding Gesture="Ctrl+Shift+D3"  Command="{Binding ActiveTab.ShowAsGridCommand}"/>
-    <KeyBinding Gesture="Alt+Home"       Command="{Binding ActiveTab.GoHomeCommand}"/>
-    <KeyBinding Gesture="Alt+Left"       Command="{Binding ActiveTab.GoBackCommand}"/>
-    <KeyBinding Gesture="Alt+Right"      Command="{Binding ActiveTab.GoForwardCommand}"/>
-    <KeyBinding Gesture="Alt+Up"         Command="{Binding ActiveTab.GoUpCommand}"/>
-    <KeyBinding Gesture="F5"             Command="{Binding ActiveTab.RefreshCommand}"/>
-    <!-- **F2 and Shift+F2 are NOT here either.** A Window KeyBinding is
-         dispatched ahead of the window's own key handler, so the rename guard
-         could never see them. A second F2 while the rename bar was open threw
-         away the name being typed and re-pointed the bar at whatever the
-         listing had selected by then — which after a click on another row is a
-         DIFFERENT FILE, because the bar is inline and the listing stays live
-         behind it. Shift+F2 put the batch dialog on top of the open bar.
-         Handled in OnWindowKeyDown, both sit behind the prompt guard and the
-         focused-text-box rule, so F2 in the address or filter box no longer
-         renames a row hidden behind the box either. -->
-    <KeyBinding Gesture="F11"            Command="{Binding ToggleInfoCommand}"/>
-    <!-- Every key this application answers, in one place. It calls itself
-         keyboard-friendly and had nowhere to look them up. -->
-    <KeyBinding Gesture="F1"             Command="{Binding ShowShortcutsCommand}"/>
-    <KeyBinding Gesture="F3"             Command="{Binding ToggleSplitCommand}"/>
-    <KeyBinding Gesture="F8"             Command="{Binding ActiveTab.ToggleViewCommand}"/>
-    <!-- Space is NOT here. It is handled in OnWindowKeyDown, which is the only
-         place the text-box and rename guards can reach it: a KeyBinding is
-         dispatched by the window ahead of that handler, so Space toggled the
-         preview while somebody was typing a filename. -->
-    <KeyBinding Gesture="F4"             Command="{Binding ActiveTab.OpenTerminalHereCommand}"/>
-    <!-- **The six gestures a text cursor owns are NOT here.** They are handled
-         in OnWindowKeyDown, for exactly the reason Space is, and the fault was
-         the same one this file already warns about four lines up.
-
-         Ctrl+C, Ctrl+X and Ctrl+V lived here, so the address bar could not copy
-         or paste: the window claimed the keystroke before the focused TextBox
-         ever saw it. Ctrl+V pasted FILES into the folder behind the box, Ctrl+X
-         armed a move of whatever was selected in the listing, and Ctrl+C
-         replaced the system clipboard with that selection — so copying a path
-         out of the address bar destroyed the thing you were copying it into.
-
-         Ctrl+Z and both redo spellings went the same way, and worse: undo while
-         mistyping a path reversed the last copy, move or delete ON DISK. The
-         comment that used to sit here called Ctrl+Shift+Z "what everything with
-         a text cursor answers", which is precisely why binding it window-wide
-         stopped the one text cursor that wanted it.
-
-         Ctrl+A is deliberately absent for the same reason and always was.
-         Shift+Insert, Ctrl+Insert and Shift+Delete are the same commands under
-         their older names; those were never bound here, which is why they kept
-         working in the address bar the whole time. -->
-    <!-- **Ctrl+I, Ctrl+Shift+N, Ctrl+H, Ctrl+D, Ctrl+F and Ctrl+E are NOT
-         here.** They were, and a KeyBinding is dispatched before the window's
-         own key handler runs at all — before the key is even routed — so the
-         guard that hands the keyboard to an open rename bar could not see one
-         of them. Typing a name and reaching for Ctrl+H flipped the hidden files
-         in behind the bar; Ctrl+I opened the filter and pulled the caret into
-         it, so the rest of the name went into the filter box; Ctrl+F swapped
-         the listing for a search; Ctrl+D pinned the folder; and Ctrl+Shift+N
-         made a folder whose own rename request the one-tenant rule then
-         refused, so it was created and left with the name the file system gave
-         it. Handled in OnWindowKeyDown, ABOVE the focused-text-box guard, so
-         what they do in the path and filter boxes is exactly what it was. -->
-    <!-- **Ctrl and the number pad's nought did nothing**, while the pad's plus
-         and minus already worked. Avalonia folds the pad's arithmetic keys onto
-         the top row's when it matches a gesture — Add onto OemPlus, Subtract
-         onto OemMinus — so those two are answered by the lines below with no
-         second spelling. It folds nothing onto D0, so the pad's zero reached no
-         binding at all: of the three, the dead one was the key somebody with a
-         hand on the pad actually reaches for. -->
-    <KeyBinding Gesture="Ctrl+OemPlus"   Command="{Binding ZoomInCommand}"/>
-    <KeyBinding Gesture="Ctrl+OemMinus"  Command="{Binding ZoomOutCommand}"/>
-    <KeyBinding Gesture="Ctrl+D0"        Command="{Binding ZoomResetCommand}"/>
-    <KeyBinding Gesture="Ctrl+NumPad0"   Command="{Binding ZoomResetCommand}"/>
-    <KeyBinding Gesture="Ctrl+B"         Command="{Binding Sidebar.CycleRailCommand}"/>
-    <!-- Dolphin's own gesture for the same panel, and free here. -->
-    <KeyBinding Gesture="F9"            Command="{Binding Sidebar.CycleRailCommand}"/>
-    <!-- The gesture Windows uses for the same action, so the menu can show it
-         without inventing one. Added WITH the menu entry: a shortcut printed
-         beside a row and bound to nothing is worse than no shortcut at all. -->
-    <KeyBinding Gesture="Ctrl+Shift+C"   Command="{Binding CopyLocationCommand}"/>
-    <!-- Alt rather than Ctrl for panels: Ctrl+1..9 already switches tabs,
-         browser-style, and that convention is the stronger one. -->
-    <!-- **Ctrl+F and Ctrl+E are not here either.** Explorer binds search to
-         Ctrl+E and everything else to Ctrl+F; they are two spellings of one
-         habit, so they have to answer alike, and leaving one in the markup
-         would have meant the rename bar refused one and not the other. Both
-         are in OnWindowKeyDown with the four above. -->
-    <KeyBinding Gesture="Ctrl+L"         Command="{Binding ActiveTab.BeginEditPathCommand}"/>
-    <!-- Alt+D is the other half of the same habit: Explorer and every
-         browser answer both, and which one somebody reaches for is a
-         matter of where they learned it. -->
-    <KeyBinding Gesture="Alt+D"          Command="{Binding ActiveTab.BeginEditPathCommand}"/>
-    <!-- KDE's standard "Configure" gesture, so it is where a Plasma user reaches. -->
-    <KeyBinding Gesture="Ctrl+Shift+OemComma" Command="{Binding OpenSettingsCommand}"/>
-  </Window.KeyBindings>
+  <!-- **The window's keys are not written here any more.** They were, as
+       KeyBindings, and a key written in the markup is a key nobody can
+       change. They come from the keymap — the shipped defaults in
+       Input/Commands.cs with the keys somebody chose laid over them — and
+       MainWindow.Keyboard.cs puts the ones that answer anywhere on this window
+       as KeyBindings, which is when Avalonia dispatched these: from the
+       focused control up to the window, before the key is routed at all. The
+       rest are answered in OnWindowKeyDown, behind the guards KeyTier
+       describes. -->
 
   <Grid>
 
@@ -4629,7 +4624,7 @@
                             <Button ContextRequested="OnPlaceContextRequested" Command="{Binding $parent[Window].((vm:ShellViewModel)DataContext).OpenPlaceCommand}"
                                     CommandParameter="{Binding}"
                                     AutomationProperties.Name="{Binding Label}"
-                                    ToolTip.Tip="{Binding Path}"
+                                    ToolTip.Tip="{Binding Where}"
                                     ToolTip.ShowDelay="900"
                                     BorderThickness="0"
                                     DragDrop.AllowDrop="True"
