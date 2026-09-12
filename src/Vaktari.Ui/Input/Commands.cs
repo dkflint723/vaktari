@@ -268,6 +268,11 @@ public static class Commands
         new("GroupByModified", "Group by date modified", Looking, KeyTier.Listing, []) { Command = Pane(p => p.GroupByModifiedCommand) },
         new("GroupByType", "Group by type", Looking, KeyTier.Listing, []) { Command = Pane(p => p.GroupByKindCommand) },
 
+        // Keyless, like the sorting and grouping rows above it: this is a way
+        // of looking at the folder you are in, reached from the listing's menu
+        // or by name from the palette.
+        new("ShowSpaceUsage", "Show space usage", Looking, KeyTier.Listing, []) { Command = Pane(p => p.ShowSpaceUsageCommand) },
+
         // The pad's plus and minus answer these too — Avalonia folds them onto
         // the top row's when it matches — but not the pad's nought, which is
         // why reset carries both.

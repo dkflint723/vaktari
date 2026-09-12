@@ -148,6 +148,21 @@ after *Zebra*. Sorting folders before files is a switch you can turn off, which
 is what finally lets "sort by Modified" answer *what changed here* when the
 answer is a folder.
 
+**What is using the space in a folder.** *Show space usage*, in the listing's
+menu or the command box, replaces the listing with one row for each item in the
+folder, each carrying everything underneath it. Click the *Size* heading and the
+biggest thing is at the top, folder or file — folders are not banded above the
+files here, because the question is what is large rather than what is a folder.
+The bar above says what the whole folder came to, and how many folders it could
+not read: a total that stepped over one silently would look exact while being
+short by whatever was behind it. Links are counted where they stand and never
+followed, so a folder of shortcuts is its own size rather than the size of what
+it points at. Hidden items count towards the total and appear as rows only while
+hidden files are shown. It measures when you ask and never on its own, since
+walking a tree costs what it costs. It is a view of one folder rather than a
+folder itself: comparing, copying across, properties and pinning are not offered
+in it, and *Go to the folder* takes you back.
+
 **Folders open where they stand.** In the List layout, press the triangle on a
 folder row — or `→` with the row selected — and its contents appear underneath
 it, indented, without the listing moving. `←` closes it again. What you opened

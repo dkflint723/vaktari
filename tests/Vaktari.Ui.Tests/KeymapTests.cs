@@ -191,6 +191,7 @@ public sealed class KeymapTests : OwnedViewModels
         { "GroupBySize", "Pane.GroupBySizeCommand" },
         { "GroupByModified", "Pane.GroupByModifiedCommand" },
         { "GroupByType", "Pane.GroupByKindCommand" },
+        { "ShowSpaceUsage", "Pane.ShowSpaceUsageCommand" },
         { "ZoomIn", "Shell.ZoomInCommand" },
         { "ZoomOut", "Shell.ZoomOutCommand" },
         { "ZoomReset", "Shell.ZoomResetCommand" },

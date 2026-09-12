@@ -2348,6 +2348,18 @@
                                           IsEnabled="False"/>
                               </MenuItem>
               </MenuItem>
+              <!-- A third way of looking at the folder you are in, beside the
+                   arrangement above and the comparison below. Hidden outside a
+                   real folder: a search, the bin, This PC and Recent hold rows
+                   from anywhere, so there is no one folder to measure.
+
+                   No access key. Every letter of its first word is already
+                   spoken for in this menu, which is the one case the rule
+                   allows a row to go without one. -->
+              <MenuItem Header="Show space usage"
+                        Command="{Binding ActiveTab.ShowSpaceUsageCommand}"
+                        IsVisible="{Binding ActiveTab.IsRealFolder}"
+                        in:KeyHint.Command="ShowSpaceUsage"/>
               <!-- **Comparing had no pointer route on the left half of a split.**
                    Its switch and the copy it offers lived in the view-options
                    flyout, whose button only the right half shows, and pressing
@@ -2635,6 +2647,32 @@
                    scope is part of where you are, so Back returns to the answer
                    you had. OneWay plus a setter that navigates, which is what
                    stops the write-back the navigation itself provokes. -->
+              <!-- **What the folder came to, and what could not be read on the
+                   way.** Neither can be carried by a row: summing the rows
+                   cannot report what is missing from them, and a folder nobody
+                   was allowed to open contributes none at all. Without this
+                   band the measurement works out its honest half and drops it,
+                   leaving a total short by whatever sat behind a denied folder
+                   to read as exact.
+
+                   Same shape as the search band below it, and never on screen
+                   together with it. The bar is indeterminate for the same
+                   reason that one is: the honest answer to "how far through" is
+                   that nothing knows until the walk ends. -->
+              <Border DockPanel.Dock="Top" Padding="12,6"
+                      Background="{DynamicResource ChromeBrush}"
+                      BorderThickness="0,0,0,1" BorderBrush="{DynamicResource SeparatorColour}"
+                      IsVisible="{Binding IsUsageListing}">
+                <DockPanel x:Name="UsageBand">
+                  <ProgressBar x:Name="UsageWalking" DockPanel.Dock="Bottom"
+                               IsVisible="{Binding IsLoading}"
+                               IsIndeterminate="True" Height="3" Margin="0,6,0,0"/>
+                  <TextBlock x:Name="UsageTotalText" VerticalAlignment="Center"
+                             TextTrimming="CharacterEllipsis"
+                             Text="{Binding UsageTotalLine}"
+                             FontSize="{DynamicResource FontSizeSmall}"/>
+                </DockPanel>
+              </Border>
               <Border DockPanel.Dock="Top" Padding="12,6"
                       Background="{DynamicResource ChromeBrush}"
                       BorderThickness="0,0,0,1" BorderBrush="{DynamicResource SeparatorColour}"

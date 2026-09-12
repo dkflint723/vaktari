@@ -32,10 +32,23 @@ public static class SpaceListing
         string folder,
         bool includeHidden,
         IProgress<SizeProgress>? progress,
-        [System.Runtime.CompilerServices.EnumeratorCancellation] CancellationToken ct)
+        [System.Runtime.CompilerServices.EnumeratorCancellation] CancellationToken ct,
+        Action<Usage>? onMeasured = null)
     {
         var listing = await Task.Run(
             () => SpaceUsage.Underneath(folder, progress, ct), ct).ConfigureAwait(false);
+
+        // **The total is the one thing no row can carry.** Summing the rows
+        // reaches the same figure whenever there are rows — and a folder nobody
+        // was allowed to open has none, which is precisely the case a listing
+        // must not draw as an empty folder. The count of what could not be read
+        // lives there too, and that is the whole reason the measurement keeps
+        // one.
+        //
+        // Handed back the way SearchListing hands back its cap: noticed here on
+        // the pool, published by the caller on the dispatcher, because a
+        // property a band binds to cannot be raised from a walking thread.
+        onMeasured?.Invoke(listing.Total);
 
         yield return Build(listing, includeHidden);
     }

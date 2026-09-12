@@ -13,6 +13,21 @@ should not be trusted for compatibility yet.
 
 ### Added
 
+- **What is using the space in a folder can be seen.** *Show space usage* —
+  in the listing's menu or the command box — replaces the listing with one
+  row per item in the folder, each carrying everything underneath it, so
+  the biggest thing in a folder is one click of the *Size* heading away. A
+  folder's row shows what it holds rather than a count, and sorts and
+  groups by that size instead of being banded above the files. The bar
+  above says what the whole folder came to. It measures when asked and
+  never on its own, because walking a tree costs what it costs.
+
+- **A folder that could not be read is counted and said.** The bar reads
+  "…and two folders could not be read" rather than showing a figure that
+  is short by whatever was behind them and looks exact. Links are counted
+  where they stand and never followed, so a folder of shortcuts to a media
+  library is its own size rather than the library's.
+
 - **The two sides of a split can be compared.** *Compare the two sides* —
   in the view-options menu while the window is split, in the listing's
   *Compare* menu, or in the command box — marks each row by what the other

@@ -1947,6 +1947,38 @@ public sealed partial class PaneViewModel : ObservableObject, IDisposable
     public string UsageFolder => VirtualPaths.FolderOf(CurrentPath);
 
     /// <summary>
+    /// What the measured folder came to. Cleared when a listing starts and set
+    /// when one finishes, so the band never carries the previous folder's
+    /// figure while the next is still being walked.
+    /// </summary>
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(UsageTotalLine))]
+    private Usage _usageTotal;
+
+    /// <summary>
+    /// The band's sentence: what the folder holds, and what could not be read
+    /// on the way.
+    ///
+    /// **The unreadable count has nowhere else to go.** No row can carry it — a
+    /// folder nobody was allowed to open contributes none — so without this the
+    /// measurement works out its honest half and throws it away, leaving a
+    /// total short by whatever was behind a denied folder to read as exact.
+    /// </summary>
+    public string UsageTotalLine
+    {
+        get
+        {
+            var line = $"{ByteSize.Format(UsageTotal.Bytes)} in "
+                       + Count(UsageTotal.Folders, UsageTotal.Files);
+
+            if (UsageTotal.Unreadable == 0) return line;
+
+            return $"{line}, and {UsageTotal.Unreadable:N0} "
+                   + $"folder{(UsageTotal.Unreadable == 1 ? "" : "s")} could not be read";
+        }
+    }
+
+    /// <summary>
     /// Whether "where does this row actually live" is a question this listing
     /// can answer.
     ///
@@ -2629,6 +2661,17 @@ public sealed partial class PaneViewModel : ObservableObject, IDisposable
         foreach (var entry in entries)
             if (entry.IsDirectory) folders++; else files++;
 
+        return Count(folders, files);
+    }
+
+    /// <summary>
+    /// The same sentence from two numbers, for a caller that has counted
+    /// already — a measurement hands back totals rather than rows, and a
+    /// second spelling of "5 folders, 12 files" beside this one would be free
+    /// to drift from it.
+    /// </summary>
+    private static string Count(int folders, int files)
+    {
         var parts = new List<string>(2);
 
         if (folders > 0) parts.Add($"{folders:N0} folder{(folders == 1 ? "" : "s")}");
@@ -3069,6 +3112,19 @@ public sealed partial class PaneViewModel : ObservableObject, IDisposable
     [RelayCommand]
     public Task GoHomeAsync()
         => NavigateAsync(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile));
+
+    /// <summary>
+    /// Shows what is using the space in this folder: a row per child, each
+    /// carrying everything underneath it.
+    ///
+    /// **Only from a real folder.** The listing is one folder looked at another
+    /// way, and the views — a search, the bin, This PC, Recent, and one of these
+    /// already — hold rows from anywhere, so there is no one folder to measure.
+    /// Refused rather than measured wrongly.
+    /// </summary>
+    [RelayCommand]
+    public Task ShowSpaceUsageAsync()
+        => IsRealFolder ? NavigateAsync(VirtualPaths.Usage(CurrentPath)) : Task.CompletedTask;
 
     [RelayCommand]
     public Task OpenAsync(FileEntry entry)
@@ -4782,6 +4838,18 @@ public sealed partial class PaneViewModel : ObservableObject, IDisposable
         // without going through one.
         SearchHitLimit = false;
 
+        // Same reason: the band would otherwise carry the last folder's total
+        // while the next one is still being walked.
+        //
+        // GUARD, not a tested rule. The completion block assigns the total
+        // again at the end of every load, and for a listing that measured
+        // nothing that assignment is the default — so at a load BOUNDARY this
+        // line changes nothing, and removing it reddens no test. Measured.
+        // What it covers is the stretch in between, where the band is already
+        // on screen and the walk has not finished, and nothing can watch that
+        // without racing the walk it is waiting on.
+        UsageTotal = new Usage();
+
         _all.Clear();
         Entries.Reset();
         NotifyNavigationState();
@@ -4800,6 +4868,11 @@ public sealed partial class PaneViewModel : ObservableObject, IDisposable
         // the notice lands in a local first.
         var capped = false;
 
+        // The measured folder's own total, in the same shape and for the same
+        // reason: written on the pool by the listing below, read on the
+        // dispatcher once the load finishes.
+        var measured = new Usage();
+
         var source =
             VirtualPaths.IsRecent(path) ? RecentListing.EnumerateAsync(Recents, path, ct)
             : path == VirtualPaths.Trash ? RecentListing.EnumerateTrashAsync(Trash, ct)
@@ -4809,7 +4882,8 @@ public sealed partial class PaneViewModel : ObservableObject, IDisposable
                     Search, path, options, ct, SearchLimit, () => capped = true)
             : VirtualPaths.IsUsage(path)
                 ? SpaceListing.EnumerateAsync(
-                    VirtualPaths.FolderOf(path), ShowHidden, progress: null, ct)
+                    VirtualPaths.FolderOf(path), ShowHidden, progress: null, ct,
+                    total => measured = total)
             : _fs.EnumerateAsync(path, options, ct);
 
         var sw = Stopwatch.StartNew();
@@ -4929,6 +5003,10 @@ public sealed partial class PaneViewModel : ObservableObject, IDisposable
                 // than where the truncation was noticed: it is noticed on the
                 // pool, and the band binds to this.
                 SearchHitLimit = capped;
+
+                // Beside it, and for the same reason: the total is worked out
+                // on the pool, and the band binds to this.
+                UsageTotal = measured;
 
                 // AFTER the listing is on screen, never before it. Status can
                 // take seconds on a large repository and the folder must not

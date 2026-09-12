@@ -189,6 +189,140 @@ public sealed class UsageListingTests : OwnedViewModels
     }
 
     /// <summary>
+    /// The command takes the pane to what is using the space in the folder it
+    /// is standing in.
+    ///
+    /// **The address bar is left saying something else on purpose.** With it
+    /// agreeing, this could not tell the folder the pane is IN from the text
+    /// somebody has typed over it: measured, taking the typed text instead
+    /// passed this test unchanged. A half-typed path must not decide what gets
+    /// measured.
+    /// </summary>
+    [AvaloniaFact]
+    public async Task The_command_measures_the_folder_the_pane_is_in()
+    {
+        File_("loose.bin", 10);
+
+        var pane = Own(new PaneViewModel(new Silent()) { ViewportWidth = 1400 });
+
+        await pane.NavigateAsync(_root);
+
+        pane.PathText = Path.Combine(_root, "half-typed");
+
+        await pane.ShowSpaceUsageAsync();
+
+        Assert.Equal(VirtualPaths.Usage(_root), pane.CurrentPath);
+        Assert.True(pane.IsUsageListing);
+    }
+
+    /// <summary>
+    /// **The total is published when the walk ends.** It is worked out on the
+    /// walking thread and no row carries it, so it is the one figure that can
+    /// be computed correctly and then dropped on the floor with nothing on
+    /// screen any the wiser.
+    /// </summary>
+    [AvaloniaFact]
+    public async Task The_total_is_published_when_the_measurement_finishes()
+    {
+        File_("loose.bin", 10);
+        File_(Path.Combine("big", "a.bin"), 20);
+
+        var pane = await Measuring(_root);
+
+        Assert.Equal(30, pane.UsageTotal.Bytes);
+        Assert.Equal(2, pane.UsageTotal.Files);
+        Assert.Equal(1, pane.UsageTotal.Folders);
+
+        Assert.Contains("30 B", pane.UsageTotalLine);
+        Assert.Contains("1 folder", pane.UsageTotalLine);
+        Assert.Contains("2 files", pane.UsageTotalLine);
+    }
+
+    /// <summary>
+    /// **And what it could not read, which is the half no row can carry.** A
+    /// total short by whatever sat behind a denied folder looks exactly like an
+    /// exact one; saying so is the whole reason the measurement keeps a count.
+    /// </summary>
+    [AvaloniaTheory]
+    [InlineData(1, "1 folder could not be read")]
+    [InlineData(2, "2 folders could not be read")]
+    public void The_line_says_what_could_not_be_read(int unreadable, string expected)
+    {
+        var pane = Own(new PaneViewModel(new Silent()) { ViewportWidth = 1400 });
+
+        pane.UsageTotal = new Usage(1024, 3, 1, unreadable);
+
+        Assert.Contains(expected, pane.UsageTotalLine);
+    }
+
+    /// <summary>And it says nothing at all when everything was readable.</summary>
+    [AvaloniaFact]
+    public void The_line_stays_quiet_when_everything_was_read()
+    {
+        var pane = Own(new PaneViewModel(new Silent()) { ViewportWidth = 1400 });
+
+        pane.UsageTotal = new Usage(1024, 3, 1, 0);
+
+        Assert.DoesNotContain("could not be read", pane.UsageTotalLine);
+    }
+
+    /// <summary>
+    /// The band that carries it, gated on this listing and on nothing else.
+    /// </summary>
+    [AvaloniaFact]
+    public void The_band_is_shown_only_in_a_usage_listing()
+    {
+        var markup = RepoSource.Ui("MainWindow.axaml");
+
+        Assert.Contains("x:Name=\"UsageBand\"", markup);
+        Assert.Contains("IsVisible=\"{Binding IsUsageListing}\"", markup);
+        Assert.Contains("Text=\"{Binding UsageTotalLine}\"", markup);
+    }
+
+    /// <summary>
+    /// **The row is not offered outside a real folder**, so the refusal above
+    /// is a backstop rather than the only thing standing between a person and a
+    /// measurement of nothing.
+    ///
+    /// Read out of the markup, because the gate IS the markup: measured, the
+    /// binding could be swapped for any other property and every test stayed
+    /// green. Scoped to this one element — <c>IsRealFolder</c> gates other rows
+    /// too, so a search of the whole file would pass with this row's gate gone.
+    /// </summary>
+    [AvaloniaFact]
+    public void The_row_is_offered_only_in_a_real_folder()
+    {
+        var markup = RepoSource.Ui("MainWindow.axaml");
+        var at = markup.IndexOf("Header=\"Show space usage\"", StringComparison.Ordinal);
+
+        Assert.True(at >= 0, "the listing menu no longer offers the row at all");
+
+        var row = markup[at..];
+
+        row = row[..row.IndexOf("/>", StringComparison.Ordinal)];
+
+        Assert.Contains("IsVisible=\"{Binding ActiveTab.IsRealFolder}\"", row);
+        Assert.Contains("Command=\"{Binding ActiveTab.ShowSpaceUsageCommand}\"", row);
+    }
+
+    /// <summary>
+    /// **From a view it refuses rather than measuring the wrong thing.** A
+    /// search, the bin, This PC and Recent hold rows from anywhere, so there is
+    /// no one folder to measure — and a path built from the scheme of another
+    /// view would name a folder that does not exist.
+    /// </summary>
+    [AvaloniaFact]
+    public async Task From_a_view_it_refuses_rather_than_measuring_nothing()
+    {
+        var pane = Own(new PaneViewModel(new Silent()) { ViewportWidth = 1400 });
+
+        await pane.NavigateAsync(VirtualPaths.Computer);
+        await pane.ShowSpaceUsageAsync();
+
+        Assert.Equal(VirtualPaths.Computer, pane.CurrentPath);
+    }
+
+    /// <summary>
     /// **Every usage listing is remembered under one key.** The path carries
     /// the folder that was measured, so keyed as it is spelled, a person who
     /// looked at fifty folders would leave fifty records in a store kept for
