@@ -271,7 +271,20 @@ public sealed class WindowsTrashMaintenance : ITrashMaintenance
             // not a second copy of it.
             WindowsFileOperations.ClearReadOnlyTree(entry.PayloadPath);
 
-            if (entry.IsDirectory) Directory.Delete(entry.PayloadPath, recursive: true);
+            // **And through the same tree delete, because a junction inside the
+            // payload gutted it in exactly the same way.** .NET's recursive
+            // delete calls DeleteVolumeMountPoint on any child carrying a
+            // junction's reparse tag, which fails for a junction whether or not
+            // the caller is elevated; it removed the link, emptied the rest and
+            // then threw without removing the payload folder. The $I entry was
+            // left listed over a gutted $R, still advertising its original
+            // size, and the sweep said "removed 0" - the most misleading answer
+            // this class can give, and the one the comment below already names.
+            // Recycling a checkout with a node_modules tree in it is enough.
+            //
+            // Not a second copy of that walk, for the reason the line above is
+            // not a second copy of the read-only one.
+            if (entry.IsDirectory) WindowsFileOperations.DeleteTree(entry.PayloadPath);
             else File.Delete(entry.PayloadPath);
 
             File.Delete(entry.InfoPath);

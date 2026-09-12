@@ -80,6 +80,71 @@ public class DeleteTests
         Assert.False(tree.Exists("outer"));
     }
 
+    /// <summary>
+    /// **A junction inside the folder left the folder standing with everything
+    /// inside it already gone.** .NET's own recursive delete, reaching a child
+    /// whose reparse tag is IO_REPARSE_TAG_MOUNT_POINT — junctions share that
+    /// tag with volume mount points — called DeleteVolumeMountPoint on it,
+    /// which an unelevated caller is refused. It recorded that error, removed
+    /// the junction with RemoveDirectory anyway, emptied the rest of the
+    /// folder, then threw and never removed the top folder.
+    ///
+    /// Measured on 12 September 2026, .NET 10.0.12, unelevated: deleting a
+    /// folder holding `a.txt` and a junction reported
+    /// "Access to the path 'j' is denied", left the folder standing and both
+    /// its children gone. The person is told the delete failed, offered
+    /// "Retry as administrator", and everything they asked to delete has gone
+    /// regardless. A `node_modules` tree is the everyday way to own one.
+    /// </summary>
+    [WindowsFact]
+    public async Task A_tree_holding_a_junction_is_deleted_completely()
+    {
+        using var tree = new TempTree();
+        var outside = tree.Dir("outside");
+        tree.Write("outside/kept.txt", "elsewhere");
+        tree.Write("outside/nested/also-kept.txt", "elsewhere too");
+
+        tree.Write("project/a.txt", "mine");
+        tree.Write("project/node_modules/.bin/tool.cmd", "mine too");
+        tree.Junction("project/node_modules/shared", outside);
+
+        var handle = await Finished(new WindowsFileOperations().Delete([tree.At("project")]));
+
+        // Nothing to report and nothing to offer: the delete did what it said.
+        Assert.Empty(handle.Problems);
+        Assert.Null(handle.Retry);
+        Assert.False(tree.Exists("project"));
+
+        // And the tree the junction pointed at is not what was deleted.
+        Assert.Equal("elsewhere", tree.Read("outside", "kept.txt"));
+        Assert.Equal("elsewhere too", tree.Read("outside", "nested", "also-kept.txt"));
+    }
+
+    /// <summary>
+    /// The junction the person selected themselves. Directory.Exists answers
+    /// true for it, so a walk that tests that first descends into whatever it
+    /// points at and deletes a tree nobody selected — which is the failure
+    /// <see cref="ReparsePointTests"/> pins for the copy and move engines, and
+    /// the one a hand-written recursive delete is most likely to reintroduce.
+    /// </summary>
+    [WindowsFact]
+    public async Task A_junction_deleted_on_its_own_leaves_what_it_points_at()
+    {
+        using var tree = new TempTree();
+        var outside = tree.Dir("outside");
+        tree.Write("outside/kept.txt", "elsewhere");
+        tree.Write("outside/nested/also-kept.txt", "elsewhere too");
+        var link = tree.Junction("link", outside);
+
+        var handle = await Finished(new WindowsFileOperations().Delete([link]));
+
+        Assert.Empty(handle.Problems);
+        Assert.False(tree.Exists("link"));
+
+        Assert.Equal(["kept.txt", "nested"], tree.Names("outside"));
+        Assert.Equal("elsewhere too", tree.Read("outside", "nested", "also-kept.txt"));
+    }
+
     [WindowsFact]
     public async Task Deleting_a_plain_tree_still_works()
     {

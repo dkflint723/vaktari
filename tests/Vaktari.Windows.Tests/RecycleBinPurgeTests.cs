@@ -1,4 +1,5 @@
 using System.Runtime.Versioning;
+using Vaktari.Core.Tests;
 using Vaktari.Windows;
 using Xunit;
 
@@ -102,6 +103,48 @@ public sealed class RecycleBinPurgeTests : IDisposable
 
         Assert.False(File.Exists(payload));
         Assert.False(File.Exists(entry.InfoPath));
+    }
+
+    /// <summary>
+    /// **The same shape of half-destruction, from a junction rather than a
+    /// read-only file.** .NET's recursive delete calls DeleteVolumeMountPoint
+    /// on any child whose reparse tag is IO_REPARSE_TAG_MOUNT_POINT — which is
+    /// the tag a junction carries — and an unelevated caller is refused it. The
+    /// call is recorded as an error, the junction is removed anyway, the rest of
+    /// the payload is emptied, and then it throws without removing the payload
+    /// folder: the $I entry stays listed over a gutted $R, still advertising its
+    /// original size, and Restore hands back what is left. Recycle a checkout
+    /// with a `node_modules` tree in it and that is the everyday case.
+    ///
+    /// Its own root rather than this class's, because a junction needs somewhere
+    /// outside the payload to point at, and TempTree is where the junction is
+    /// made by `mklink /J` rather than by the code under test.
+    /// </summary>
+    [WindowsFact]
+    public void A_recycled_folder_holding_a_junction_is_purged_whole()
+    {
+        using var tree = new TempTree();
+        var outside = tree.Dir("outside");
+        tree.Write("outside/kept.txt", "elsewhere");
+        tree.Write("outside/nested/also-kept.txt", "elsewhere too");
+
+        var info = tree.Write("$Ijunction.txt", "metadata");
+        var payload = tree.Dir("$Rjunction");
+        tree.Write("$Rjunction/README.md", "readme");
+        tree.Write("$Rjunction/node_modules/.bin/tool.cmd", "a tool");
+        tree.Junction("$Rjunction/node_modules/shared", outside);
+
+        var entry = new RecycleEntry(
+            info, payload, tree.At("original"), DateTimeOffset.UtcNow, 4, true);
+
+        Assert.True(WindowsTrashMaintenance.Purge(entry), "the purge should succeed");
+
+        Assert.False(Directory.Exists(payload), "the payload should be gone entirely");
+        Assert.False(File.Exists(info), "and its metadata with it");
+
+        // Never through the junction: what it pointed at was not in the bin.
+        Assert.Equal("elsewhere", tree.Read("outside", "kept.txt"));
+        Assert.Equal("elsewhere too", tree.Read("outside", "nested", "also-kept.txt"));
     }
 
     /// <summary>

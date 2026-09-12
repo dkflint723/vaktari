@@ -194,6 +194,22 @@ should not be trusted for compatibility yet.
 
 ### Fixed
 
+- **Deleting a folder that holds a junction no longer leaves the folder
+  standing with everything inside it gone.** A junction — the link
+  `mklink /J` makes, and what a `node_modules` tree, a development folder
+  or a copied user profile is full of — stopped Windows's own recursive
+  delete half-way through: it emptied the folder, refused the junction
+  itself with "Access to the path is denied", and left the folder behind.
+  Vaktari reported the delete as failed and offered *Retry as
+  administrator*, which could not have helped — with rights the same
+  delete fails too, saying "The parameter is incorrect" — and everything
+  the person asked to delete had gone regardless. Emptying the Recycle Bin
+  of such a folder did the same thing, and reported removing nothing: the
+  entry stayed listed, still advertising its original size, over a payload
+  that had already been gutted. Both now walk the tree themselves and take
+  each link out as a link, never touching what is behind it, so the folder
+  goes whole or stays whole.
+
 - **A link moved onto a name that is already taken is no longer lost.**
   Answering *Overwrite* when a link was moved onto a name in use did not do
   what it said. On Linux the link was deleted and nothing was written in its
