@@ -455,7 +455,7 @@ public sealed class WindowsFileOperations : IFileOperations
                     // or what had already gone.
                     try
                     {
-                        if (Directory.Exists(path)) Directory.Delete(path, recursive: true);
+                        if (Directory.Exists(path)) DeleteTree(path);
                         else File.Delete(path);
 
                         handle.ItemFinished();
@@ -521,6 +521,79 @@ public sealed class WindowsFileOperations : IFileOperations
 
         foreach (var (entry, _, _) in Descend(path, CancellationToken.None))
             ClearReadOnly(entry);
+    }
+
+    /// <summary>
+    /// Removes a folder and everything under it, taking every link out as a
+    /// link.
+    ///
+    /// **Directory.Delete(recursive: true) emptied a folder holding a junction
+    /// and then refused to remove the folder itself.** .NET's own walk, on
+    /// reaching a child whose reparse tag is IO_REPARSE_TAG_MOUNT_POINT — the
+    /// tag a junction carries, sharing it with volume mount points — called
+    /// DeleteVolumeMountPoint on it. That call is the mount manager's, and it
+    /// fails for a junction: refused outright to a caller without administrator
+    /// rights, and answered "the parameter is incorrect" to one who has them,
+    /// since a junction to a folder is not a mounted volume. The error was
+    /// recorded, the junction removed with RemoveDirectory anyway, the rest of
+    /// the folder emptied, and then it threw without removing the top folder.
+    ///
+    /// Measured on 12 September 2026, .NET 10.0.12, Windows 10.0.26100, on a
+    /// folder holding `a.txt` and a junction: unelevated it threw
+    /// UnauthorizedAccessException, "Access to the path 'j' is denied";
+    /// elevated it threw IOException, "The parameter is incorrect." Both left
+    /// the folder standing with both its children gone. What the junction
+    /// pointed at was untouched in every run — the fault was never that the
+    /// delete went through the link, only that it could not finish.
+    ///
+    /// So the walk is <see cref="Descend"/>, which reports a reparse point as a
+    /// leaf and never goes through one, every leaf goes out through
+    /// <see cref="DeleteLink"/>, whose removal is the link and never what is
+    /// behind it, and the folders follow deepest-first — Descend yields a
+    /// parent before its children, so backwards is bottom-up, the same order
+    /// the move engine's source cleanup walks.
+    ///
+    /// **One thing this does that the framework's delete did not: it stops at
+    /// the first thing it cannot remove**, rather than emptying everything it
+    /// can reach and reporting the failure afterwards. A tree half-destroyed is
+    /// not recoverable and a tree left standing is; the item is reported and
+    /// offered back for a retry either way.
+    ///
+    /// A folder the walk could not read is not passed over in silence, though
+    /// Descend itself steps over one: nothing beneath it is removed, so the
+    /// folder still has something in it when its turn comes, and
+    /// Directory.Delete refuses a folder that is not empty. The item is
+    /// reported and offered back for a retry rather than reported done.
+    ///
+    /// Internal, and shared with the Recycle Bin's purge for the reason
+    /// <see cref="ClearReadOnlyTree"/> is shared: one rule in one place. A
+    /// second copy of that rule is how the bin came to half-destroy read-only
+    /// payloads while this path handled them correctly.
+    /// </summary>
+    internal static void DeleteTree(string path)
+    {
+        // Before the folder test, because a junction answers to both, and a
+        // walk that took this one for a folder would empty a tree nobody
+        // selected. BuildPlan orders its own two tests the same way.
+        if (IsLink(path))
+        {
+            DeleteLink(path);
+            return;
+        }
+
+        var folders = new List<string>();
+
+        foreach (var (entry, kind, _) in Descend(path, CancellationToken.None))
+        {
+            if (kind == ItemKind.Directory) folders.Add(entry);
+            else DeleteLink(entry);
+        }
+
+        // Descend yields a parent before its children, so backwards is
+        // deepest-first — and a folder will not go while anything is still in it.
+        for (var i = folders.Count - 1; i >= 0; i--) Directory.Delete(folders[i]);
+
+        Directory.Delete(path);
     }
 
     public ValueTask RenameAsync(string path, string newName, CancellationToken ct)

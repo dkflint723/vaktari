@@ -194,6 +194,22 @@ should not be trusted for compatibility yet.
 
 ### Fixed
 
+- **Deleting a folder that holds a junction no longer leaves the folder
+  standing with everything inside it gone.** A junction — the link
+  `mklink /J` makes, and what a `node_modules` tree, a development folder
+  or a copied user profile is full of — stopped Windows's own recursive
+  delete half-way through: it emptied the folder, refused the junction
+  itself with "Access to the path is denied", and left the folder behind.
+  Vaktari reported the delete as failed and offered *Retry as
+  administrator*, which could not have helped — with rights the same
+  delete fails too, saying "The parameter is incorrect" — and everything
+  the person asked to delete had gone regardless. Emptying the Recycle Bin
+  of such a folder did the same thing, and reported removing nothing: the
+  entry stayed listed, still advertising its original size, over a payload
+  that had already been gutted. Both now walk the tree themselves and take
+  each link out as a link, never touching what is behind it, so the folder
+  goes whole or stays whole.
+
 - **A file that turns up at the destination during a copy is no longer
   replaced without a word.** A copy asks about a clash when it reaches
   each file, and then wrote the finished file under its name at the end,
