@@ -19,6 +19,10 @@ public sealed class StatusCountTests : OwnedViewModels
         => new(name, "/here/" + name, folder ? 0 : 10, DateTimeOffset.UnixEpoch,
                folder ? EntryFlags.Directory : EntryFlags.None);
 
+    private static FileEntry Measured(string name, long bytes)
+        => new(name, "/here/" + name, bytes, DateTimeOffset.UnixEpoch,
+               EntryFlags.Directory | EntryFlags.Measured);
+
     private async Task<PaneViewModel> Listing(params FileEntry[] rows)
     {
         var pane = Own(new PaneViewModel(new Canned(rows)) { ViewportWidth = 1400 });
@@ -115,6 +119,38 @@ public sealed class StatusCountTests : OwnedViewModels
         pane.DetailsSelection.Add(pane.Entries[0]);
 
         Assert.Contains("(10 B)", pane.Summary);
+    }
+
+    /// <summary>
+    /// **A folder that was measured adds up like anything else.** The size skips
+    /// folders because working one out would mean walking the tree on every
+    /// selection change — a reason that has already been paid in the listing
+    /// that measured them, where skipping left this bar blank beside a Size
+    /// column showing the very number it would not add.
+    ///
+    /// Picked by name rather than by index: a measured row sorts among the
+    /// files, so the folder is no longer first.
+    /// </summary>
+    [AvaloniaFact]
+    public async Task A_measured_folder_counts_towards_what_is_picked()
+    {
+        var pane = await Listing(Measured("photos", 30), Row("a.txt"));
+
+        pane.DetailsSelection.Add(pane.Entries.Single(e => e.Name == "photos"));
+
+        Assert.Contains("(30 B)", pane.Summary);
+    }
+
+    /// <summary>And an ordinary folder still contributes nothing, which is the
+    /// half that says the rule above did not swallow every folder.</summary>
+    [AvaloniaFact]
+    public async Task An_ordinary_folder_still_adds_nothing_to_the_size()
+    {
+        var pane = await Listing(Row("one", folder: true), Row("a.txt"));
+
+        pane.DetailsSelection.Add(pane.Entries.Single(e => e.Name == "one"));
+
+        Assert.DoesNotContain("(", pane.Summary);
     }
 
     private sealed class Canned(IReadOnlyList<FileEntry> rows) : IFileSystemProvider

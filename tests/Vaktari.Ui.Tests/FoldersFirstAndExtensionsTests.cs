@@ -79,6 +79,12 @@ public sealed class FoldersFirstAndExtensionsTests : OwnedViewModels
         => new(name, Path.Combine(Folder, name), 1, DateTimeOffset.UnixEpoch,
                directory ? EntryFlags.Directory : EntryFlags.None);
 
+    /// <summary>A folder a listing has already measured, which is the one kind
+    /// that does not take the band.</summary>
+    private static FileEntry Measured(string name)
+        => new(name, Path.Combine(Folder, name), 1, DateTimeOffset.UnixEpoch,
+               EntryFlags.Directory | EntryFlags.Measured);
+
     /// <summary>One folder, yielding exactly the rows it was handed.</summary>
     private sealed class Canned(params FileEntry[] entries) : IFileSystemProvider
     {
@@ -178,6 +184,27 @@ public sealed class FoldersFirstAndExtensionsTests : OwnedViewModels
         var mixed = await Listing(Row("zulu", directory: true), Row("alpha.txt"));
 
         Assert.Equal(["alpha.txt", "zulu"], Names(mixed));
+    }
+
+    /// <summary>
+    /// **A measured folder takes its place among the files, band or no band.**
+    /// Folders first is a browsing convention, and it answers the question a
+    /// listing of what is using the space exists to ask: with every folder
+    /// above every file, the largest file on the disk sorts below the emptiest
+    /// folder and the size order says nothing.
+    ///
+    /// The band is left ON here — the shipped default, and the same setting the
+    /// test above uses to keep an ordinary folder in front — so the flag is the
+    /// only thing that differs between the two.
+    /// </summary>
+    [AvaloniaFact]
+    public async Task A_measured_folder_takes_its_place_among_the_files()
+    {
+        MixFolders(false);
+
+        var pane = await Listing(Measured("zulu"), Row("alpha.txt"));
+
+        Assert.Equal(["alpha.txt", "zulu"], Names(pane));
     }
 
     /// <summary>

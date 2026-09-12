@@ -14,6 +14,13 @@ public class NamingAndGroupingTests
     private static FileEntry Folder(string name) =>
         new(name, "/f/" + name, 0, DateTimeOffset.UnixEpoch, EntryFlags.Directory);
 
+    private static FileEntry Measured(string name, long bytes) =>
+        new(name, "/f/" + name, bytes, DateTimeOffset.UnixEpoch,
+            EntryFlags.Directory | EntryFlags.Measured);
+
+    private static FileEntry Sized(string name, long bytes) =>
+        new(name, "/f/" + name, bytes, DateTimeOffset.UnixEpoch, EntryFlags.None);
+
     /// <summary>
     /// **Group-by-Kind sliced a character off every extension.** FileEntry
     /// .Extension is already dot-free, and the label sliced it again: .txt
@@ -40,6 +47,54 @@ public class NamingAndGroupingTests
     public void Folders_group_as_folders()
         => Assert.Equal(
             "Folders", Grouping.Label(Folder("photos"), GroupMode.Kind, DateTimeOffset.UtcNow));
+
+    /// <summary>
+    /// **A measured folder bands by what is inside it.** Grouping by size put
+    /// every folder in one band, which is right while a folder has no size of
+    /// its own — and wrong in the listing that went and counted, where a 2 GiB
+    /// folder would have sat in the same band as an empty one.
+    /// </summary>
+    [Theory]
+    [InlineData(1_000L, "Tiny — under 100 KiB")]
+    [InlineData(500L * 1024 * 1024, "Large — under 1 GiB")]
+    [InlineData(2L * 1024 * 1024 * 1024, "Huge — 1 GiB and over")]
+    public void A_measured_folder_bands_by_what_is_inside_it(long bytes, string expected)
+        => Assert.Equal(
+            expected,
+            Grouping.Label(Measured("photos", bytes), GroupMode.Size, DateTimeOffset.UtcNow));
+
+    [Fact]
+    public void An_ordinary_folder_still_bands_as_a_folder()
+        => Assert.Equal(
+            "Folders", Grouping.Label(Folder("photos"), GroupMode.Size, DateTimeOffset.UtcNow));
+
+    /// <summary>
+    /// The label and the rank that orders it are two spellings of one rule, and
+    /// **a row whose rank disagrees with its label sorts into one band under
+    /// another band's heading** — the same failure the date bands beside them
+    /// carry a comment about.
+    /// </summary>
+    [Fact]
+    public void The_band_and_the_sort_rank_stay_the_same_rule()
+    {
+        var now = DateTimeOffset.UtcNow;
+        var big = Measured("photos", 500L * 1024 * 1024);
+        var same = Sized("film.mkv", 500L * 1024 * 1024);
+
+        Assert.Equal(Grouping.Label(same, GroupMode.Size, now), Grouping.Label(big, GroupMode.Size, now));
+        Assert.Equal(0, Grouping.CompareGroups(big, same, GroupMode.Size, now));
+
+        // A measured folder sorts by its bytes like anything else, so it falls
+        // after a smaller file rather than ahead of every file.
+        Assert.True(
+            Grouping.CompareGroups(Measured("huge", 2L * 1024 * 1024 * 1024), Sized("note.txt", 10), GroupMode.Size, now) > 0,
+            "a 2 GiB measured folder did not band after a 10-byte file");
+
+        // And an unmeasured folder keeps its place ahead of them all.
+        Assert.True(
+            Grouping.CompareGroups(Folder("photos"), Sized("note.txt", 10), GroupMode.Size, now) < 0,
+            "an ordinary folder stopped banding before the files");
+    }
 
     /// <summary>
     /// **A folder name is atomic, and so is a dotfile.** Splitting either on

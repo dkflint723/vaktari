@@ -37,6 +37,19 @@ public enum EntryFlags
     /// and a folder has a count.
     /// </summary>
     Volume     = 1 << 6,
+
+    /// <summary>
+    /// This row's <see cref="FileEntry.Length"/> is the size of everything
+    /// inside it, and is meant to be read.
+    ///
+    /// **Everything downstream treats a folder as sizeless**, and is right to:
+    /// a directory's own length is a filesystem detail nobody wants in a Size
+    /// column, so the column, the sort, the bands and the selection summary all
+    /// skip it. The exception is a listing built to answer "what is using the
+    /// space here", where every row carries a total somebody asked for. This
+    /// flag is how those four tell the two apart.
+    /// </summary>
+    Measured   = 1 << 7,
 }
 
 /// <summary>
@@ -95,6 +108,10 @@ public readonly record struct FileEntry(
 
     /// <summary>Set only by This PC, for a drive that is not there.</summary>
     public bool IsUnreadable => (Flags & EntryFlags.Unreadable) != 0;
+
+    /// <summary>Set by a listing that measured what is inside this row, so its
+    /// <see cref="Length"/> means something even though it is a folder.</summary>
+    public bool IsMeasured => (Flags & EntryFlags.Measured) != 0;
 
     /// <summary>
     /// Concealed by the LISTING's rule rather than by the platform's: Windows

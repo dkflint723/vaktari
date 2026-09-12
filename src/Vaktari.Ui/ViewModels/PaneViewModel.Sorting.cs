@@ -183,7 +183,14 @@ public sealed partial class PaneViewModel
         // Read from the live settings on every comparison rather than lifted
         // into a local: this is the same static the tie-break below already asks
         // per comparison, and the read is a field access on a record.
+        // **A measured row sorts among the files, whatever the setting says.**
+        // Folders first is a browsing convention, and it answers the question a
+        // listing of what is using the space exists to ask: with it, every
+        // folder sorts above every file, so the largest file on the disk lands
+        // below the emptiest folder and the size order is useless. Only a
+        // listing that measured its rows sets the flag, so nothing else moves.
         if (!Settings.AppSettings.Current.General.MixFoldersWithFiles
+            && !a.IsMeasured && !b.IsMeasured
             && a.IsDirectory != b.IsDirectory)
             return a.IsDirectory ? -1 : 1;
 

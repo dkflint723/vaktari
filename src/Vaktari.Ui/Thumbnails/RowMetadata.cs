@@ -117,6 +117,17 @@ public static class RowMetadata
         if (entry.IsVolume)
             return (entry.Length > 0 ? ByteSize.Format(entry.Length) : "\u2014", false);
 
+        // A folder someone asked to have measured, in the listing that went and
+        // did it. **Above both rules below, or the one listing built to show a
+        // folder's size is the one that will not show it**: "no size for
+        // folders" would blank the column that is the whole point, and the
+        // counting rule would throw the measured total away and ask the
+        // provider for an item count instead.
+        //
+        // Counting stays false, so a measured row never reaches the per-row
+        // fetch or the cache it shares with ordinary listings.
+        if (entry.IsMeasured) return (ByteSize.Format(entry.Length), false);
+
         // The sixth and last copy of this. It was the only one already using
         // binary unit names, which is why the Size column and the status bar
         // beside it once disagreed about the same file.

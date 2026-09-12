@@ -32,6 +32,10 @@ public sealed class FolderItemCountTests
         => new(name, Path.Combine(Path.GetTempPath(), name), length,
                DateTimeOffset.UnixEpoch, EntryFlags.None);
 
+    private static FileEntry Measured(string name, long length)
+        => new(name, Path.Combine(Path.GetTempPath(), name), length,
+               DateTimeOffset.UnixEpoch, EntryFlags.Directory | EntryFlags.Measured);
+
     [Fact]
     public void A_folder_is_counted_when_the_setting_is_on()
     {
@@ -70,6 +74,27 @@ public sealed class FolderItemCountTests
         var (text, counting) = RowMetadata.SizeCell(File("notes.txt", 2048), FolderSizeMode.ItemCount);
 
         Assert.False(counting);
+        Assert.Contains("2", text);
+        Assert.DoesNotContain("—", text);
+    }
+
+    /// <summary>
+    /// **The one listing built to show a folder's size is the one that must
+    /// show it.** Both rules after this one would have thrown the total away:
+    /// "no size for folders" blanks the column outright, and the counting rule
+    /// replaces a measured number with an item count fetched from the provider.
+    /// Whatever the setting says about folders in general, a row that was
+    /// measured shows what was measured.
+    /// </summary>
+    [Theory]
+    [InlineData(FolderSizeMode.ItemCount)]
+    [InlineData(FolderSizeMode.None)]
+    [InlineData(FolderSizeMode.ContentSize)]
+    public void A_measured_folder_shows_its_size_whatever_the_setting_says(FolderSizeMode mode)
+    {
+        var (text, counting) = RowMetadata.SizeCell(Measured("photos", 2048), mode);
+
+        Assert.False(counting, "a measured row went back to the provider for a count it already had");
         Assert.Contains("2", text);
         Assert.DoesNotContain("—", text);
     }

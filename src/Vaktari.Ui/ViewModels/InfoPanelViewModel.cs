@@ -83,7 +83,10 @@ public sealed partial class InfoPanelViewModel : ObservableObject
         Name = entry.Name;
         Kind = entry.IsDirectory ? "Folder" : "";
         PreviewPath = entry.IsDirectory ? "" : entry.FullPath;
-        Summary = entry.IsDirectory ? "" : ByteSize.Format(entry.Length);
+        // A folder has no size to show until something measures it; a measured
+        // row arrives with one, and blanking it here left the panel emptier
+        // than the listing it was describing.
+        Summary = entry.IsDirectory && !entry.IsMeasured ? "" : ByteSize.Format(entry.Length);
         Rows.Clear();
 
         if (_properties is null) return;

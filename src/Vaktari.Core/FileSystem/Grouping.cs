@@ -19,7 +19,13 @@ public static class Grouping
     public static string Label(FileEntry entry, GroupMode mode, DateTimeOffset now) => mode switch
     {
         GroupMode.Name => NameBand(entry.Name),
-        GroupMode.Size => entry.IsDirectory ? "Folders" : SizeBand(entry.Length),
+        // A folder has no size of its own, so it bands as one thing — except
+        // where it was measured, and its bytes are the point. Banding those
+        // with the empty folders would hide exactly what such a listing exists
+        // to show.
+        GroupMode.Size => entry.IsDirectory && !entry.IsMeasured
+            ? "Folders"
+            : SizeBand(entry.Length),
         GroupMode.Modified => DateBand(entry.LastWriteTime, now),
         // **Extension is already dot-free**, so slicing a character off it was
         // slicing off a character of the name: .txt grouped under "XT", .cs
@@ -80,7 +86,9 @@ public static class Grouping
         return char.IsAsciiLetter(first) ? first : '#';
     }
 
-    private static int SizeRank(FileEntry entry) => entry.IsDirectory ? -1 : entry.Length switch
+    // The same rule as the Size label above, and it has to stay the same rule
+    // or a row sorts into one band under another band's heading.
+    private static int SizeRank(FileEntry entry) => entry.IsDirectory && !entry.IsMeasured ? -1 : entry.Length switch
     {
         < 100L * 1024 => 0,
         < 1024L * 1024 => 1,

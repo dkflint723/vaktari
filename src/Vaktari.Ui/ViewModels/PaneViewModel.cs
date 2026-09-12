@@ -2521,6 +2521,10 @@ public sealed partial class PaneViewModel : ObservableObject, IDisposable
     /// Total size of the selection, so the status bar can report it the way
     /// Dolphin does. Directories contribute nothing — measuring them would mean
     /// walking the tree on every selection change.
+    ///
+    /// **Unless the listing has already walked it.** A measured row carries its
+    /// total, so skipping it left the status bar blank while the Size column an
+    /// inch above showed the very number it was refusing to add up.
     /// </summary>
     private string SelectionSize()
     {
@@ -2529,7 +2533,7 @@ public sealed partial class PaneViewModel : ObservableObject, IDisposable
 
         foreach (var entry in Selection)
         {
-            if (entry.IsDirectory) continue;
+            if (entry.IsDirectory && !entry.IsMeasured) continue;
             total += entry.Length;
             files++;
         }
