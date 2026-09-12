@@ -400,6 +400,40 @@ public sealed class SpaceUsageTests : IDisposable
     }
 
     /// <summary>
+    /// **A row says whether the platform conceals it.** The attributes are read
+    /// for the link check either way, so carrying the bit costs nothing — and a
+    /// listing that had to ask again would stat every child a second time to
+    /// decide whether to show it.
+    /// </summary>
+    [PosixFact]
+    public void A_hidden_child_says_so()
+    {
+        File_(".secret", 5);
+        File_("plain.bin", 5);
+
+        var listing = SpaceUsage.Underneath(_root, progress: null, CancellationToken.None);
+
+        Assert.True(Row(listing, ".secret").IsConcealed);
+        Assert.False(Row(listing, "plain.bin").IsConcealed);
+    }
+
+    /// <summary>The same rule where hidden is an attribute rather than a leading
+    /// dot.</summary>
+    [WindowsFact]
+    public void A_hidden_child_says_so_on_windows()
+    {
+        var secret = File_("secret.bin", 5);
+
+        File_("plain.bin", 5);
+        System.IO.File.SetAttributes(secret, FileAttributes.Hidden);
+
+        var listing = SpaceUsage.Underneath(_root, progress: null, CancellationToken.None);
+
+        Assert.True(Row(listing, "secret.bin").IsConcealed);
+        Assert.False(Row(listing, "plain.bin").IsConcealed);
+    }
+
+    /// <summary>
     /// **No rows, and a total that says why.** An empty list alone reads as an
     /// empty folder, which is the one thing a listing must not show for a
     /// folder nobody was allowed to open.

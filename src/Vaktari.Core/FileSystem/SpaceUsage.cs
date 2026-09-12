@@ -30,8 +30,17 @@ public readonly record struct Usage(long Bytes, int Files, int Folders, int Unre
 ///
 /// <paramref name="IsDirectory"/> is false for a link to a directory, which is
 /// the answer <see cref="SafeWalk.Found"/> gives for the same entry.
+///
+/// **<paramref name="IsConcealed"/> is carried because the attributes have just
+/// been read**, for the link check on the line above it. A listing that hides
+/// hidden files would otherwise ask the filesystem about every child a second
+/// time for a bit it was handed and dropped — the same argument that put the
+/// length on <see cref="SafeWalk.Found"/>. Hidden and System together, which is
+/// the pair <see cref="FileEntry.IsConcealed"/> answers with. Defaulted, so a
+/// caller that does not care is untouched.
 /// </summary>
-public readonly record struct UsageRow(string Path, bool IsDirectory, bool IsLink, Usage Usage);
+public readonly record struct UsageRow(
+    string Path, bool IsDirectory, bool IsLink, Usage Usage, bool IsConcealed = false);
 
 /// <summary>
 /// The rows of "what is using the space here", and the folder's own total.
@@ -181,6 +190,11 @@ public static class SpaceUsage
             ct.ThrowIfCancellationRequested();
 
             var link = (child.Attributes & FileAttributes.ReparsePoint) != 0;
+
+            // From the attributes the line above has already fetched, rather
+            // than a second question about the same child.
+            var concealed = (child.Attributes & (FileAttributes.Hidden | FileAttributes.System)) != 0;
+
             UsageRow row;
 
             if (child is DirectoryInfo && !link)
@@ -191,7 +205,8 @@ public static class SpaceUsage
                     child.FullName,
                     IsDirectory: true,
                     IsLink: false,
-                    inside with { Folders = inside.Folders + 1 });
+                    inside with { Folders = inside.Folders + 1 },
+                    IsConcealed: concealed);
             }
             else
             {
@@ -205,7 +220,8 @@ public static class SpaceUsage
                     child.FullName,
                     IsDirectory: false,
                     IsLink: link,
-                    new Usage(length, Files: 1, Folders: 0, Unreadable: 0));
+                    new Usage(length, Files: 1, Folders: 0, Unreadable: 0),
+                    IsConcealed: concealed);
             }
 
             rows.Add(row);

@@ -924,10 +924,23 @@ public sealed partial class PaneViewModel : ObservableObject, IDisposable
     /// are the two spellings of silence, and the pane's own value is what
     /// silence means.
     /// </summary>
+    /// <summary>
+    /// The key a view is remembered under.
+    ///
+    /// **One key for every usage listing.** The path carries the folder that was
+    /// measured, so keyed as it is spelled, a person who looked at fifty folders
+    /// would leave fifty records nobody can ever reach again — which is the
+    /// reason <see cref="VirtualPaths.SearchViewKey"/> was written, and the
+    /// shape a view for one of these actually has: "how I like these to look",
+    /// not "how I like this folder's to look".
+    /// </summary>
+    private static string ViewKey(string path)
+        => VirtualPaths.IsUsage(path) ? VirtualPaths.UsageViewKey : path;
+
     private void ApplyFolderView(string path)
     {
         if (!Settings.AppSettings.Current.General.RememberViewPerFolder) return;
-        if (FolderViews?.Read(path) is not { } view) return;
+        if (FolderViews?.Read(ViewKey(path)) is not { } view) return;
 
         View = view.View ?? View;
         Sort = view.Sort ?? Sort;
@@ -993,7 +1006,7 @@ public sealed partial class PaneViewModel : ObservableObject, IDisposable
         if (FolderViews is null || string.IsNullOrEmpty(CurrentPath)) return;
         if (_restoringView) return;
 
-        FolderViews.Write(CurrentPath, new FolderViewState
+        FolderViews.Write(ViewKey(CurrentPath), new FolderViewState
         {
             View = View,
             Sort = Sort,
@@ -1925,6 +1938,15 @@ public sealed partial class PaneViewModel : ObservableObject, IDisposable
     public bool IsSearchListing => VirtualPaths.IsSearch(CurrentPath);
 
     /// <summary>
+    /// True while this pane is showing what is using the space in a folder.
+    /// </summary>
+    public bool IsUsageListing => VirtualPaths.IsUsage(CurrentPath);
+
+    /// <summary>The folder that was measured, which is where this listing came
+    /// from and the way back out of it.</summary>
+    public string UsageFolder => VirtualPaths.FolderOf(CurrentPath);
+
+    /// <summary>
     /// Whether "where does this row actually live" is a question this listing
     /// can answer.
     ///
@@ -1940,7 +1962,14 @@ public sealed partial class PaneViewModel : ObservableObject, IDisposable
     /// lands on a folder that does not contain the row and may well contain
     /// something else wearing its name.
     /// </summary>
-    public bool CanGoToLocation => IsSearchListing || IsRecentListing;
+    /// <remarks>
+    /// A usage listing is in it because **Up and the breadcrumb cannot get out
+    /// of one**: Up is refused for every virtual path, and a virtual listing
+    /// draws a single crumb whose command does nothing. Without this row, Back
+    /// is the only way back to the folder that was measured — and Back is gone
+    /// as soon as the person goes anywhere else first.
+    /// </remarks>
+    public bool CanGoToLocation => IsSearchListing || IsRecentListing || IsUsageListing;
 
     /// <summary>What was asked, drawn in the band and in the empty state.</summary>
     public string SearchQueryText => VirtualPaths.QueryOf(CurrentPath);
@@ -2474,6 +2503,11 @@ public sealed partial class PaneViewModel : ObservableObject, IDisposable
         // Above the catch-all, or a search that found nothing reports that a
         // folder is empty — about a folder nobody named.
         _ when IsSearchListing => $"nothing found for “{SearchQueryText}”",
+
+        // Above the catch-all for the same reason: a measured folder with
+        // nothing in it is not "this folder is empty" about a folder the person
+        // is not looking at.
+        _ when IsUsageListing => "nothing is using space here",
 
         _ => "this folder is empty",
     };
@@ -3903,6 +3937,13 @@ public sealed partial class PaneViewModel : ObservableObject, IDisposable
             // go on showing the previous question.
             OnPropertyChanged(nameof(IsSearchListing));
 
+            // The same shape, for the same reason: a pane moves from one usage
+            // listing straight to another when a different folder is measured,
+            // so a band that only appeared and disappeared would go on naming
+            // the folder before it.
+            OnPropertyChanged(nameof(IsUsageListing));
+            OnPropertyChanged(nameof(UsageFolder));
+
             // The menu row that goes to where a row lives is bound to this one,
             // and a change announced for IsSearchListing is not a change
             // announced for this: without the line the row keeps whatever
@@ -4766,6 +4807,9 @@ public sealed partial class PaneViewModel : ObservableObject, IDisposable
             : VirtualPaths.IsSearch(path)
                 ? SearchListing.EnumerateAsync(
                     Search, path, options, ct, SearchLimit, () => capped = true)
+            : VirtualPaths.IsUsage(path)
+                ? SpaceListing.EnumerateAsync(
+                    VirtualPaths.FolderOf(path), ShowHidden, progress: null, ct)
             : _fs.EnumerateAsync(path, options, ct);
 
         var sw = Stopwatch.StartNew();

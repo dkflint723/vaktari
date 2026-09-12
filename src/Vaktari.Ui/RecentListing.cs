@@ -105,6 +105,48 @@ public static class VirtualPaths
     /// </summary>
     public const string SearchViewKey = SearchPrefix + "*";
 
+    /// <summary>
+    /// What is using the space in one folder, as somewhere you can be.
+    ///
+    /// **Shape: prefix and one escaped field** — the folder that was measured.
+    ///
+    ///   vaktari:usage:C%3A%5CUsers%5Cme
+    ///
+    /// Escaped for the same reason a search's fields are: a path holds colons
+    /// and separators, and <c>PathRules.Normalise</c> runs over every path this
+    /// pane compares. <c>Uri.EscapeDataString</c> leaves only unreserved
+    /// characters, so Normalise finds no separator to call a parent and the
+    /// field survives a round trip through session.json.
+    ///
+    /// Unlike a search this is not its own question — it is one folder, looked
+    /// at a different way — so the folder it names is how you get back out.
+    /// </summary>
+    public const string UsagePrefix = "vaktari:usage:";
+
+    /// <summary>One key for every usage listing, for the reason
+    /// <see cref="SearchViewKey"/> gives: keyed by the path, a person who
+    /// measured fifty folders would leave fifty view records behind.</summary>
+    public const string UsageViewKey = UsagePrefix + "*";
+
+    public static string Usage(string folder) => UsagePrefix + Uri.EscapeDataString(folder);
+
+    public static bool IsUsage(string? path)
+        => path is not null && path.StartsWith(UsagePrefix, StringComparison.Ordinal);
+
+    /// <summary>
+    /// The folder a usage listing measured.
+    ///
+    /// **Nothing here can throw on a malformed path, so nothing guards against
+    /// it.** These strings come back out of session.json, where a hand-edited or
+    /// truncated one has to give a harmless listing rather than stop the window
+    /// opening — and unescaping is lenient: measured, a lone "%" comes back as
+    /// "%" rather than raising. A path that survives mangling names a folder
+    /// that is simply not there, which <see cref="Core.FileSystem.SpaceUsage"/>
+    /// already answers with no rows and one thing it could not read.
+    /// </summary>
+    public static string FolderOf(string path)
+        => IsUsage(path) ? Uri.UnescapeDataString(path[UsagePrefix.Length..]) : "";
+
     public static string Search(string query, string? origin, bool scoped, bool matchCase = false)
         => SearchPrefix
            + Uri.EscapeDataString(query) + ":"
@@ -239,7 +281,7 @@ public static class VirtualPaths
 
     /// <summary>Any listing that is not a directory.</summary>
     public static bool IsVirtual(string? path)
-        => IsRecent(path) || path == Trash || path == Computer || IsSearch(path);
+        => IsRecent(path) || path == Trash || path == Computer || IsSearch(path) || IsUsage(path);
 
     /// <summary>
     /// True for a virtual listing. Callers that must check this:
@@ -267,8 +309,21 @@ public static class VirtualPaths
         // otherwise swallow every search and title the tab "Recent locations".
         _ when IsSearch(path) => $"Search: {QueryOf(path)}",
 
+        // Above the fallback for the same reason the search arm is: a usage
+        // path matches no constant, so the catch-all would title every one of
+        // them "Recent locations" and say nothing about it.
+        _ when IsUsage(path) => $"Space used in {LeafOf(FolderOf(path))}",
+
         _ => "Recent locations",
     };
+
+    /// <summary>
+    /// The folder's own name, for a label that has one folder to name. A drive
+    /// root has no leaf, so it is shown as it is spelled — "Space used in C:\"
+    /// reads better than "Space used in " ever could.
+    /// </summary>
+    private static string LeafOf(string folder)
+        => System.IO.Path.GetFileName(folder) is { Length: > 0 } leaf ? leaf : folder;
 }
 
 /// <summary>
