@@ -21,7 +21,13 @@ public static class SafeWalk
     /// <param name="Path">Where it is.</param>
     /// <param name="IsDirectory">A real directory — never a link to one.</param>
     /// <param name="IsLink">A symbolic link, yielded but never descended into.</param>
-    public readonly record struct Found(string Path, bool IsDirectory, bool IsLink);
+    /// <param name="Length">Bytes, for a file; zero for a directory or a
+    /// link. **Carried because the walk already has it** — the enumeration
+    /// has just read the entry, and a caller that totals sizes would
+    /// otherwise stat every file a second time for a number it was handed
+    /// and dropped. Defaulted so the callers that only want paths are
+    /// untouched.</param>
+    public readonly record struct Found(string Path, bool IsDirectory, bool IsLink, long Length = 0);
 
     /// <summary>
     /// Everything under <paramref name="root"/>, deepest last, with links
@@ -30,8 +36,14 @@ public static class SafeWalk
     /// An unreadable folder is skipped rather than thrown from: a walk that
     /// dies on the first permission denied reports nothing about the thousands
     /// of entries it could have handled.
+    ///
+    /// **<paramref name="unreadable"/> is how a total stays honest.** A walk
+    /// that steps over a folder silently hands back a figure short by
+    /// whatever was behind it, and a caller totalling bytes cannot tell that
+    /// from a folder that really is that size. Told, it can say so.
     /// </summary>
-    public static IEnumerable<Found> Descend(string root, CancellationToken ct = default)
+    public static IEnumerable<Found> Descend(
+        string root, CancellationToken ct = default, Action<string>? unreadable = null)
     {
         var pending = new Stack<string>();
         pending.Push(root);
@@ -50,6 +62,7 @@ public static class SafeWalk
             }
             catch (Exception e) when (e is IOException or UnauthorizedAccessException)
             {
+                unreadable?.Invoke(folder);
                 continue;
             }
 
@@ -72,7 +85,11 @@ public static class SafeWalk
                 }
                 else
                 {
-                    yield return new Found(child.FullName, IsDirectory: false, IsLink: false);
+                    yield return new Found(
+                        child.FullName,
+                        IsDirectory: false,
+                        IsLink: false,
+                        child is FileInfo file ? file.Length : 0);
                 }
             }
         }

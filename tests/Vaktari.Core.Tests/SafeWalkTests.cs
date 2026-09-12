@@ -1,3 +1,4 @@
+using System.Runtime.Versioning;
 using Vaktari.Core.FileSystem;
 using Xunit;
 
@@ -125,4 +126,96 @@ public sealed class SafeWalkTests : IDisposable
     [Fact]
     public void A_missing_root_yields_nothing_rather_than_throwing()
         => Assert.Empty(SafeWalk.Descend(Path.Combine(_root, "not-there")).ToList());
+
+    // ---- what each entry carries -------------------------------------------
+
+    /// <summary>
+    /// **A file's length comes back with it.** The enumeration has just read
+    /// the entry, so a caller totalling sizes that had to ask again would stat
+    /// every file a second time for a number it was handed and dropped.
+    /// </summary>
+    [Fact]
+    public void A_files_length_comes_back_with_it()
+    {
+        File.WriteAllBytes(Path.Combine(Dir("folder"), "sized.bin"), new byte[1_234]);
+
+        var found = SafeWalk.Descend(_root).ToList();
+
+        Assert.Equal(1_234, Assert.Single(found, f => f.Path.EndsWith("sized.bin")).Length);
+
+        // A directory has no length of its own to report.
+        Assert.Equal(0, Assert.Single(found, f => f.IsDirectory).Length);
+    }
+
+    /// <summary>
+    /// **A link's length is zero, not what it points at.** Length here is read
+    /// from the entry the enumeration produced; a link resolved instead would
+    /// make a folder holding links to a media library count as though it held
+    /// the library.
+    /// </summary>
+    [Fact]
+    public void A_links_length_is_zero_rather_than_what_it_points_at()
+    {
+        var outside = Directory.CreateTempSubdirectory("vaktari-outside").FullName;
+
+        try
+        {
+            var big = Path.Combine(outside, "huge.raw");
+
+            File.WriteAllBytes(big, new byte[9_000]);
+
+            try
+            {
+                File.CreateSymbolicLink(Path.Combine(_root, "shortcut.raw"), big);
+            }
+            catch (Exception e) when (e is IOException or UnauthorizedAccessException)
+            {
+                return;
+            }
+
+            var link = Assert.Single(SafeWalk.Descend(_root).ToList(), f => f.IsLink);
+
+            Assert.Equal(0, link.Length);
+        }
+        finally
+        {
+            try { Directory.Delete(outside, recursive: true); } catch { }
+        }
+    }
+
+    /// <summary>
+    /// **The folder it could not open is named, not just counted.** A caller
+    /// told only how many were skipped can say "two folders could not be read";
+    /// told which, it can say where. Nothing asserted the path before, so
+    /// handing back the root instead of the folder would have gone unnoticed.
+    /// </summary>
+    [PosixFact, SupportedOSPlatform("linux")]
+    public void The_folder_it_could_not_open_is_named()
+    {
+        // Root reads a mode-000 directory anyway, so the premise does not hold
+        // there and the test would fail on something it cannot control.
+        if (Environment.IsPrivilegedProcess) return;
+
+        var closed = Dir("closed");
+
+        File.WriteAllText(Path.Combine(closed, "unseen.txt"), "x");
+        File.SetUnixFileMode(closed, UnixFileMode.None);
+
+        try
+        {
+            var skipped = new List<string>();
+
+            var found = SafeWalk.Descend(_root, CancellationToken.None, skipped.Add).ToList();
+
+            Assert.Equal(closed, Assert.Single(skipped));
+            Assert.DoesNotContain(found, f => f.Path.EndsWith("unseen.txt"));
+        }
+        finally
+        {
+            // Put it back before Dispose, which cannot delete what it cannot
+            // open.
+            File.SetUnixFileMode(
+                closed, UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute);
+        }
+    }
 }
