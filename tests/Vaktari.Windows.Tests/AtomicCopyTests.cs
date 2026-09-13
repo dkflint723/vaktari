@@ -16,11 +16,14 @@ namespace Vaktari.Windows.Tests;
 ///
 /// The copy now lands under a staging name beside the target and is renamed
 /// over it only once every byte is down. These pin that from INSIDE the copy:
-/// the test waits for the first progress report — the copy is provably
-/// writing by then — reads the original while the copy is still running, and
-/// only then cancels. Cancelling before the copy began proved nothing, and
-/// was measured proving nothing: the operation loop bails out before it opens
-/// a single file, under the old code and the new alike.
+/// it is HELD part-written, the original is read there, and the cancel is
+/// given from that held state. Cancelling before the copy began proved
+/// nothing, and was measured proving nothing: the operation loop bails out
+/// before it opens a single file, under the old code and the new alike.
+///
+/// **Waiting for the first progress report and asserting afterwards was a
+/// race, and it lost about one run in ten.** <see cref="Held"/> says what was
+/// measured.
 /// </summary>
 [SupportedOSPlatform("windows")]
 public sealed class AtomicCopyTests
@@ -36,13 +39,48 @@ public sealed class AtomicCopyTests
         catch (OperationCanceledException) { /* the point */ }
     }
 
-    /// <summary>A copy that has written at least one buffer, and is still going.</summary>
-    private static async Task<IOperationHandle> Writing(IOperationHandle handle)
+    /// <summary>
+    /// A copy that has written at least one buffer and is HELD there, with the
+    /// replacement part-written under its staging name.
+    ///
+    /// **Waiting for the first progress report proved only that the copy had
+    /// started, and every assertion after it was about a copy that had been
+    /// left free to finish.** The report is raised on the copying thread from
+    /// inside the write loop; the waiting continuation is scheduled on the
+    /// pool. On a busy machine that continuation ran late, and by the time it
+    /// did, the remaining 63 MB were down, the metadata was carried and the
+    /// staging file had been renamed over the original — so the cancel arrived
+    /// after the copy had landed, and the test asserting the original survived
+    /// read the new file instead. Measured on 2026-09-13 with a 512 MB copy
+    /// running alongside: the same run recorded "length=21 staging=1
+    /// state=Running" at the mid-copy read and then "length=67108864
+    /// staging=0 state=Completed" after the cancel. Unheld, it lost about one
+    /// run in ten.
+    ///
+    /// Pause is called FROM the progress handler, which the engine raises
+    /// synchronously from <c>BytesCopied</c> inside its write loop, so the gate
+    /// is closed before that thread reaches the next <c>WaitIfPausedAsync</c>.
+    /// Nothing here waits on a clock or on the pool being prompt: the copy is
+    /// held wherever the machine happens to be, and the state below says so.
+    /// </summary>
+    private static async Task<IOperationHandle> Held(IOperationHandle handle)
     {
-        var started = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
-        handle.Progressed += (_, p) => { if (p.BytesDone > 0) started.TrySetResult(); };
+        var held = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
 
-        await started.Task.WaitAsync(TimeSpan.FromSeconds(30));
+        handle.Progressed += (_, p) =>
+        {
+            if (p.BytesDone <= 0) return;
+
+            handle.Pause();
+            held.TrySetResult();
+        };
+
+        await held.Task.WaitAsync(TimeSpan.FromSeconds(30));
+
+        // The hold, asserted rather than assumed: everything after this reads a
+        // copy that cannot move on.
+        Assert.Equal(OperationState.Paused, handle.State);
+
         return handle;
     }
 
@@ -56,14 +94,19 @@ public sealed class AtomicCopyTests
         var original = tree.Write("dst/report.docx", "the original, in full");
 
         var ops = new WindowsFileOperations();
-        var handle = await Writing(ops.Copy([source], tree.At("dst"), Always(ConflictResolution.Overwrite)));
+        var handle = await Held(ops.Copy([source], tree.At("dst"), Always(ConflictResolution.Overwrite)));
 
-        // Mid-copy. Under the old code this read an empty, truncated file.
+        // Held part-way. Under the old code this read an empty, truncated file.
         Assert.Equal("the original, in full", File.ReadAllText(original));
+
+        // And the replacement is somewhere: beside the target, under a staging
+        // name, which is the half of the promise the read above cannot show.
+        Assert.Single(Directory.GetFiles(tree.At("dst"), ".*.vaktari-*"));
 
         handle.Cancel();
         await Ended(handle);
 
+        Assert.Equal(OperationState.Cancelled, handle.State);
         Assert.Equal("the original, in full", File.ReadAllText(original));
         Assert.Empty(Directory.GetFiles(tree.At("dst"), ".*.vaktari-*"));
     }
@@ -78,9 +121,12 @@ public sealed class AtomicCopyTests
         File.WriteAllBytes(source, new byte[BigEnough]);
 
         var ops = new WindowsFileOperations();
-        var handle = await Writing(ops.Copy([source], tree.At("dst"), Always(ConflictResolution.Overwrite)));
+        var handle = await Held(ops.Copy([source], tree.At("dst"), Always(ConflictResolution.Overwrite)));
 
-        // Mid-copy: the bytes are going somewhere, and it is not the real name.
+        // Held part-way: the bytes are going somewhere, and it is not the real
+        // name. This one raced the same way the test above did — a copy left
+        // free to finish lands under the real name, and then both of these read
+        // a file that is there on purpose.
         Assert.False(File.Exists(tree.At("dst", "big.bin")), "a partial file sits under the real name");
 
         handle.Cancel();
