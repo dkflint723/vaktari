@@ -29,6 +29,36 @@ public sealed class JsonFolderViewStore : IFolderViewStore
         _tempPath = _path + ".tmp";
 
         _states = Load();
+        _dirty = DropSearchRecords(_states) > 0;
+    }
+
+    /// <summary>
+    /// Drops the records a search left under its own path.
+    ///
+    /// **Every search anybody ran left one, and none of them could be read
+    /// again.** The pane keyed a search's view by the search's path until it was
+    /// given the one shared key, so a store written before then holds a record
+    /// per distinct search — measured: a file holding two of them beside a
+    /// folder's record and the shared one reported four folders remembered,
+    /// which is the figure the settings page shows.
+    ///
+    /// **Dropped, not carried into the shared record.** A dictionary read back
+    /// from JSON has no order to say which search's view came last, and picking
+    /// one would be a guess. A view someone set for one repeated search falls
+    /// back to the shared search view once.
+    ///
+    /// Counted as a change, so the next flush writes the file without them: a
+    /// store with nothing changed does not write at all.
+    /// </summary>
+    private static int DropSearchRecords(Dictionary<string, FolderViewState> states)
+    {
+        var stray = states.Keys
+            .Where(key => VirtualPaths.IsSearch(key) && key != VirtualPaths.SearchViewKey)
+            .ToList();
+
+        foreach (var key in stray) states.Remove(key);
+
+        return stray.Count;
     }
 
     private Dictionary<string, FolderViewState> Load()

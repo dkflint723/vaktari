@@ -933,9 +933,18 @@ public sealed partial class PaneViewModel : ObservableObject, IDisposable
     /// reason <see cref="VirtualPaths.SearchViewKey"/> was written, and the
     /// shape a view for one of these actually has: "how I like these to look",
     /// not "how I like this folder's to look".
+    ///
+    /// **And one for every search, which is what that key was written for and
+    /// never given.** A search was keyed by its own path, which carries the
+    /// query, the folder, the scope and the case, so each distinct search left a
+    /// record of its own — measured: two searches wrote two keys. The records
+    /// already written are dropped when the store loads; see
+    /// JsonFolderViewStore.
     /// </summary>
     private static string ViewKey(string path)
-        => VirtualPaths.IsUsage(path) ? VirtualPaths.UsageViewKey : path;
+        => VirtualPaths.IsUsage(path) ? VirtualPaths.UsageViewKey
+                   : VirtualPaths.IsSearch(path) ? VirtualPaths.SearchViewKey
+                   : path;
 
     private void ApplyFolderView(string path)
     {

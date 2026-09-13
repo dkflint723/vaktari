@@ -194,6 +194,14 @@ should not be trusted for compatibility yet.
 
 ### Fixed
 
+- **Searching no longer fills the list of remembered folder views.** Each
+  search left a record of its view under that one search — a record nothing
+  could ever read back — and the settings page counted every one of them
+  among the folders remembered. All searches now share one remembered view,
+  and the records earlier searches left behind are dropped when Vaktari next
+  starts. A view set for one particular search falls back to the shared
+  search view once.
+
 - **The Properties dialog no longer counts a link as the thing it points
   at.** On Linux a symbolic link to a file was added to a folder's total at
   the length of its own path — ten bytes of files and one link came to
