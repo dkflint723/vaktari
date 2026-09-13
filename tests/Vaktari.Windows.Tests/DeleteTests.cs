@@ -145,6 +145,44 @@ public class DeleteTests
         Assert.Equal("elsewhere too", tree.Read("outside", "nested", "also-kept.txt"));
     }
 
+    /// <summary>
+    /// **What is left when something in the tree will not go**, which the tree
+    /// delete answers differently from the framework's. Directory.Delete
+    /// removes everything it can reach and reports the failure afterwards, so
+    /// one file held open by another program cost the whole tree around it and
+    /// left the person with the one file they could not have deleted anyway.
+    /// The walk stops where it fails instead: what it has not reached is still
+    /// there, and the item is named and offered back for a retry.
+    ///
+    /// Held open with no sharing, which is how another program holds a file it
+    /// is reading. The file the walk reaches BEFORE the held one is not
+    /// asserted either way — that would be pinning the order NTFS happens to
+    /// enumerate in, and the rule is about what comes after.
+    /// </summary>
+    [WindowsFact]
+    public async Task A_file_that_will_not_go_leaves_the_rest_of_its_tree_standing()
+    {
+        using var tree = new TempTree();
+        tree.Write("project/a.txt", "mine");
+        var busy = tree.Write("project/busy.txt", "in use");
+        tree.Write("project/sub/deep.txt", "deeper");
+
+        using var hold = new FileStream(busy, FileMode.Open, FileAccess.Read, FileShare.None);
+
+        var handle = await Finished(new WindowsFileOperations().Delete([tree.At("project")]));
+
+        // Named, and offered back, rather than reported done.
+        var problem = Assert.Single(handle.Problems);
+        Assert.Equal(tree.At("project"), problem.Path);
+        Assert.NotNull(handle.Retry);
+
+        // The folder stands, with the file that would not go still in it.
+        Assert.Equal("in use", tree.Read("project", "busy.txt"));
+
+        // And nothing the walk had not reached was touched.
+        Assert.Equal("deeper", tree.Read("project", "sub", "deep.txt"));
+    }
+
     [WindowsFact]
     public async Task Deleting_a_plain_tree_still_works()
     {
