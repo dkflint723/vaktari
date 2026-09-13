@@ -2266,8 +2266,19 @@ public sealed class WindowsFileOperations : IFileOperations
                 }
             }
 
+            // **A junction inside refused this removal the way it refused the
+            // permanent delete**, and this is the worse place to meet it: the
+            // copy above had already put everything back, so the exception
+            // arrived after the undo had succeeded. Measured on the Windows
+            // runner, undoing the move of a folder holding one threw
+            // "The parameter is incorrect" out of RemoveDirectoryRecursive and
+            // through UndoAsync — the folder restored at the source, a gutted
+            // shell of it left standing at the destination, the step already
+            // popped off the undo stack before the work began, and no redo
+            // recorded. Unelevated the same removal is refused as
+            // "Access to the path is denied"; DeleteTree says why both.
             ClearReadOnlyTree(from);
-            Directory.Delete(from, recursive: true);
+            DeleteTree(from);
         }
     }
 }
