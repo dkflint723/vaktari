@@ -118,6 +118,65 @@ public class ReparsePointTests
     }
 
     /// <summary>
+    /// **And undoing that move, which ends in the same recursive delete.**
+    /// `UndoMove.MoveDirectory` copies the folder back when it cannot rename it
+    /// — across volumes, or onto a source folder still standing — and then
+    /// removes what it copied from. `Directory.Delete(recursive: true)` is
+    /// refused by a junction inside, so the undo threw: the folder came back to
+    /// the source correctly and a gutted shell of it was left at the
+    /// destination, the step was gone from the undo stack — Ctrl+Z pops before
+    /// it works — and no redo was recorded.
+    ///
+    /// The source folder is left standing here by a file the move could not
+    /// take, which is the everyday way to reach that branch: one file open in
+    /// another program, then Ctrl+Z. The lock is released before the undo,
+    /// since its only job is to leave the folder behind.
+    /// </summary>
+    [WindowsFact]
+    public async Task Undoing_a_move_of_a_folder_holding_a_junction_leaves_nothing_behind()
+    {
+        using var tree = new TempTree();
+        var outside = tree.Dir("outside");
+        tree.Write("outside/kept.txt", "elsewhere");
+        tree.Write("outside/nested/also-kept.txt", "elsewhere too");
+
+        tree.Write("src/project/a.txt", "mine");
+        var held = tree.Write("src/project/busy.txt", "in use");
+        tree.Write("src/project/node_modules/.bin/tool.cmd", "mine too");
+        tree.Junction("src/project/node_modules/shared", outside);
+        tree.Dir("dst");
+
+        var ops = new WindowsFileOperations();
+
+        using (new FileStream(held, FileMode.Open, FileAccess.Read, FileShare.None))
+            await Finished(ops.Move([tree.At("src", "project")], tree.At("dst"), Overwrite));
+
+        Assert.True(tree.Exists("src", "project"),
+            "the move swept its source folder away, so the undo renames and this proves nothing");
+
+        await ops.UndoAsync(CancellationToken.None);
+
+        // The destination goes whole — no shell where the folder was.
+        Assert.False(tree.Exists("dst", "project"));
+
+        // What moved is back, beside the file that never left.
+        Assert.Equal("mine", tree.Read("src", "project", "a.txt"));
+        Assert.Equal("in use", tree.Read("src", "project", "busy.txt"));
+        Assert.Equal("mine too", tree.Read("src", "project", "node_modules", ".bin", "tool.cmd"));
+
+        // The junction is back as a junction, not as a copy of the tree.
+        Assert.Equal(outside,
+            new DirectoryInfo(tree.At("src", "project", "node_modules", "shared")).LinkTarget);
+
+        // And what it points at was never the undo's to touch.
+        Assert.Equal(["kept.txt", "nested"], tree.Names("outside"));
+        Assert.Equal("elsewhere too", tree.Read("outside", "nested", "also-kept.txt"));
+
+        // The step is on the redo stack rather than lost with the exception.
+        Assert.True(ops.CanRedo);
+    }
+
+    /// <summary>
     /// A junction the user selected directly, rather than one found inside a
     /// folder. `Directory.Exists` answers true for it, so it has to be tested
     /// for before the folder branch or it is walked as a folder.

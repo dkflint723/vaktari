@@ -194,6 +194,17 @@ should not be trusted for compatibility yet.
 
 ### Fixed
 
+- **Undoing the move of a folder that holds a junction no longer fails
+  after it has worked.** Where Ctrl+Z cannot simply rename the folder back
+  — across drives, or onto a source folder still standing because a file
+  inside it could not be moved — it copies the folder back and then removes
+  what it copied out of, and that removal met the same refusal a permanent
+  delete met. The folder came back correctly and then the undo reported
+  "The parameter is incorrect", leaving a gutted shell of it where it had
+  been moved to; the step had already left the Undo row, and Ctrl+Y could
+  not put it back. The undo now takes the folder away through the same walk
+  the delete uses.
+
 - **Deleting a folder that holds a junction no longer leaves the folder
   standing with everything inside it gone.** A junction — the link
   `mklink /J` makes, and what a `node_modules` tree, a development folder
