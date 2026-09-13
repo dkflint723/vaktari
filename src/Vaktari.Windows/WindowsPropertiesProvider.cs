@@ -236,7 +236,28 @@ public sealed class WindowsPropertiesProvider : IPropertiesProvider
                     {
                         ct.ThrowIfCancellationRequested();
 
-                        if ((entry.Attributes & FileAttributes.Directory) != 0)
+                        // **A junction was counted as a folder.** The walk would not
+                        // descend into one and then counted it among the folders
+                        // anyway, because the Directory attribute decided and a
+                        // junction carries it — measured: a folder holding a
+                        // subfolder and a junction reported two folders. A link is
+                        // one entry, of no size, and never a folder, as the Linux
+                        // measure and SpaceUsage count one.
+                        //
+                        // **A link is what has a link TARGET, not merely the
+                        // ReparsePoint attribute.** A OneDrive placeholder and a
+                        // deduplicated file carry that attribute as well — Windows
+                        // documents both as reparse points; neither was measured
+                        // here — and they are files with sizes, so they go on being
+                        // counted as they were. SafeWalk, under SpaceUsage, takes
+                        // every reparse point for a link; that broader answer is
+                        // deliberately not copied here.
+                        if ((entry.Attributes & FileAttributes.ReparsePoint) != 0
+                            && entry.LinkTarget is not null)
+                        {
+                            files++;
+                        }
+                        else if ((entry.Attributes & FileAttributes.Directory) != 0)
                         {
                             folders++;
 

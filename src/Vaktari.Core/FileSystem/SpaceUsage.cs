@@ -65,13 +65,18 @@ public readonly record struct UsageListing(IReadOnlyList<UsageRow> Rows, Usage T
 /// **A link is one entry, and never a folder.** <see cref="SafeWalk"/> reports
 /// every link with <c>IsDirectory</c> false, so a link to a directory is
 /// counted here as a file of no size. Both platform
-/// <see cref="IPropertiesProvider.MeasureAsync"/> walks count that same link as
-/// a folder — Windows tests the Directory attribute, and .NET's Unix
-/// <c>FileSystemEntry.IsDirectory</c> stats through the link — so a figure from
-/// one and a figure from the other are not interchangeable, and this does not
-/// replace them. Those answer "how big is this one thing" for a dialog; this
-/// answers it for every child of a folder at once, and counts what it could not
-/// read, which neither of those does.
+/// <see cref="IPropertiesProvider.MeasureAsync"/> walks used to count that same
+/// link as a folder — Windows tested the Directory attribute, and .NET's Unix
+/// <c>FileSystemEntry.IsDirectory</c> stats through the link — and the Linux one
+/// added a link at the length of its own text. They follow this rule now, with
+/// one difference on Windows: the measure there takes a link to be an entry
+/// with a link target, where SafeWalk takes any reparse point — so a reparse
+/// point that is not a link, a OneDrive placeholder by Windows' own
+/// documentation (not measured here), is a sized file in the dialog and an
+/// entry of no size here. They still do not replace this: those answer "how
+/// big is this one thing" for a
+/// dialog, while this answers it for every child of a folder at once, and
+/// counts what it could not read, which neither of those does.
 ///
 /// Progress is reported on the thread doing the walking, in order. A caller
 /// that hands in an <c>IProgress</c> marshalling to another thread owns what

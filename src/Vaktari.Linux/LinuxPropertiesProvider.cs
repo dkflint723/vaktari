@@ -503,9 +503,21 @@ public sealed partial class LinuxPropertiesProvider : IPropertiesProvider, IAcce
 
         await Task.Run(() =>
         {
+            // **A link was counted at the length of its own text, and a link to
+            // a folder as a folder.** FileSystemEntry.Length is the entry's own
+            // size as lstat reports it, which for a symbolic link is the length
+            // of the path the link holds — measured: ten bytes beside a link to
+            // a 9,000-byte file came to 80 — while IsDirectory answers about
+            // what the link points at. So the link bit is read first and decides
+            // both halves: a link is one entry, of no size, and never a folder,
+            // which is SpaceUsage's rule. On Linux the ReparsePoint bit means a
+            // symbolic link and nothing else, which the recursion test below
+            // already relies on.
             var walk = new FileSystemEnumerable<(long Length, bool IsDirectory)>(
                 path,
-                static (ref FileSystemEntry entry) => (entry.IsDirectory ? 0 : entry.Length, entry.IsDirectory),
+                static (ref FileSystemEntry entry) => entry.Attributes.HasFlag(FileAttributes.ReparsePoint)
+                    ? (0L, false)
+                    : (entry.IsDirectory ? 0 : entry.Length, entry.IsDirectory),
                 new EnumerationOptions
                 {
                     RecurseSubdirectories = true,

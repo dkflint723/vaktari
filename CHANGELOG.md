@@ -194,6 +194,13 @@ should not be trusted for compatibility yet.
 
 ### Fixed
 
+- **The Properties dialog no longer counts a link as the thing it points
+  at.** On Linux a symbolic link to a file was added to a folder's total at
+  the length of its own path — ten bytes of files and one link came to
+  eighty — and on both systems a link to a folder, or a junction on Windows,
+  was counted among the folders. A link now counts as one item of no size,
+  the way the space-usage view already counts one.
+
 - **Undoing the move of a folder that holds a junction no longer fails
   after it has worked.** Where Ctrl+Z cannot simply rename the folder back
   — across drives, or onto a source folder still standing because a file
