@@ -194,6 +194,22 @@ should not be trusted for compatibility yet.
 
 ### Fixed
 
+- **A link moved onto a name that is already taken is no longer lost.**
+  Answering *Overwrite* when a link was moved onto a name in use did not do
+  what it said. On Linux the link was deleted and nothing was written in its
+  place, and the move was still counted as done; copying one onto a taken
+  name wrote nothing either, while saying it had. On Windows a junction was
+  not written over a file of that name, and over an empty folder of that
+  name it was laid down without asking and removed from where it had been. A
+  file or a link at the name is now replaced, as the answer asks, and only
+  once the link that replaces it exists, so a drive that cannot hold links
+  leaves the name as it was. A folder at the name is left alone, and so is
+  the very file a link points at, which replacing would destroy: the link
+  stays where it was, and a message says why. That last one holds however
+  the file is reached — through a folder that answers to a second name, or
+  through a link that points at another link — and not only when the two
+  paths happen to be written the same way.
+
 - **A file that turns up at the destination during a copy is no longer
   replaced without a word.** A copy asks about a clash when it reaches
   each file, and then wrote the finished file under its name at the end,

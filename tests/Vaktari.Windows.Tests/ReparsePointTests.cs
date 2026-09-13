@@ -77,6 +77,216 @@ public class ReparsePointTests
     }
 
     /// <summary>
+    /// **A junction moved onto a taken file, answered Overwrite, replaces it.**
+    /// The answer was not carried out: CopyLink made a junction by first making
+    /// a folder at the name, which a file there refused, so the item failed
+    /// with the junction still at the source and the file still at the name,
+    /// whatever had been asked — measured. The Linux engine lost the link in the
+    /// same place. The answer is carried out now, and the source goes only once
+    /// the junction stands at the name.
+    /// </summary>
+    [WindowsFact]
+    public async Task Moving_a_junction_onto_a_taken_file_replaces_it()
+    {
+        using var tree = new TempTree();
+        var outside = tree.Dir("outside");
+        tree.Write("outside/kept.txt", "elsewhere");
+
+        var link = tree.Junction("from/link", outside);
+
+        tree.Dir("dst");
+        tree.Write("dst/link", "somebody else's");
+
+        var handle = await Finished(
+            new WindowsFileOperations().Move([link], tree.At("dst"), Overwrite));
+
+        var landed = tree.At("dst", "link");
+
+        // Answered Overwrite, so the answer is carried out: the junction is
+        // standing at the name, pointing where it always did.
+        Assert.True(
+            (File.GetAttributes(landed) & FileAttributes.ReparsePoint) != 0,
+            "the answer was Overwrite, so the junction should be standing there now");
+
+        Assert.Equal(outside, new DirectoryInfo(landed).LinkTarget);
+        Assert.False(Directory.Exists(link), "it was moved, so the source should have gone");
+
+        Assert.Equal([landed], handle.Landed);
+        Assert.Empty(handle.Problems);
+
+        // What it pointed at is untouched, as ever.
+        Assert.Equal("elsewhere", tree.Read("outside", "kept.txt"));
+    }
+
+    /// <summary>
+    /// **A folder at the name is refused, never turned into a junction.**
+    /// Overwrite asks for a file to be replaced; a folder is somebody's, and
+    /// making one into a link — or emptying it to make room for one — is a
+    /// larger act than the answer gave. The folder here is empty on purpose:
+    /// that is the case a junction can be laid over without anything failing
+    /// on the way.
+    /// </summary>
+    [WindowsFact]
+    public async Task Moving_a_junction_onto_a_taken_folder_is_refused_with_a_sentence()
+    {
+        using var tree = new TempTree();
+        var outside = tree.Dir("outside");
+        tree.Write("outside/kept.txt", "elsewhere");
+
+        var link = tree.Junction("from/link", outside);
+        var taken = tree.Dir("dst", "link");
+
+        var handle = await Finished(
+            new WindowsFileOperations().Move([link], tree.At("dst"), Overwrite));
+
+        // Both facts in one assertion, so a failure reports each of them rather
+        // than stopping at whichever happens to be checked first.
+        var kept = Directory.Exists(link);
+        var converted = (File.GetAttributes(taken) & FileAttributes.ReparsePoint) != 0;
+
+        Assert.True(
+            kept && !converted,
+            $"junction kept at the source: {kept}; folder at the name turned into a junction: {converted}");
+
+        Assert.Empty(handle.Landed);
+        Assert.Contains("folder", Assert.Single(handle.Problems).Error.Message);
+    }
+
+    /// <summary>
+    /// A folder with something in it is refused the same way: the rule is about
+    /// what a folder is, not about whether a junction could be laid over it.
+    /// </summary>
+    [WindowsFact]
+    public async Task Moving_a_junction_onto_a_folder_with_something_in_it_is_refused()
+    {
+        using var tree = new TempTree();
+        var outside = tree.Dir("outside");
+        var link = tree.Junction("from/link", outside);
+        tree.Write("dst/link/inside.txt", "somebody else's");
+
+        var handle = await Finished(
+            new WindowsFileOperations().Move([link], tree.At("dst"), Overwrite));
+
+        Assert.Equal("somebody else's", tree.Read("dst", "link", "inside.txt"));
+        Assert.True(Directory.Exists(link), "nothing was written, so the junction must still be at the source");
+
+        Assert.Empty(handle.Landed);
+        Assert.Contains("folder", Assert.Single(handle.Problems).Error.Message);
+
+        Assert.Equal(["link"], tree.Names("dst"));
+    }
+
+    /// <summary>
+    /// **What stood at the name survives a junction that cannot be made.** The
+    /// replacement is made first, under a staging name, and nothing at the name
+    /// is touched until it exists — so a volume that refuses the link, as FAT
+    /// and exFAT refuse every reparse point, leaves the name as it was rather
+    /// than leaving neither. The refusal is stood in for here, because no volume
+    /// to hand refuses a junction while letting the name be taken.
+    /// </summary>
+    [WindowsFact]
+    public async Task A_junction_that_cannot_be_made_leaves_what_was_at_the_name()
+    {
+        using var tree = new TempTree();
+        var outside = tree.Dir("outside");
+        var link = tree.Junction("from/link", outside);
+        var taken = tree.Write("dst/link", "somebody else's");
+
+        var ops = new WindowsFileOperations
+        {
+            BeforeLinking = _ => throw new IOException("this volume takes no reparse points"),
+        };
+
+        var handle = await Finished(ops.Move([link], tree.At("dst"), Overwrite));
+
+        Assert.Equal("somebody else's", File.ReadAllText(taken));
+        Assert.True(Directory.Exists(link), "the junction was not made, so it must still be at the source");
+
+        Assert.Empty(handle.Landed);
+        Assert.Single(handle.Problems);
+
+        // And nothing half-made is left beside it.
+        Assert.Equal(["link"], tree.Names("dst"));
+    }
+
+    /// <summary>
+    /// **A junction at the name is replaced like a file.** Directory.Exists
+    /// answers true for one, and it is still not a folder: replacing it removes
+    /// that junction and never what it pointed at.
+    /// </summary>
+    [WindowsFact]
+    public async Task Moving_a_junction_onto_a_taken_junction_replaces_it()
+    {
+        using var tree = new TempTree();
+        var outside = tree.Dir("outside");
+        tree.Write("outside/kept.txt", "elsewhere");
+        var elsewhere = tree.Dir("elsewhere");
+        tree.Write("elsewhere/kept.txt", "somebody else's");
+
+        var link = tree.Junction("from/link", outside);
+        tree.Junction("dst/link", elsewhere);
+
+        var handle = await Finished(
+            new WindowsFileOperations().Move([link], tree.At("dst"), Overwrite));
+
+        var landed = tree.At("dst", "link");
+
+        Assert.Equal(outside, new DirectoryInfo(landed).LinkTarget);
+        Assert.False(Directory.Exists(link), "it was moved, so the source should have gone");
+        Assert.Equal([landed], handle.Landed);
+
+        // Neither junction's target was touched, and nothing is left beside it.
+        Assert.Equal("elsewhere", tree.Read("outside", "kept.txt"));
+        Assert.Equal("somebody else's", tree.Read("elsewhere", "kept.txt"));
+        Assert.Equal(["link"], tree.Names("dst"));
+    }
+
+    /// <summary>
+    /// A read-only file at the name is replaced and leaves nothing behind.
+    /// Windows refuses to delete a read-only file where Linux would not, and
+    /// the file at the name is removed only after the junction stands in its
+    /// place, from the staging name it was renamed aside to.
+    /// </summary>
+    [WindowsFact]
+    public async Task Moving_a_junction_onto_a_read_only_file_leaves_nothing_behind()
+    {
+        using var tree = new TempTree();
+        var outside = tree.Dir("outside");
+        var link = tree.Junction("from/link", outside);
+
+        var taken = tree.Write("dst/link", "somebody else's");
+        File.SetAttributes(taken, FileAttributes.ReadOnly);
+
+        var handle = await Finished(
+            new WindowsFileOperations().Move([link], tree.At("dst"), Overwrite));
+
+        Assert.Equal(outside, new DirectoryInfo(taken).LinkTarget);
+        Assert.Equal([taken], handle.Landed);
+        Assert.Equal(["link"], tree.Names("dst"));
+    }
+
+    /// <summary>
+    /// The copy goes through the same arm. Answered Overwrite onto a taken
+    /// file, the junction is written there, and the one it was copied from
+    /// stays where it is.
+    /// </summary>
+    [WindowsFact]
+    public async Task Copying_a_junction_onto_a_taken_file_replaces_it()
+    {
+        using var tree = new TempTree();
+        var outside = tree.Dir("outside");
+        var link = tree.Junction("from/link", outside);
+        var taken = tree.Write("dst/link", "somebody else's");
+
+        var handle = await Finished(
+            new WindowsFileOperations().Copy([link], tree.At("dst"), Overwrite));
+
+        Assert.Equal(outside, new DirectoryInfo(taken).LinkTarget);
+        Assert.Equal(outside, new DirectoryInfo(link).LinkTarget);
+        Assert.Equal([taken], handle.Landed);
+    }
+
+    /// <summary>
     /// The destructive one. The junction's contents were copied to the
     /// destination and then deleted from the source side — which, through a
     /// junction, is a completely different tree on disk.

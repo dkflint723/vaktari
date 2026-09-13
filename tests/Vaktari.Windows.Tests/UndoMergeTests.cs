@@ -104,6 +104,61 @@ public class UndoMergeTests
         Assert.False(tree.Exists("src", "photos", "already-here.jpg"));
     }
 
+    /// <summary>
+    /// **A junction already standing at the source does not end the undo's walk
+    /// part-way.** Undoing a moved folder copies it back entry by entry when the
+    /// folder it came from is standing again, and it puts a link back with the
+    /// routine a move lands one with. That routine now refuses a name that is
+    /// already taken rather than returning in silence, and without a check in
+    /// the walk the refusal ended it at the first junction already standing at
+    /// the source, with the rest of the folder left at the destination —
+    /// measured while this change was being made, with z.txt never coming back.
+    /// So the walk leaves a link already standing at the name as it is, and
+    /// goes on.
+    ///
+    /// The undo still ends in an error after the walk, and this test does not
+    /// hide that or depend on it. Removing the emptied folder from the
+    /// destination is a recursive delete, and .NET's refuses a tree holding a
+    /// junction to anyone not elevated: it removes everything inside, the
+    /// junction itself included, then throws "Access to the path is denied"
+    /// and leaves the empty folder — measured on .NET 10.0.12, unelevated, with
+    /// no Vaktari code involved. That fault was there before any of this
+    /// changed and belongs to the undo's own repair.
+    /// </summary>
+    [WindowsFact]
+    public async Task Undoing_a_move_goes_on_past_a_junction_already_standing_at_the_source()
+    {
+        using var tree = new TempTree();
+        var outside = tree.Dir("outside");
+        tree.Write("outside/kept.txt", "elsewhere");
+
+        tree.Write("src/A/a.txt", "mine");
+        tree.Junction("src/A/j", outside);
+        tree.Write("src/A/z.txt", "also mine");
+        tree.Dir("dst");
+
+        var (ops, _) = Engine(tree);
+
+        await Done(ops.Move([tree.At("src", "A")], tree.At("dst"), Overwrite));
+
+        // The folder is back at the source with its junction in it, which is
+        // what sends the undo down the copy-back walk rather than one rename.
+        tree.Junction("src/A/j", outside);
+
+        // Recorded rather than asserted, for the reason in the summary: what
+        // is under test here is the walk, which ends before the delete.
+        _ = await Record.ExceptionAsync(() => ops.UndoAsync(CancellationToken.None).AsTask());
+
+        Assert.Equal("mine", tree.Read("src", "A", "a.txt"));
+        Assert.Equal("also mine", tree.Read("src", "A", "z.txt"));
+
+        Assert.True(
+            (File.GetAttributes(tree.At("src", "A", "j")) & FileAttributes.ReparsePoint) != 0,
+            "the junction already standing at the source was replaced or removed");
+
+        Assert.Equal("elsewhere", tree.Read("outside", "kept.txt"));
+    }
+
     /// <summary>A folder the copy made is still taken back whole — the case
     /// that was always right, kept right.</summary>
     [WindowsFact]

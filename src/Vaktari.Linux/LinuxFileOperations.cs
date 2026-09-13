@@ -23,6 +23,13 @@ public sealed class LinuxFileOperations : IFileOperations
     internal Action<string>? BeforeLanding { get; init; }
 
     /// <summary>
+    /// Called with the path a link is about to be made at. Tests make it throw,
+    /// to stand for a filesystem that refuses a link once the name has been
+    /// taken; the application never sets it.
+    /// </summary>
+    internal Action<string>? BeforeLinking { get; init; }
+
+    /// <summary>
     /// How many steps back Undo reaches.
     ///
     /// **There was no ceiling.** Every operation pushed an entry holding the
@@ -502,7 +509,18 @@ public sealed class LinuxFileOperations : IFileOperations
                         // Reproduced, not followed: the link is the thing being
                         // copied. Moving one deletes the link and leaves what it
                         // pointed at exactly where it was.
-                        CopyLink(item.Source, target);
+                        //
+                        // **The link is deleted only once its copy exists.**
+                        // CopyLink returned without a word when the name was taken,
+                        // and the delete below ran regardless: a clash answered
+                        // Overwrite left the bystander standing and the link gone —
+                        // measured, onto a taken file and a taken folder alike — and
+                        // the lines after this recorded the item as landed and as
+                        // undoable all the same. An undo built on that record would
+                        // move the bystander to where the link had been. CopyLink
+                        // throws now whenever it writes nothing, which skips this
+                        // delete and those records together.
+                        CopyLink(item.Source, target, replace, BeforeLinking);
                         if (move) File.Delete(item.Source);
                     }
                     else if (item.IsDirectory)
@@ -771,18 +789,196 @@ public sealed class LinuxFileOperations : IFileOperations
     /// The target is reproduced VERBATIM, relative links included: rewriting
     /// one to an absolute path would silently change what it means, and a
     /// relative link is usually relative on purpose.
+    ///
+    /// **It writes the link or it throws.** Both early returns here were silent
+    /// — a link whose target could not be read, and a name already taken — and
+    /// the caller could not tell "done" from "declined", so it deleted the
+    /// source of a move and recorded a landing for a link that was never made.
+    ///
+    /// <paramref name="replace"/> is true only when the clash was answered
+    /// Overwrite. A file or a link at the name is replaced then. A FOLDER is
+    /// refused, because a folder may hold anything and emptying one to stand a
+    /// link in its place is a larger act than the answer gave; so is the very
+    /// file the link points at.
+    ///
+    /// **Nothing at the name is removed until the link replacing it exists.**
+    /// A replacement that removed the original first and then made the link
+    /// would leave neither whenever the link is refused — FAT and exFAT take no
+    /// symbolic links at all. So the link is made under a staging name beside
+    /// the target; only then is the original renamed aside, the link renamed
+    /// in, and the original removed, and if the link cannot be renamed in, the
+    /// original is renamed back. It is the rule CopyFileAsync keeps for files:
+    /// the original is untouched until its replacement exists in full.
     /// </summary>
-    private static void CopyLink(string source, string target)
+    /// <param name="beforeLinking">Called with the path a link is about to be
+    /// made at. Tests make it throw to stand for a filesystem that refuses the
+    /// link; the application passes nothing.</param>
+    private static void CopyLink(
+        string source, string target, bool replace, Action<string>? beforeLinking = null)
     {
-        var pointsAt = new FileInfo(source).LinkTarget ?? new DirectoryInfo(source).LinkTarget;
+        var pointsAt = new FileInfo(source).LinkTarget ?? new DirectoryInfo(source).LinkTarget
+            ?? throw new IOException(
+                $"\"{Path.GetFileName(source)}\" is a link whose target could not be read.");
 
-        if (pointsAt is null) return;
-        if (File.Exists(target) || Directory.Exists(target)) return;
+        // A link whose target has gone is still something at the name, though
+        // both Exists checks answer false for it: they follow it.
+        if (!File.Exists(target) && !Directory.Exists(target) && !IsLink(target))
+        {
+            beforeLinking?.Invoke(target);
+            MakeLink(source, target, pointsAt);
+            return;
+        }
 
-        // Which call is decided by what the link points at, since that is what
-        // the link itself records.
-        if (Directory.Exists(source)) Directory.CreateSymbolicLink(target, pointsAt);
-        else File.CreateSymbolicLink(target, pointsAt);
+        if (Directory.Exists(target) && !IsLink(target))
+            throw new IOException(
+                $"\"{Path.GetFileName(target)}\" is a folder, and a link cannot replace a folder.");
+
+        // Not asked, so not replaced: the clash was settled with the name free,
+        // and something has arrived in the moment since.
+        if (!replace)
+            throw new IOException(
+                $"\"{Path.GetFileName(target)}\" turned up at the destination, so the link was left where it was.");
+
+        // **The name may be the very file the link is for.** A link on the
+        // desktop to Documents/report.pdf, moved into Documents and answered
+        // Overwrite: removing what stood at the name destroyed report.pdf, the
+        // only copy, and the link made there pointed at itself — measured on a
+        // move, on a copy, and with a relative link. Asked from both ends,
+        // because a relative link names a different file from where it stands
+        // now than from where it is going.
+        if (Names(pointsAt, source, target) || Names(pointsAt, target, target))
+            throw new IOException(
+                $"\"{Path.GetFileName(target)}\" is the file this link points at, so it was not replaced.");
+
+        var staged = Staging(target);
+
+        beforeLinking?.Invoke(staged);
+        MakeLink(source, staged, pointsAt);
+
+        var aside = Staging(target);
+
+        try
+        {
+            Rename(target, aside);
+        }
+        catch
+        {
+            Remove(staged);
+            throw;
+        }
+
+        try
+        {
+            Rename(staged, target);
+        }
+        catch
+        {
+            try { Rename(aside, target); }
+            catch (Exception restoring) { Vaktari.Core.Quiet.Swallowed("file-ops", restoring); }
+
+            Remove(staged);
+            throw;
+        }
+
+        // The link stands, so the original may go. A failure here is swallowed,
+        // as Discard's is: the link has landed, and a leftover under a staging
+        // name is not a reason to report it failed.
+        Remove(aside);
+    }
+
+    /// <summary>Which call is decided by what the link points at, since that is
+    /// what the link itself records.</summary>
+    private static void MakeLink(string source, string at, string pointsAt)
+    {
+        if (Directory.Exists(source)) Directory.CreateSymbolicLink(at, pointsAt);
+        else File.CreateSymbolicLink(at, pointsAt);
+    }
+
+    /// <summary>
+    /// Whether a link reading <paramref name="pointsAt"/>, standing at
+    /// <paramref name="at"/>, names the same file as <paramref name="target"/>.
+    ///
+    /// **This asked whether two paths were spelled alike, and one file answers
+    /// to many names.** Path.GetFullPath resolves nothing: it collapses
+    /// "…/sym/.." to the folder "sym" stands in rather than the folder it
+    /// points at, and it says nothing at all about a folder link in the middle
+    /// of a path. So a link moved into a symlinked folder — one folder under
+    /// two names is ordinary, /home being a link to var/home on Fedora Atomic —
+    /// passed this question, and the file at the name was then renamed aside
+    /// and deleted to make room for a link that pointed at itself. Measured in
+    /// WSL Fedora on a move, on a copy, through a chain of links, and through
+    /// ".." past a link.
+    ///
+    /// The target side is resolved only as far as its FOLDER, deliberately: a
+    /// link standing at the name is something this may replace, and following
+    /// that last step would compare what it points at rather than the link
+    /// itself.
+    /// </summary>
+    private static bool Names(string pointsAt, string at, string target)
+        => PathRules.Same(
+            Resolved(Path.Combine(Path.GetDirectoryName(at)!, pointsAt)),
+            Path.Combine(Resolved(Path.GetDirectoryName(target)!), Path.GetFileName(target)));
+
+    /// <summary>
+    /// An absolute path with every link along it followed: the file itself
+    /// rather than one of the names that reach it.
+    ///
+    /// A component at a time, because a link can stand anywhere along a path
+    /// and each one is read from where it stands. ".." is taken from what has
+    /// been resolved so far, which is what the kernel does, and what collapsing
+    /// the text cannot do.
+    ///
+    /// <paramref name="budget"/> is ELOOP: links can point in a circle, and a
+    /// circle has no file at the end of it. The path built so far is returned
+    /// rather than throwing — it still names a link, so the comparison above
+    /// simply does not match, which is the right answer when there is no file
+    /// to protect.
+    /// </summary>
+    private static string Resolved(string path, int budget = 40)
+    {
+        var built = "/";
+
+        foreach (var part in path.Split('/', StringSplitOptions.RemoveEmptyEntries))
+        {
+            if (part is ".") continue;
+
+            if (part is "..")
+            {
+                built = Path.GetDirectoryName(built) ?? "/";
+                continue;
+            }
+
+            built = Path.Combine(built, part);
+
+            if (budget <= 0) continue;
+
+            // The last component is followed too: what the caller is asking
+            // about is the file at the end, not the link that names it.
+            if ((new FileInfo(built).LinkTarget ?? new DirectoryInfo(built).LinkTarget) is { } text)
+                built = Resolved(Path.Combine(Path.GetDirectoryName(built)!, text), budget - 1);
+        }
+
+        return built;
+    }
+
+    /// <summary>Renames the entry itself — a file, or a link of either kind —
+    /// and never what a link points at: rename(2) does not follow.</summary>
+    private static void Rename(string from, string to)
+    {
+        if (Directory.Exists(from)) Directory.Move(from, to);
+        else File.Move(from, to);
+    }
+
+    /// <summary>Removes a file or a link, never what a link points at. Swallows
+    /// a failure, because it runs to tidy up, and tidying must neither replace
+    /// the reason a replacement failed nor call a landed link a failure.</summary>
+    private static void Remove(string path)
+    {
+        try { File.Delete(path); }
+        catch (Exception e) when (e is IOException or UnauthorizedAccessException)
+        {
+            Vaktari.Core.Quiet.Swallowed("file-ops", e);
+        }
     }
 
     /// <summary>
