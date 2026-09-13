@@ -116,14 +116,15 @@ public class UndoMergeTests
     /// So the walk leaves a link already standing at the name as it is, and
     /// goes on.
     ///
-    /// The undo still ends in an error after the walk, and this test does not
-    /// hide that or depend on it. Removing the emptied folder from the
-    /// destination is a recursive delete, and .NET's refuses a tree holding a
-    /// junction to anyone not elevated: it removes everything inside, the
-    /// junction itself included, then throws "Access to the path is denied"
-    /// and leaves the empty folder — measured on .NET 10.0.12, unelevated, with
-    /// no Vaktari code involved. That fault was there before any of this
-    /// changed and belongs to the undo's own repair.
+    /// **The undo used to fail after the walk, and this test recorded that
+    /// rather than asserting past it.** Removing the emptied folder from the
+    /// destination was .NET's recursive delete, which refused a tree holding a
+    /// junction to anyone not elevated: it removed everything inside, the
+    /// junction itself included, then threw "Access to the path is denied" and
+    /// left the empty folder — measured on .NET 10.0.12, unelevated, with no
+    /// Vaktari code involved. That removal now goes through DeleteTree, the
+    /// walk the permanent delete uses, so the undo is awaited here like any
+    /// other and has to finish.
     /// </summary>
     [WindowsFact]
     public async Task Undoing_a_move_goes_on_past_a_junction_already_standing_at_the_source()
@@ -145,9 +146,7 @@ public class UndoMergeTests
         // what sends the undo down the copy-back walk rather than one rename.
         tree.Junction("src/A/j", outside);
 
-        // Recorded rather than asserted, for the reason in the summary: what
-        // is under test here is the walk, which ends before the delete.
-        _ = await Record.ExceptionAsync(() => ops.UndoAsync(CancellationToken.None).AsTask());
+        await ops.UndoAsync(CancellationToken.None);
 
         Assert.Equal("mine", tree.Read("src", "A", "a.txt"));
         Assert.Equal("also mine", tree.Read("src", "A", "z.txt"));
