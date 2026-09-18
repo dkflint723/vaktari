@@ -30,6 +30,14 @@ public sealed class LinuxFileOperations : IFileOperations
     internal Action<string>? BeforeLinking { get; init; }
 
     /// <summary>
+    /// Called with (from, to) in place of the undo walk's own rename, and
+    /// answering an errno: 0 for done, 17 for a name taken, 18 for another
+    /// device. Tests reach the arms that need two filesystems without having
+    /// two; the application never sets it.
+    /// </summary>
+    internal Func<string, string, int>? RenameForUndo { get; init; }
+
+    /// <summary>
     /// How many steps back Undo reaches.
     ///
     /// **There was no ceiling.** Every operation pushed an entry holding the
@@ -220,8 +228,15 @@ public sealed class LinuxFileOperations : IFileOperations
         if (path.Length > 0) Remember(new UndoCreate(Trash, path));
     }
 
+    /// <summary>Bumped by every operation that records itself. A walk reads it
+    /// before it starts and again when it ends: if it moved, what the walk did
+    /// must not be stacked on top of history it does not belong to. The Windows
+    /// twin carries the same counter and the same reasoning.</summary>
+    private int _generation;
+
     private void Remember(IUndoable action)
     {
+        _generation++;
         _redo.Clear();
         _undo.Push(action);
     }
@@ -250,15 +265,61 @@ public sealed class LinuxFileOperations : IFileOperations
     {
         if (!_redo.TryPop(out var action)) return;
 
-        if (await action.UndoAsync(ct).ConfigureAwait(false) is { } undo) _undo.Push(undo);
+        var generation = _generation;
+
+        try
+        {
+            var undo = await action.UndoAsync(ct).ConfigureAwait(false);
+
+            if (undo is not null && generation == _generation) _undo.Push(undo);
+        }
+        catch (PartlyUndone partly)
+        {
+            if (Stackable(partly, generation))
+            {
+                _undo.Push(partly.Done!);
+                if (partly.Left is { } left) _redo.Push(left);
+            }
+
+            throw;
+        }
     }
 
     public async ValueTask UndoAsync(CancellationToken ct)
     {
-        if (_undo.TryPop(out var action)
-            && await action.UndoAsync(ct).ConfigureAwait(false) is { } redo)
-            _redo.Push(redo);
+        if (!_undo.TryPop(out var action)) return;
+
+        var generation = _generation;
+
+        try
+        {
+            var redo = await action.UndoAsync(ct).ConfigureAwait(false);
+
+            if (redo is not null && generation == _generation) _redo.Push(redo);
+        }
+        catch (PartlyUndone partly)
+        {
+            if (Stackable(partly, generation))
+            {
+                _redo.Push(partly.Done!);
+                if (partly.Left is { } left) _undo.Push(left);
+            }
+
+            throw;
+        }
     }
+
+    /// <summary>
+    /// Whether a partial result may go back on the stacks at all.
+    ///
+    /// **Nothing moved, so nothing is pushed back on top**: a press that put
+    /// nothing back and pushed itself back would wedge Ctrl+Z against its own
+    /// obstacle, burying anything recorded since. And if the history moved while
+    /// the walk ran, neither half goes anywhere. The Windows twin carries the
+    /// same rule with the same words.
+    /// </summary>
+    private bool Stackable(PartlyUndone partly, int generation)
+        => partly.Done is not null && generation == _generation;
 
     /// <summary>
     /// <paramref name="retrying"/> is the second pass: the items a previous run
@@ -686,7 +747,7 @@ public sealed class LinuxFileOperations : IFileOperations
                 }
                 else if (move)
                 {
-                    Remember(new UndoMove(undoable));
+                    Remember(new UndoMove(undoable, RenameForUndo));
                 }
                 else
                 {
@@ -1415,6 +1476,10 @@ public sealed class LinuxFileOperations : IFileOperations
                     if (await steps[i].UndoAsync(ct).ConfigureAwait(false) is { } again)
                         back.Add(again);
                 }
+                // A partial result is not one name failing: it carries the two
+                // halves of a walk back to the engine, and swallowing it here
+                // would drop both.
+                catch (PartlyUndone) { throw; }
                 catch (IOException) { /* this one name, and only this one */ }
             }
 
@@ -1521,33 +1586,487 @@ public sealed class LinuxFileOperations : IFileOperations
     /// found nothing to put back, so Ctrl+Y after a bad undo quietly did
     /// nothing while the pane refreshed as though it had worked.
     /// </summary>
-    private sealed class UndoMove(
-        IReadOnlyList<(string Source, string Target)> landings) : IUndoable
+    /// <summary>
+    /// What an undo or a redo did in part and could not finish. The Windows twin
+    /// carries the same two halves and the same reasoning: an IOException on
+    /// purpose, so Failures.Describe passes the sentence through, with the
+    /// HResult left where the base class puts it.
+    /// </summary>
+    private sealed class PartlyUndone(string said, IUndoable? done, IUndoable? left)
+        : IOException(said)
     {
-        public string Describe => UndoNames.Of("move", [.. landings.Select(l => l.Target)]);
+        /// <summary>What went, as the step that would take it the other way.</summary>
+        public IUndoable? Done { get; } = done;
+
+        /// <summary>What did not, as the step that would try it again.</summary>
+        public IUndoable? Left { get; } = left;
+    }
+
+    /// <summary>One thing an undo does. See <see cref="UndoMove"/>.</summary>
+    private abstract record Step;
+
+    /// <summary>Put the entry at <paramref name="From"/> at <paramref name="To"/>,
+    /// whatever it is — renamed, never followed.</summary>
+    private sealed record Travel(string From, string To) : Step;
+
+    /// <summary>Make a folder at <paramref name="Path"/> if nothing is there,
+    /// wearing the mode captured from the folder it stands for.</summary>
+    private sealed record MakeFolder(string Path, UnixFileMode Mode) : Step;
+
+    /// <summary>Remove <paramref name="Path"/> only if it is a real folder with
+    /// nothing in it — never recursive.</summary>
+    private sealed record RemoveIfEmpty(string Path) : Step;
+
+    /// <summary>
+    /// The undo of a move, as steps that know how to run themselves backwards.
+    /// The Windows twin carries the same model, and the differences below are
+    /// the ones the two systems actually have.
+    ///
+    /// **This went through the trash's cross-device route, which copied whatever
+    /// a rename refused.** Measured 2026-09-12 in WSL Fedora: a file written at
+    /// the source since left copies in both places with both stacks gone; links
+    /// came back as full copies of what they pointed at, a linked library
+    /// duplicated whole; and a dangling link stopped the undo part-way.
+    ///
+    /// Every name is decided by the kernel in one <c>renameat2</c> that will not
+    /// replace, which also removes the kind split .NET forces: one call renames
+    /// a file, a folder, a link to either, and a link whose target has gone.
+    /// </summary>
+    private sealed class UndoMove : IUndoable
+    {
+        private readonly IReadOnlyList<Step> _steps;
+
+        private readonly string _describe;
+
+        private readonly bool _forward;
+
+        private readonly Func<string, string, int>? _renaming;
+
+        /// <summary>What a move records: the pairs it landed, read backwards.</summary>
+        public UndoMove(
+            IReadOnlyList<(string Source, string Target)> landings,
+            Func<string, string, int>? renaming = null)
+            : this(
+                [.. landings.Select(l => (Step)new Travel(l.Target, l.Source))],
+                UndoNames.Of("move", [.. landings.Select(l => l.Target)]),
+                forward: false,
+                renaming)
+        {
+        }
+
+        private UndoMove(
+            IReadOnlyList<Step> steps, string describe, bool forward, Func<string, string, int>? renaming)
+        {
+            _steps = steps;
+            _describe = describe;
+            _forward = forward;
+            _renaming = renaming;
+        }
+
+        /// <summary>The name of the roots the move was asked about, carried
+        /// rather than read off the steps — see the Windows twin.</summary>
+        public string Describe => _describe;
 
         public ValueTask<IUndoable?> UndoAsync(CancellationToken ct)
         {
-            var undone = new List<(string Source, string Target)>();
+            var inverses = new List<Step>();
+            var left = new List<Step>();
+            var blocked = new List<(string Name, string? Why)>();
+            var notes = new List<string>();
 
-            foreach (var (source, moved) in landings)
+            foreach (var step in _steps)
             {
-                if (!File.Exists(moved) && !Directory.Exists(moved)) continue;
+                ct.ThrowIfCancellationRequested();
 
-                // **The folder it came out of may be gone.** A move that merged
-                // into an existing folder carried its contents one by one, and
-                // the sweep then removed the emptied source folders.
-                if (PathRules.Parent(source) is { } parent) Directory.CreateDirectory(parent);
-
-                XdgTrash.MoveAcrossDevices(moved, source);
-
-                // Reversed for the redo: putting it back means moving it from
-                // where it now is to where it had landed.
-                undone.Add((moved, source));
+                switch (step)
+                {
+                    case Travel travel: RunTravel(travel, inverses, left, blocked, notes); break;
+                    case MakeFolder make: RunMakeFolder(make, inverses, left, blocked); break;
+                    case RemoveIfEmpty remove: RunRemoveIfEmpty(remove, inverses, notes); break;
+                }
             }
 
-            return ValueTask.FromResult<IUndoable?>(
-                undone.Count > 0 ? new UndoMove(undone) : null);
+            inverses.Reverse();
+
+            var done = inverses.Count > 0
+                ? new UndoMove(inverses, _describe, !_forward, _renaming)
+                : null;
+
+            if (left.Count == 0 && notes.Count == 0) return ValueTask.FromResult<IUndoable?>(done);
+
+            throw new PartlyUndone(
+                Sentence(blocked, notes),
+                done,
+                left.Count > 0 ? new UndoMove(left, _describe, _forward, _renaming) : null);
+        }
+
+        private void RunTravel(
+            Travel travel, List<Step> inverses, List<Step> left, List<(string Name, string? Why)> blocked, List<string> notes)
+        {
+            FileAttributes attributes;
+
+            try
+            {
+                // An lstat, and it answers for a dangling link where Exists does
+                // not: on Linux File.Exists follows, so a link to nothing reads
+                // as nothing at all and would be passed over as already gone —
+                // which is how one used to stop the undo part-way.
+                attributes = File.GetAttributes(travel.From);
+            }
+            catch (Exception e) when (e is FileNotFoundException or DirectoryNotFoundException)
+            {
+                return;
+            }
+            catch (Exception e)
+            {
+                Remaining(travel, e, left, blocked);
+                return;
+            }
+
+            var link = (attributes & FileAttributes.ReparsePoint) != 0;
+            var realFolder = (attributes & FileAttributes.Directory) != 0 && !link;
+
+            if (!Ancestors(travel.To, inverses, left, blocked)) { left.Add(travel); return; }
+
+            var errno = Rename(travel.From, travel.To);
+
+            if (errno == 0)
+            {
+                inverses.Add(new Travel(travel.To, travel.From));
+                return;
+            }
+
+            if (errno == Renames.NameTaken)
+            {
+                Taken(travel, realFolder, link, inverses, left, blocked, notes);
+                return;
+            }
+
+            if (errno == Renames.NotSameDevice)
+            {
+                Travelling(travel, realFolder, link, inverses, left, blocked, notes);
+                return;
+            }
+
+            Remaining(travel, Failed(errno, travel.From), left, blocked);
+        }
+
+        /// <summary>
+        /// The rename, and the one road for a filesystem that has no
+        /// RENAME_NOREPLACE.
+        ///
+        /// **/mnt/c answers EINVAL for a name that is free**, so refusing to work
+        /// where the flag is missing would take the undo away from everyone
+        /// browsing a Windows drive from WSL. The fallback looks and then
+        /// renames, which is the window this class exists to close — accepted
+        /// only here, only where there is no other way, and stated rather than
+        /// hidden. LandAsync already accepts the same window everywhere else.
+        /// </summary>
+        private int Rename(string from, string to)
+        {
+            if (_renaming is { } seam) return seam(from, to);
+
+            var errno = Renames.WithoutReplacing(from, to);
+
+            if (!Renames.NoFlagHere(errno)) return errno;
+
+            // An lstat, so a dangling link at the name counts as taken.
+            if (File.Exists(to) || Directory.Exists(to) || IsLink(to)) return Renames.NameTaken;
+
+            return Renames.Plainly(from, to);
+        }
+
+        private void Taken(
+            Travel travel, bool realFolder, bool link, List<Step> inverses, List<Step> left,
+            List<(string Name, string? Why)> blocked, List<string> notes)
+        {
+            if (realFolder && Directory.Exists(travel.To) && !IsLink(travel.To))
+            {
+                Merge(travel, make: false, inverses, left, blocked, notes);
+                return;
+            }
+
+            // **A link pointing at the same place is already put back.** Byte
+            // exact, and deliberately not PathRules.Same: a Linux path is a byte
+            // string, two spellings are two different targets, and this is the
+            // only place the walk removes anything on the strength of comparing
+            // text.
+            if (link && IsLink(travel.To) && Target(travel.From) is { } mine
+                && Target(travel.To) is { } theirs && string.Equals(mine, theirs, StringComparison.Ordinal))
+            {
+                try
+                {
+                    // File.Delete removes a link of any kind and leaves what it
+                    // points at; Directory.Delete throws at a file or dangling
+                    // link, and Remove swallows.
+                    File.Delete(travel.From);
+                    inverses.Add(new Travel(travel.To, travel.From));
+                }
+                catch (Exception e)
+                {
+                    Remaining(travel, e, left, blocked);
+                }
+
+                return;
+            }
+
+            Remaining(travel, refusal: null, left, blocked);
+        }
+
+        /// <summary>
+        /// Across a device boundary, where a rename cannot reach.
+        ///
+        /// **Nothing that landed is ever removed again.** When the copy arrives
+        /// and the source will not go, both stand and the sentence names both
+        /// places: a failed removal does not prove the source survived — a
+        /// server may have removed it and then reported an error — and the
+        /// rename here is by path, not by identity, so there is nothing to prove
+        /// the copy is ours to take back.
+        /// </summary>
+        private void Travelling(
+            Travel travel, bool realFolder, bool link, List<Step> inverses, List<Step> left,
+            List<(string Name, string? Why)> blocked, List<string> notes)
+        {
+            if (realFolder)
+            {
+                Merge(travel, make: true, inverses, left, blocked, notes);
+                return;
+            }
+
+            var staging = Staging(travel.To);
+
+            try
+            {
+                if (link) CopyLink(travel.From, staging, replace: false);
+                else
+                {
+                    // **File.Copy, not a stream copy, and that decides what has
+                    // to be carried afterwards.** On Unix it fchmods and
+                    // futimenses the copy itself, so the mode and the times
+                    // arrive with it — measured by revert-check, where deleting
+                    // a FileMetadata.Carry here left both still correct, which
+                    // is a line no test could ever defend. CopyFileAsync needs
+                    // that call because it writes through a FileStream, which
+                    // carries neither.
+                    File.Copy(travel.From, staging);
+
+                    // Extended attributes are the one thing File.Copy does not
+                    // take, and after the copy rather than before it, so a
+                    // restrictive mode is never in place while they are written.
+                    Xattrs.Carry(travel.From, staging);
+                }
+            }
+            catch (Exception e)
+            {
+                // The staging name is this walk's own, made with a guid a moment
+                // ago, so it is the one thing here that may be taken back.
+                Discard(staging);
+                Remaining(travel, e, left, blocked);
+                return;
+            }
+
+            if (Rename(staging, travel.To) is var landed && landed != 0)
+            {
+                Discard(staging);
+                Remaining(travel, Failed(landed, travel.To), left, blocked);
+                return;
+            }
+
+            try
+            {
+                File.Delete(travel.From);
+            }
+            catch (Exception e)
+            {
+                notes.Add(
+                    $"{Path.GetFileName(travel.From)} was copied back but the one at "
+                    + $"{Path.GetDirectoryName(travel.From)} could not be removed: {e.Message}");
+            }
+
+            inverses.Add(new Travel(travel.To, travel.From));
+        }
+
+        private void Merge(
+            Travel travel, bool make, List<Step> inverses, List<Step> left,
+            List<(string Name, string? Why)> blocked, List<string> notes)
+        {
+            var mine = new List<Step>();
+            var created = false;
+
+            if (make)
+            {
+                switch (RunMakeFolder(new MakeFolder(travel.To, Mode(travel.From)), mine, left, blocked))
+                {
+                    case Made.Created: created = true; break;
+                    case Made.AlreadyThere: break;
+                    default: left.Add(travel); return;
+                }
+            }
+
+            FileSystemInfo[] children;
+
+            try
+            {
+                children = new DirectoryInfo(travel.From).GetFileSystemInfos();
+            }
+            catch (Exception e)
+            {
+                inverses.AddRange(mine);
+                Remaining(travel, e, left, blocked);
+                left.Add(new RemoveIfEmpty(travel.From));
+                return;
+            }
+
+            var before = left.Count;
+
+            foreach (var child in children)
+                RunTravel(
+                    new Travel(child.FullName, Path.Combine(travel.To, child.Name)),
+                    mine, left, blocked, notes);
+
+            if (left.Count > before)
+            {
+                inverses.AddRange(mine);
+                left.Add(new RemoveIfEmpty(travel.From));
+                return;
+            }
+
+            RunRemoveIfEmpty(new RemoveIfEmpty(travel.From), mine, notes);
+
+            // The folder goes back whole, so it comes forward whole — keyed on
+            // what was actually made and on the source being gone, both read off
+            // the disk. The Windows twin carries the same rule and the measured
+            // reason for keying it this way.
+            if (created && !Directory.Exists(travel.From))
+            {
+                inverses.Add(new Travel(travel.To, travel.From));
+                return;
+            }
+
+            inverses.AddRange(mine);
+        }
+
+        private static bool Ancestors(
+            string to, List<Step> inverses, List<Step> left, List<(string Name, string? Why)> blocked)
+        {
+            if (PathRules.Parent(to) is not { } parent) return true;
+
+            var missing = new List<string>();
+
+            for (var at = parent; at is not null; at = PathRules.Parent(at))
+            {
+                if (Directory.Exists(at) && !IsLink(at)) break;
+
+                missing.Add(at);
+            }
+
+            missing.Reverse();
+
+            foreach (var at in missing)
+                if (RunMakeFolder(new MakeFolder(at, UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute),
+                                  inverses, left, blocked) == Made.Refused)
+                    return false;
+
+            return true;
+        }
+
+        private enum Made { Created, AlreadyThere, Refused }
+
+        private static Made RunMakeFolder(
+            MakeFolder make, List<Step> inverses, List<Step> left, List<(string Name, string? Why)> blocked)
+        {
+            if (Directory.Exists(make.Path) && !IsLink(make.Path)) return Made.AlreadyThere;
+
+            if (File.Exists(make.Path) || IsLink(make.Path))
+            {
+                left.Add(make);
+                blocked.Add((Path.GetFileName(make.Path), null));
+                return Made.Refused;
+            }
+
+            try
+            {
+                // **Made narrow, filled, then given its own mode.** A folder
+                // created 0555 refuses every child that should go into it, and
+                // the creation mode is filtered by the umask in any case, so it
+                // is set afterwards rather than asked for up front.
+                Directory.CreateDirectory(make.Path);
+                File.SetUnixFileMode(make.Path, UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute);
+
+                inverses.Add(new RemoveIfEmpty(make.Path));
+                return Made.Created;
+            }
+            catch (Exception e)
+            {
+                left.Add(make);
+                blocked.Add((Path.GetFileName(make.Path), e.Message));
+                return Made.Refused;
+            }
+        }
+
+        private static void RunRemoveIfEmpty(RemoveIfEmpty remove, List<Step> inverses, List<string> notes)
+        {
+            if (!Directory.Exists(remove.Path) || IsLink(remove.Path)) return;
+
+            var mode = Mode(remove.Path);
+
+            try
+            {
+                Directory.Delete(remove.Path, recursive: false);
+                inverses.Add(new MakeFolder(remove.Path, mode));
+            }
+            catch (Exception e)
+            {
+                notes.Add(e.Message);
+            }
+        }
+
+        private static void Remaining(
+            Travel travel, Exception? refusal, List<Step> left, List<(string Name, string? Why)> blocked)
+        {
+            left.Add(travel);
+            blocked.Add((Path.GetFileName(travel.From), refusal?.Message));
+        }
+
+        private static string? Target(string path)
+        {
+            try { return new FileInfo(path).LinkTarget ?? new DirectoryInfo(path).LinkTarget; }
+            catch (Exception) { return null; }
+        }
+
+        private static UnixFileMode Mode(string path)
+        {
+            try { return File.GetUnixFileMode(path); }
+            catch (Exception) { return UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute; }
+        }
+
+        private static void Discard(string staging)
+        {
+            try { if (File.Exists(staging) || IsLink(staging)) File.Delete(staging); }
+            catch (Exception) { /* a staging name is not worth failing over */ }
+        }
+
+        private static IOException Failed(int errno, string path)
+            => new($"\"{Path.GetFileName(path)}\" could not be renamed: errno {errno}.");
+
+        private string Sentence(List<(string Name, string? Why)> blocked, List<string> notes)
+        {
+            var way = _forward ? "go forward" : "go back";
+
+            if (blocked.Count == 0)
+                return notes.Count > 0
+                    ? $"everything went {(_forward ? "forward" : "back")}, but {notes[0]}"
+                    : $"something could not {way}";
+
+            var named = string.Join(", ", blocked.Take(3).Select(b => b.Name));
+
+            if (blocked.Count > 3) named += $" and {blocked.Count - 3} more";
+
+            var why = blocked.FirstOrDefault(b => b.Why is not null).Why;
+
+            return why is not null
+                ? $"{named} could not {way}: {why}"
+                : $"{named} could not {way}, because something of that name is there now";
         }
     }
 }

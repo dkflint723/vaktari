@@ -194,17 +194,21 @@ should not be trusted for compatibility yet.
 
 ### Fixed
 
-- **On Windows, undoing the move of a folder no longer writes over what is
-  standing at the source, or stops half-done.** Where the folder a move came
-  out of was there again, Ctrl+Z copied the moved tree back over it: a file
-  written there since was replaced without a word, and a read-only file, or a
-  file standing where a moved subfolder belonged, stopped the undo part-way
-  with both Ctrl+Z and Ctrl+Y gone. Every entry now goes back on its own and
-  only onto a free name. What cannot go back stays where the move left it, is
-  named on the status bar, and is still offered by Ctrl+Z, so clearing the way
-  and pressing again finishes the job. A folder the move made travels back
-  whole and forward again whole, carrying anything saved into it in between,
-  while one the move merged into gives back only what the move put there.
+- **Undoing the move of a folder no longer writes over what is standing at the
+  source, or stops half-done.** Where the folder a move came out of was there
+  again, Ctrl+Z copied the moved tree back over it: a file written there since
+  was replaced without a word, and a read-only file, or a file standing where a
+  moved subfolder belonged, stopped the undo part-way with both Ctrl+Z and
+  Ctrl+Y gone. On Linux it went further — links came back as full copies of
+  what they pointed at, so a linked photo library was duplicated whole into the
+  folder it was linked from, and a link whose target had gone stopped the undo
+  where it stood. Every entry now goes back on its own and only onto a free
+  name, and links go back as links. What cannot go back stays where the move
+  left it, is named on the status bar, and is still offered by Ctrl+Z, so
+  clearing the way and pressing again finishes the job. A folder the move made
+  travels back whole and forward again whole, carrying anything saved into it
+  in between, while one the move merged into gives back only what the move put
+  there.
 
 - **An undo that fails part-way no longer leaves the folder looking
   untouched.** Such an undo has still moved things on disk, but the pane
