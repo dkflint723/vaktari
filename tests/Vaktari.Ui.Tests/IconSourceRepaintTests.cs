@@ -78,13 +78,13 @@ public sealed class IconSourceRepaintTests : OwnedViewModels
     }
 
     /// <summary>
-    /// How many handlers the static event is holding.
+    /// The handlers the static event is holding.
     ///
     /// Read through the compiler-generated backing field, because an event
     /// exposes no other way to ask — and asking is the point: the leak this
     /// guards against is invisible from outside.
     /// </summary>
-    private static int Listeners()
+    private static Delegate[] Handlers()
     {
         var field = typeof(IconLoader).GetField(
             nameof(IconLoader.SourceChanged),
@@ -92,7 +92,22 @@ public sealed class IconSourceRepaintTests : OwnedViewModels
 
         Assert.NotNull(field);
 
-        return ((EventHandler?)field!.GetValue(null))?.GetInvocationList().Length ?? 0;
+        return ((EventHandler?)field!.GetValue(null))?.GetInvocationList() ?? [];
+    }
+
+    /// <summary>
+    /// The one handler <paramref name="after"/> holds that
+    /// <paramref name="before"/> did not: the subscription the window just
+    /// made, told apart from every other window's by identity rather than by
+    /// arithmetic.
+    /// </summary>
+    private static Delegate Added(Delegate[] before, Delegate[] after)
+    {
+        var added = after.Except(before).ToArray();
+
+        Assert.Single(added);
+
+        return added[0];
     }
 
     // ---- the announcement reaches every pane -------------------------------
@@ -139,20 +154,32 @@ public sealed class IconSourceRepaintTests : OwnedViewModels
     /// Asserted as a difference rather than an absolute: other windows may be
     /// open in the same run, and this only claims that this one arrives and
     /// leaves.
+    ///
+    /// **And the difference is in identity, not in the count.** A window an
+    /// earlier class closed can still be subscribed when this one starts —
+    /// MainWindow's teardown runs past Close(), as the wait below says — and
+    /// when it lets go between the reading before and the reading after, the
+    /// count stands still while the membership changes completely. Measured in
+    /// a full run: before held one handler on MainWindow #30768801 and the
+    /// reading after held one on #7466953, which a count read as "the window
+    /// never subscribed" and failed. Holding the handler itself is the stricter
+    /// claim as well as the steadier one: the window that leaks is the window
+    /// this names, so a genuine leak still reddens it.
     /// </summary>
     [AvaloniaFact]
     public void A_window_subscribes_while_it_is_open_and_lets_go_when_it_closes()
     {
         UseSearch(PaneViewModel.Search);
 
-        var before = Listeners();
+        var before = Handlers();
 
         var window = _window = new MainWindow();
 
         window.Show();
         Settle();
 
-        Assert.Equal(before + 1, Listeners());
+        // Subscribed, exactly once: Added asserts there is one new handler.
+        var mine = Added(before, Handlers());
 
         window.Close();
         _window = null;
@@ -161,8 +188,8 @@ public sealed class IconSourceRepaintTests : OwnedViewModels
         // asserting straight after the call saw the handler still attached.
         // Waited for rather than counted in turns, which is the rule every
         // load-dependent wait in this suite has had to learn.
-        for (var i = 0; i < 200 && Listeners() != before; i++) { Settle(); Thread.Sleep(5); }
+        for (var i = 0; i < 200 && Handlers().Contains(mine); i++) { Settle(); Thread.Sleep(5); }
 
-        Assert.Equal(before, Listeners());
+        Assert.DoesNotContain(mine, Handlers());
     }
 }
