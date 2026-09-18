@@ -1092,7 +1092,17 @@ public sealed class WindowsFileOperations : IFileOperations
                     // has that file open". Explorer makes a duplicate, which is
                     // plainly what was meant; a MOVE to where it already is has
                     // nothing to do at all.
-                    if (PathRules.Same(item.Source, target))
+                    //
+                    // **Asked of the entry, not of the spelling.** Path text was
+                    // all this compared, so the same folder under a second name
+                    // — a junction beside it is enough — walked straight past
+                    // it: the name was then "taken" by the entry itself, the
+                    // clash was answered, CopyLink did its replace dance on the
+                    // source's own directory entry, and the DeleteLink after it
+                    // took away what had just landed. 3c9a45c closed the same
+                    // fault for a link moved into a DIFFERENT folder reached by
+                    // another name; this is the case its tests did not cover.
+                    if (SameEntry(item.Source, target))
                     {
                         if (move)
                         {
@@ -1695,6 +1705,26 @@ public sealed class WindowsFileOperations : IFileOperations
     /// comparison above simply does not match, which is the right answer when
     /// there is nothing to protect.
     /// </summary>
+    /// <summary>
+    /// Whether two paths name the SAME directory entry, however each is spelled.
+    ///
+    /// **The folders are resolved and the leaf is not.** Following the last
+    /// component would call a link and the thing it points at one entry, which
+    /// is the opposite of what every rule here needs; following only the folders
+    /// is what turns two spellings of one place into one answer. The same
+    /// asymmetry <see cref="LinkNames"/> uses, which is where this fault was
+    /// first found and fixed for a different folder.
+    /// </summary>
+    private static bool SameEntry(string a, string b)
+    {
+        if (PathRules.Same(a, b)) return true;
+
+        if (PathRules.Parent(a) is not { } here || PathRules.Parent(b) is not { } there) return false;
+
+        return string.Equals(PathRules.LeafName(a), PathRules.LeafName(b), PathRules.Comparison)
+            && string.Equals(Resolved(here), Resolved(there), PathRules.Comparison);
+    }
+
     private static string Resolved(string path, int budget = 40)
     {
         var root = Path.GetPathRoot(path);

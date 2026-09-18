@@ -562,6 +562,50 @@ public sealed class SymlinkCopyTests : IDisposable
     /// review of this change, on a move and on a copy, through a folder link as
     /// here, through a chain of links, and through ".." past a link.
     /// </summary>
+    /// <summary>
+    /// **And the folder with two names can be the link's OWN folder.** Every
+    /// alias test beside this one puts the second name on the DESTINATION; put
+    /// it on the folder the link already lives in and the move is a move to
+    /// where it already is, spelled differently.
+    ///
+    /// PathRules.Same compares path text, so the guard that catches a paste into
+    /// the folder it already lives in does not fire. The name is then taken — by
+    /// the link itself — so the clash is prompted, CopyLink does its replace
+    /// dance on the link's own directory entry, and the unconditional delete
+    /// after it removes what was just landed. The link is gone from both names
+    /// while the operation reports Completed and Ctrl+Z says it undid a move.
+    ///
+    /// The same shape 3c9a45c was written to end, in the one case its four
+    /// tests did not cover.
+    /// </summary>
+    [Fact]
+    public async Task A_link_moved_into_its_own_folder_under_a_second_name_is_not_lost()
+    {
+        if (!OperatingSystem.IsLinux()) return;
+
+        var link = Path.Combine(_from, "photos");
+        Directory.CreateSymbolicLink(link, _library);
+
+        // The link's OWN folder, under a second name.
+        var alias = Path.Combine(_root, "alias");
+        Directory.CreateSymbolicLink(alias, _from);
+
+        await Run(new LinuxFileOperations().Move([link], alias, Overwrite));
+
+        // One entry under two spellings: it must still be there, and still be a
+        // link to the library rather than a copy of it.
+        Assert.True(
+            Path.Exists(link) || Path.Exists(Path.Combine(alias, "photos")),
+            "the link was deleted from the only folder it was ever in");
+
+        Assert.Equal(_library, new DirectoryInfo(link).LinkTarget);
+
+        // And the library it points at is untouched.
+        Assert.Equal(
+            ["another.jpg", "photo.jpg"],
+            Directory.EnumerateFileSystemEntries(_library).Select(Path.GetFileName).Order());
+    }
+
     [Fact]
     public async Task A_link_moved_into_a_symlinked_folder_leaves_the_file_it_points_at_alone()
     {

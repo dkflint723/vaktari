@@ -520,7 +520,20 @@ public sealed class LinuxFileOperations : IFileOperations
                     // a file with itself and the copy would open one path for
                     // both reading and writing. A duplicate is what was meant;
                     // a move to where it already is has nothing to do.
-                    if (PathRules.Same(item.Source, target))
+                    //
+                    // **Asked of the entry, not of the spelling.** Path text was
+                    // all this compared, so the same folder under a second name
+                    // — the everyday case, a symlinked folder — walked straight
+                    // past it: the name was then "taken" by the entry itself,
+                    // the clash was answered, CopyLink did its replace dance on
+                    // the source's own directory entry, and the delete after it
+                    // took away what had just landed. Measured: a link moved
+                    // into its own folder through an alias was gone from both
+                    // names, with the operation reporting Completed. 3c9a45c
+                    // closed the same fault for a link moved into a DIFFERENT
+                    // folder reached by another name; this is the case its four
+                    // tests did not cover.
+                    if (SameEntry(item.Source, target))
                     {
                         if (move)
                         {
@@ -1033,6 +1046,28 @@ public sealed class LinuxFileOperations : IFileOperations
     /// simply does not match, which is the right answer when there is no file
     /// to protect.
     /// </summary>
+    /// <summary>
+    /// Whether two paths name the SAME directory entry, however each is spelled.
+    ///
+    /// **The folders are resolved and the leaf is not.** Following the last
+    /// component would call a link and the thing it points at one entry, which
+    /// is the opposite of what every rule here needs; following only the folders
+    /// is what turns two spellings of one place into one answer. The same
+    /// asymmetry <see cref="CopyLink"/> uses for its self-reference check, which
+    /// is where this fault was first found and fixed for a different folder.
+    /// </summary>
+    private static bool SameEntry(string a, string b)
+    {
+        if (PathRules.Same(a, b)) return true;
+
+        if (PathRules.Parent(a) is not { } here || PathRules.Parent(b) is not { } there) return false;
+
+        // Byte-exact on the leaf: a Linux name is a byte string, and two
+        // spellings of it are two different names.
+        return string.Equals(Path.GetFileName(a), Path.GetFileName(b), StringComparison.Ordinal)
+            && string.Equals(Resolved(here), Resolved(there), StringComparison.Ordinal);
+    }
+
     private static string Resolved(string path, int budget = 40)
     {
         var built = "/";

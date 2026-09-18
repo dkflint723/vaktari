@@ -194,6 +194,16 @@ should not be trusted for compatibility yet.
 
 ### Fixed
 
+- **Moving a link into the folder it already lives in, reached by another
+  name, no longer destroys it.** A folder often has two names — a linked
+  folder is the ordinary way to arrange that — and moving a link into its
+  own folder under the second name looked to Vaktari like moving it
+  somewhere else onto a name already taken. It replaced the link with a copy
+  of itself and then deleted the original, which was the same entry: the
+  link was gone from both names, while the operation reported success and
+  Ctrl+Z said it had undone a move. Whether two paths are the same thing is
+  now decided by following the folders rather than by comparing the text.
+
 - **Undoing a move no longer freezes the window, and two undos can no longer
   run at once.** Ctrl+Z did the whole job on the thread that draws the
   window, so undoing a move of a large folder across drives left the window

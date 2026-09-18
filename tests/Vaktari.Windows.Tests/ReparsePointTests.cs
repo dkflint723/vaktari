@@ -85,6 +85,48 @@ public class ReparsePointTests
     /// same place. The answer is carried out now, and the source goes only once
     /// the junction stands at the name.
     /// </summary>
+    /// <summary>
+    /// **A junction moved into its own folder under a second name is not lost.**
+    /// The guard that catches a paste into the folder it already lives in
+    /// compared path TEXT, so a junction standing beside that folder and
+    /// pointing at it walked straight past: the name was then taken by the entry
+    /// itself, the clash was answered, CopyLink did its replace dance on the
+    /// source's own directory entry, and the DeleteLink after it removed what
+    /// had just landed. The junction was gone from both names with the operation
+    /// reporting Completed.
+    ///
+    /// The same fault 3c9a45c ended for a link moved into a DIFFERENT folder
+    /// reached by another name, in the case its tests did not cover. Measured on
+    /// the Linux twin first, where a symlinked folder is the everyday way to
+    /// hold two names for one place.
+    /// </summary>
+    [WindowsFact]
+    public async Task A_junction_moved_into_its_own_folder_under_a_second_name_is_not_lost()
+    {
+        using var tree = new TempTree();
+        var outside = tree.Dir("outside");
+        tree.Write("outside/kept.txt", "elsewhere");
+
+        var from = tree.Dir("from");
+        var link = tree.Junction("from/link", outside);
+
+        // The link's OWN folder, under a second name.
+        var alias = tree.At("alias");
+        tree.Junction("alias", from);
+
+        await Finished(new WindowsFileOperations().Move([link], alias, Overwrite));
+
+        Assert.True(
+            Path.Exists(link) || Path.Exists(Path.Combine(alias, "link")),
+            "the junction was deleted from the only folder it was ever in");
+
+        Assert.True(
+            (File.GetAttributes(link) & FileAttributes.ReparsePoint) != 0,
+            "what is standing at the name is no longer a junction");
+
+        Assert.Equal("elsewhere", tree.Read("outside", "kept.txt"));
+    }
+
     [WindowsFact]
     public async Task Moving_a_junction_onto_a_taken_file_replaces_it()
     {
