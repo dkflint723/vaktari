@@ -614,7 +614,7 @@ public sealed partial class PaneViewModel
         }
         catch (Exception ex)
         {
-            await Dispatcher.UIThread.InvokeAsync(() => Status = Failures.Describe(ex));
+            await AfterAFailedStepAsync(ex).ConfigureAwait(false);
         }
     }
 
@@ -638,8 +638,35 @@ public sealed partial class PaneViewModel
         }
         catch (Exception ex)
         {
-            await Dispatcher.UIThread.InvokeAsync(() => Status = Failures.Describe(ex));
+            await AfterAFailedStepAsync(ex).ConfigureAwait(false);
         }
+    }
+
+    /// <summary>
+    /// What an undo or a redo that failed still owes the pane.
+    ///
+    /// **A failed undo refreshed nothing.** This catch only wrote the failure
+    /// onto the status line, so the listing went on showing the folder as it
+    /// was before the undo began and the Undo and Redo rows went on naming the
+    /// step as it was before it ran — measured with an engine that put half of
+    /// a step back and then failed: no reload, and both rows stale. An undo
+    /// that stops part-way has still changed the disk, and a careful undo stops
+    /// part-way whenever something is in the way.
+    ///
+    /// In the order the success path keeps, and for its reason: a finished
+    /// listing clears the status line, so the failure is said after the reload
+    /// or it is erased by it.
+    /// </summary>
+    private async Task AfterAFailedStepAsync(Exception failure)
+    {
+        await Dispatcher.UIThread.InvokeAsync(RefreshUndoState);
+
+        // The reload is a courtesy and the failure is the news, so a reload
+        // that fails in its turn does not replace what is said below.
+        try { await RefreshAsync().ConfigureAwait(false); }
+        catch (Exception reload) { Vaktari.Core.Quiet.Swallowed("undo", reload); }
+
+        await SayAsync(Failures.Describe(failure)).ConfigureAwait(false);
     }
 
     /// <summary>The built-in kinds, for the menu.</summary>

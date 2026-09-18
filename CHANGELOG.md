@@ -194,6 +194,14 @@ should not be trusted for compatibility yet.
 
 ### Fixed
 
+- **An undo that fails part-way no longer leaves the folder looking
+  untouched.** Such an undo has still moved things on disk, but the pane
+  only wrote the reason on the status bar: the list went on showing the
+  folder as it was before the undo began, and Ctrl+Z and Ctrl+Y went on
+  offering the step that had already run. The folder is read again now,
+  the two entries name what the history holds, and the reason is said
+  after that reading rather than cleared by it.
+
 - **A file is no longer taken for a link because it carries a reparse
   point.** Windows puts reparse points on entries that are not links — the
   app execution aliases under WindowsApps are among them — and such a file
