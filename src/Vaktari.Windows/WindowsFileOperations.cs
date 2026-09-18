@@ -64,6 +64,15 @@ public sealed class WindowsFileOperations : IFileOperations
     /// </summary>
     internal Action<string>? BeforeLinking { get; init; }
 
+    /// <summary>
+    /// Called with (from, to) before each of the undo walk's no-replace renames.
+    /// Tests make it throw for one path, to stand for a rename the filesystem
+    /// refused — which is how the cross-volume arm of the walk is reached on one
+    /// volume, since a Windows folder rename refused for any reason other than a
+    /// taken name takes that arm. The application never sets it.
+    /// </summary>
+    internal Action<string, string>? BeforeRenaming { get; init; }
+
     // Redo needs no ceiling of its own: it only ever holds what was popped off
     // the undo stack, which is already bounded.
     private readonly ConcurrentStack<IUndoable> _redo = new();
@@ -711,8 +720,19 @@ public sealed class WindowsFileOperations : IFileOperations
         if (path.Length > 0) Remember(new UndoCreate(Trash, path));
     }
 
+    /// <summary>
+    /// Bumped by every operation that records itself. A walk reads it before it
+    /// starts and again when it ends: if it moved, the history is no longer the
+    /// one this step belongs to, and what the walk did must not be stacked on
+    /// top of it. Remember clears the redo stack, so a paste finishing while an
+    /// undo walks would otherwise have its clearing undone by the partial
+    /// result landing afterwards.
+    /// </summary>
+    private int _generation;
+
     private void Remember(IUndoable action)
     {
+        _generation++;
         _redo.Clear();
         _undo.Push(action);
     }
@@ -752,15 +772,74 @@ public sealed class WindowsFileOperations : IFileOperations
     {
         if (!_redo.TryPop(out var action)) return;
 
-        if (await action.UndoAsync(ct).ConfigureAwait(false) is { } undo) _undo.Push(undo);
+        var generation = _generation;
+
+        try
+        {
+            var undo = await action.UndoAsync(ct).ConfigureAwait(false);
+
+            // The same guard the partial result gets, and for the same reason: if
+            // an operation recorded itself while this walk ran, Remember has
+            // cleared the other stack and pushed its own, and stacking this on
+            // top of it puts the two in an order the history never had.
+            if (undo is not null && generation == _generation) _undo.Push(undo);
+        }
+        catch (PartlyUndone partly)
+        {
+            if (Stackable(partly, generation))
+            {
+                _undo.Push(partly.Done!);
+                if (partly.Left is { } left) _redo.Push(left);
+            }
+
+            throw;
+        }
     }
 
     public async ValueTask UndoAsync(CancellationToken ct)
     {
-        if (_undo.TryPop(out var action)
-            && await action.UndoAsync(ct).ConfigureAwait(false) is { } redo)
-            _redo.Push(redo);
+        if (!_undo.TryPop(out var action)) return;
+
+        var generation = _generation;
+
+        try
+        {
+            var redo = await action.UndoAsync(ct).ConfigureAwait(false);
+
+            // As in RedoAsync: an operation recorded while this walk ran has
+            // already cleared the redo stack, and this would land on top of the
+            // clearing.
+            if (redo is not null && generation == _generation) _redo.Push(redo);
+        }
+        catch (PartlyUndone partly)
+        {
+            if (Stackable(partly, generation))
+            {
+                _redo.Push(partly.Done!);
+                if (partly.Left is { } left) _undo.Push(left);
+            }
+
+            throw;
+        }
     }
+
+    /// <summary>
+    /// Whether a partial result may go back on the stacks at all.
+    ///
+    /// **Nothing moved, so nothing is pushed back on top.** A press that put
+    /// nothing back and then pushed itself back would wedge Ctrl+Z: the next
+    /// press meets the same obstacle, and a rename or a trash recorded in
+    /// between sits underneath it, so Ctrl+Z would start reversing the person's
+    /// own way out. Dropping it instead leaves the older history reachable,
+    /// which is what today's behaviour already gives by losing the step.
+    ///
+    /// And if the history moved while the walk ran, neither half goes anywhere:
+    /// stacking what this step did on top of an operation recorded since would
+    /// put the two in the wrong order, and Remember has already cleared the redo
+    /// stack this would push onto.
+    /// </summary>
+    private bool Stackable(PartlyUndone partly, int generation)
+        => partly.Done is not null && generation == _generation;
 
     /// <summary>
     /// <paramref name="retrying"/> is the second pass: the items a previous run
@@ -1225,7 +1304,7 @@ public sealed class WindowsFileOperations : IFileOperations
                 }
                 else if (move)
                 {
-                    Remember(new UndoMove(undoable));
+                    Remember(new UndoMove(undoable, BeforeRenaming));
                 }
                 else
                 {
@@ -2090,6 +2169,11 @@ public sealed class WindowsFileOperations : IFileOperations
                     if (await steps[i].UndoAsync(ct).ConfigureAwait(false) is { } again)
                         back.Add(again);
                 }
+                // **A partial result is not one name failing.** It carries the
+                // two halves of a walk back to the engine, and swallowing it
+                // here would drop both. Inert today, because UndoGroup.Add is
+                // only ever reached from RenameAsync; here so it stays true.
+                catch (PartlyUndone) { throw; }
                 catch (IOException) { /* this one name, and only this one */ }
             }
 
@@ -2181,104 +2265,574 @@ public sealed class WindowsFileOperations : IFileOperations
     /// already there — so the undo moved a bystander back to the source and
     /// left the user's own file sitting under `readme - Copy.txt`.
     /// </summary>
-    private sealed class UndoMove(
-        IReadOnlyList<(string Source, string Target)> moved) : IUndoable
+    /// <summary>
+    /// What an undo or a redo did in part and could not finish.
+    ///
+    /// **A part-way failure used to lose the step from both stacks.** The engine
+    /// popped before it ran, so an exception out of the walk took Ctrl+Z and
+    /// Ctrl+Y away together while the disk had already changed — measured on a
+    /// read-only file at the source, and on a file standing where a moved
+    /// subfolder went. This carries the two halves back to the engine instead:
+    /// <see cref="Done"/> is what went, ready to go the other way, and
+    /// <see cref="Left"/> is what did not, ready to be asked again.
+    ///
+    /// **An IOException on purpose, with the HResult left where the base class
+    /// puts it.** <c>Failures.Describe</c> reaches IOException by its message,
+    /// so the sentence below is what the pane says; copying a leaf's
+    /// SharingViolation onto it would replace the whole sentence with "something
+    /// else has that file open". <c>UndoBatch</c> catches IOException to swallow
+    /// one name, and has a guard above that catch so it can never swallow this.
+    /// </summary>
+    private sealed class PartlyUndone(string said, IUndoable? done, IUndoable? left)
+        : IOException(said)
     {
-        public string Describe => UndoNames.Of("move", [.. moved.Select(m => m.Target)]);
+        /// <summary>What went, as the step that would take it the other way.</summary>
+        public IUndoable? Done { get; } = done;
+
+        /// <summary>What did not, as the step that would try it again.</summary>
+        public IUndoable? Left { get; } = left;
+    }
+
+    /// <summary>One thing an undo does. See <see cref="UndoMove"/>.</summary>
+    private abstract record Step;
+
+    /// <summary>Put the entry at <paramref name="From"/> at <paramref name="To"/>,
+    /// whatever it is: a file, a folder, or a link of any kind, renamed and never
+    /// followed.</summary>
+    private sealed record Travel(string From, string To) : Step;
+
+    /// <summary>Make a real folder at <paramref name="Path"/> if nothing is
+    /// there, wearing the attributes captured from the folder it stands for.
+    /// Its inverse is <see cref="RemoveIfEmpty"/>.</summary>
+    private sealed record MakeFolder(string Path, FileAttributes Attributes) : Step;
+
+    /// <summary>Remove <paramref name="Path"/> only if it is a real folder with
+    /// nothing in it — never recursive, so it can never take away something this
+    /// walk did not put there. Its inverse is <see cref="MakeFolder"/>.</summary>
+    private sealed record RemoveIfEmpty(string Path) : Step;
+
+    /// <summary>
+    /// The undo of a move, as an ordered list of steps that knows how to run
+    /// itself backwards.
+    ///
+    /// **An undo puts back what the move put there, and never replaces,
+    /// overwrites or deletes anything else.** The walk this replaces did the
+    /// opposite in four measured ways: it copied back with
+    /// <c>File.Copy(overwrite: true)</c>, so a file written at the source since
+    /// was destroyed without a word; a read-only file there, or a file standing
+    /// where a moved subfolder went, stopped it part-way with both stacks lost;
+    /// and a redo after it had merged into a re-created source folder moved that
+    /// whole folder, taking a file nobody had moved.
+    ///
+    /// Every name the walk lands on is decided by the kernel in one call — a
+    /// rename that will not replace — and never by asking whether the name is
+    /// free and renaming afterwards, which answers for the moment before the one
+    /// that matters.
+    /// </summary>
+    private sealed class UndoMove : IUndoable
+    {
+        /// <summary>ERROR_FILE_EXISTS and ERROR_ALREADY_EXISTS, the two ways
+        /// Windows says the name is taken.</summary>
+        private const int FileExists = unchecked((int)0x80070050);
+
+        private const int AlreadyExists = unchecked((int)0x800700B7);
+
+        private readonly IReadOnlyList<Step> _steps;
+
+        private readonly string _describe;
+
+        private readonly bool _forward;
+
+        private readonly Action<string, string>? _beforeRenaming;
+
+        /// <summary>What a move records: the pairs it landed, read backwards.</summary>
+        public UndoMove(
+            IReadOnlyList<(string Source, string Target)> moved, Action<string, string>? beforeRenaming = null)
+            : this(
+                [.. moved.Select(m => (Step)new Travel(m.Target, m.Source))],
+                UndoNames.Of("move", [.. moved.Select(m => m.Target)]),
+                forward: false,
+                beforeRenaming)
+        {
+        }
+
+        private UndoMove(
+            IReadOnlyList<Step> steps, string describe, bool forward, Action<string, string>? beforeRenaming)
+        {
+            _steps = steps;
+            _describe = describe;
+            _forward = forward;
+            _beforeRenaming = beforeRenaming;
+        }
+
+        /// <summary>
+        /// The name of the roots this holds part of, carried rather than
+        /// recomputed. Recomputed from the steps it would read "move of 5 items"
+        /// after a merge walk, name a child file, or — since
+        /// <c>UndoNames.Of(verb, 0)</c> answers "move of 0 items" — say "0 items"
+        /// for a folder with nothing in it.
+        /// </summary>
+        public string Describe => _describe;
 
         public ValueTask<IUndoable?> UndoAsync(CancellationToken ct)
         {
-            var undone = new List<(string Source, string Target)>();
+            var inverses = new List<Step>();
+            var left = new List<Step>();
 
-            foreach (var (source, landed) in moved)
+            // What could not go, each with its own reason. One list rather than
+            // two, because a name and a reason held apart get paired by position
+            // and the sentence then blames one entry for another's refusal.
+            var blocked = new List<(string Name, string? Why)>();
+
+            // What was left behind but is not waiting to be tried again: a
+            // folder that would not go holds nothing this walk put there.
+            var notes = new List<string>();
+
+            foreach (var step in _steps)
             {
-                // **The folder it came out of may be gone.** A move that merged
-                // into an existing folder carried its contents one by one, and
-                // the sweep then removed the emptied source folders.
-                if ((File.Exists(landed) || Directory.Exists(landed))
-                    && PathRules.Parent(source) is { } parent)
-                    Directory.CreateDirectory(parent);
+                ct.ThrowIfCancellationRequested();
 
-                if (File.Exists(landed))
+                switch (step)
                 {
-                    // File.Move copes with a different volume; Directory.Move
-                    // does not, which is why the two are not one call.
-                    File.Move(landed, source, overwrite: false);
+                    case Travel travel: RunTravel(travel, inverses, left, blocked, notes); break;
+                    case MakeFolder make: RunMakeFolder(make, inverses, left, blocked); break;
+                    case RemoveIfEmpty remove: RunRemoveIfEmpty(remove, inverses, notes); break;
                 }
-                else if (Directory.Exists(landed))
-                {
-                    MoveDirectory(landed, source);
-                }
-                else
-                {
-                    // Gone since the move — deleted, or moved again by hand.
-                    // Redoing it would move something that is not there.
-                    continue;
-                }
-
-                undone.Add((landed, source));
             }
 
-            // The pairs the other way round: what was put back goes forward.
-            return ValueTask.FromResult<IUndoable?>(
-                undone.Count > 0 ? new UndoMove(undone) : null);
+            // Reversed: the log of what was done, read backwards, is what takes
+            // it the other way.
+            inverses.Reverse();
+
+            var done = inverses.Count > 0
+                ? new UndoMove(inverses, _describe, !_forward, _beforeRenaming)
+                : null;
+
+            // **A note is not nothing.** Everything asked for went, but something
+            // was left standing that the walk could not take away, and saying so
+            // is the whole of what is owed for it. Dropping it here would leave a
+            // folder behind with the press reporting plain success.
+            if (left.Count == 0 && notes.Count == 0) return ValueTask.FromResult<IUndoable?>(done);
+
+            throw new PartlyUndone(
+                Sentence(blocked, notes),
+                done,
+                left.Count > 0 ? new UndoMove(left, _describe, _forward, _beforeRenaming) : null);
         }
 
-        private static void MoveDirectory(string from, string to)
+        /// <summary>
+        /// One entry, from where it stands to where it belongs.
+        ///
+        /// The order is the whole of the rule: ask the disk what is at
+        /// <c>From</c> without following it, try the rename that will not
+        /// replace, and only once the kernel has said the name is taken ask what
+        /// is standing there.
+        /// </summary>
+        private void RunTravel(
+            Travel travel, List<Step> inverses, List<Step> left, List<(string Name, string? Why)> blocked, List<string> notes)
         {
-            if (!Directory.Exists(to)
-                && string.Equals(Path.GetPathRoot(from), Path.GetPathRoot(to),
-                                 StringComparison.OrdinalIgnoreCase))
+            FileAttributes attributes;
+
+            try
             {
-                Directory.Move(from, to);
+                // An lstat, and one question rather than two: it says both
+                // whether anything is there and what kind it is, for the entry
+                // itself rather than for whatever it points at. Measured
+                // 2026-09-17, because the obvious claim about Exists is wrong
+                // and worth not repeating: a DANGLING junction answers
+                // Directory.Exists TRUE and File.Exists false, reading back
+                // [Directory, ReparsePoint] — so Exists would not miss it. What
+                // Exists cannot do is tell a link from the folder it names, and
+                // that is what decides which rename below is the right one.
+                attributes = File.GetAttributes(travel.From);
+            }
+            catch (Exception e) when (e is FileNotFoundException or DirectoryNotFoundException)
+            {
+                // Gone since the move — deleted, or moved again by hand. Nothing
+                // done, so nothing to take the other way.
+                return;
+            }
+            catch (Exception e)
+            {
+                Remaining(travel, e, left, blocked);
                 return;
             }
 
-            // Across volumes, or back onto a folder still standing because
-            // something inside it was skipped, by hand. Directory.Move throws
-            // IOException rather than falling back in either case, and an undo
-            // that reports failure after the move succeeded is worse than doing
-            // the copy.
-            Directory.CreateDirectory(to);
+            var directory = (attributes & FileAttributes.Directory) != 0;
+            var link = (attributes & FileAttributes.ReparsePoint) != 0;
+            var realFolder = directory && !link;
 
-            foreach (var (path, kind, _) in Descend(from, ct: CancellationToken.None))
+            // Every ancestor this walk has to make is a recorded step of its
+            // own, so the reversed log removes it again once the child leaves.
+            if (!Ancestors(travel.To, inverses, left, blocked)) { left.Add(travel); return; }
+
+            switch (TryRename(travel.From, travel.To, directory, out var refusal))
             {
-                var target = Path.Combine(to, Path.GetRelativePath(from, path));
+                case Renamed.Done:
+                    inverses.Add(new Travel(travel.To, travel.From));
+                    return;
 
-                switch (kind)
+                case Renamed.Taken:
+                    Taken(travel, realFolder, inverses, left, blocked, notes);
+                    return;
+
+                default:
+                    // **A folder rename is refused for reasons that are not
+                    // worth telling apart.** Across roots Directory.Move throws
+                    // before touching the disk; through a junction onto another
+                    // volume it answers Access denied, which is also what a
+                    // folder holding an open file answers. All of them take the
+                    // walk, which reports per child what it could not do.
+                    if (realFolder) Merge(travel, made: true, inverses, left, blocked, notes);
+                    else Remaining(travel, refusal, left, blocked);
+                    return;
+            }
+        }
+
+        /// <summary>The name was taken, so ask what is standing there — and only
+        /// now, because before the rename the answer would have been about a
+        /// different moment.</summary>
+        private void Taken(
+            Travel travel, bool realFolder, List<Step> inverses, List<Step> left, List<(string Name, string? Why)> blocked, List<string> notes)
+        {
+            var standing = Directory.Exists(travel.To) && !IsLink(travel.To);
+
+            if (realFolder && standing)
+            {
+                Merge(travel, made: false, inverses, left, blocked, notes);
+                return;
+            }
+
+            // **A link of the same kind pointing at the same place is already
+            // put back.** A link's whole content is where it points, and this
+            // application would reproduce it from the same text, so removing the
+            // one that travelled loses nothing. Anything else standing at the
+            // name is left alone and the step waits.
+            if (!realFolder && IsLink(travel.From) && IsLink(travel.To) && SameLink(travel.From, travel.To))
+            {
+                var wore = Attributes(travel.From);
+
+                try
                 {
-                    case ItemKind.Directory: Directory.CreateDirectory(target); break;
-                    // Never replace, deliberately: an undo puts back what the
-                    // move took, and must not replace something standing at the
-                    // source that it did not write.
-                    //
-                    // **A link already standing at the name is left, and the walk
-                    // goes on.** Refusing it ended the whole undo at that entry —
-                    // measured: the undo threw with the rest of the folder still
-                    // at the destination. Anything else at the name still stops
-                    // the walk with a sentence. The rest of this walk does not
-                    // keep the never-replace rule yet: the file arm below
-                    // overwrites, and the tree is deleted whole afterwards.
-                    case ItemKind.Link:
-                        if (!IsLink(target)) CopyLink(path, target, replace: false);
-                        break;
-                    default: File.Copy(path, target, overwrite: true); break;
+                    // DeleteLink refuses a ReadOnly junction, so the mark comes
+                    // off first — and goes back on if the removal is refused
+                    // anyway, because a link that stays must stay as it was. The
+                    // emptied-folder removal below keeps the same rule.
+                    ClearReadOnly(travel.From);
+                    DeleteLink(travel.From);
+                    inverses.Add(new Travel(travel.To, travel.From));
+                }
+                catch (Exception e)
+                {
+                    try { File.SetAttributes(travel.From, wore); } catch (Exception) { /* it kept its own */ }
+
+                    Remaining(travel, e, left, blocked);
+                }
+
+                return;
+            }
+
+            Remaining(travel, refusal: null, left, blocked);
+        }
+
+        /// <summary>
+        /// One level of children, each a step of its own, and then the folder
+        /// they came out of.
+        ///
+        /// <paramref name="made"/> says the folder at <c>To</c> is this walk's
+        /// own work and has to be recorded, so the reversed log takes it away
+        /// again; otherwise it was already standing and is somebody else's.
+        /// </summary>
+        private void Merge(
+            Travel travel, bool made, List<Step> inverses, List<Step> left, List<(string Name, string? Why)> blocked, List<string> notes)
+        {
+            // Kept apart from the caller's, because if this folder goes back
+            // whole the whole lot is replaced by one step.
+            var mine = new List<Step>();
+
+            // **Made, not asked for.** The caller asks for the folder because the
+            // rename did not happen; whether the name was actually free is what
+            // RunMakeFolder answers, and only that may key the collapse below.
+            // Read off the parameter instead, a cross-volume undo collapsed onto
+            // a folder somebody had re-created and its redo carried their file to
+            // the other volume — the measured fault this walk exists to end,
+            // arriving again by the one road the tests did not cover.
+            var created = false;
+
+            if (made)
+            {
+                switch (RunMakeFolder(new MakeFolder(travel.To, Attributes(travel.From)), mine, left, blocked))
+                {
+                    case Made.Created: created = true; break;
+                    case Made.AlreadyThere: break;
+                    default: left.Add(travel); return;
                 }
             }
 
-            // **A junction inside refused this removal the way it refused the
-            // permanent delete**, and this is the worse place to meet it: the
-            // copy above had already put everything back, so the exception
-            // arrived after the undo had succeeded. Measured on the Windows
-            // runner, undoing the move of a folder holding one threw
-            // "The parameter is incorrect" out of RemoveDirectoryRecursive and
-            // through UndoAsync — the folder restored at the source, a gutted
-            // shell of it left standing at the destination, the step already
-            // popped off the undo stack before the work began, and no redo
-            // recorded. Unelevated the same removal is refused as
-            // "Access to the path is denied"; DeleteTree says why both.
-            ClearReadOnlyTree(from);
-            DeleteTree(from);
+            FileSystemInfo[] children;
+
+            try
+            {
+                // Without following: a link among them is renamed as itself.
+                children = new DirectoryInfo(travel.From).GetFileSystemInfos();
+            }
+            catch (Exception e)
+            {
+                // **The failure is the whole folder's, not one child's.** A
+                // folder that will not list has told us nothing about what is
+                // inside it, so the step waits entire.
+                inverses.AddRange(mine);
+                Remaining(travel, e, left, blocked);
+                left.Add(new RemoveIfEmpty(travel.From));
+                return;
+            }
+
+            var before = left.Count;
+
+            foreach (var child in children)
+                RunTravel(
+                    new Travel(child.FullName, Path.Combine(travel.To, child.Name)),
+                    mine, left, blocked, notes);
+
+            if (left.Count > before)
+            {
+                // Something is still inside, so the folder cannot go yet. The
+                // retry carries the children and then this, in that order.
+                inverses.AddRange(mine);
+                left.Add(new RemoveIfEmpty(travel.From));
+                return;
+            }
+
+            RunRemoveIfEmpty(new RemoveIfEmpty(travel.From), mine, notes);
+
+            // **The folder goes back whole, so it comes forward whole.** Read off
+            // the disk rather than off this bookkeeping: the name was free before
+            // the step ran — this walk made the folder standing there — and
+            // nothing is left at the source. Then the inverse is the one rename,
+            // not the list of children, and a file saved into the folder between
+            // the undo and the redo travels with it instead of being left behind
+            // in a folder of the same name.
+            //
+            // Keyed this way and not on "it went by one rename", so the arm that
+            // had to walk agrees with the arm that did not; that agreement is the
+            // whole point, and a person cannot see which arm ran.
+            if (created && !Directory.Exists(travel.From))
+            {
+                inverses.Add(new Travel(travel.To, travel.From));
+                return;
+            }
+
+            inverses.AddRange(mine);
+        }
+
+        /// <summary>Every folder above <paramref name="to"/> that has to be made,
+        /// deepest last, each recorded. False when anything but a real folder
+        /// holds one of the names.</summary>
+        private static bool Ancestors(
+            string to, List<Step> inverses, List<Step> left, List<(string Name, string? Why)> blocked)
+        {
+            if (PathRules.Parent(to) is not { } parent) return true;
+
+            var missing = new List<string>();
+
+            for (var at = parent; at is not null; at = PathRules.Parent(at))
+            {
+                if (Directory.Exists(at) && !IsLink(at)) break;
+
+                // Anything else at the name — a file, or a link of any kind — is
+                // collected the same way and refused by RunMakeFolder, which is
+                // the one place that decides whether a name may be made into a
+                // folder. Refusing it a second time here would be a line no test
+                // could redden, since the other would catch the case first.
+                missing.Add(at);
+            }
+
+            missing.Reverse();
+
+            foreach (var at in missing)
+                if (RunMakeFolder(new MakeFolder(at, FileAttributes.Directory), inverses, left, blocked) == Made.Refused)
+                    return false;
+
+            return true;
+        }
+
+        /// <summary>What a <see cref="MakeFolder"/> step turned out to be.</summary>
+        private enum Made
+        {
+            /// <summary>This walk made it, and recorded the step that takes it away.</summary>
+            Created,
+
+            /// <summary>A real folder was already there. It is somebody else's.</summary>
+            AlreadyThere,
+
+            /// <summary>Something that is not a folder holds the name, or it could
+            /// not be made.</summary>
+            Refused,
+        }
+
+        private static Made RunMakeFolder(
+            MakeFolder make, List<Step> inverses, List<Step> left, List<(string Name, string? Why)> blocked)
+        {
+            // **Already standing is not the same as made, and the difference
+            // decides whether a folder may travel back whole.** Reported rather
+            // than folded into a yes, because a caller that reads "yes" as "the
+            // name was free" collapses an inverse it had no right to — measured:
+            // a cross-volume undo then carried a bystander file to the other
+            // volume on the redo and deleted the folder the person had made.
+            if (Directory.Exists(make.Path) && !IsLink(make.Path)) return Made.AlreadyThere;
+
+            if (File.Exists(make.Path) || IsLink(make.Path))
+            {
+                left.Add(make);
+                blocked.Add((PathRules.LeafName(make.Path), null));
+                return Made.Refused;
+            }
+
+            try
+            {
+                Directory.CreateDirectory(make.Path);
+
+                if (make.Attributes != FileAttributes.Directory)
+                    File.SetAttributes(make.Path, make.Attributes);
+
+                inverses.Add(new RemoveIfEmpty(make.Path));
+                return Made.Created;
+            }
+            catch (Exception e)
+            {
+                left.Add(make);
+                blocked.Add((PathRules.LeafName(make.Path), e.Message));
+                return Made.Refused;
+            }
+        }
+
+        /// <summary>
+        /// The emptied folder, taken away — and only if it really is empty.
+        ///
+        /// **A folder that will not go is a note, never a remaining step.** It
+        /// holds nothing this walk put there, so there is nothing to try again;
+        /// saying where it is is the whole of what is owed.
+        /// </summary>
+        private static void RunRemoveIfEmpty(RemoveIfEmpty remove, List<Step> inverses, List<string> notes)
+        {
+            if (!Directory.Exists(remove.Path) || IsLink(remove.Path)) return;
+
+            var attributes = Attributes(remove.Path);
+
+            try
+            {
+                // **Cleared before the attempt, not in reaction to it.** An empty
+                // ReadOnly folder refuses Directory.Delete with the same generic
+                // refusal everything else gives, so there is nothing to react to.
+                ClearReadOnly(remove.Path);
+
+                Directory.Delete(remove.Path, recursive: false);
+                inverses.Add(new MakeFolder(remove.Path, attributes));
+            }
+            catch (Exception e)
+            {
+                try { File.SetAttributes(remove.Path, attributes); } catch (Exception) { /* it kept its own */ }
+
+                notes.Add(e.Message);
+            }
+        }
+
+        private static void Remaining(
+            Travel travel, Exception? refusal, List<Step> left, List<(string Name, string? Why)> blocked)
+        {
+            left.Add(travel);
+            blocked.Add((PathRules.LeafName(travel.From), refusal?.Message));
+        }
+
+        private enum Renamed { Done, Taken, Refused }
+
+        private Renamed TryRename(string from, string to, bool directory, out Exception? refusal)
+        {
+            refusal = null;
+
+            try
+            {
+                _beforeRenaming?.Invoke(from, to);
+
+                // Neither replaces: Directory.Move has no overwrite at all, and
+                // File.Move without one refuses a taken name. A link is renamed
+                // as itself by both, and the Directory attribute picks between
+                // them — measured, Directory.Move renames a dangling junction
+                // and File.Move throws FileNotFoundException at one, because it
+                // asks File.Exists first.
+                if (directory) Directory.Move(from, to);
+                else File.Move(from, to);
+
+                return Renamed.Done;
+            }
+            catch (IOException e) when (e.HResult == FileExists || e.HResult == AlreadyExists)
+            {
+                refusal = e;
+                return Renamed.Taken;
+            }
+            catch (Exception e)
+            {
+                refusal = e;
+                return Renamed.Refused;
+            }
+        }
+
+        /// <summary>
+        /// Whether two links would be written the same way by this application.
+        ///
+        /// Not "do they point at the same file" — that is a question about the
+        /// disk, and this one is about the entry. CopyLink hands LinkTarget to
+        /// Native.CreateJunction, which runs Path.GetFullPath and trims a
+        /// trailing separator before it writes; measured, so a trailing
+        /// separator and a "…\..\…" segment are the same entry and an 8.3
+        /// component is not. PathRules.Same is that comparison.
+        /// </summary>
+        private static bool SameLink(string from, string to)
+        {
+            if (ReparseTags.Of(from) is not { } here || ReparseTags.Of(to) is not { } there) return false;
+
+            if (here != there) return false;
+
+            var mine = new DirectoryInfo(from).LinkTarget ?? new FileInfo(from).LinkTarget;
+            var theirs = new DirectoryInfo(to).LinkTarget ?? new FileInfo(to).LinkTarget;
+
+            return mine is not null && theirs is not null && PathRules.Same(mine, theirs);
+        }
+
+        private static FileAttributes Attributes(string path)
+        {
+            try { return File.GetAttributes(path); }
+            catch (Exception) { return FileAttributes.Directory; }
+        }
+
+        /// <summary>
+        /// What could not be done, and where it still is.
+        ///
+        /// **The reason belongs to the name it came from.** Held in two lists and
+        /// paired by position, a name would be given somebody else's refusal —
+        /// and the two lists do not even grow together, since a folder that will
+        /// not go adds a reason and no name at all.
+        /// </summary>
+        private string Sentence(List<(string Name, string? Why)> blocked, List<string> notes)
+        {
+            var way = _forward ? "go forward" : "go back";
+
+            if (blocked.Count == 0)
+                return notes.Count > 0
+                    ? $"everything went {(_forward ? "forward" : "back")}, but {notes[0]}"
+                    : $"something could not {way}";
+
+            var named = string.Join(", ", blocked.Take(3).Select(b => b.Name));
+
+            if (blocked.Count > 3) named += $" and {blocked.Count - 3} more";
+
+            // The first reason there is, from the entry that gave it, rather than
+            // the first reason anything gave.
+            var why = blocked.FirstOrDefault(b => b.Why is not null).Why;
+
+            return why is not null
+                ? $"{named} could not {way}: {why}"
+                : $"{named} could not {way}, because something of that name is there now";
         }
     }
 }
