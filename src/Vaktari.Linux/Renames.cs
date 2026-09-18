@@ -46,9 +46,9 @@ internal static partial class Renames
     /// <summary>
     /// **Latched for the process the first time libc turns out not to have it.**
     /// glibc has exported renameat2 since 2.28 and musl exports it too, so the
-    /// miss is rare — but a miss throws EntryPointNotFoundException on the call
-    /// rather than at load, and catching it on every entry afterwards would pay
-    /// for the absence again and again.
+    /// miss is rare — but a miss throws on the call rather than at load, and
+    /// catching it on every entry afterwards would pay for the absence again and
+    /// again.
     ///
     /// Not a NativeLibrary.TryGetExport probe: a probe that answers wrongly
     /// answers wrongly in the quiet direction, and every rename after it would
@@ -56,6 +56,19 @@ internal static partial class Renames
     /// on the first real call cannot be wrong about anything.
     /// </summary>
     private static bool _absent;
+
+    /// <summary>
+    /// **Two ways for it not to be there, and the second is not exotic.**
+    /// EntryPointNotFoundException is a libc without the symbol;
+    /// DllNotFoundException is no libc at all, which is every run of these
+    /// operations on a host that is not Linux. The test suite does exactly that
+    /// — CI runs `dotnet test vaktari.slnx` on the Windows runner, so
+    /// Vaktari.Linux.Tests executes there, and the plain facts among them drive
+    /// this engine against the real filesystem. Catching only the first left
+    /// four of them throwing; measured on CI, not here.
+    /// </summary>
+    private static bool Missing(Exception e)
+        => e is EntryPointNotFoundException or DllNotFoundException;
 
     /// <summary>
     /// Renames <paramref name="from"/> to <paramref name="to"/> only if the name
@@ -74,7 +87,7 @@ internal static partial class Renames
                 ? 0
                 : Marshal.GetLastPInvokeError();
         }
-        catch (EntryPointNotFoundException)
+        catch (Exception e) when (Missing(e))
         {
             _absent = true;
             return NotImplemented;
@@ -89,7 +102,42 @@ internal static partial class Renames
     /// all on a filesystem that does not implement the flag, and /mnt/c is one.
     /// </summary>
     internal static int Plainly(string from, string to)
-        => Rename(from, to) == 0 ? 0 : Marshal.GetLastPInvokeError();
+    {
+        if (!_absent)
+        {
+            try
+            {
+                return Rename(from, to) == 0 ? 0 : Marshal.GetLastPInvokeError();
+            }
+            catch (Exception e) when (Missing(e))
+            {
+                _absent = true;
+            }
+        }
+
+        // **No libc at all**, so there is no syscall to reach for and the walk
+        // still has to work: these operations run against the real filesystem on
+        // the Windows CI runner, where what is under test is the walk's own
+        // rules rather than the kernel's. .NET's own renames do not replace —
+        // Directory.Move has no overwrite and File.Move without one refuses a
+        // taken name — so the guarantee holds; what is lost is the atomicity,
+        // and the caller has already looked before it gets here.
+        try
+        {
+            if ((File.GetAttributes(from) & FileAttributes.Directory) != 0) Directory.Move(from, to);
+            else File.Move(from, to);
+
+            return 0;
+        }
+        catch (IOException)
+        {
+            return NameTaken;
+        }
+        catch (Exception)
+        {
+            return OperationNotPermitted;
+        }
+    }
 
     /// <summary>Whether <paramref name="errno"/> says the flag is not available
     /// here — from the kernel, the filesystem, or libc — rather than that the
