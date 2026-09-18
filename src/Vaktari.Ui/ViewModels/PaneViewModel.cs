@@ -4997,14 +4997,20 @@ public sealed partial class PaneViewModel : ObservableObject, IDisposable
                 // listing. Skipped explicitly rather than left to fail inside
                 // StartWatching's catch, because a silently swallowed failure
                 // is exactly the kind of thing that reads as working.
-                if (!VirtualPaths.IsVirtual(path)) StartWatching(path);
+                var polled = !VirtualPaths.IsVirtual(path) && StartWatching(path);
                 sw.Stop();
 
                 // Cleared, NOT set to the count. Summary already shows
                 // "36 items" and Status sat beside it showing the same thing,
                 // so the status bar read "36 items   36 items". Status is for
                 // messages; the count has an owner and this is not it.
-                Status = "";
+                //
+                // **The one message a load has of its own:** a folder read on
+                // a timer lags behind one that is watched, and a lag with no
+                // reason given reads as a slow application. Said here rather
+                // than where the watch fell back, because this line would
+                // clear it.
+                Status = polled ? ReadOnATimer : "";
                 IsLoading = false;
                 IsLoaded = true;
 

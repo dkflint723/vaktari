@@ -203,6 +203,14 @@ should not be trusted for compatibility yet.
   followed, and the Properties dialog counts a folder link made by WSL as
   one item of no size like any other link.
 
+- **A folder that cannot be watched keeps up anyway, and says so.** On
+  Linux each folder being watched takes one of a limited number of inotify
+  instances, and once they ran out, a folder opened after that stopped
+  showing files arriving, leaving or changing until it was refreshed, with
+  nothing on screen to say why. Such a folder is now checked every few
+  seconds instead, and the status bar says so. The version-control marks of
+  a repository that cannot be watched catch up the same way.
+
 - **Searching no longer fills the list of remembered folder views.** Each
   search left a record of its view under that one search — a record nothing
   could ever read back — and the settings page counted every one of them

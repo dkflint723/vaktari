@@ -52,32 +52,97 @@ public sealed partial class PaneViewModel
         // watch ceiling. Direct children are exactly what is wanted: HEAD,
         // index, ORIG_HEAD.
 
+        void Changed(FileSystemChange _) => Dispatcher.UIThread.Post(QueueVcsRefresh);
+
         try
         {
-            _repoWatcher = _fs.Watch(metadata, _ =>
-                Dispatcher.UIThread.Post(QueueVcsRefresh));
+            _repoWatcher = _fs.Watch(metadata, Changed);
         }
-        catch
+        catch (Exception refused)
         {
-            // Unwatchable metadata is not fatal; the marks simply wait for F5.
+            // **The marks stopped following commits when this could not start,
+            // as the listing stopped following its folder** — StartWatching has
+            // the measurement. Read on the same timer, and without a word on the
+            // status line: a mark a few seconds late is not worth a message of
+            // its own.
+            NotWatching(metadata, refused);
+            _repoWatcher = Polled(metadata, Changed);
         }
     }
 
-    private void StartWatching(string path)
+    /// <summary>
+    /// How often a folder that cannot be watched is read instead. Null means
+    /// <see cref="PollingWatch.DefaultInterval"/>; internal so a test can see a
+    /// poll without waiting five seconds for one.
+    /// </summary>
+    internal static TimeSpan? PollInterval { get; set; }
+
+    /// <summary>What the status line says after a load whose folder is read
+    /// on a timer rather than watched.</summary>
+    private const string ReadOnATimer = "this folder cannot be watched — it is checked every few seconds instead";
+
+    /// <summary>
+    /// Follows <paramref name="path"/>, and answers whether that had to be done
+    /// by reading it on a timer, which the load then says.
+    ///
+    /// **A folder whose watcher could not start stopped following its folder,
+    /// and nothing said so.** This caught whatever Watch threw and left the
+    /// listing as it stood. On Linux every watcher is an inotify instance of its
+    /// own, and fs.inotify.max_user_instances is 128 by default — measured on
+    /// .NET 10.0.11 in WSL Fedora 44: five watchers held five instances, and
+    /// once the user's instances were used up, starting one threw an
+    /// IOException naming that limit. The rows stayed on screen and went
+    /// quietly out of date.
+    ///
+    /// Read on a timer instead, by the watch a network mount already gets,
+    /// which asks nothing of inotify. A real watcher is tried again on the next
+    /// load, because every load comes through here.
+    /// </summary>
+    private bool StartWatching(string path)
     {
         _watcher?.Dispose();
         _watcher = null;
 
+        var generation = _generation;
+
+        void Changed(FileSystemChange change) => Queue(path, generation, change);
+
         try
         {
-            var generation = _generation;
-            _watcher = _fs.Watch(path, change => Queue(path, generation, change));
+            _watcher = _fs.Watch(path, Changed);
+            return false;
         }
-        catch
+        catch (Exception refused)
         {
-            // A directory we cannot watch still lists fine; F5 remains.
+            NotWatching(path, refused);
+            _watcher = Polled(path, Changed);
+            return _watcher is not null;
         }
     }
+
+    /// <summary>
+    /// A watch that reads <paramref name="path"/> on a timer — or null when the
+    /// folder cannot be read either, gone or refused, which leaves it to F5 as
+    /// a watcher that would not start used to.
+    /// </summary>
+    private static PollingWatch? Polled(string path, Action<FileSystemChange> changed)
+    {
+        try
+        {
+            return new PollingWatch(path, changed, PollInterval);
+        }
+        catch (Exception e) when (e is IOException or UnauthorizedAccessException)
+        {
+            Vaktari.Core.Quiet.Swallowed("watch", e);
+            return null;
+        }
+    }
+
+    /// <summary>The line a bug report needs: what refused, and where. The
+    /// inotify ceiling names itself in the message.</summary>
+    private static void NotWatching(string path, Exception refused)
+        => Console.Error.WriteLine(
+            $"[vaktari] watch: {refused.GetType().Name}: {refused.Message} — reading it every few seconds instead · {path}");
 
     /// <summary>
     /// Takes one event, on whatever thread the watcher raised it on, and folds
