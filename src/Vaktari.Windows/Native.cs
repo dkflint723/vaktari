@@ -181,6 +181,23 @@ internal static partial class Native
     [return: MarshalAs(UnmanagedType.Bool)]
     internal static partial bool CloseHandle(nint handle);
 
+    // ---- Reparse tags ------------------------------------------------------
+
+    internal const uint FILE_READ_ATTRIBUTES = 0x00000080;
+    internal const int FileAttributeTagInfo = 9;
+
+    [StructLayout(LayoutKind.Sequential)]
+    internal struct FILE_ATTRIBUTE_TAG_INFO
+    {
+        internal uint FileAttributes;
+        internal uint ReparseTag;
+    }
+
+    [LibraryImport("kernel32.dll", EntryPoint = "GetFileInformationByHandleEx", SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    internal static partial bool GetFileInformationByHandleEx(
+        nint file, int infoClass, out FILE_ATTRIBUTE_TAG_INFO info, uint size);
+
     /// <summary>
     /// Points an existing, empty directory at <paramref name="target"/>, making
     /// it a junction.

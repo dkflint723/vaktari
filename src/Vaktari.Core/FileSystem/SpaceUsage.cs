@@ -68,15 +68,14 @@ public readonly record struct UsageListing(IReadOnlyList<UsageRow> Rows, Usage T
 /// <see cref="IPropertiesProvider.MeasureAsync"/> walks used to count that same
 /// link as a folder — Windows tested the Directory attribute, and .NET's Unix
 /// <c>FileSystemEntry.IsDirectory</c> stats through the link — and the Linux one
-/// added a link at the length of its own text. They follow this rule now, with
-/// one difference on Windows: the measure there takes a link to be an entry
-/// with a link target, where SafeWalk takes any reparse point — so a reparse
-/// point that is not a link, a OneDrive placeholder by Windows' own
-/// documentation (not measured here), is a sized file in the dialog and an
-/// entry of no size here. They still do not replace this: those answer "how
-/// big is this one thing" for a
-/// dialog, while this answers it for every child of a folder at once, and
-/// counts what it could not read, which neither of those does.
+/// added a link at the length of its own text. They follow this rule now. What
+/// a link is, this listing and the Windows measure both ask
+/// <see cref="SafeWalk.IsLink"/>, which this used to answer for itself by the
+/// ReparsePoint attribute alone; the Linux measure reads that attribute, which
+/// there means a symbolic link and nothing else. They still do not replace
+/// this: those answer "how big is this one thing" for a dialog, while this
+/// answers it for every child of a folder at once, and counts what it could
+/// not read, which neither of those does.
 ///
 /// Progress is reported on the thread doing the walking, in order. A caller
 /// that hands in an <c>IProgress</c> marshalling to another thread owns what
@@ -194,7 +193,9 @@ public static class SpaceUsage
         {
             ct.ThrowIfCancellationRequested();
 
-            var link = (child.Attributes & FileAttributes.ReparsePoint) != 0;
+            // The walk's own question, asked of this child. SafeWalk.IsLink says
+            // what a link is on each platform.
+            var link = SafeWalk.IsLink(child);
 
             // From the attributes the line above has already fetched, rather
             // than a second question about the same child.

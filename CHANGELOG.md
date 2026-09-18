@@ -194,6 +194,15 @@ should not be trusted for compatibility yet.
 
 ### Fixed
 
+- **A file is no longer taken for a link because it carries a reparse
+  point.** Windows puts reparse points on entries that are not links — the
+  app execution aliases under WindowsApps are among them — and such a file
+  was listed in the space-usage view as a link and counted at no size. It
+  is now listed as the file it is, at its length. Junctions, symbolic
+  links and the links WSL makes are still listed as links and never
+  followed, and the Properties dialog counts a folder link made by WSL as
+  one item of no size like any other link.
+
 - **Searching no longer fills the list of remembered folder views.** Each
   search left a record of its view under that one search — a record nothing
   could ever read back — and the settings page counted every one of them

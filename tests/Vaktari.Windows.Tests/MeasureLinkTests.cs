@@ -49,6 +49,40 @@ public class MeasureLinkTests
     }
 
     /// <summary>
+    /// **A folder link made by WSL is an entry, not a folder, as well.** This
+    /// first told a link by its link TARGET, and the tag WSL leaves on NTFS for
+    /// a symbolic link has none that .NET reads, so such a link went on being
+    /// counted as a folder. The reader is adopted here the way WindowsPlatform
+    /// adopts it, and left adopted, as SafeWalkLinkTests leaves it.
+    /// </summary>
+    [WindowsFact]
+    public async Task A_folder_link_made_by_wsl_is_an_entry_not_a_folder()
+    {
+        SafeWalk.ReparseTag = ReparseTags.Of;
+
+        using var tree = new TempTree();
+
+        var measured = tree.Dir("measured");
+        tree.Dir("measured", "real");
+
+        var link = tree.Dir("measured", "linked");
+        ReparseFixture.SetWsl(link, directory: true);
+
+        try
+        {
+            var total = await Measure(measured);
+
+            Assert.Equal(1, total.Folders);
+            Assert.Equal(1, total.Files);
+            Assert.Equal(0, total.Bytes);
+        }
+        finally
+        {
+            ReparseFixture.RemoveWsl(link, directory: true);
+        }
+    }
+
+    /// <summary>
     /// GUARD, not a test of the change, and it says so: a folder with no
     /// junction in it is measured exactly as it always was. Measured passing
     /// before.

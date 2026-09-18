@@ -59,6 +59,12 @@ public sealed class WindowsPlatform : IPlatform
         // nothing about what it recycled, and reading the bin before and after
         // is what makes Ctrl+Z work here the way it always has on Linux.
         Operations = new WindowsFileOperations { Bin = TrashMaintenance };
+
+        // The walk's reader of reparse tags, adopted here for the reason
+        // LinuxPlatform gives for launcher names: Core cannot reference this
+        // assembly, and telling a link from a placeholder on Windows takes a
+        // call into the operating system.
+        SafeWalk.ReparseTag = ReparseTags.Of;
     }
 
     /// <summary>Where this application's own per-user state lives.</summary>

@@ -20,7 +20,8 @@ public static class SafeWalk
     /// <summary>One entry found underneath a root.</summary>
     /// <param name="Path">Where it is.</param>
     /// <param name="IsDirectory">A real directory — never a link to one.</param>
-    /// <param name="IsLink">A symbolic link, yielded but never descended into.</param>
+    /// <param name="IsLink">A link, as <see cref="SafeWalk.IsLink(FileSystemInfo)"/>
+    /// decides — yielded but never descended into.</param>
     /// <param name="Length">Bytes, for a file; zero for a directory or a
     /// link. **Carried because the walk already has it** — the enumeration
     /// has just read the entry, and a caller that totals sizes would
@@ -28,6 +29,50 @@ public static class SafeWalk
     /// and dropped. Defaulted so the callers that only want paths are
     /// untouched.</param>
     public readonly record struct Found(string Path, bool IsDirectory, bool IsLink, long Length = 0);
+
+    /// <summary>
+    /// How this platform reads an entry's reparse tag without following it:
+    /// the tag, or null when it cannot be read. Adopted by the Windows platform,
+    /// because reading one is a call into the operating system and this
+    /// assembly makes none — its project file says so. Null everywhere else,
+    /// and then <see cref="IsLink(FileSystemInfo)"/> takes every reparse point
+    /// for a link, which is what this walk did before there was a reader.
+    /// </summary>
+    public static Func<string, uint?>? ReparseTag { get; set; }
+
+    /// <summary>IsReparseTagNameSurrogate: the bit Windows sets on the tag of an
+    /// entry that stands for another named entry.</summary>
+    private const uint NameSurrogate = 0x20000000;
+
+    /// <summary>
+    /// Whether <paramref name="entry"/> is a link: reported where it stands,
+    /// never entered, and of no size.
+    ///
+    /// **On Windows a link is a reparse point whose tag is a name surrogate.**
+    /// The ReparsePoint attribute alone used to be taken for one, and entries
+    /// that are not links carry it with sizes of their own — measured: a
+    /// 1,234-byte file given a third-party tag was yielded as a link of length
+    /// 0, and an app execution alias, tag 0x8000001B, was a link the same way.
+    /// A LinkTarget is no test either. A symbolic link made by WSL carries tag
+    /// 0xA000001D and no target .NET can read — measured through /mnt/c, where
+    /// a folder one reads as a folder that cannot be opened, and through
+    /// \\wsl.localhost, where every one reads as a file the length of its
+    /// target's text. The name-surrogate bit was set on a junction and on WSL's
+    /// links, and on neither of the others; Windows defines symbolic links'
+    /// tag with it too.
+    ///
+    /// A tag that cannot be read makes a link, because what cannot be told
+    /// apart is never followed. On Linux no reader is adopted and the bit means
+    /// a symbolic link, so every one is a link, dangling or not.
+    /// </summary>
+    public static bool IsLink(FileSystemInfo entry)
+    {
+        if ((entry.Attributes & FileAttributes.ReparsePoint) == 0) return false;
+
+        if (ReparseTag?.Invoke(entry.FullName) is not { } tag) return true;
+
+        return (tag & NameSurrogate) != 0;
+    }
 
     /// <summary>
     /// Everything under <paramref name="root"/>, deepest last, with links
@@ -71,8 +116,18 @@ public static class SafeWalk
                 ct.ThrowIfCancellationRequested();
 
                 // **Reported, never entered.** Following one is how a recursive
-                // operation escapes the tree the person was looking at.
-                if ((child.Attributes & FileAttributes.ReparsePoint) != 0)
+                // operation escapes the tree the person was looking at. Which
+                // entries are links is IsLink's question.
+                //
+                // A folder that carries a reparse point and is not a link is
+                // entered. A cloud placeholder folder is one to a process that
+                // exposes placeholders; to a process in the default mode, which
+                // is where .NET starts, it carries no ReparsePoint at all —
+                // measured against a Proton Drive sync root in both modes — so the
+                // walk already entered those. One whose tag no filter owns cannot
+                // be opened, measured, and is reported unreadable like any other
+                // folder that will not list.
+                if (IsLink(child))
                 {
                     yield return new Found(child.FullName, IsDirectory: false, IsLink: true);
                     continue;

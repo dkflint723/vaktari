@@ -244,16 +244,14 @@ public sealed class WindowsPropertiesProvider : IPropertiesProvider
                         // one entry, of no size, and never a folder, as the Linux
                         // measure and SpaceUsage count one.
                         //
-                        // **A link is what has a link TARGET, not merely the
-                        // ReparsePoint attribute.** A OneDrive placeholder and a
-                        // deduplicated file carry that attribute as well — Windows
-                        // documents both as reparse points; neither was measured
-                        // here — and they are files with sizes, so they go on being
-                        // counted as they were. SafeWalk, under SpaceUsage, takes
-                        // every reparse point for a link; that broader answer is
-                        // deliberately not copied here.
-                        if ((entry.Attributes & FileAttributes.ReparsePoint) != 0
-                            && entry.LinkTarget is not null)
+                        // **What a link is, is SafeWalk.IsLink's question, asked
+                        // here as the walk under SpaceUsage asks it: a reparse
+                        // point whose tag is a name surrogate.** This first asked
+                        // for a link TARGET instead, which a link made by WSL does
+                        // not have — measured, a folder link made through /mnt/c
+                        // reads [Directory, ReparsePoint] with LinkTarget null — so
+                        // such a link went on being counted as a folder.
+                        if (SafeWalk.IsLink(entry))
                         {
                             files++;
                         }
@@ -261,8 +259,12 @@ public sealed class WindowsPropertiesProvider : IPropertiesProvider
                         {
                             folders++;
 
-                            // Not followed. A junction can point at an ancestor,
-                            // and following one turns a measurement into a loop.
+                            // Entered only when it carries no reparse point at all.
+                            // The links went above; a folder still carrying the
+                            // attribute is a placeholder or sits under some
+                            // filter's tag, and this dialog has never walked into
+                            // one — with no filter behind the tag it cannot even
+                            // be opened, measured.
                             if ((entry.Attributes & FileAttributes.ReparsePoint) == 0)
                                 pending.Push(entry.FullName);
                         }
