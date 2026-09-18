@@ -1158,7 +1158,13 @@ public sealed class NewWindowTests : OwnedViewModels
         // Through the SHELL, because that is the only route a real window has
         // to it: the window disposes the shell and the shell disposes what it
         // built.
-        var shell = new ShellViewModel(new Inert(), places: places);
+        //
+        // **Owned as well as disposed below**, because the disposal below is on
+        // the far side of an assertion. A red run would leave this shell holding
+        // the handler its constructor put on the static CutMarks.Changed for the
+        // rest of the process, and the class that read it next would be blamed —
+        // the shape this suite has already been caught by once.
+        var shell = Own(new ShellViewModel(new Inert(), places: places));
         shell.Start(null, Path.GetTempPath());
 
         Assert.Equal(1, places.Subscribers);
