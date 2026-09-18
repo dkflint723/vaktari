@@ -143,6 +143,62 @@ public sealed class IconSourceRepaintTests : OwnedViewModels
         Assert.Equal(tabs, files.Reads - before);
     }
 
+    /// <summary>
+    /// **Nothing ever proved that anything asks.** The test above shows a shell
+    /// re-lists its panes when it is told to, and calls RefreshPaneListings
+    /// itself to say so; the announcement that is supposed to do the telling was
+    /// run by no test at all. Measured 2026-09-17 by revert-check: the window's
+    /// handler rewritten to post an empty lambda left the whole Ui suite green,
+    /// so the chain from IconLoader.AnnounceSourceChanged through the window's
+    /// own subscription to the refresh could have been deleted whole and nothing
+    /// would have said a word — in the one class named for it.
+    ///
+    /// Driven from the real announcement through a real window, and counted at a
+    /// provider rather than by watching for a row, for the reason the class note
+    /// gives. The counting pane is added to the shell's OWN tab list because
+    /// RefreshPaneListings walks exactly that collection: a pane held to one side
+    /// would prove the provider counts and nothing else.
+    /// </summary>
+    [AvaloniaFact]
+    public async Task An_announcement_re_lists_the_panes_of_an_open_window()
+    {
+        UseSearch(PaneViewModel.Search);
+
+        var files = new Counting();
+
+        var window = _window = new MainWindow();
+
+        window.Show();
+        Settle();
+
+        var pane = Own(new PaneViewModel(files));
+
+        // A refresh re-reads the path the pane is on, so it has to be on one.
+        await pane.NavigateAsync(Path.GetTempPath());
+
+        ShellOf(window).Left.Tabs.Add(pane);
+
+        var before = files.Reads;
+
+        IconLoader.AnnounceSourceChanged();
+
+        // The handler POSTS the refresh rather than running it in place, and the
+        // refresh it posts is itself a load, so the read is at least two turns
+        // away. Waited for rather than counted in turns, the rule every
+        // load-dependent wait in this suite has had to learn.
+        for (var i = 0; i < 200 && files.Reads == before; i++) { Settle(); Thread.Sleep(5); }
+
+        Assert.True(
+            files.Reads > before,
+            "the announcement never reached the window's panes: the provider was never read again");
+    }
+
+    /// <summary>The window's shell, which it does not hand out.</summary>
+    private static ShellViewModel ShellOf(MainWindow window)
+        => (ShellViewModel)typeof(MainWindow)
+            .GetProperty("Shell", BindingFlags.NonPublic | BindingFlags.Instance)!
+            .GetValue(window)!;
+
     // ---- and only for as long as the window is open ------------------------
 
     /// <summary>
