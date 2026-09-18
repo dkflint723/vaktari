@@ -1519,11 +1519,35 @@ public sealed class WindowsFileOperations : IFileOperations
         }
     }
 
+    /// <summary>
+    /// Whether the entry at <paramref name="path"/> is a link.
+    ///
+    /// **The ReparsePoint attribute alone was the answer here, and on Windows
+    /// that is not what makes a link.** The walk stopped believing it in
+    /// 0633df3 — a link is a reparse point whose tag is a NAME SURROGATE, and
+    /// the app execution aliases under WindowsApps, cloud placeholders and
+    /// third-party tags are not links but carry the attribute — while these
+    /// operations went on believing it. The two then disagreed about the same
+    /// entry, and the disagreement decides whether a folder may be replaced by
+    /// a link: a folder wearing a tag no filter owns answered "link" here, so
+    /// the refusal that protects a folder from being written over was skipped.
+    ///
+    /// Asked of <see cref="SafeWalk.IsLink"/> now, so there is one answer. The
+    /// attribute is read first rather than Exists, because Exists follows and
+    /// cannot tell a link from what it names; the Directory bit picks which
+    /// kind of info to build and comes from the same lstat.
+    /// </summary>
     private static bool IsLink(string path)
     {
         try
         {
-            return (File.GetAttributes(path) & FileAttributes.ReparsePoint) != 0;
+            var attributes = File.GetAttributes(path);
+
+            FileSystemInfo entry = (attributes & FileAttributes.Directory) != 0
+                ? new DirectoryInfo(path)
+                : new FileInfo(path);
+
+            return SafeWalk.IsLink(entry);
         }
         catch (Exception e) when (e is IOException or UnauthorizedAccessException)
         {
@@ -1775,7 +1799,13 @@ public sealed class WindowsFileOperations : IFileOperations
     {
         try
         {
-            if (File.Exists(path)) ClearReadOnly(path);
+            // **File.Exists is false for every directory link**, so a ReadOnly
+            // junction or folder symlink kept its mark all the way into
+            // DeleteLink's Directory.Delete, which refuses one — and this method
+            // swallows, so the refusal was silent and the leftover stayed. The
+            // attribute is read instead, which answers for the entry itself and
+            // for a link whose target has gone.
+            if (Wearing(path, FileAttributes.ReadOnly)) ClearReadOnly(path);
 
             DeleteLink(path);
         }
@@ -1793,6 +1823,15 @@ public sealed class WindowsFileOperations : IFileOperations
     {
         if (Directory.Exists(path)) Directory.Delete(path);
         else File.Delete(path);
+    }
+
+    /// <summary>Whether the entry itself carries <paramref name="mark"/>, asked
+    /// of the entry rather than of whatever it may point at, and false when it
+    /// cannot be asked at all.</summary>
+    private static bool Wearing(string path, FileAttributes mark)
+    {
+        try { return (File.GetAttributes(path) & mark) != 0; }
+        catch (Exception e) when (e is IOException or UnauthorizedAccessException) { return false; }
     }
 
     /// <summary>

@@ -194,6 +194,16 @@ should not be trusted for compatibility yet.
 
 ### Fixed
 
+- **A folder Windows has marked for something other than a link is no longer
+  replaced by one, and a read-only link being replaced no longer leaves a
+  stray entry behind.** Windows puts reparse points on folders that are not
+  links — app execution aliases and cloud placeholders among them — and
+  moving a link onto such a folder wrote over it instead of refusing, which
+  is what happens for any other folder. Separately, replacing a read-only
+  junction or folder link left the old one sitting in the folder under a
+  working name, because the read-only mark was never taken off it and the
+  removal that failed was not reported.
+
 - **Moving a link into the folder it already lives in, reached by another
   name, no longer destroys it.** A folder often has two names — a linked
   folder is the ordinary way to arrange that — and moving a link into its

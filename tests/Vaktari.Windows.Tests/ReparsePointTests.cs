@@ -86,6 +86,108 @@ public class ReparsePointTests
     /// the junction stands at the name.
     /// </summary>
     /// <summary>
+    /// **A folder wearing a tag that is not a link is still a folder.** These
+    /// operations decided what a link was by the ReparsePoint attribute alone,
+    /// while the walk stopped believing that in 0633df3 — a link is a reparse
+    /// point whose tag is a NAME SURROGATE, and the app execution aliases under
+    /// WindowsApps, cloud placeholders and third-party tags carry the attribute
+    /// without being links.
+    ///
+    /// The disagreement decided whether a folder could be written over: the
+    /// refusal that protects one is skipped for anything the old answer called a
+    /// link, so a folder holding a tag no filter owns was replaced by a link
+    /// rather than refused.
+    /// </summary>
+    [WindowsFact]
+    public async Task A_folder_wearing_a_tag_that_is_not_a_link_is_not_replaced_by_one()
+    {
+        // **The rule only exists where the tag can be read**, and reading one is
+        // a call into the operating system that Core may not make — so the
+        // platform adopts the reader and the walk asks through it. Adopted here
+        // the way WindowsPlatform does, and left adopted, as SafeWalkLinkTests
+        // does: every walk in this assembly wants the platform's answer, and
+        // without it "a link" falls back to the attribute this test is about.
+        SafeWalk.ReparseTag = ReparseTags.Of;
+
+        using var tree = new TempTree();
+        var outside = tree.Dir("outside");
+        tree.Write("outside/kept.txt", "elsewhere");
+
+        var link = tree.Junction("from/blocked", outside);
+
+        // An empty folder at the destination name, wearing a third-party tag: a
+        // reparse point, and not a link.
+        var blocked = tree.Dir("dst", "blocked");
+        ReparseFixture.SetThirdParty(blocked, directory: true);
+
+        try
+        {
+            await Finished(new WindowsFileOperations().Move([link], tree.At("dst"), Overwrite));
+
+            // Asked of the disk rather than of the handle: an operation can
+            // finish while refusing one item, and what matters is that the
+            // folder is still the folder.
+            Assert.Equal(
+                0x00001234u,
+                ReparseTags.Of(blocked) ?? 0u);
+
+            Assert.True(Path.Exists(link), "the junction was taken away although it never landed");
+        }
+        finally
+        {
+            // Tolerant on purpose: if the move DID replace the folder, the tag
+            // standing there is no longer the one this put on, and a throwing
+            // finally would replace the assertion that says so.
+            try { ReparseFixture.RemoveThirdParty(blocked, directory: true); }
+            catch (Exception) { /* the assertion above is the news */ }
+        }
+    }
+
+    /// <summary>
+    /// **A read-only junction being replaced left its old self behind.** The
+    /// replace dance renames what is at the name aside, lands the new link, and
+    /// removes the one it set aside — but the removal cleared the read-only mark
+    /// only when File.Exists said so, and File.Exists is false for every
+    /// directory link. So the mark survived into Directory.Delete, which refuses
+    /// one, and the refusal was swallowed because tidying must not report a
+    /// landed link as a failure. What was left was a staging name in the
+    /// person's folder, for ever.
+    /// </summary>
+    [WindowsFact]
+    public async Task Replacing_a_read_only_junction_leaves_nothing_of_it_behind()
+    {
+        using var tree = new TempTree();
+        var first = tree.Dir("first");
+        var second = tree.Dir("second");
+        tree.Write("first/a.txt", "the first");
+        tree.Write("second/b.txt", "the second");
+
+        var standing = tree.Junction("dst/link", first);
+        File.SetAttributes(standing, File.GetAttributes(standing) | FileAttributes.ReadOnly);
+
+        var arriving = tree.Junction("from/link", second);
+
+        try
+        {
+            await Finished(new WindowsFileOperations().Move([arriving], tree.At("dst"), Overwrite));
+
+            Assert.Equal(second, new DirectoryInfo(standing).LinkTarget);
+
+            // Nothing of the walk's own making is left in the folder.
+            Assert.DoesNotContain(
+                Directory.EnumerateFileSystemEntries(tree.At("dst")).Select(Path.GetFileName),
+                name => name!.Contains("vaktari-", StringComparison.Ordinal));
+
+            Assert.Equal("the first", tree.Read("first", "a.txt"));
+        }
+        finally
+        {
+            if (Path.Exists(standing))
+                File.SetAttributes(standing, File.GetAttributes(standing) & ~FileAttributes.ReadOnly);
+        }
+    }
+
+    /// <summary>
     /// **A junction moved into its own folder under a second name is not lost.**
     /// The guard that catches a paste into the folder it already lives in
     /// compared path TEXT, so a junction standing beside that folder and
