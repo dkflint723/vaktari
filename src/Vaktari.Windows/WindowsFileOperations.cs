@@ -81,7 +81,17 @@ public sealed class WindowsFileOperations : IFileOperations
     /// <see cref="BeginRenameGroup"/>.</summary>
     private UndoGroup? _group;
 
-    public bool CanUndo => !_undo.IsEmpty;
+    /// <summary>
+    /// **One undo or redo at a time, and neither offered while one runs.** Both
+    /// walk the disk, and two walking at once would interleave renames over the
+    /// same names — Ctrl+Z held down is enough to ask for it. The rows go quiet
+    /// for the duration rather than queueing, because a press that is remembered
+    /// and applied later is applied to a folder the person is no longer looking
+    /// at.
+    /// </summary>
+    private int _walking;
+
+    public bool CanUndo => _walking == 0 && !_undo.IsEmpty;
 
     public IOperationHandle Copy(
         IReadOnlyList<string> sources, string destination,
@@ -752,7 +762,7 @@ public sealed class WindowsFileOperations : IFileOperations
         return _group = new UndoGroup(this);
     }
 
-    public bool CanRedo => !_redo.IsEmpty;
+    public bool CanRedo => _walking == 0 && !_redo.IsEmpty;
 
     // Peeked rather than popped, and read on every ask: the menu row is built
     // when the menu opens and the status line is written after the work, so
@@ -770,56 +780,87 @@ public sealed class WindowsFileOperations : IFileOperations
     /// </summary>
     public async ValueTask RedoAsync(CancellationToken ct)
     {
-        if (!_redo.TryPop(out var action)) return;
-
-        var generation = _generation;
+        if (Interlocked.CompareExchange(ref _walking, 1, 0) != 0) return;
 
         try
         {
-            var undo = await action.UndoAsync(ct).ConfigureAwait(false);
+            if (!_redo.TryPop(out var action)) return;
 
-            // The same guard the partial result gets, and for the same reason: if
-            // an operation recorded itself while this walk ran, Remember has
-            // cleared the other stack and pushed its own, and stacking this on
-            // top of it puts the two in an order the history never had.
-            if (undo is not null && generation == _generation) _undo.Push(undo);
-        }
-        catch (PartlyUndone partly)
-        {
-            if (Stackable(partly, generation))
+            var generation = _generation;
+
+            try
             {
-                _undo.Push(partly.Done!);
-                if (partly.Left is { } left) _redo.Push(left);
-            }
+                var undo = await Walk(action, ct).ConfigureAwait(false);
 
-            throw;
+                // The same guard the partial result gets, and for the same
+                // reason: if an operation recorded itself while this walk ran,
+                // Remember has cleared the other stack and pushed its own, and
+                // stacking this on top of it puts the two in an order the
+                // history never had.
+                if (undo is not null && generation == _generation) _undo.Push(undo);
+            }
+            catch (PartlyUndone partly)
+            {
+                if (Stackable(partly, generation))
+                {
+                    _undo.Push(partly.Done!);
+                    if (partly.Left is { } left) _redo.Push(left);
+                }
+
+                throw;
+            }
+        }
+        finally
+        {
+            Interlocked.Exchange(ref _walking, 0);
         }
     }
 
+    /// <summary>
+    /// The walk, off the thread that asked for it.
+    ///
+    /// **Ctrl+Z ran the whole thing where the window is drawn.** A cross-volume
+    /// undo of a large folder copies every byte, and it did so on the UI thread:
+    /// the window stopped painting and Windows offered to close it. This is one
+    /// hop, not a progress bar — there is still no way to watch it or stop it,
+    /// which is its own change — but a frozen window is not the price of asking.
+    /// </summary>
+    private static Task<IUndoable?> Walk(IUndoable action, CancellationToken ct)
+        => Task.Run(() => action.UndoAsync(ct).AsTask(), ct);
+
     public async ValueTask UndoAsync(CancellationToken ct)
     {
-        if (!_undo.TryPop(out var action)) return;
-
-        var generation = _generation;
+        if (Interlocked.CompareExchange(ref _walking, 1, 0) != 0) return;
 
         try
         {
-            var redo = await action.UndoAsync(ct).ConfigureAwait(false);
+            if (!_undo.TryPop(out var action)) return;
 
-            // As in RedoAsync: an operation recorded while this walk ran has
-            // already cleared the redo stack, and this would land on top of the
-            // clearing.
-            if (redo is not null && generation == _generation) _redo.Push(redo);
-        }
-        catch (PartlyUndone partly)
-        {
-            if (Stackable(partly, generation))
+            var generation = _generation;
+
+            try
             {
-                _redo.Push(partly.Done!);
-                if (partly.Left is { } left) _undo.Push(left);
-            }
+                var redo = await Walk(action, ct).ConfigureAwait(false);
 
-            throw;
+                // As in RedoAsync: an operation recorded while this walk ran has
+                // already cleared the redo stack, and this would land on top of
+                // the clearing.
+                if (redo is not null && generation == _generation) _redo.Push(redo);
+            }
+            catch (PartlyUndone partly)
+            {
+                if (Stackable(partly, generation))
+                {
+                    _redo.Push(partly.Done!);
+                    if (partly.Left is { } left) _undo.Push(left);
+                }
+
+                throw;
+            }
+        }
+        finally
+        {
+            Interlocked.Exchange(ref _walking, 0);
         }
     }
 

@@ -194,6 +194,17 @@ should not be trusted for compatibility yet.
 
 ### Fixed
 
+- **Undoing a move no longer freezes the window, and two undos can no longer
+  run at once.** Ctrl+Z did the whole job on the thread that draws the
+  window, so undoing a move of a large folder across drives left the window
+  unpainted until it finished and Windows offering to close it. It runs off
+  that thread now. There is still no way to watch an undo or stop it, which
+  is a larger change; what has gone is the freeze. And because two could now
+  overlap — holding Ctrl+Z down is enough — only one runs at a time: Undo and
+  Redo are not offered while one is working, and a press that arrives while
+  it is is dropped rather than applied afterwards to a folder you have since
+  left.
+
 - **Undoing the move of a folder no longer writes over what is standing at the
   source, or stops half-done.** Where the folder a move came out of was there
   again, Ctrl+Z copied the moved tree back over it: a file written there since

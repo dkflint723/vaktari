@@ -309,6 +309,77 @@ public class UndoMovedFolderTests
     }
 
     /// <summary>
+    /// **One undo at a time, and none offered while one runs.** Both walks move
+    /// things on disk, and two at once would interleave renames over the same
+    /// names — holding Ctrl+Z down is enough to ask for it. The second press is
+    /// dropped rather than queued: a press remembered and applied later is
+    /// applied to a folder the person has stopped looking at.
+    ///
+    /// Held open at the rename seam, the one place the walk waits, so the state
+    /// is read while it is genuinely mid-walk.
+    /// </summary>
+    [WindowsFact]
+    public async Task While_one_undo_walks_no_other_is_offered_or_runs()
+    {
+        using var tree = new TempTree();
+        tree.Write("src/old.txt", "the older move");
+        tree.Write("src/A/a.txt", "moved");
+        tree.Write("src/A/b.txt", "moved too");
+        tree.Dir("dst");
+
+        using var inside = new SemaphoreSlim(0);
+        using var released = new SemaphoreSlim(0);
+
+        var ops = new WindowsFileOperations
+        {
+            BeforeRenaming = (from, _) =>
+            {
+                if (PathRules.LeafName(from) == "a.txt")
+                {
+                    inside.Release();
+                    released.Wait();
+                }
+            },
+        };
+
+        // **An older step underneath, or this proves nothing.** The walk pops
+        // the step it is running before it starts, so with one on the stack
+        // CanUndo answers false while it walks whether it is gated or not —
+        // measured, as a mutation that stayed green.
+        var older = ops.Move([tree.At("src", "old.txt")], tree.At("dst"), Overwrite);
+        await older.Completion;
+        Assert.Null(older.Error);
+
+        await Moved(ops, tree);
+        tree.Dir("src", "A");
+
+        var walking = ops.UndoAsync(CancellationToken.None).AsTask();
+
+        Assert.True(await inside.WaitAsync(TimeSpan.FromSeconds(10)), "the walk never reached the seam");
+
+        Assert.False(ops.CanUndo, "Ctrl+Z was still offered while a walk was running");
+        Assert.False(ops.CanRedo, "Ctrl+Y was still offered while a walk was running");
+
+        // A second press while the first walks: it does nothing, rather than
+        // starting a second walk over the same names.
+        await ops.UndoAsync(CancellationToken.None);
+
+        released.Release();
+        await walking;
+
+        Assert.Equal("moved", tree.Read("src", "A", "a.txt"));
+        Assert.Equal("moved too", tree.Read("src", "A", "b.txt"));
+
+        Assert.True(ops.CanRedo, "the finished walk left nothing to redo");
+
+        // The press that arrived mid-walk was dropped, not applied late: the
+        // older move is still where it landed, and still the next thing Ctrl+Z
+        // would reach.
+        Assert.True(ops.CanUndo, "the older step went with the press that was dropped");
+        Assert.Equal("the older move", tree.Read("dst", "old.txt"));
+    }
+
+    /// <summary>
     /// **A press that put nothing back does not push itself back on top.** The
     /// obstacle is still there, so the retry would meet it again — and anything
     /// recorded since would be buried under it, so Ctrl+Z would start taking

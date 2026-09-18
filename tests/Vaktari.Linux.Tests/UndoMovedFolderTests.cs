@@ -353,6 +353,76 @@ public sealed class UndoMovedFolderTests : IDisposable
         Assert.IsAssignableFrom<IOException>(said);
     }
 
+    /// <summary>
+    /// **One undo at a time, and none offered while one runs.** Both walks move
+    /// things on disk, and two at once would interleave renames over the same
+    /// names — holding Ctrl+Z down is enough to ask for it. The second press is
+    /// dropped rather than queued: a press remembered and applied later is
+    /// applied to a folder the person has stopped looking at.
+    ///
+    /// Held open at the rename seam, which is the only place the walk waits for
+    /// anything, so the state can be read while it is genuinely mid-walk.
+    /// </summary>
+    [PosixFact]
+    public async Task While_one_undo_walks_no_other_is_offered_or_runs()
+    {
+        Write("src/A/a.txt", "moved");
+        Write("src/A/b.txt", "moved too");
+
+        using var inside = new SemaphoreSlim(0);
+        using var released = new SemaphoreSlim(0);
+
+        var ops = new LinuxFileOperations
+        {
+            RenameForUndo = (from, to) =>
+            {
+                if (Path.GetFileName(from) == "a.txt")
+                {
+                    inside.Release();
+                    released.Wait();
+                }
+
+                return Renames.WithoutReplacing(from, to);
+            },
+        };
+
+        // **An older step underneath, or this proves nothing.** The walk pops
+        // the step it is running before it starts, so with one on the stack
+        // CanUndo answers false while it walks whether it is gated or not —
+        // measured on the Windows twin, as a mutation that stayed green.
+        Write("src/old.txt", "the older move");
+        var older = ops.Move([At("src", "old.txt")], At("dst"), Overwrite);
+        await older.Completion;
+        Assert.Null(older.Error);
+
+        await Moved(ops);
+        Directory.CreateDirectory(At("src", "A"));
+
+        var walking = ops.UndoAsync(CancellationToken.None).AsTask();
+
+        Assert.True(await inside.WaitAsync(TimeSpan.FromSeconds(10)), "the walk never reached the seam");
+
+        Assert.False(ops.CanUndo, "Ctrl+Z was still offered while a walk was running");
+        Assert.False(ops.CanRedo, "Ctrl+Y was still offered while a walk was running");
+
+        // A second press while the first is walking: it does nothing at all,
+        // rather than starting a second walk over the same names.
+        await ops.UndoAsync(CancellationToken.None);
+
+        released.Release();
+        await walking;
+
+        Assert.Equal("moved", File.ReadAllText(At("src", "A", "a.txt")));
+        Assert.Equal("moved too", File.ReadAllText(At("src", "A", "b.txt")));
+
+        // Offered again once it has finished, and the press that arrived
+        // mid-walk was dropped rather than applied late: the older move is still
+        // where it landed, and still the next thing Ctrl+Z would reach.
+        Assert.True(ops.CanRedo, "the finished walk left nothing to redo");
+        Assert.True(ops.CanUndo, "the older step went with the press that was dropped");
+        Assert.Equal("the older move", File.ReadAllText(At("dst", "old.txt")));
+    }
+
     /// <summary>A link whose target has gone is still something the move took,
     /// and it comes back as the same link rather than stopping the undo.</summary>
     [PosixFact]
