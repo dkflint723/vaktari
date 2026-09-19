@@ -194,6 +194,15 @@ should not be trusted for compatibility yet.
 
 ### Fixed
 
+- **Undoing a delete puts back everything it can, and says what it could
+  not.** When one of the deleted items could not come back — purged from
+  the bin since, or refused on the way — Ctrl+Z on Linux stopped at it,
+  leaving the rest in the bin with the Undo row gone and a message naming
+  a trash key; on Windows it went on, said nothing, and reported the undo
+  done. Now every item that can come back does, and the status bar names
+  what could not and why, as it does for a move. What is still in the bin
+  is put back from there.
+
 - **A link to a network share is no longer reproduced as something that
   cannot be opened.** Copying or moving a link that points at a share made a
   junction, and a junction cannot express a share — Windows accepted it

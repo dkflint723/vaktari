@@ -45,14 +45,23 @@ public sealed class TrashUndoTests
 
         public IReadOnlyList<TrashedItem> List() => _items.ToList();
 
+        /// <summary>Keys whose restore is refused, with the real bin's kind of reason.</summary>
+        public HashSet<string> Stuck { get; } = [];
+
         public string Restore(string trashName)
         {
-            Restored.Add(trashName);
+            // The real bin's two refusals: nothing under that key, which is
+            // what it says after another program has purged the item, and a
+            // move that fails with the item still listed.
+            var item = _items.FirstOrDefault(i => i.TrashName == trashName)
+                ?? throw new FileNotFoundException("Nothing in the Recycle Bin for " + trashName);
 
-            var item = _items.FirstOrDefault(i => i.TrashName == trashName);
+            if (Stuck.Contains(trashName)) throw new IOException("the disk is full");
+
+            Restored.Add(trashName);
             _items.RemoveAll(i => i.TrashName == trashName);
 
-            return item?.OriginalPath ?? "";
+            return item.OriginalPath;
         }
 
         public void Delete(string trashName) => _items.RemoveAll(i => i.TrashName == trashName);
@@ -146,6 +155,126 @@ public sealed class TrashUndoTests
 
         Assert.Equal(["NEW222"], bin.Restored);
         Assert.DoesNotContain("OLD111", bin.Restored);
+    }
+
+    private static Task<Exception?> Undo(WindowsFileOperations ops)
+        => Record.ExceptionAsync(() => ops.UndoAsync(CancellationToken.None).AsTask());
+
+    /// <summary>
+    /// Recycled together, with the bin driven so that they all arrive at once,
+    /// the way one SHFileOperation puts them there: K1 for the first name, K2
+    /// for the second, and so on.
+    /// </summary>
+    private static async Task<(WindowsFileOperations Ops, FakeBin Bin)> Recycled(
+        TempTree tree, params string[] names)
+    {
+        var files = names.Select(name => tree.Write(name, "keep " + name)).ToList();
+
+        var bin = new FakeBin();
+
+        var arriving = new ArrivingBin(bin, () =>
+        {
+            for (var i = 0; i < files.Count; i++) bin.Arrive($"K{i + 1}", files[i]);
+        });
+
+        var ops = new WindowsFileOperations { Bin = arriving, RecycleOverride = _ => new RecycleResult(0, false) };
+
+        await ops.Trash(files).Completion;
+
+        Assert.True(ops.CanUndo, "a recycle left nothing to undo");
+
+        return (ops, bin);
+    }
+
+    /// <summary>
+    /// **Each refusal was swallowed and the undo reported done.** The other two
+    /// came back, as they do now, and the status line said "undid delete of 3
+    /// items" over a bin that still held the third. A key here is a $I path
+    /// recorded by difference, so an item that is no longer in the bin has no
+    /// name to be said by — it is counted.
+    /// </summary>
+    [WindowsFact]
+    public async Task A_purged_item_is_said_rather_than_swallowed()
+    {
+        using var tree = new TempTree();
+        var (ops, bin) = await Recycled(tree, "a.txt", "b.txt", "c.txt");
+
+        // Purged since, by another program.
+        bin.Delete("K2");
+
+        var said = await Undo(ops);
+
+        Assert.Equal(["K1", "K3"], bin.Restored);
+
+        Assert.Equal(
+            "one item could not go back: not in the bin any more",
+            Assert.IsAssignableFrom<IOException>(said).Message);
+
+        // The one still missing is in the bin, not on the stack — an entry that
+        // can only fail again would wedge Ctrl+Z against itself.
+        Assert.False(ops.CanUndo, "an entry that can only fail again went back on the stack");
+    }
+
+    /// <summary>
+    /// An item the bin still lists is named by where it came from, never by
+    /// its key, with the bin's own reason.
+    /// </summary>
+    [WindowsFact]
+    public async Task What_did_not_come_back_is_named_by_where_it_came_from()
+    {
+        using var tree = new TempTree();
+        var (ops, bin) = await Recycled(tree, "a.txt", "notes.txt", "c.txt");
+
+        bin.Stuck.Add("K2");
+
+        var said = await Undo(ops);
+
+        Assert.Equal(["K1", "K3"], bin.Restored);
+
+        Assert.Equal(
+            "notes.txt could not go back: the disk is full",
+            Assert.IsAssignableFrom<IOException>(said).Message);
+    }
+
+    /// <summary>
+    /// One refused with the bin still listing it, one purged: the named one
+    /// leads, the nameless one joins the count, and the reason is the first
+    /// there is — the shape the undo of a move uses past three names.
+    /// </summary>
+    [WindowsFact]
+    public async Task A_purged_item_beside_a_refused_one_is_counted()
+    {
+        using var tree = new TempTree();
+        var (ops, bin) = await Recycled(tree, "a.txt", "notes.txt", "c.txt");
+
+        bin.Stuck.Add("K2");
+        bin.Delete("K3");
+
+        var said = await Undo(ops);
+
+        Assert.Equal(["K1"], bin.Restored);
+
+        Assert.Equal(
+            "notes.txt and 1 more could not go back: the disk is full",
+            Assert.IsAssignableFrom<IOException>(said).Message);
+    }
+
+    /// <summary>The sentence the undo of a move uses: three names, then a count.</summary>
+    [WindowsFact]
+    public async Task Past_three_the_rest_are_counted()
+    {
+        using var tree = new TempTree();
+        var (ops, bin) = await Recycled(tree, "a.txt", "b.txt", "c.txt", "d.txt", "e.txt");
+
+        foreach (var key in new[] { "K1", "K2", "K3", "K4", "K5" }) bin.Stuck.Add(key);
+
+        var said = await Undo(ops);
+
+        Assert.Empty(bin.Restored);
+
+        Assert.Equal(
+            "a.txt, b.txt, c.txt and 2 more could not go back: the disk is full",
+            Assert.IsAssignableFrom<IOException>(said).Message);
     }
 
     /// <summary>

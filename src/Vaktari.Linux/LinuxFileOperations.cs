@@ -1634,9 +1634,40 @@ public sealed class LinuxFileOperations : IFileOperations
     }
 
     /// <summary>
+    /// "a.txt, b.txt, c.txt and 2 more could not go back: Permission denied" —
+    /// the one sentence for whatever an undo could not do, shared by the walk
+    /// and the restore so the person reads one shape whichever stopped
+    /// part-way. Up to three names, then a count, and the first reason there
+    /// is; no reason at all is the walk's name clash. The Windows twin carries
+    /// the same sentence.
+    /// </summary>
+    private static string CouldNot(string way, List<(string Name, string? Why)> blocked)
+    {
+        var named = string.Join(", ", blocked.Take(3).Select(b => b.Name));
+
+        if (blocked.Count > 3) named += $" and {blocked.Count - 3} more";
+
+        var why = blocked.FirstOrDefault(b => b.Why is not null).Why;
+
+        return why is not null
+            ? $"{named} could not {way}: {why}"
+            : $"{named} could not {way}, because something of that name is there now";
+    }
+
+    /// <summary>
     /// **No inverse, deliberately.** Redoing a restore would mean trashing the
     /// files again, and the trash entry they came from is gone — the redo would
     /// create a new one, which is a different act from the one being repeated.
+    ///
+    /// **Restored in a loop with no catch.** Three deleted, the middle one
+    /// purged from the bin since, and Ctrl+Z put back the first, threw on the
+    /// second and never reached the third — with the entry already popped, so
+    /// the third stayed in the bin behind a message naming its trash key. Now
+    /// each item is tried whatever the others did, and what could not come back
+    /// is said as the walk says it, by the name the person knew. Nothing goes
+    /// back on the stack for it: the item is in the bin, which is where it is
+    /// put back from, and an entry that can only fail again would sit on top of
+    /// the history and wedge Ctrl+Z against itself — see Stackable.
     /// </summary>
     private sealed class UndoTrash(List<(string TrashName, string Original)> items) : IUndoable
     {
@@ -1646,10 +1677,30 @@ public sealed class LinuxFileOperations : IFileOperations
 
         public ValueTask<IUndoable?> UndoAsync(CancellationToken ct)
         {
-            foreach (var (trashName, _) in items)
-                XdgTrash.Restore(trashName);
+            var blocked = new List<(string Name, string? Why)>();
 
-            return ValueTask.FromResult<IUndoable?>(null);
+            foreach (var (trashName, original) in items)
+            {
+                ct.ThrowIfCancellationRequested();
+
+                try
+                {
+                    XdgTrash.Restore(trashName);
+                }
+                catch (Exception e)
+                {
+                    // Restore's own sentence names the trash key — "No trash
+                    // info for notes.1.txt" — which is a name the person never
+                    // saw. Nothing under that key, info or payload, is the one
+                    // case put into words here; the rest say what they said.
+                    blocked.Add((Path.GetFileName(original),
+                        e is FileNotFoundException ? "not in the bin any more" : e.Message));
+                }
+            }
+
+            if (blocked.Count == 0) return ValueTask.FromResult<IUndoable?>(null);
+
+            throw new PartlyUndone(CouldNot("go back", blocked), done: null, left: null);
         }
     }
 
@@ -2147,15 +2198,7 @@ public sealed class LinuxFileOperations : IFileOperations
                     ? $"everything went {(_forward ? "forward" : "back")}, but {notes[0]}"
                     : $"something could not {way}";
 
-            var named = string.Join(", ", blocked.Take(3).Select(b => b.Name));
-
-            if (blocked.Count > 3) named += $" and {blocked.Count - 3} more";
-
-            var why = blocked.FirstOrDefault(b => b.Why is not null).Why;
-
-            return why is not null
-                ? $"{named} could not {way}: {why}"
-                : $"{named} could not {way}, because something of that name is there now";
+            return CouldNot(way, blocked);
         }
     }
 }

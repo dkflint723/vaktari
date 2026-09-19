@@ -377,6 +377,33 @@ public sealed class WindowsFileOperations : IFileOperations
     }
 
     /// <summary>
+    /// "a.txt, b.txt, c.txt and 2 more could not go back: the disk is full" —
+    /// the one sentence for whatever an undo could not do, shared by the walk
+    /// and the restore so the person reads one shape whichever stopped
+    /// part-way. Up to three names, then a count, and the first reason there
+    /// is; no reason at all is the walk's name clash. <paramref name="unnamed"/>
+    /// are refusals with no name to give — the restore has those, because its
+    /// keys were recorded by difference — and join the count. The Linux twin
+    /// carries the same sentence.
+    /// </summary>
+    private static string CouldNot(string way, List<(string Name, string? Why)> blocked, int unnamed = 0)
+    {
+        var named = string.Join(", ", blocked.Take(3).Select(b => b.Name));
+
+        var more = Math.Max(blocked.Count - 3, 0) + unnamed;
+
+        if (more > 0) named += $" and {more} more";
+
+        // The first reason there is, from the entry that gave it, rather than
+        // the first reason anything gave.
+        var why = blocked.FirstOrDefault(b => b.Why is not null).Why;
+
+        return why is not null
+            ? $"{named} could not {way}: {why}"
+            : $"{named} could not {way}, because something of that name is there now";
+    }
+
+    /// <summary>
     /// Puts recycled items back where they came from.
     ///
     /// **This was impossible until the bin could be read.** The comment that
@@ -384,6 +411,17 @@ public sealed class WindowsFileOperations : IFileOperations
     /// outstanding — WindowsTrashMaintenance shipped and made that false, and
     /// nothing came back to remove the claim. So Ctrl+Z after a delete did
     /// nothing on Windows while working on Linux, with no sign of why.
+    ///
+    /// **Each refusal was swallowed and the undo reported done.** The rest came
+    /// back, as they still do, and the status line said "undid delete of 3
+    /// items" over a bin that still held the third. Now what could not come
+    /// back is said as the walk says it. A key here is a $I path recorded by
+    /// difference, with no name of its own: the bin is read once, on the first
+    /// refusal, to name whatever it still lists, and an item it no longer has
+    /// is counted. Nothing goes back on the stack for either: the item is in
+    /// the bin, which is where it is put back from, and an entry that can only
+    /// fail again would sit on top of the history and wedge Ctrl+Z against
+    /// itself — see Stackable.
     /// </summary>
     private sealed class UndoTrash(
         ITrashMaintenance bin,
@@ -394,6 +432,10 @@ public sealed class WindowsFileOperations : IFileOperations
 
         public ValueTask<IUndoable?> UndoAsync(CancellationToken ct)
         {
+            var blocked = new List<(string Name, string? Why)>();
+            var nameless = new List<string>();
+            IReadOnlyList<TrashedItem>? listed = null;
+
             foreach (var name in trashNames)
             {
                 ct.ThrowIfCancellationRequested();
@@ -402,18 +444,46 @@ public sealed class WindowsFileOperations : IFileOperations
                 {
                     bin.Restore(name);
                 }
-                catch (Exception ex)
+                catch (Exception e)
                 {
-                    // One item that will not come back must not strand the
-                    // rest — the same rule the copy engine now follows.
-                    Vaktari.Core.Quiet.Swallowed("file-ops", ex);
+                    // Nothing under that key, info or payload, is the bin's
+                    // own FileNotFound, and its sentence names the key; any
+                    // other refusal left the item listed, and so nameable.
+                    var why = e is FileNotFoundException ? "not in the bin any more" : e.Message;
+
+                    listed ??= Listed(bin);
+
+                    if (listed.FirstOrDefault(i => i.TrashName == name) is { } item)
+                        blocked.Add((PathRules.LeafName(item.OriginalPath), why));
+                    else
+                        nameless.Add(why);
                 }
             }
 
             // No redo: putting them back in the bin would need the paths they
             // were restored to, and Restore reports where each one went. That
             // is the next increment, not a guess made here.
-            return ValueTask.FromResult<IUndoable?>(null);
+            if (blocked.Count == 0 && nameless.Count == 0) return ValueTask.FromResult<IUndoable?>(null);
+
+            var said = blocked.Count > 0
+                ? CouldNot("go back", blocked, unnamed: nameless.Count)
+                : $"{(nameless.Count == 1 ? "one item" : $"{nameless.Count} items")} could not go back: {nameless[0]}";
+
+            throw new PartlyUndone(said, done: null, left: null);
+        }
+
+        /// <summary>Read once; a bin that will not answer names nothing.</summary>
+        private static IReadOnlyList<TrashedItem> Listed(ITrashMaintenance bin)
+        {
+            try
+            {
+                return bin.List();
+            }
+            catch (Exception e)
+            {
+                Vaktari.Core.Quiet.Swallowed("file-ops", e);
+                return [];
+            }
         }
     }
 
@@ -2986,17 +3056,7 @@ public sealed class WindowsFileOperations : IFileOperations
                     ? $"everything went {(_forward ? "forward" : "back")}, but {notes[0]}"
                     : $"something could not {way}";
 
-            var named = string.Join(", ", blocked.Take(3).Select(b => b.Name));
-
-            if (blocked.Count > 3) named += $" and {blocked.Count - 3} more";
-
-            // The first reason there is, from the entry that gave it, rather than
-            // the first reason anything gave.
-            var why = blocked.FirstOrDefault(b => b.Why is not null).Why;
-
-            return why is not null
-                ? $"{named} could not {way}: {why}"
-                : $"{named} could not {way}, because something of that name is there now";
+            return CouldNot(way, blocked);
         }
     }
 }
