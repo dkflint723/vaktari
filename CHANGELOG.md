@@ -194,6 +194,16 @@ should not be trusted for compatibility yet.
 
 ### Fixed
 
+- **On Linux, a link deleted to a bin on another filesystem stays a
+  link.** When the bin a file goes to is not on the file's own filesystem
+  — a drive whose own bin cannot be made, say — the file is copied across
+  rather than renamed, and the copy followed every link it met: a shortcut
+  to a photo library arrived as a copy of the library, a link pointing back
+  up its own folder made the delete fail after writing eighty empty
+  folders, and a dead link failed the delete outright. Links now cross as
+  links, whether deleted on their own or inside a folder, and restoring
+  from that bin takes the same road back.
+
 - **Undoing a delete puts back everything it can, and says what it could
   not.** When one of the deleted items could not come back — purged from
   the bin since, or refused on the way — Ctrl+Z on Linux stopped at it,

@@ -456,13 +456,30 @@ public static partial class XdgTrash
     /// has to be copied and then removed. File.Move handles this itself.
     ///
     /// **Whatever crosses here is copied, and a copy drops the extended
-    /// attributes.** This is the route the trash, the restore and the undo of a
-    /// move all take, so once the copy engine started carrying a file's Baloo
-    /// tags, Ctrl+Z after a move between two drives was the step that destroyed
-    /// them — the move out kept the tags and putting the file back lost them.
+    /// attributes.** This is the route the trash and the restore take, so once
+    /// the copy engine started carrying a file's Baloo tags, a delete to a bin
+    /// on another drive was the step that destroyed them — the move out kept
+    /// the tags and putting the file back lost them.
+    ///
+    /// **And a copy went through a link.** Neither call below can be trusted
+    /// with one: File.Move's own cross-device fallback reads through a link to
+    /// a file and writes what it read, and Directory.Exists answers true for a
+    /// link to a folder, which sent it to <see cref="CopyDirectory"/> as a
+    /// folder — so a shortcut to a photo library, deleted to a bin on another
+    /// drive, arrived as the library. A link is remade from its text, which is
+    /// the whole of what a link is, and the text alone crosses. On one device
+    /// a rename would have kept it as it was; the two calls cannot say which
+    /// they did, so the one way that is right on both sides is taken on both.
     /// </summary>
     internal static void MoveAcrossDevices(string source, string destination)
     {
+        if (new FileInfo(source).LinkTarget is { } pointsAt)
+        {
+            File.CreateSymbolicLink(destination, pointsAt);
+            File.Delete(source);
+            return;
+        }
+
         if (Directory.Exists(source))
         {
             try
@@ -497,22 +514,44 @@ public static partial class XdgTrash
     ///
     /// **Internal so it can be exercised.** Reaching it through
     /// <see cref="MoveAcrossDevices"/> needs Directory.Move to refuse, which
-    /// needs two filesystems, and the agent this was written on has one.
+    /// needs two filesystems; the tests that have two go through that, and the
+    /// rest call this.
+    ///
+    /// **Links were followed.** Directory.EnumerateDirectories hands back a
+    /// link to a folder as a folder, and File.Copy reads through a link to a
+    /// file, so a folder holding a link to a library arrived holding the
+    /// library. Measured with a link back up the folder itself: the copy
+    /// descended through it 40 times — the kernel's limit on links in one path
+    /// — wrote 80 nested empty folders on the way down, copied no file at all,
+    /// because folders were taken before files, and then failed the whole
+    /// folder with "Too many levels of symbolic links". A link to nothing was
+    /// handed to File.Copy and failed the folder the same way. Every link is
+    /// now one entry in the copy, remade from its text — a relative target
+    /// keeps meaning what it meant beside its neighbours — and nothing it
+    /// points at is copied.
     /// </summary>
     internal static void CopyDirectory(string source, string destination)
     {
         Directory.CreateDirectory(destination);
         Xattrs.Carry(source, destination);
 
-        foreach (var dir in Directory.EnumerateDirectories(source))
-            CopyDirectory(dir, Path.Combine(destination, Path.GetFileName(dir)));
-
-        foreach (var file in Directory.EnumerateFiles(source))
+        foreach (var entry in new DirectoryInfo(source).EnumerateFileSystemInfos())
         {
-            var landed = Path.Combine(destination, Path.GetFileName(file));
+            var landed = Path.Combine(destination, entry.Name);
 
-            File.Copy(file, landed, overwrite: false);
-            Xattrs.Carry(file, landed);
+            if (entry.LinkTarget is { } pointsAt)
+            {
+                File.CreateSymbolicLink(landed, pointsAt);
+            }
+            else if (entry is DirectoryInfo)
+            {
+                CopyDirectory(entry.FullName, landed);
+            }
+            else
+            {
+                File.Copy(entry.FullName, landed, overwrite: false);
+                Xattrs.Carry(entry.FullName, landed);
+            }
         }
     }
 }
