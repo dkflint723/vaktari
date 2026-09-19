@@ -1,0 +1,280 @@
+using System.Collections.ObjectModel;
+using CommunityToolkit.Mvvm.ComponentModel;
+using Vaktari.Core.FileSystem;
+
+namespace Vaktari.Ui.ViewModels;
+
+/// <summary>
+/// One folder in the tree: its name, whatever of it has been opened, and
+/// whether it is open at all.
+///
+/// **A node is a place, not a listing.** It holds folders only — a tree that
+/// showed files would be a second, worse copy of the pane beside it — and it
+/// holds them one level at a time, read when the node is opened and dropped
+/// when it is closed.
+/// </summary>
+public sealed partial class FolderNode : ObservableObject
+{
+    private readonly FolderTreeViewModel _tree;
+
+    internal FolderNode(FolderTreeViewModel tree, string path, string label, int depth)
+    {
+        _tree = tree;
+        Path = path;
+        Label = label;
+        Depth = depth;
+    }
+
+    public string Path { get; }
+
+    /// <summary>What the row says. A root carries the name the sidebar gave it
+    /// — "Home", a drive's label — and everything below carries its own leaf,
+    /// because a tree that renamed folders as it went would be describing
+    /// somewhere else.</summary>
+    public string Label { get; }
+
+    /// <summary>How far to indent. Carried rather than computed by walking up,
+    /// because the row is drawn thousands of times and the answer never
+    /// changes.</summary>
+    public int Depth { get; }
+
+    public ObservableCollection<FolderNode> Children { get; } = [];
+
+    /// <summary>
+    /// Whether to draw a triangle.
+    ///
+    /// **Assumed true until opening one says otherwise.** Knowing for certain
+    /// costs a read of every child of every visible row — the tree would
+    /// enumerate a whole level ahead of anything anyone asked for, on every
+    /// expand. So every folder offers a triangle, and a folder that turns out
+    /// to hold none loses it at the moment that becomes visible, which is the
+    /// only moment a person could have noticed either way.
+    /// </summary>
+    [ObservableProperty] private bool _mayHaveChildren = true;
+
+    /// <summary>True while its own read is in flight, so the row can say so
+    /// rather than looking like a folder that is simply empty.</summary>
+    [ObservableProperty] private bool _isLoading;
+
+    /// <summary>The folder could not be read. Kept on the node because the row
+    /// is the only place that can say which folder it was.</summary>
+    [ObservableProperty] private bool _isUnreadable;
+
+    private bool _isExpanded;
+
+    /// <summary>
+    /// Open or closed. Setting it is what reads the folder — and closing it is
+    /// what forgets what was read.
+    ///
+    /// **Closing forgets, deliberately.** Keeping a closed folder's children
+    /// makes re-opening instant and makes it a lie: a tree that hands back what
+    /// it read an hour ago shows folders that have since gone and misses ones
+    /// that have arrived, and the person cannot tell which. Re-reading one
+    /// level is a single enumeration, which is what opening it cost the first
+    /// time. The listing's own expandable folders learned the same rule from
+    /// the other end — see PaneViewModel.Expansion, where keeping them left
+    /// rows alive that nothing could see.
+    /// </summary>
+    public bool IsExpanded
+    {
+        get => _isExpanded;
+        set
+        {
+            if (!SetProperty(ref _isExpanded, value)) return;
+
+            if (value) _ = _tree.OpenAsync(this);
+            else Forget();
+        }
+    }
+
+    /// <summary>
+    /// Drops what was read, and marks the children closed on the way out.
+    ///
+    /// The nodes being dropped are about to be unreachable, but their
+    /// <see cref="IsExpanded"/> is what a pending read checks before it
+    /// publishes — so a node that is thrown away mid-read has to be told, or
+    /// the read lands in a collection nothing is showing.
+    /// </summary>
+    private void Forget()
+    {
+        foreach (var child in Children) child.IsExpanded = false;
+
+        Children.Clear();
+    }
+
+    /// <summary>Opens without re-reading if it is already open — what revealing
+    /// a path down a branch needs, since half of it may be open already.</summary>
+    internal Task EnsureOpenAsync()
+    {
+        if (_isExpanded) return Task.CompletedTask;
+
+        SetProperty(ref _isExpanded, true, nameof(IsExpanded));
+
+        return _tree.OpenAsync(this);
+    }
+}
+
+/// <summary>
+/// The folder tree: the places the sidebar shows as roots, and whatever has
+/// been opened under them.
+///
+/// **A tree is a way to get somewhere, not a second listing.** It shows
+/// folders and never files, reads one level at a time, and navigates the pane
+/// rather than holding a selection of its own — so everything that acts on
+/// files goes on acting on the pane, and this cannot grow into a half-working
+/// copy of it.
+///
+/// The reading is <see cref="IFileSystemProvider"/>'s, the same one the pane
+/// enumerates through, so hidden files, links and the platform's own rules are
+/// whatever they already are elsewhere rather than a second opinion.
+/// </summary>
+public sealed partial class FolderTreeViewModel : ObservableObject
+{
+    private readonly IFileSystemProvider _fs;
+
+    public FolderTreeViewModel(IFileSystemProvider fs) => _fs = fs;
+
+    public ObservableCollection<FolderNode> Roots { get; } = [];
+
+    /// <summary>
+    /// Whether folders the platform conceals are shown, which the pane decides
+    /// and this follows — a tree hiding what the listing beside it shows would
+    /// be two answers about one folder.
+    /// </summary>
+    [ObservableProperty] private bool _showHidden;
+
+    /// <summary>
+    /// Where the pane is, so the row can be marked. **Path text, not a node**:
+    /// the folder may not be anywhere in the tree, and holding a node would
+    /// mean holding one that has been dropped by a collapse.
+    /// </summary>
+    [ObservableProperty] private string? _currentPath;
+
+    /// <summary>
+    /// The roots, from the places the sidebar already knows about.
+    ///
+    /// Replaces whatever was there: plugging in a stick rebuilds the sidebar's
+    /// own groups from the desktop's list, and a tree that kept a root for a
+    /// drive that has gone would offer a triangle onto nothing.
+    /// </summary>
+    public void SetRoots(IEnumerable<(string Path, string Label)> places)
+    {
+        foreach (var root in Roots) root.IsExpanded = false;
+
+        Roots.Clear();
+
+        foreach (var (path, label) in places)
+            Roots.Add(new FolderNode(this, path, label, depth: 0));
+    }
+
+    /// <summary>
+    /// Reads one level into <paramref name="node"/>.
+    ///
+    /// **Everything here is checked again after the await.** A person can close
+    /// a folder, or the roots can be rebuilt under it, while the enumeration is
+    /// in flight — so the node's own state decides whether the answer is still
+    /// wanted, and a stale one is dropped rather than spliced into a collection
+    /// nobody is looking at.
+    /// </summary>
+    internal async Task OpenAsync(FolderNode node)
+    {
+        node.IsLoading = true;
+        node.IsUnreadable = false;
+
+        var found = new List<FolderNode>();
+
+        try
+        {
+            var options = new ListingOptions { IncludeHidden = ShowHidden };
+
+            await foreach (var batch in _fs.EnumerateAsync(node.Path, options, CancellationToken.None)
+                               .ConfigureAwait(true))
+            {
+                foreach (var entry in batch)
+                {
+                    // Folders only, and a link to one counts: it is somewhere a
+                    // person can go, which is the whole question a tree answers.
+                    // Following it is one click at a time, so a link that leads
+                    // back up its own branch costs a triangle rather than a hang.
+                    if (!entry.IsDirectory) continue;
+
+                    found.Add(new FolderNode(this, entry.FullPath, entry.Name, node.Depth + 1));
+                }
+            }
+        }
+        catch (Exception e) when (e is IOException or UnauthorizedAccessException)
+        {
+            // A folder that will not open keeps its row and says so. Throwing
+            // here would take down the tree for one unreadable folder, which is
+            // the shape SafeWalk exists to refuse everywhere else.
+            node.IsLoading = false;
+            node.IsUnreadable = true;
+            node.MayHaveChildren = false;
+            return;
+        }
+
+        node.IsLoading = false;
+
+        // Closed while the read was running, so the answer is not wanted.
+        if (!node.IsExpanded) return;
+
+        // The listing's own ordering, so "file2" comes before "file10" here as
+        // it does in the pane rather than beside it.
+        found.Sort(static (a, b) => Core.NaturalOrder.Compare(a.Label, b.Label));
+
+        node.Children.Clear();
+
+        foreach (var child in found) node.Children.Add(child);
+
+        // **The triangle goes when the folder turns out to hold nothing**, and
+        // this is the moment it could first be known — see MayHaveChildren.
+        node.MayHaveChildren = found.Count > 0;
+    }
+
+    /// <summary>
+    /// Opens the branch down to <paramref name="path"/>, so that where the pane
+    /// is can be seen in the tree.
+    ///
+    /// **Ancestors rather than text.** Which root a path belongs under is
+    /// <see cref="PathRules.Contains"/>'s question — it ends the prefix at a
+    /// separator, so "/media/one" cannot claim "/media/onetwo" — and the steps
+    /// down are <see cref="PathRules.Ancestors"/>', whose own note records the
+    /// inline loop that spun forever on a Windows path.
+    ///
+    /// The deepest root wins, so a drive and a folder pinned inside it both
+    /// being roots reveals under the one that says more. Nothing is opened at
+    /// all when the path is under none of them, which is the ordinary case for
+    /// a virtual listing: the bin is not in any tree.
+    /// </summary>
+    public async Task RevealAsync(string? path)
+    {
+        if (string.IsNullOrEmpty(path)) return;
+
+        var root = Roots
+            .Where(r => PathRules.Contains(r.Path, path))
+            .OrderByDescending(r => PathRules.Normalise(r.Path).Length)
+            .FirstOrDefault();
+
+        if (root is null) return;
+
+        var node = root;
+
+        foreach (var step in PathRules.Ancestors(path))
+        {
+            if (PathRules.Same(step, node.Path)) continue;
+
+            // Only the steps below the root it was found under: Ancestors walks
+            // from the filesystem root, and the ones above are not in the tree.
+            if (!PathRules.Contains(root.Path, step)) continue;
+
+            await node.EnsureOpenAsync().ConfigureAwait(true);
+
+            if (node.Children.FirstOrDefault(c => PathRules.Same(c.Path, step)) is not { } next)
+                return;
+
+            node = next;
+        }
+
+        CurrentPath = node.Path;
+    }
+}
