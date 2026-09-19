@@ -1203,9 +1203,37 @@
               </StackPanel>
             </CheckBox>
 
-            <CheckBox Content="Show item counts for folders"
-                      FontSize="{DynamicResource FontSizeSmall}"
-                      IsChecked="{Binding ShowFolderItemCounts}"/>
+            <TextBlock Text="In the Size column, a folder shows"
+                       FontSize="{DynamicResource FontSizeTiny}"
+                       Foreground="{DynamicResource ViewDimText}"/>
+
+            <!-- **Three radios where a tick box was.** The box could say
+                 "counts" or "nothing" and had no way to say "how big it is",
+                 so that third mode sat in the settings file reachable only by
+                 editing it by hand — and the dialog preserved it rather than
+                 writing it, which is the shape of a setting nobody can find. -->
+            <StackPanel Spacing="6">
+              <RadioButton Content="How many things are in it" GroupName="foldersize"
+                           FontSize="{DynamicResource FontSizeSmall}"
+                           IsChecked="{Binding FolderSizeCounts}"/>
+
+              <RadioButton GroupName="foldersize"
+                           FontSize="{DynamicResource FontSizeSmall}"
+                           AutomationProperties.Name="How big its contents are"
+                           IsChecked="{Binding FolderSizeContents}">
+                <StackPanel>
+                  <TextBlock Text="How big its contents are"/>
+                  <TextBlock Text="Reads every folder underneath, so it costs what it costs — worked out for the rows on screen and stopped when you scroll past them. Show space usage answers the same question for a whole folder at once."
+                             FontSize="{DynamicResource FontSizeTiny}"
+                             Foreground="{DynamicResource ViewDimText}"
+                             TextWrapping="Wrap"/>
+                </StackPanel>
+              </RadioButton>
+
+              <RadioButton Content="Nothing" GroupName="foldersize"
+                           FontSize="{DynamicResource FontSizeSmall}"
+                           IsChecked="{Binding FolderSizeNothing}"/>
+            </StackPanel>
           </StackPanel>
 
         </StackPanel>

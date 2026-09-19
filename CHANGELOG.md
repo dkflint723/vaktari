@@ -13,6 +13,15 @@ should not be trusted for compatibility yet.
 
 ### Added
 
+- **A folder's Size column can show how big it is.** Settings ▸ Views now
+  offers three answers for a folder — how many things are in it, how big
+  its contents are, or nothing — where it offered a tick box that could
+  say only the first and the last. The middle one existed in the settings
+  file all along and no control could write it, so the only way to it was
+  to edit settings.json by hand, and the dialog then quietly turned it
+  back into item counts. It reads every folder underneath, so it is worked
+  out for the rows on screen and abandoned when you scroll past them.
+
 - **The files that are copies of each other can be seen.** *Show duplicate
   files* — in the listing's menu or the command box — replaces the listing
   with every file below this folder that another file holds the same bytes

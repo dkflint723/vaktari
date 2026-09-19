@@ -215,7 +215,9 @@ public sealed partial class SettingsViewModel : ObservableObject
         };
         InterfaceTextIndex = InterfaceText.RowFor(views.InterfaceTextScale);
         AbsoluteDates = views.Details.DateStyle == Core.Settings.DateStyle.Absolute;
-        ShowFolderItemCounts = views.Details.FolderSize != Core.Settings.FolderSizeMode.None;
+        FolderSizeCounts = views.Details.FolderSize == Core.Settings.FolderSizeMode.ItemCount;
+        FolderSizeContents = views.Details.FolderSize == Core.Settings.FolderSizeMode.ContentSize;
+        FolderSizeNothing = views.Details.FolderSize == Core.Settings.FolderSizeMode.None;
 
         // Blank rather than "0": the placeholder says what zero means, and an
         // empty box invites a value where a literal 0 looks like a setting
@@ -414,8 +416,9 @@ public sealed partial class SettingsViewModel : ObservableObject
     // Three of the six. Icons.TextWidth, Icons.MaximumLines and
     // Compact.MaximumTextWidth stay out: they are structural metrics that would
     // have to feed PaneScale.Compute, and that pipeline is double-typed while
-    // MaxLines is an int. Details.FolderSize's "size of contents" option needs
-    // recursive summing in the metadata provider, which does not exist.
+    // MaxLines is an int. Details.FolderSize's "size of contents" option is
+    // reachable now — it needed recursive summing that did not exist, and
+    // SpaceUsage.Measure is it.
 
     /// <summary>
     /// The first entry, and the default. A sentinel string rather than a null
@@ -1320,7 +1323,17 @@ public sealed partial class SettingsViewModel : ObservableObject
             .ToList();
     }
     [ObservableProperty] private bool _absoluteDates;
-    [ObservableProperty] private bool _showFolderItemCounts;
+    /// <summary>
+    /// The Size column's answer for a folder, as three radios rather than the
+    /// tick box this was: the box could say "counts" or "nothing" and had no
+    /// way to say "how big it is", so that mode sat in the settings file
+    /// unreachable from the dialog that wrote the file.
+    /// </summary>
+    [ObservableProperty] private bool _folderSizeCounts;
+
+    [ObservableProperty] private bool _folderSizeContents;
+
+    [ObservableProperty] private bool _folderSizeNothing;
 
     // ---- Navigation -------------------------------------------------------
     //
@@ -1502,14 +1515,17 @@ public sealed partial class SettingsViewModel : ObservableObject
                         ? Core.Settings.DateStyle.Absolute
                         : Core.Settings.DateStyle.Relative,
 
-                    // Only two of the three modes are reachable from here, so
-                    // the third is preserved rather than overwritten by a
-                    // control that never showed it.
-                    FolderSize = ShowFolderItemCounts
-                        ? (_original.Views.Details.FolderSize == Core.Settings.FolderSizeMode.None
+                    // **All three are reachable now.** Only two were, so the
+                    // third had to be preserved rather than overwritten by a
+                    // control that never showed it — a tick box cannot offer a
+                    // mode it has no way to draw. The size of a folder's
+                    // contents needed recursive summing that did not exist;
+                    // SpaceUsage.Measure is it.
+                    FolderSize = FolderSizeContents
+                        ? Core.Settings.FolderSizeMode.ContentSize
+                        : FolderSizeCounts
                             ? Core.Settings.FolderSizeMode.ItemCount
-                            : _original.Views.Details.FolderSize)
-                        : Core.Settings.FolderSizeMode.None,
+                            : Core.Settings.FolderSizeMode.None,
                 },
             },
 

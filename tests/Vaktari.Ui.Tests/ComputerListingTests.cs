@@ -84,10 +84,10 @@ public sealed class ComputerListingTests : OwnedViewModels
                 At(P("C"), "Windows (C:)", PlaceKind.Device, capacity: 3L * 1024 * 1024 * 1024)),
         ]);
 
-        var (text, counting) = RowMetadata.SizeCell(rows[0], FolderSizeMode.ItemCount);
+        var (text, fill) = RowMetadata.SizeCell(rows[0], FolderSizeMode.ItemCount);
 
         Assert.Equal("3 GiB", text);
-        Assert.False(counting, "This PC enumerates a drive root to fill a cell that already has its answer");
+        Assert.Equal(RowMetadata.SizeFill.Nothing, fill);
 
         // "Show no size for folders" is about folders, whose size costs
         // something to work out. A drive's capacity is already in the row.
@@ -102,10 +102,10 @@ public sealed class ComputerListingTests : OwnedViewModels
     {
         var rows = ComputerListing.Build([Group("NETWORK", Away(P("Z"), "work (Z:)"))]);
 
-        var (text, counting) = RowMetadata.SizeCell(rows[0], FolderSizeMode.ItemCount);
+        var (text, fill) = RowMetadata.SizeCell(rows[0], FolderSizeMode.ItemCount);
 
         Assert.Equal("\u2014", text);
-        Assert.False(counting, "an unreachable share is dialled to fill its size cell");
+        Assert.Equal(RowMetadata.SizeFill.Nothing, fill);
     }
 
     [AvaloniaFact]

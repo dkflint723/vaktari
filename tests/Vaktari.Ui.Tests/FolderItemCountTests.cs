@@ -39,9 +39,9 @@ public sealed class FolderItemCountTests
     [Fact]
     public void A_folder_is_counted_when_the_setting_is_on()
     {
-        var (text, counting) = RowMetadata.SizeCell(Folder("things"), FolderSizeMode.ItemCount);
+        var (text, fill) = RowMetadata.SizeCell(Folder("things"), FolderSizeMode.ItemCount);
 
-        Assert.True(counting, "the count is never fetched, so the setting does nothing");
+        Assert.Equal(RowMetadata.SizeFill.Count, fill);
 
         // The em dash is what shows while the count is in flight, and what
         // stays if the folder cannot be read.
@@ -51,29 +51,39 @@ public sealed class FolderItemCountTests
     [Fact]
     public void A_folder_is_left_alone_when_the_setting_is_off()
     {
-        var (text, counting) = RowMetadata.SizeCell(Folder("things"), FolderSizeMode.None);
+        var (text, fill) = RowMetadata.SizeCell(Folder("things"), FolderSizeMode.None);
 
-        Assert.False(counting, "the setting says no size, and a count is still fetched");
+        Assert.Equal(RowMetadata.SizeFill.Nothing, fill);
         Assert.Equal("—", text);
     }
 
     /// <summary>
-    /// ContentSize is treated as ItemCount deliberately: the providers only
-    /// count, the settings dialog cannot reach that mode, and the view model
-    /// preserves it rather than writing it.
+    /// **ContentSize used to be treated as ItemCount**, and this test said so:
+    /// the providers only counted, there was no recursive summing to ask, and
+    /// the settings dialog had no way to reach the mode — so a person who set
+    /// it by editing settings.json got item counts and no sign of why.
+    /// SpaceUsage.Measure is that summing, and the mode is its own answer now.
     /// </summary>
     [Fact]
-    public void The_unreachable_mode_counts_rather_than_doing_nothing()
-        => Assert.True(RowMetadata.SizeCell(Folder("things"), FolderSizeMode.ContentSize).Counting);
+    public void Asking_for_the_size_of_the_contents_measures_rather_than_counting()
+    {
+        var (text, fill) = RowMetadata.SizeCell(Folder("things"), FolderSizeMode.ContentSize);
+
+        Assert.Equal(RowMetadata.SizeFill.Measure, fill);
+
+        // The em dash is what shows while the walk runs, and what stays if the
+        // folder cannot be read at all.
+        Assert.Equal("—", text);
+    }
 
     /// <summary>A file keeps its bytes, and asks nothing of the provider — this
     /// setting is about folders, whose size costs something to work out.</summary>
     [Fact]
     public void A_file_still_shows_its_own_size()
     {
-        var (text, counting) = RowMetadata.SizeCell(File("notes.txt", 2048), FolderSizeMode.ItemCount);
+        var (text, fill) = RowMetadata.SizeCell(File("notes.txt", 2048), FolderSizeMode.ItemCount);
 
-        Assert.False(counting);
+        Assert.Equal(RowMetadata.SizeFill.Nothing, fill);
         Assert.Contains("2", text);
         Assert.DoesNotContain("—", text);
     }
@@ -92,9 +102,9 @@ public sealed class FolderItemCountTests
     [InlineData(FolderSizeMode.ContentSize)]
     public void A_measured_folder_shows_its_size_whatever_the_setting_says(FolderSizeMode mode)
     {
-        var (text, counting) = RowMetadata.SizeCell(Measured("photos", 2048), mode);
+        var (text, fill) = RowMetadata.SizeCell(Measured("photos", 2048), mode);
 
-        Assert.False(counting, "a measured row went back to the provider for a count it already had");
+        Assert.Equal(RowMetadata.SizeFill.Nothing, fill);
         Assert.Contains("2", text);
         Assert.DoesNotContain("—", text);
     }
@@ -103,7 +113,28 @@ public sealed class FolderItemCountTests
     /// under a name that has changed is worse than a blank one.</summary>
     [Fact]
     public void A_row_with_nothing_in_it_yet_shows_nothing()
-        => Assert.Equal(("", false), RowMetadata.SizeCell(default, FolderSizeMode.ItemCount));
+        => Assert.Equal(("", RowMetadata.SizeFill.Nothing), RowMetadata.SizeCell(default, FolderSizeMode.ItemCount));
+
+    /// <summary>
+    /// **A count and a measurement of one folder are two answers, and a cache
+    /// holds one thing per key.** Sharing a key would leave "184 items" in the
+    /// Size column after the setting changed to ask for bytes, until something
+    /// evicted it — and the two are fetched by the same code on the same path,
+    /// so nothing else keeps them apart.
+    /// </summary>
+    [Fact]
+    public void A_measured_folder_and_a_counted_one_are_kept_apart()
+        => Assert.NotEqual(
+            RowMetadata.CacheKey(@"C:\things", RowMetadata.SizeFill.Count),
+            RowMetadata.CacheKey(@"C:\things", RowMetadata.SizeFill.Measure));
+
+    /// <summary>
+    /// And the count keeps the key the details line already uses, because it is
+    /// the same call on the same path — sharing that one is the point.
+    /// </summary>
+    [Fact]
+    public void A_counted_folder_shares_the_key_the_details_line_uses()
+        => Assert.Equal("m:" + @"C:\things", RowMetadata.CacheKey(@"C:\things", RowMetadata.SizeFill.Count));
 
     // ---- and the cell is actually wired to it -------------------------------
 

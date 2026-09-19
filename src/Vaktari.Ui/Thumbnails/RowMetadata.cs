@@ -84,21 +84,40 @@ public static class RowMetadata
     public static FileEntry? GetSize(TextBlock target) => target.GetValue(SizeProperty);
 
     /// <summary>
-    /// What the size cell says, and whether a count still has to be fetched.
+    /// What a folder's size cell still owes, once the text has been decided.
+    /// </summary>
+    public enum SizeFill
+    {
+        /// <summary>The text is the whole answer. Files, drives, measured rows,
+        /// and folders the setting says to leave alone.</summary>
+        Nothing,
+
+        /// <summary>Ask the platform provider how many things are in it.</summary>
+        Count,
+
+        /// <summary>Walk it and total what is underneath.</summary>
+        Measure,
+    }
+
+    /// <summary>
+    /// What the size cell says, and what still has to be fetched for it.
     ///
     /// Pure and synchronous so the decision can be read without a provider, a
     /// dispatcher or a control behind it.
     ///
-    /// ContentSize is deliberately treated as ItemCount: the providers only
-    /// count, the settings dialog cannot reach that mode, and the view model
-    /// preserves it rather than writing it.
+    /// **ContentSize used to be treated as ItemCount**, because the providers
+    /// only count and there was no recursive summing to ask — the settings
+    /// dialog could not reach the mode, and the view model preserved it rather
+    /// than ever writing it. <see cref="Core.FileSystem.SpaceUsage.Measure"/>
+    /// is that summing, so the mode is now its own answer and the dialog
+    /// offers it.
     /// </summary>
-    public static (string Text, bool Counting) SizeCell(
+    public static (string Text, SizeFill Fill) SizeCell(
         FileEntry entry, Core.Settings.FolderSizeMode folders)
     {
         // A default FileEntry reaches a recycled container. The converter this
         // replaced guarded the same case.
-        if (entry.FullPath is null) return ("", false);
+        if (entry.FullPath is null) return ("", SizeFill.Nothing);
 
         // **This PC's Size column reported how many things were at the top of
         // each drive.** ComputerListing has carried the volume's capacity as
@@ -115,7 +134,7 @@ public static class RowMetadata
         // when the drive is ready — and "0 B" is a claim about a drive nobody
         // has managed to measure.
         if (entry.IsVolume)
-            return (entry.Length > 0 ? ByteSize.Format(entry.Length) : "\u2014", false);
+            return (entry.Length > 0 ? ByteSize.Format(entry.Length) : "\u2014", SizeFill.Nothing);
 
         // A folder someone asked to have measured, in the listing that went and
         // did it. **Above both rules below, or the one listing built to show a
@@ -124,20 +143,22 @@ public static class RowMetadata
         // counting rule would throw the measured total away and ask the
         // provider for an item count instead.
         //
-        // Counting stays false, so a measured row never reaches the per-row
-        // fetch or the cache it shares with ordinary listings.
-        if (entry.IsMeasured) return (ByteSize.Format(entry.Length), false);
+        // Nothing is owed, so a measured row never reaches the per-row fetch or
+        // the cache it shares with ordinary listings.
+        if (entry.IsMeasured) return (ByteSize.Format(entry.Length), SizeFill.Nothing);
 
         // The sixth and last copy of this. It was the only one already using
         // binary unit names, which is why the Size column and the status bar
         // beside it once disagreed about the same file.
-        if (!entry.IsDirectory) return (ByteSize.Format(entry.Length), false);
+        if (!entry.IsDirectory) return (ByteSize.Format(entry.Length), SizeFill.Nothing);
 
-        if (folders == Core.Settings.FolderSizeMode.None) return ("\u2014", false);
+        if (folders == Core.Settings.FolderSizeMode.None) return ("\u2014", SizeFill.Nothing);
 
-        // The em dash is the placeholder while the count is in flight, and what
+        // The em dash is the placeholder while the answer is in flight, and what
         // stays if the folder cannot be read.
-        return ("\u2014", true);
+        return ("\u2014", folders == Core.Settings.FolderSizeMode.ContentSize
+            ? SizeFill.Measure
+            : SizeFill.Count);
     }
 
     private static async void OnSizeChanged(TextBlock target, FileEntry? entry)
@@ -161,16 +182,20 @@ public static class RowMetadata
                 return;
             }
 
-            var (text, counting) = SizeCell(value, Settings.AppSettings.Current.Views.Details.FolderSize);
+            var (text, fill) = SizeCell(value, Settings.AppSettings.Current.Views.Details.FolderSize);
 
             target.Text = text;
 
-            if (!counting || Provider is null) return;
+            if (fill == SizeFill.Nothing) return;
+
+            // **The provider is asked for the count and for nothing else.**
+            // Measuring is Core's walk, which needs no provider — but the gate
+            // still applies to both: it is what keeps a listing from walking a
+            // path the platform has already said it cannot answer for.
+            if (Provider is null) return;
             if (!Provider.CanDescribe(value.FullPath, isDirectory: true)) return;
 
-            // The same key the Entry path uses: it is literally the same call
-            // on the same path.
-            var key = "m:" + value.FullPath;
+            var key = CacheKey(value.FullPath, fill);
 
             lock (Gate)
             {
@@ -181,9 +206,11 @@ public static class RowMetadata
                 }
             }
 
-            var counted = await Provider
-                .DescribeAsync(value.FullPath, isDirectory: true, token)
-                .ConfigureAwait(true);
+            var counted = fill == SizeFill.Measure
+                ? await MeasureAsync(value.FullPath, token).ConfigureAwait(true)
+                : await Provider
+                    .DescribeAsync(value.FullPath, isDirectory: true, token)
+                    .ConfigureAwait(true);
 
             Remember(key, counted);
 
@@ -204,6 +231,54 @@ public static class RowMetadata
         catch (Exception ex)
         {
             Console.Error.WriteLine($"[vaktari] folder count failed: {ex.Message}");
+        }
+    }
+
+    /// <summary>
+    /// Where a folder's answer is kept.
+    ///
+    /// **The two answers may not share a slot.** The count uses the same key
+    /// the Entry path does, because it is literally the same call on the same
+    /// path — but a measured total is a different question about that path,
+    /// and one key for both would leave "184 items" sitting in the Size column
+    /// after the setting changed to ask for bytes, until something evicted it.
+    ///
+    /// Pulled out of the fetch so it can be said in a test: nothing here can
+    /// drive the async fill, so a key computed inline would be a claim with
+    /// nothing holding it.
+    /// </summary>
+    internal static string CacheKey(string path, SizeFill fill)
+        => (fill == SizeFill.Measure ? "b:" : "m:") + path;
+
+    /// <summary>
+    /// Everything under a folder, totalled, as the Size column wants it.
+    ///
+    /// **On the pool, because this walks a tree.** Every other fetch here is
+    /// already asynchronous at the provider; this one is a synchronous walk in
+    /// Core, so it is the one that would otherwise run where the rows are
+    /// drawn — and it is the row fetch that can take seconds rather than
+    /// milliseconds. The token is the same one the row cancels when it scrolls
+    /// away, so a folder nobody is looking at any more stops being walked.
+    ///
+    /// Null for a folder it could not read at all, which keeps the em dash —
+    /// the same answer a count that fails gives. A tree only partly readable
+    /// still returns its total: what <see cref="Core.FileSystem.SpaceUsage"/>
+    /// could not open is counted separately, and a Size column has no room to
+    /// say so. The listing built to say it is Show space usage.
+    /// </summary>
+    private static async Task<string?> MeasureAsync(string path, CancellationToken ct)
+    {
+        try
+        {
+            var usage = await Task.Run(
+                () => Core.FileSystem.SpaceUsage.Measure(path, progress: null, ct), ct)
+                .ConfigureAwait(true);
+
+            return ByteSize.Format(usage.Bytes);
+        }
+        catch (Exception e) when (e is IOException or UnauthorizedAccessException)
+        {
+            return null;
         }
     }
 
