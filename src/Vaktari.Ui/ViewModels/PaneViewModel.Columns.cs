@@ -18,6 +18,13 @@ namespace Vaktari.Ui.ViewModels;
 /// </summary>
 public sealed partial class PaneViewModel
 {
+    /// <summary>
+    /// Set by the view as the pane resizes. Columns drop out in priority order
+    /// as space runs out rather than being squeezed or clipped — which is what
+    /// makes a narrow split pane still readable.
+    /// </summary>
+    [ObservableProperty] private double _viewportWidth = 1000;
+
     // ---- which columns this pane shows ------------------------------------
     //
     // **Per pane, the way sort and grouping are.** A reference listing beside
