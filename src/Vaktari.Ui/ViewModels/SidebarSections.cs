@@ -22,4 +22,5 @@ public static class SidebarSections
     public const string Remote = "section:remote";
     public const string Sharing = "section:sharing";
     public const string Recent = "section:recent";
+    public const string Folders = "section:folders";
 }

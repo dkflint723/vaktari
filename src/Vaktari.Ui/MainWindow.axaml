@@ -5159,6 +5159,68 @@
                   </ItemsControl>
                 </StackPanel>
 
+                <!-- **The folder tree, off unless asked for.** A flat list
+                     indented by depth rather than a TreeView: every other
+                     section here is a list of buttons, and a TreeView would
+                     bring a selection model competing with the pane's, which
+                     is the one thing that actually owns what is selected.
+
+                     Rows navigate through the same GoToPlaceCommand the places
+                     above use — a tree row IS a place, it just was not pinned. -->
+                <StackPanel IsVisible="{Binding Sidebar.ShowFolderTree}" Margin="0,8,0,12">
+                  <DockPanel Margin="12,0,8,2">
+                    <ToggleButton Classes="section"
+                                  IsChecked="{Binding Sidebar.IsFoldersCollapsed, Mode=TwoWay}"
+                                  AutomationProperties.Name="FOLDERS"
+                                  ToolTip.Tip="Fold this section away">
+                      <StackPanel Orientation="Horizontal">
+                        <Path Classes="chevron"/>
+                        <TextBlock Text="FOLDERS" FontSize="{DynamicResource FontSizeTiny}"
+                                   FontWeight="Medium" LetterSpacing="1.1"
+                                   Foreground="{DynamicResource ViewDimText}"/>
+                      </StackPanel>
+                    </ToggleButton>
+                  </DockPanel>
+                  <ItemsControl ItemsSource="{Binding Sidebar.Tree.Rows}"
+                                IsVisible="{Binding !Sidebar.IsFoldersCollapsed}">
+                    <ItemsControl.ItemTemplate>
+                      <DataTemplate x:DataType="vm:FolderNode">
+                        <Button HorizontalAlignment="Stretch" HorizontalContentAlignment="Left"
+                                Background="Transparent" BorderThickness="0" Padding="0,5"
+                                AutomationProperties.Name="{Binding Path}" ToolTip.Tip="{Binding Path}"
+                                Command="{Binding $parent[Window].((vm:ShellViewModel)DataContext).GoToPlaceCommand}"
+                                CommandParameter="{Binding Path}">
+                          <DockPanel Margin="{Binding Depth, Converter={x:Static vm:FileConverters.TreeIndent}}">
+                            <!-- **The triangle is its own button inside the
+                                 row.** Opening a folder and going to it are
+                                 different acts, and a row where they were the
+                                 same could not be opened without navigating —
+                                 which is the whole reason to have a tree. -->
+                            <ToggleButton DockPanel.Dock="Left" Width="16"
+                                          Background="Transparent" BorderThickness="0" Padding="0"
+                                          IsVisible="{Binding MayHaveChildren}"
+                                          IsChecked="{Binding IsExpanded, Mode=TwoWay}"
+                                          AutomationProperties.Name="Open this folder in the tree">
+                              <Path Fill="{DynamicResource ViewDimText}" Width="11" Height="11">
+                                <Path.Data>
+                                  <MultiBinding Converter="{x:Static vm:FileConverters.TreeTwisty}">
+                                    <Binding Path="IsExpanded"/>
+                                    <Binding Path="MayHaveChildren"/>
+                                  </MultiBinding>
+                                </Path.Data>
+                              </Path>
+                            </ToggleButton>
+                            <TextBlock Text="{Binding Label}" Margin="4,0,8,0"
+                                       VerticalAlignment="Center"
+                                       TextTrimming="CharacterEllipsis"
+                                       FontSize="{DynamicResource FontSizeSmall}"/>
+                          </DockPanel>
+                        </Button>
+                      </DataTemplate>
+                    </ItemsControl.ItemTemplate>
+                  </ItemsControl>
+                </StackPanel>
+
                 <!-- Remote mounts. Whatever the desktop has connected shows up
                      here as an ordinary path, so every protocol KIO or gvfs
                      supports works without Vaktari knowing any of them. -->

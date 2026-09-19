@@ -478,6 +478,20 @@ public sealed record ViewSettings
     public bool FollowDesktopColours { get; init; }
 
     /// <summary>
+    /// A folder tree in the sidebar, under the places.
+    ///
+    /// **Off is the zero, and that is deliberate rather than a preference about
+    /// trees.** A key absent from settings.json arrives as <c>default(T)</c> —
+    /// see <see cref="KeepWidthAfterPanelClose"/>, where that was measured — so
+    /// a property that wanted to default ON would be decorative for every file
+    /// written before it existed. It is also the honest default: the tree reads
+    /// a folder every time one is opened, and the expandable folders in the
+    /// List layout have been the substitute for long enough that turning one on
+    /// unasked would be a change rather than a fix.
+    /// </summary>
+    public bool ShowFolderTree { get; init; }
+
+    /// <summary>
     /// Light, dark, or whatever the desktop says.
     ///
     /// **Defaults to following the desktop, and that default matters more than

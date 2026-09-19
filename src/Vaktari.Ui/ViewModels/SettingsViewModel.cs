@@ -207,6 +207,7 @@ public sealed partial class SettingsViewModel : ObservableObject
         // rather than the property, so nothing has rebuilt it yet.
         RefreshIconThemes();
         FollowDesktopColours = views.FollowDesktopColours;
+        ShowFolderTree = views.ShowFolderTree;
         ThemeModeIndex = views.ThemeMode switch
         {
             Core.Settings.ThemeMode.Light => 1,
@@ -1329,6 +1330,14 @@ public sealed partial class SettingsViewModel : ObservableObject
     /// way to say "how big it is", so that mode sat in the settings file
     /// unreachable from the dialog that wrote the file.
     /// </summary>
+    /// <summary>
+    /// A folder tree in the sidebar. **Reachable from here or it is not a
+    /// setting**, which is the lesson the folder-size mode beside it taught:
+    /// that one sat in the model for the life of the feature, writable only by
+    /// editing settings.json, because no control could draw it.
+    /// </summary>
+    [ObservableProperty] private bool _showFolderTree;
+
     [ObservableProperty] private bool _folderSizeCounts;
 
     [ObservableProperty] private bool _folderSizeContents;
@@ -1501,6 +1510,7 @@ public sealed partial class SettingsViewModel : ObservableObject
                     : SelectedFont.Name,
 
                 FollowDesktopColours = FollowDesktopColours,
+                ShowFolderTree = ShowFolderTree,
                 ShowSelectionBoxes = ShowSelectionBoxes,
                 HideFileExtensions = !ShowFileExtensions,
                 ThemeMode = ThemeModeFromIndex(),

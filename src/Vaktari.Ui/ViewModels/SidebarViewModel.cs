@@ -38,14 +38,27 @@ public sealed partial class SidebarViewModel : ObservableObject, IDisposable
     /// </summary>
     private readonly Func<string, long?> _freeSpace;
 
+    /// <summary>
+    /// The folder tree under the places, or null where there is no filesystem
+    /// to read one from.
+    ///
+    /// **Optional, like the trash source above it**, so the test fakes and the
+    /// other construction sites need no argument — a sidebar with no provider
+    /// simply has no tree, which is also what happens when the setting is off.
+    /// </summary>
+    public FolderTreeViewModel? Tree { get; }
+
     public SidebarViewModel(
         IPlacesProvider? places,
         Func<Vaktari.Core.FileSystem.ITrashMaintenance?>? trash = null,
-        Func<string, long?>? freeSpace = null)
+        Func<string, long?>? freeSpace = null,
+        IFileSystemProvider? fs = null)
     {
         _places = places;
         _trash = trash;
         _freeSpace = freeSpace ?? FreeSpaceOn;
+
+        if (fs is not null) Tree = new FolderTreeViewModel(fs);
 
         // Named and kept: the provider is ONE object shared by every window's
         // sidebar, so a closed window's sidebar would go on reloading itself
@@ -140,6 +153,7 @@ public sealed partial class SidebarViewModel : ObservableObject, IDisposable
             SidebarSections.Remote => nameof(IsRemoteCollapsed),
             SidebarSections.Sharing => nameof(IsSharingCollapsed),
             SidebarSections.Recent => nameof(IsRecentCollapsed),
+            SidebarSections.Folders => nameof(IsFoldersCollapsed),
             _ => nameof(CollapsedSections),
         });
     }
@@ -162,6 +176,7 @@ public sealed partial class SidebarViewModel : ObservableObject, IDisposable
         OnPropertyChanged(nameof(IsRemoteCollapsed));
         OnPropertyChanged(nameof(IsSharingCollapsed));
         OnPropertyChanged(nameof(IsRecentCollapsed));
+        OnPropertyChanged(nameof(IsFoldersCollapsed));
     }
 
     public bool IsNetworkCollapsed
@@ -175,6 +190,23 @@ public sealed partial class SidebarViewModel : ObservableObject, IDisposable
         get => IsCollapsed(SidebarSections.Remote);
         set => SetCollapsed(SidebarSections.Remote, value);
     }
+
+    public bool IsFoldersCollapsed
+    {
+        get => IsCollapsed(SidebarSections.Folders);
+        set => SetCollapsed(SidebarSections.Folders, value);
+    }
+
+    /// <summary>
+    /// Whether the folder-tree section is there at all.
+    ///
+    /// Read from AppSettings rather than passed in, matching the static-provider
+    /// convention the free-space row below already follows. Null tree means no
+    /// filesystem was handed in, which is the test fakes' case and is not a
+    /// section either.
+    /// </summary>
+    public bool ShowFolderTree =>
+        Tree is not null && Settings.AppSettings.Current.Views.ShowFolderTree;
 
     public bool IsSharingCollapsed
     {
@@ -270,6 +302,14 @@ public sealed partial class SidebarViewModel : ObservableObject, IDisposable
             holder.HoldsCurrent = true;
 
         CurrentPath = wanted;
+
+        // **Only while the section is open.** Revealing opens a branch and
+        // reads a folder per level, and doing that for a tree nobody can see —
+        // folded away, or switched off entirely — is work for no one. The tree
+        // catches up the moment it is unfolded, because unfolding goes through
+        // the same call.
+        if (Tree is not null && !IsFoldersCollapsed) _ = Tree.RevealAsync(path);
+
         OnPropertyChanged(nameof(IsRecentFilesCurrent));
         OnPropertyChanged(nameof(IsRecentLocationsCurrent));
         OnPropertyChanged(nameof(IsComputerCurrent));
@@ -692,6 +732,23 @@ public sealed partial class SidebarViewModel : ObservableObject, IDisposable
                     place.LeadsTheSidebar = first;
                     first = false;
                 }
+
+            // **The tree's roots are the places, minus the ones no filesystem
+            // can be asked about.** Two kinds go. A tree rooted at the bin or
+            // at Recent would offer a triangle onto a listing with no children
+            // to read. And a volume that is present but NOT MOUNTED is given an
+            // empty Path on purpose — see GoToPlace, which relies on exactly
+            // that to refuse the click — so it would otherwise become a root
+            // whose enumeration is of "", which is the working directory.
+            //
+            // Taken from the same rebuild rather than a source of its own, so
+            // plugging a stick in adds a root and pulling it out takes one
+            // away, without the tree knowing anything about drives.
+            Tree?.SetRoots(
+                Groups.SelectMany(group => group.Places)
+                    .Where(place => !string.IsNullOrEmpty(place.Path))
+                    .Where(place => !VirtualPaths.IsVirtual(place.Path))
+                    .Select(place => (place.Path, place.Label)));
 
             // The rows are new objects, so the current-location mark has to be
             // re-applied — a refresh would otherwise silently clear the

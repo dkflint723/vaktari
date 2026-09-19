@@ -138,7 +138,9 @@ public sealed partial class ShellViewModel : ObservableObject, IDisposable
         _launcher = launcher;
         _clipboard = clipboard;
 
-        Sidebar = new SidebarViewModel(places, () => PaneViewModel.Trash);
+        // The same provider the panes enumerate through, so the tree's idea of
+        // what is in a folder cannot differ from the listing's.
+        Sidebar = new SidebarViewModel(places, () => PaneViewModel.Trash, fs: fs);
 
         // A chosen result navigates the active tab to its folder and selects it,
         // rather than opening the file — search is for finding, not launching.

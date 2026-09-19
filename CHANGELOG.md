@@ -13,6 +13,16 @@ should not be trusted for compatibility yet.
 
 ### Added
 
+- **There can be a folder tree in the sidebar.** Settings ▸ Views turns on
+  a *FOLDERS* section under your places, rooted at each of them, and it
+  follows the pane: going somewhere opens the branch that leads there. It
+  is a tree of folders rather than a second listing — no files, one level
+  read each time you open a folder, and a branch forgotten when you close
+  it, so it cannot show you folders that have since gone. Clicking a row
+  goes there; the triangle beside it opens the row without going anywhere.
+  Off unless you ask for it, since expandable folders in the List layout
+  already do the same job inside the listing.
+
 - **A folder's Size column can show how big it is.** Settings ▸ Views now
   offers three answers for a folder — how many things are in it, how big
   its contents are, or nothing — where it offered a tick box that could

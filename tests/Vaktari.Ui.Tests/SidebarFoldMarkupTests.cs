@@ -26,7 +26,7 @@ public sealed class SidebarFoldMarkupTests
                  .ToList();
 
     /// <summary>
-    /// The five headings: the provider group template, and the four written
+    /// The six headings: the provider group template, and the five written
     /// into the markup by hand.
     /// </summary>
     [Fact]
@@ -36,11 +36,11 @@ public sealed class SidebarFoldMarkupTests
             .Select(e => (string?)e.Attribute("IsChecked") ?? "")
             .ToList();
 
-        Assert.Equal(5, bound.Count);
+        Assert.Equal(6, bound.Count);
 
         Assert.Contains(bound, b => b.Contains("IsCollapsed") && !b.Contains("Sidebar."));
 
-        foreach (var section in new[] { "Network", "Remote", "Sharing", "Recent" })
+        foreach (var section in new[] { "Network", "Remote", "Sharing", "Recent", "Folders" })
             Assert.Contains(bound, b => b.Contains($"Sidebar.Is{section}Collapsed"));
     }
 

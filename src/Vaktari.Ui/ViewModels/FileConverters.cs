@@ -399,6 +399,41 @@ public static class FileConverters
                 : 0;
         });
 
+    /// <summary>
+    /// How far a folder-tree row is indented, from its own depth.
+    ///
+    /// **A number rather than the map <see cref="Indent"/> uses**, because the
+    /// tree has the answer already: its rows are a flattened branch and every
+    /// one carries the depth it was built at. The pane's version cannot, since
+    /// its rows are FileEntry records that know nothing of the splice they
+    /// landed in.
+    ///
+    /// Fixed pixels rather than scaled: the sidebar has no icon zoom to scale
+    /// with, and a tree whose indent grew with the listing's zoom would shift
+    /// every time somebody zoomed a pane it has nothing to do with.
+    /// </summary>
+    public static readonly Avalonia.Data.Converters.IValueConverter TreeIndent =
+        new Avalonia.Data.Converters.FuncValueConverter<int, Avalonia.Thickness>(
+            depth => new Avalonia.Thickness(12 + (depth * 12), 0, 0, 0));
+
+    /// <summary>
+    /// Which way a folder-tree row's triangle points, or nothing for a folder
+    /// that turned out to hold none.
+    ///
+    /// The same two shapes the listing's rows use, and the same reason for one
+    /// Path with two geometries rather than two Paths: see <see cref="Twisty"/>.
+    /// </summary>
+    public static readonly Avalonia.Data.Converters.IMultiValueConverter TreeTwisty =
+        new Avalonia.Data.Converters.FuncMultiValueConverter<object?, Avalonia.Media.Geometry?>(
+            values =>
+            {
+                var parts = values.ToList();
+
+                if (parts.Count != 2 || parts[1] is not true) return null;
+
+                return parts[0] is true ? Open : Shut;
+            });
+
     /// <summary>The triangle a shut folder shows: pointing along the row, at
     /// what opening it would reveal.</summary>
     private static readonly Avalonia.Media.Geometry Shut =

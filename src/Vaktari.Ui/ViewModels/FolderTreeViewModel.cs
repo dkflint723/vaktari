@@ -82,8 +82,18 @@ public sealed partial class FolderNode : ObservableObject
         {
             if (!SetProperty(ref _isExpanded, value)) return;
 
-            if (value) _ = _tree.OpenAsync(this);
-            else Forget();
+            if (value)
+            {
+                _ = _tree.OpenAsync(this);
+            }
+            else
+            {
+                Forget();
+
+                // Closing shows immediately; opening waits for the read, and
+                // publishes when it lands.
+                _tree.Reflow();
+            }
         }
     }
 
@@ -137,6 +147,61 @@ public sealed partial class FolderTreeViewModel : ObservableObject
     public ObservableCollection<FolderNode> Roots { get; } = [];
 
     /// <summary>
+    /// Every node currently on screen, in the order it is drawn, deepest last
+    /// within each branch.
+    ///
+    /// **Flattened rather than a TreeView, and that is a design decision.** The
+    /// sidebar draws every section as a list of buttons, and a TreeView would
+    /// bring a selection model of its own — a second place that thinks it owns
+    /// "what is selected", competing with the pane that actually does. A flat
+    /// list indented by <see cref="FolderNode.Depth"/> draws the same picture
+    /// with none of that, and keeps the rule this class is built on: the tree
+    /// navigates the pane and holds nothing.
+    ///
+    /// Rebuilt whole whenever a branch opens or closes. A folder's worth of
+    /// rows is a few hundred at most — this is a sidebar, not a listing — and
+    /// splicing ranges in and out at the right offsets is the kind of
+    /// arithmetic that is wrong once and then wrong for ever.
+    /// </summary>
+    public BulkObservableCollection<FolderNode> Rows { get; } = [];
+
+    /// <summary>
+    /// Walks what is open and republishes <see cref="Rows"/>.
+    ///
+    /// Called after anything that changes the shape, rather than by each of
+    /// them separately: a node that opened, one that closed, and a rebuild of
+    /// the roots all mean the same thing to a flat list.
+    /// </summary>
+    internal void Reflow()
+    {
+        var rows = new List<FolderNode>();
+
+        void Walk(IEnumerable<FolderNode> nodes)
+        {
+            foreach (var node in nodes)
+            {
+                rows.Add(node);
+
+                // GUARD, and the mutation says so: taking it away reddens
+                // nothing, because no reachable state has a closed node with
+                // children in it. Forget clears them on the way out, and
+                // OpenAsync refuses to publish into a node that has been
+                // closed. It stays as the statement of which of those two is
+                // load-bearing — this walk draws what is OPEN, and it should
+                // not start depending on a collection being empty for its
+                // answer.
+                if (node.IsExpanded) Walk(node.Children);
+            }
+        }
+
+        Walk(Roots);
+
+        // One notification for the whole shape, as sorting does: a row-by-row
+        // rebuild makes the sidebar flicker through every intermediate state.
+        Rows.ReplaceAll(rows);
+    }
+
+    /// <summary>
     /// Whether folders the platform conceals are shown, which the pane decides
     /// and this follows — a tree hiding what the listing beside it shows would
     /// be two answers about one folder.
@@ -165,6 +230,8 @@ public sealed partial class FolderTreeViewModel : ObservableObject
 
         foreach (var (path, label) in places)
             Roots.Add(new FolderNode(this, path, label, depth: 0));
+
+        Reflow();
     }
 
     /// <summary>
@@ -210,6 +277,13 @@ public sealed partial class FolderTreeViewModel : ObservableObject
             node.IsLoading = false;
             node.IsUnreadable = true;
             node.MayHaveChildren = false;
+
+            // **No Reflow, and that was measured rather than assumed.** One
+            // stood here saying the row had changed — and a folder that cannot
+            // be opened gains no children, so the flat list is identical
+            // either way. What the row draws differently comes from the two
+            // properties above, which notify on their own. Taking it out
+            // reddens nothing, so it is out.
             return;
         }
 
@@ -229,6 +303,8 @@ public sealed partial class FolderTreeViewModel : ObservableObject
         // **The triangle goes when the folder turns out to hold nothing**, and
         // this is the moment it could first be known — see MayHaveChildren.
         node.MayHaveChildren = found.Count > 0;
+
+        Reflow();
     }
 
     /// <summary>

@@ -1203,6 +1203,18 @@
               </StackPanel>
             </CheckBox>
 
+            <CheckBox FontSize="{DynamicResource FontSizeSmall}"
+                      IsChecked="{Binding ShowFolderTree}"
+                      AutomationProperties.Name="Show a folder tree in the sidebar">
+              <StackPanel>
+                <TextBlock Text="Show a folder tree in the sidebar"/>
+                <TextBlock Text="A FOLDERS section under your places, rooted at each of them. It reads a folder each time you open one, and expandable folders in the List layout do the same job inside the listing."
+                           FontSize="{DynamicResource FontSizeTiny}"
+                           Foreground="{DynamicResource ViewDimText}"
+                           TextWrapping="Wrap"/>
+              </StackPanel>
+            </CheckBox>
+
             <TextBlock Text="In the Size column, a folder shows"
                        FontSize="{DynamicResource FontSizeTiny}"
                        Foreground="{DynamicResource ViewDimText}"/>

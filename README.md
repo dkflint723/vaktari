@@ -672,8 +672,11 @@ promise yet. Worth knowing before you decide:
 - Checksums are effectively Linux-only: on Windows, Properties for a single
   item hands off to Windows' own sheet, and Vaktari's checksum panel is on the
   window that only appears for multi-item selections.
-- There is **no folder tree** in the sidebar. Expandable folders in the List
-  layout are the substitute, and they are List-only — as is grouping.
+- The **folder tree** in the sidebar is off until you turn it on, under
+  Settings ▸ Views, and it is a tree of folders rather than a second
+  listing: it opens one level at a time and forgets a branch when you close
+  it. Expandable folders in the List layout do the same job inside the
+  listing, and they are List-only — as is grouping.
 - Split view is exactly two panes, side by side. No third pane, no over/under,
   and closing always keeps the left.
 - A tab can be dragged within its own strip, but not to the other half of a

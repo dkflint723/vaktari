@@ -294,6 +294,107 @@ public sealed class FolderTreeTests
         public bool IsCaseSensitive => _inner.IsCaseSensitive;
     }
 
+    // ---- the flat list the sidebar draws ------------------------------------
+
+    /// <summary>
+    /// **The rows are the tree flattened, not a TreeView's own idea of it.**
+    /// The sidebar draws lists of buttons, and a TreeView would bring a
+    /// selection model competing with the pane's — so what is on screen is
+    /// this, indented by Depth.
+    /// </summary>
+    [Fact]
+    public void The_rows_are_the_roots_until_something_is_opened()
+    {
+        var fs = new Tree().Holding(P("home"), ("docs", true));
+
+        var tree = With(fs, (P("home"), "Home"), (P("work"), "Work"));
+
+        Assert.Equal(["Home", "Work"], tree.Rows.Select(r => r.Label));
+        Assert.All(tree.Rows, row => Assert.Equal(0, row.Depth));
+    }
+
+    [Fact]
+    public async Task Opening_a_folder_splices_its_children_in_under_it()
+    {
+        var fs = new Tree().Holding(P("home"), ("docs", true), ("pics", true));
+
+        var tree = With(fs, (P("home"), "Home"), (P("work"), "Work"));
+
+        await tree.Roots[0].EnsureOpenAsync();
+
+        // Under Home and above Work, which is what "in order, deepest last
+        // within each branch" has to mean on screen.
+        Assert.Equal(["Home", "docs", "pics", "Work"], tree.Rows.Select(r => r.Label));
+        Assert.Equal([0, 1, 1, 0], tree.Rows.Select(r => r.Depth));
+    }
+
+    [Fact]
+    public async Task Closing_a_folder_takes_its_rows_away_again()
+    {
+        var fs = new Tree()
+            .Holding(P("home"), ("docs", true))
+            .Holding(P("home", "docs"), ("work", true));
+
+        var tree = With(fs, (P("home"), "Home"));
+
+        await tree.Roots[0].EnsureOpenAsync();
+        await tree.Roots[0].Children[0].EnsureOpenAsync();
+
+        Assert.Equal(["Home", "docs", "work"], tree.Rows.Select(r => r.Label));
+
+        tree.Roots[0].IsExpanded = false;
+
+        Assert.Equal(["Home"], tree.Rows.Select(r => r.Label));
+    }
+
+    /// <summary>A folder that could not be read still changed — its row says so
+    /// now — and must not stay drawn as an open one.</summary>
+    [Fact]
+    public async Task A_folder_that_will_not_open_still_redraws_its_row()
+    {
+        var fs = new Tree().Holding(P("home"), ("locked", true));
+        fs.Refuse.Add(P("home", "locked"));
+
+        var tree = With(fs, (P("home"), "Home"));
+
+        await tree.Roots[0].EnsureOpenAsync();
+        await tree.Roots[0].Children[0].EnsureOpenAsync();
+
+        Assert.Equal(["Home", "locked"], tree.Rows.Select(r => r.Label));
+    }
+
+    [Fact]
+    public async Task Revealing_a_branch_puts_every_step_of_it_on_screen()
+    {
+        var fs = new Tree()
+            .Holding(P("home"), ("docs", true), ("pics", true))
+            .Holding(P("home", "docs"), ("work", true));
+
+        var tree = With(fs, (P("home"), "Home"));
+
+        await tree.RevealAsync(P("home", "docs", "work"));
+
+        Assert.Equal(["Home", "docs", "work", "pics"], tree.Rows.Select(r => r.Label));
+        Assert.Equal([0, 1, 2, 1], tree.Rows.Select(r => r.Depth));
+    }
+
+    /// <summary>Rebuilding the roots — plugging in a stick — replaces what is
+    /// drawn rather than adding to it.</summary>
+    [Fact]
+    public async Task Setting_the_roots_again_replaces_the_rows()
+    {
+        var fs = new Tree().Holding(P("home"), ("docs", true));
+
+        var tree = With(fs, (P("home"), "Home"));
+
+        await tree.Roots[0].EnsureOpenAsync();
+        Assert.Equal(2, tree.Rows.Count);
+
+        tree.SetRoots([(P("work"), "Work")]);
+
+        Assert.Equal(["Work"], tree.Rows.Select(r => r.Label));
+    }
+
     // ---- revealing where the pane is ---------------------------------------
 
     [Fact]
