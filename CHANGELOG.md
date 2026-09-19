@@ -194,6 +194,13 @@ should not be trusted for compatibility yet.
 
 ### Fixed
 
+- **A link to a network share is no longer reproduced as something that
+  cannot be opened.** Copying or moving a link that points at a share made a
+  junction, and a junction cannot express a share — Windows accepted it
+  without complaint, so what arrived looked like a working link, reported the
+  right target, and could not be opened at all. Such a link is now made the
+  way that can express it, or the copy says it could not be made.
+
 - **An undo that leaves a folder behind now says which folder.** When
   everything went back but the emptied folder at the other end could not be
   taken away, the status bar said "everything went back, but The directory

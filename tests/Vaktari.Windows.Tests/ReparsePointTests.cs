@@ -86,6 +86,49 @@ public class ReparsePointTests
     /// the junction stands at the name.
     /// </summary>
     /// <summary>
+    /// **This application never writes a junction that cannot say where it
+    /// points.** A junction stores an object-manager name — <c>\??\</c> and a
+    /// local path — so a UNC share cannot be expressed as one. The kernel does
+    /// not refuse it: measured, FSCTL_SET_REPARSE_POINT accepts
+    /// <c>\\127.0.0.1\C$\Windows</c>, the entry answers Directory.Exists true
+    /// and reads its target back correctly, and entering it throws "the
+    /// filename, directory name, or volume label syntax is incorrect".
+    ///
+    /// So reproducing such a link produced one that looked right and was
+    /// unusable, and the fallback that exists for a junction which cannot
+    /// express the target never ran, because nothing threw. What is asked now
+    /// is whether a junction can SAY it, not whether the path is fully
+    /// qualified — a UNC path is both fully qualified and unsayable.
+    ///
+    /// Either a working link arrives or the copy refuses; a junction pointing
+    /// at a share is the one outcome ruled out. Unprivileged, the refusal is
+    /// what happens, because the other road is a symbolic link.
+    /// </summary>
+    [WindowsFact]
+    public async Task A_link_to_a_share_is_never_reproduced_as_a_junction()
+    {
+        using var tree = new TempTree();
+        var source = tree.Dir("from", "share");
+
+        // The fixture the probe showed how to build: the kernel accepts this.
+        Native.CreateJunction(source, @"\\127.0.0.1\C$\Windows");
+
+        tree.Dir("dst");
+
+        await Finished(new WindowsFileOperations().Copy([source], tree.At("dst"), Overwrite));
+
+        var landed = tree.At("dst", "share");
+
+        if (!Path.Exists(landed)) return;   // refused out loud, which is the other allowed answer
+
+        var target = new DirectoryInfo(landed).LinkTarget;
+
+        Assert.False(
+            ReparseTags.Of(landed) == 0xA0000003u && target is not null && target.StartsWith(@"\\", StringComparison.Ordinal),
+            $"a junction was written pointing at {target}, which a junction cannot say");
+    }
+
+    /// <summary>
     /// **A folder wearing a tag that is not a link is still a folder.** These
     /// operations decided what a link was by the ReparsePoint attribute alone,
     /// while the walk stopped believing that in 0633df3 — a link is a reparse

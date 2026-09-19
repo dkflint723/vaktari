@@ -1672,9 +1672,35 @@ public sealed class WindowsFileOperations : IFileOperations
     /// Makes the link at <paramref name="at"/>: a junction where one can
     /// express it, the BCL's symbolic link otherwise.
     /// </summary>
+    /// <summary>
+    /// Whether a junction can actually say where this points.
+    ///
+    /// **"Fully qualified" was the question asked, and it is not the same
+    /// one.** A junction stores an object-manager name, <c>\??\</c> followed by
+    /// a local path, so a drive-rooted path is the whole of what one can
+    /// express. A UNC share is fully qualified and cannot be said at all — and
+    /// the kernel does not refuse it. Measured: FSCTL_SET_REPARSE_POINT ACCEPTS
+    /// <c>\\127.0.0.1\C$\Windows</c>, the entry then answers Directory.Exists
+    /// true and reads its LinkTarget back correctly, and entering it throws
+    /// "The filename, directory name, or volume label syntax is incorrect". So
+    /// the link looked right and was unusable, and because nothing threw, the
+    /// fallback below — which exists for exactly this, a junction that cannot
+    /// express the target — never ran. An extended-length or volume-GUID prefix
+    /// is refused here for the same reason: <c>\??\</c> in front of <c>\\?\</c>
+    /// is not a name either.
+    ///
+    /// What the other road gives is a symbolic link, which CAN say all of them,
+    /// and which an unprivileged process cannot make — so the copy refuses out
+    /// loud instead of leaving something broken that looks fine.
+    /// </summary>
+    private static bool AJunctionCanSay(string points)
+        => Path.IsPathFullyQualified(points)
+           && Path.GetPathRoot(points) is { Length: >= 2 } root
+           && root[1] == Path.VolumeSeparatorChar;
+
     private static void MakeLinkAt(FileSystemInfo info, string at, string points)
     {
-        if (info is not DirectoryInfo || !Path.IsPathFullyQualified(points))
+        if (info is not DirectoryInfo || !AJunctionCanSay(points))
         {
             if (info is DirectoryInfo) Directory.CreateSymbolicLink(at, points);
             else File.CreateSymbolicLink(at, points);
