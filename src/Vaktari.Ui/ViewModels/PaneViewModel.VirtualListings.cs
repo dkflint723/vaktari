@@ -179,4 +179,49 @@ public sealed partial class PaneViewModel
     /// </remarks>
     public bool CanGoToLocation =>
         IsSearchListing || IsRecentListing || IsUsageListing || IsDuplicatesListing;
+    /// <summary>
+    /// Go to where a result actually lives.
+    ///
+    /// **A search spans the whole filesystem, and a row is a filename.** The
+    /// parent-path column answers "which of four config.toml is this"; this
+    /// answers "take me there", which is the other half and the one Explorer
+    /// calls Open file location. It is also all the popup could do with a
+    /// result — choosing one WAS this — so a listing without it would have
+    /// taken something away while adding everything else.
+    /// </summary>
+    [RelayCommand]
+    private async Task GoToLocation()
+    {
+        if (SelectedEntry is not { } entry) return;
+
+        // **In Recent Locations every row is a folder, and revealing a folder
+        // ENTERS it** — which is what double-clicking the row already does, so
+        // offered there unchanged this would have been a second name for Open
+        // rather than an answer to "where is this". Shown in its parent with
+        // the row lit instead, which is ShowAsync's whole distinction from
+        // RevealAsync. A search keeps the other behaviour: a hit you asked to
+        // be taken to is somewhere you want to BE.
+        if (entry.IsDirectory && IsRecentListing)
+        {
+            // **A drive root has no parent directory, and GetParent says so on
+            // both platforms — but for two different reasons, so neither is
+            // worth leaning on.** The Windows provider returns
+            // PathRules.Parent, which answers null for anything IsRoot accepts;
+            // the Linux one returns Path.GetDirectoryName, which answers null
+            // for `/`. Asking IsRoot here is what turns that null into an
+            // ANSWER: the machine, which is where Up already goes from the top
+            // of a drive. Recent Locations collects drive roots like any other
+            // folder you visit, and without this line the entry would sit on
+            // one doing nothing.
+            var parent = PathRules.IsRoot(entry.FullPath)
+                ? VirtualPaths.Computer
+                : _fs.GetParent(entry.FullPath);
+
+            if (!string.IsNullOrEmpty(parent)) await ShowAsync(parent, [entry.FullPath]);
+
+            return;
+        }
+
+        await RevealAsync(entry);
+    }
 }
