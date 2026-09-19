@@ -78,7 +78,13 @@ public sealed class WindowsMetadataProvider : IFileMetadataProvider
             if ((attributes & FileAttributes.ReadOnly) != 0) parts.Add("read-only");
             if ((attributes & FileAttributes.Hidden) != 0) parts.Add("hidden");
             if ((attributes & FileAttributes.System) != 0) parts.Add("system");
-            if ((attributes & FileAttributes.ReparsePoint) != 0) parts.Add("link");
+
+            // An app execution alias wears the attribute too, and so does
+            // whatever a filter marks for its own purposes, and neither stands
+            // for another name — measured, see WindowsEntryFlags. The walk's
+            // question, once per line and only for a marked entry.
+            if (SafeWalk.IsLink(attributes, WindowsEntryFlags.TagFor(path, attributes))) parts.Add("link");
+
             if ((attributes & FileAttributes.Encrypted) != 0) parts.Add("encrypted");
 
             return ValueTask.FromResult<string?>(

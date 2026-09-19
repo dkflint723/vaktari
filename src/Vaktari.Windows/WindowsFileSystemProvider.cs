@@ -80,16 +80,26 @@ public sealed class WindowsFileSystemProvider : IFileSystemProvider
     {
         return new FileSystemEnumerable<FileEntry>(
             path,
-            static (ref FileSystemEntry entry) => new FileEntry(
-                Name: entry.FileName.ToString(),
-                FullPath: entry.ToFullPath(),
-                Length: entry.IsDirectory ? 0 : entry.Length,
-                LastWriteTime: entry.LastWriteTimeUtc,
-                Flags: WindowsEntryFlags.For(entry.FileName, entry.Attributes, entry.IsDirectory),
-                // Out of the same FIND_DATA the two lines above read, so no
-                // second look at the file — see FileEntry for what asking for
-                // it costs and what asking for it later would have cost.
-                CreationTime: entry.CreationTimeUtc),
+            static (ref FileSystemEntry entry) =>
+            {
+                var full = entry.ToFullPath();
+
+                return new FileEntry(
+                    Name: entry.FileName.ToString(),
+                    FullPath: full,
+                    Length: entry.IsDirectory ? 0 : entry.Length,
+                    LastWriteTime: entry.LastWriteTimeUtc,
+                    // The one second look this transform takes, and only at a
+                    // row wearing the ReparsePoint attribute — see TagFor for
+                    // what it costs and why it is paid.
+                    Flags: WindowsEntryFlags.For(
+                        entry.FileName, entry.Attributes, entry.IsDirectory,
+                        WindowsEntryFlags.TagFor(full, entry.Attributes)),
+                    // Out of the same FIND_DATA the lines above read, so no
+                    // second look at the file — see FileEntry for what asking
+                    // for it costs and what asking for it later would have cost.
+                    CreationTime: entry.CreationTimeUtc);
+            },
             new EnumerationOptions
             {
                 RecurseSubdirectories = false,
@@ -143,7 +153,7 @@ public sealed class WindowsFileSystemProvider : IFileSystemProvider
             // them and not the other is a shortcut drawn with an arrow in the
             // listing and handed back without one by the watcher a moment
             // later, as a different value for the same file.
-            var flags = WindowsEntryFlags.For(name, attributes, isDir);
+            var flags = WindowsEntryFlags.For(name, attributes, isDir, WindowsEntryFlags.TagFor(path, attributes));
 
             return ValueTask.FromResult<FileEntry?>(new FileEntry(
                 name,

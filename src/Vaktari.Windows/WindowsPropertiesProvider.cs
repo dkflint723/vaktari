@@ -29,11 +29,17 @@ public sealed class WindowsPropertiesProvider : IPropertiesProvider
         var attributes = FileAttributes.None;
         try { attributes = info.Attributes; } catch (Exception e) when (e is IOException or UnauthorizedAccessException) { }
 
-        // Only resolved for an actual reparse point. ResolveLinkTarget on an
-        // ordinary file is harmless but costs a call per properties window, and
-        // on a dead network target it is the call that blocks.
+        // A link by the walk's rule rather than by the attribute: an app
+        // execution alias, or a folder under a filter's own tag, wears the
+        // attribute and stands for nothing — measured, see WindowsEntryFlags.
+        // One item, one look.
+        var isLink = SafeWalk.IsLink(attributes, WindowsEntryFlags.TagFor(path, attributes));
+
+        // Only resolved for a link. ResolveLinkTarget on an ordinary file is
+        // harmless but costs a call per properties window, and on a dead
+        // network target it is the call that blocks.
         string? linkTarget = null;
-        if ((attributes & FileAttributes.ReparsePoint) != 0)
+        if (isLink)
         {
             try { linkTarget = info.ResolveLinkTarget(returnFinalTarget: false)?.FullName; }
             catch (Exception e) when (e is IOException or UnauthorizedAccessException) { }
@@ -46,7 +52,7 @@ public sealed class WindowsPropertiesProvider : IPropertiesProvider
             Name = PathRules.LeafName(path),
             FullPath = path,
             IsDirectory = isDirectory,
-            Kind = KindOf(path, isDirectory, attributes),
+            Kind = KindOf(path, isDirectory, isLink),
             Size = info is FileInfo file && file.Exists ? SafeLength(file) : 0,
             Modified = Safe(() => info.LastWriteTimeUtc),
             Accessed = Safe(() => info.LastAccessTimeUtc),
@@ -74,10 +80,10 @@ public sealed class WindowsPropertiesProvider : IPropertiesProvider
     /// registry — see docs/history/WINDOWS.md §9. "PNG file" is less specific than "PNG
     /// image" but it is true, and it never claims a handler that is not there.
     /// </summary>
-    private static string KindOf(string path, bool isDirectory, FileAttributes attributes)
+    private static string KindOf(string path, bool isDirectory, bool isLink)
     {
         if (PathRules.IsRoot(path)) return "Drive";
-        if (isDirectory) return (attributes & FileAttributes.ReparsePoint) != 0 ? "Folder link" : "Folder";
+        if (isDirectory) return isLink ? "Folder link" : "Folder";
 
         var extension = Path.GetExtension(path);
 

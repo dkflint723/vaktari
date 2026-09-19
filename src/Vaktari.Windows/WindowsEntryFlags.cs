@@ -36,10 +36,13 @@ internal static class WindowsEntryFlags
     /// <summary>
     /// <paramref name="name"/> is the entry's own name rather than its path:
     /// it is what an enumeration has to hand without a second stat, and it is
-    /// all the shortcut rule needs.
+    /// all the shortcut rule needs. <paramref name="tag"/> is the reparse tag
+    /// of an entry wearing the ReparsePoint attribute, as <see cref="TagFor"/>
+    /// reads it, and null for one that does not wear it or whose tag could not
+    /// be read.
     /// </summary>
     internal static EntryFlags For(
-        ReadOnlySpan<char> name, FileAttributes attributes, bool isDirectory)
+        ReadOnlySpan<char> name, FileAttributes attributes, bool isDirectory, uint? tag)
     {
         var flags = EntryFlags.None;
 
@@ -54,10 +57,22 @@ internal static class WindowsEntryFlags
         if ((attributes & FileAttributes.System) != 0)
             flags |= EntryFlags.System;
 
-        // Covers symbolic links, junctions and mount points alike. The UI only
-        // asks "is this an indirection", and telling them apart needs the
-        // reparse tag, which costs another call per entry.
-        if ((attributes & FileAttributes.ReparsePoint) != 0)
+        // **Every reparse point drew the link emblem.** The attribute alone
+        // used to set the flag, to cover symbolic links, junctions and mount
+        // points alike without the second call the tag costs — and it covered
+        // an app execution alias with them, and whatever else a filter marks
+        // for its own purposes, since none of those stands for another name.
+        // Measured: a file under a third-party tag drew the arrow while the
+        // walk said it was no link, and the aliases every Store app leaves
+        // under WindowsApps — tag 0x8000001B, all of them — were a folder of
+        // arrows. So the walk's own question is asked, of the tag TagFor read.
+        //
+        // Not among them, and unchanged here: a cloud placeholder and a
+        // compressed file. Their filters hide the attribute from a process in
+        // the default mode, which is where .NET starts — measured against a
+        // Proton Drive sync root, and against a file compact.exe had just
+        // compressed, which answered Archive and "not a reparse point".
+        if (SafeWalk.IsLink(attributes, tag))
             flags |= EntryFlags.Symlink;
 
         // And the one the attributes never say. A shortcut is an ordinary file
@@ -75,4 +90,17 @@ internal static class WindowsEntryFlags
 
         return flags;
     }
+
+    /// <summary>
+    /// The tag for <see cref="For"/>, read only for an entry wearing the
+    /// attribute. **This is the second look the enumeration used to avoid**,
+    /// and its price was measured before it was paid: 19-24 us per marked row
+    /// — the entry opened without being followed, and asked — against under a
+    /// microsecond to enumerate it, and nothing at all for an unmarked row,
+    /// which is every row in almost every folder. A folder of a thousand
+    /// marked entries pays about twenty milliseconds to stop drawing a
+    /// thousand arrows.
+    /// </summary>
+    internal static uint? TagFor(string path, FileAttributes attributes)
+        => (attributes & FileAttributes.ReparsePoint) != 0 ? ReparseTags.Of(path) : null;
 }

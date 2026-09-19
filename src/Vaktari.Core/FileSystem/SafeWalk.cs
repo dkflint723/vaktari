@@ -69,10 +69,19 @@ public static class SafeWalk
     {
         if ((entry.Attributes & FileAttributes.ReparsePoint) == 0) return false;
 
-        if (ReparseTag?.Invoke(entry.FullName) is not { } tag) return true;
-
-        return (tag & NameSurrogate) != 0;
+        return IsLink(entry.Attributes, ReparseTag?.Invoke(entry.FullName));
     }
+
+    /// <summary>
+    /// The same rule for a caller that already holds the tag — the Windows
+    /// listing reads it once per marked row at the enumeration, and its
+    /// details line and properties window read it for one entry — so that
+    /// none of them keeps a copy of the bit. A null tag is one that could not
+    /// be read, and makes a link, as above.
+    /// </summary>
+    public static bool IsLink(FileAttributes attributes, uint? tag)
+        => (attributes & FileAttributes.ReparsePoint) != 0
+           && (tag is not { } known || (known & NameSurrogate) != 0);
 
     /// <summary>
     /// Everything under <paramref name="root"/>, deepest last, with links

@@ -307,14 +307,23 @@ public sealed class WindowsSearchProvider : ISearchProvider
             ? FileSystemName.MatchesSimpleExpression(text, name, ignoreCase: !caseSensitive)
             : name.Contains(text, comparison);
 
-    private static FileEntry Transform(ref FileSystemEntry entry) => new(
-        Name: entry.FileName.ToString(),
-        FullPath: entry.ToFullPath(),
-        Length: entry.IsDirectory ? 0 : entry.Length,
-        LastWriteTime: entry.LastWriteTimeUtc,
-        Flags: WindowsEntryFlags.For(entry.FileName, entry.Attributes, entry.IsDirectory),
-        // The third path a row arrives by, and it draws in the same details
-        // columns as the other two. Out of the same directory read, so the
-        // "no follow-up stat per entry" rule above is intact.
-        CreationTime: entry.CreationTimeUtc);
+    private static FileEntry Transform(ref FileSystemEntry entry)
+    {
+        var full = entry.ToFullPath();
+
+        return new(
+            Name: entry.FileName.ToString(),
+            FullPath: full,
+            Length: entry.IsDirectory ? 0 : entry.Length,
+            LastWriteTime: entry.LastWriteTimeUtc,
+            Flags: WindowsEntryFlags.For(
+                entry.FileName, entry.Attributes, entry.IsDirectory,
+                WindowsEntryFlags.TagFor(full, entry.Attributes)),
+            // The third path a row arrives by, and it draws in the same details
+            // columns as the other two. Out of the same directory read, so the
+            // "no follow-up stat per entry" rule above holds for every unmarked
+            // row; a row wearing the ReparsePoint attribute pays TagFor's look,
+            // which is accounted for there.
+            CreationTime: entry.CreationTimeUtc);
+    }
 }

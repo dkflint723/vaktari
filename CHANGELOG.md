@@ -194,6 +194,16 @@ should not be trusted for compatibility yet.
 
 ### Fixed
 
+- **On Windows, a file marked for something other than a link is no
+  longer shown as one.** Windows puts the mark a link carries on other
+  things too — the launcher every Store app leaves under WindowsApps, and
+  whatever else a filter driver marks for its own purposes — and the
+  listing drew every one of them with the link emblem, the details line
+  called it a link, and the properties window called such a folder a
+  folder link. All three now ask the question the file operations ask,
+  whether the mark stands for another name, which costs about twenty
+  microseconds per marked row and nothing for any other.
+
 - **On Linux, a link deleted to a bin on another filesystem stays a
   link.** When the bin a file goes to is not on the file's own filesystem
   — a drive whose own bin cannot be made, say — the file is copied across
