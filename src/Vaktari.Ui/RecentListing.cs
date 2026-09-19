@@ -145,7 +145,36 @@ public static class VirtualPaths
     /// already answers with no rows and one thing it could not read.
     /// </summary>
     public static string FolderOf(string path)
-        => IsUsage(path) ? Uri.UnescapeDataString(path[UsagePrefix.Length..]) : "";
+        => IsUsage(path) ? Uri.UnescapeDataString(path[UsagePrefix.Length..])
+            : IsDuplicates(path) ? Uri.UnescapeDataString(path[DuplicatesPrefix.Length..])
+            : "";
+
+    /// <summary>
+    /// Every file under one folder that is a copy of another, as somewhere you
+    /// can be.
+    ///
+    /// **Shape: prefix and one escaped field**, exactly as
+    /// <see cref="UsagePrefix"/> — the folder that was scanned — and escaped
+    /// for the same reason, so <c>PathRules.Normalise</c> finds no separator
+    /// in it to call a parent.
+    ///
+    ///   vaktari:duplicates:C%3A%5CUsers%5Cme
+    ///
+    /// Like a usage listing and unlike a search, this is not its own question:
+    /// it is one folder looked at a different way, so the folder it names is
+    /// how you get back out.
+    /// </summary>
+    public const string DuplicatesPrefix = "vaktari:duplicates:";
+
+    /// <summary>One key for every duplicates listing, for the reason
+    /// <see cref="UsageViewKey"/> gives.</summary>
+    public const string DuplicatesViewKey = DuplicatesPrefix + "*";
+
+    public static string Duplicates(string folder)
+        => DuplicatesPrefix + Uri.EscapeDataString(folder);
+
+    public static bool IsDuplicates(string? path)
+        => path is not null && path.StartsWith(DuplicatesPrefix, StringComparison.Ordinal);
 
     public static string Search(string query, string? origin, bool scoped, bool matchCase = false)
         => SearchPrefix
@@ -281,7 +310,8 @@ public static class VirtualPaths
 
     /// <summary>Any listing that is not a directory.</summary>
     public static bool IsVirtual(string? path)
-        => IsRecent(path) || path == Trash || path == Computer || IsSearch(path) || IsUsage(path);
+        => IsRecent(path) || path == Trash || path == Computer || IsSearch(path)
+           || IsUsage(path) || IsDuplicates(path);
 
     /// <summary>
     /// True for a virtual listing. Callers that must check this:
@@ -313,6 +343,9 @@ public static class VirtualPaths
         // path matches no constant, so the catch-all would title every one of
         // them "Recent locations" and say nothing about it.
         _ when IsUsage(path) => $"Space used in {LeafOf(FolderOf(path))}",
+
+        // Above the fallback for the reason the two arms above it are.
+        _ when IsDuplicates(path) => $"Duplicates in {LeafOf(FolderOf(path))}",
 
         _ => "Recent locations",
     };

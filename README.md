@@ -163,6 +163,22 @@ walking a tree costs what it costs. It is a view of one folder rather than a
 folder itself: comparing, copying across, properties and pinning are not offered
 in it, and *Go to the folder* takes you back.
 
+**The files that are copies of each other.** *Show duplicate files*, in the
+listing's menu or the command box, replaces the listing with every file below
+this folder that another file holds the same bytes as — whatever it has been
+renamed to, and whatever its date says. The bar above says how many sets there
+are and what deleting all but one of each would give back. Every copy is a row,
+with the date it was written, because which one to keep depends on where it
+lives and when it was written, and that is not a choice a scan can make for
+you. *Select every copy but one* picks the spare ones and always leaves a
+member of each set behind, so selecting what it offers and pressing Delete
+cannot take the last copy of anything. It reads only what it must: a file whose
+size nothing else shares is never opened, and what survives that is compared
+byte for byte rather than trusted to a digest, because the cost of a collision
+here is somebody deleting a file that was not a copy. Empty files are left out,
+since every one of them matches every other. Like the space listing it is a
+view rather than a folder, and *Go to the folder* takes you back.
+
 **Folders open where they stand.** In the List layout, press the triangle on a
 folder row — or `→` with the row selected — and its contents appear underneath
 it, indented, without the listing moving. `←` closes it again. What you opened

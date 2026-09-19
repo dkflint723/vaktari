@@ -273,6 +273,12 @@ public static class Commands
         // or by name from the palette.
         new("ShowSpaceUsage", "Show space usage", Looking, KeyTier.Listing, []) { Command = Pane(p => p.ShowSpaceUsageCommand) },
 
+        // Beside it, and keyless for the same reason. The second is not
+        // OnSelection: it MAKES the selection, so requiring one first would be
+        // asking for the thing it is there to do.
+        new("ShowDuplicates", "Show duplicate files", Looking, KeyTier.Listing, []) { Command = Pane(p => p.ShowDuplicatesCommand) },
+        new("SelectExtraCopies", "Select every copy but one", Files, KeyTier.Listing, []) { Command = Pane(p => p.SelectExtraCopiesCommand) },
+
         // The pad's plus and minus answer these too — Avalonia folds them onto
         // the top row's when it matches — but not the pad's nought, which is
         // why reset carries both.

@@ -13,6 +13,18 @@ should not be trusted for compatibility yet.
 
 ### Added
 
+- **The files that are copies of each other can be seen.** *Show duplicate
+  files* — in the listing's menu or the command box — replaces the listing
+  with every file below this folder that another file holds the same bytes
+  as, whatever it has been renamed to. The bar above says how many sets
+  there are and what deleting all but one of each would give back. Every
+  copy is shown, with the date it was written, because which one to keep
+  depends on where it lives and when it was written; *Select every copy but
+  one* then picks the spare ones, and always leaves one of each set behind,
+  so selecting what it offers and pressing Delete cannot take the last copy
+  of anything. It reads what it must and no more: a file whose size nothing
+  else shares is never opened.
+
 - **What is using the space in a folder can be seen.** *Show space usage* —
   in the listing's menu or the command box — replaces the listing with one
   row per item in the folder, each carrying everything underneath it, so

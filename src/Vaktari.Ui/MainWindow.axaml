@@ -2360,6 +2360,31 @@
                         Command="{Binding ActiveTab.ShowSpaceUsageCommand}"
                         IsVisible="{Binding ActiveTab.IsRealFolder}"
                         in:KeyHint.Command="ShowSpaceUsage"/>
+              <!-- The other way of looking at the folder you are in, hidden
+                   outside a real one for the same reason.
+
+                   No access key, and for the same reason the row above has
+                   none: every letter of "Show" is already spoken for in this
+                   menu, which is the one case the rule allows. 'd' was tried
+                   and belongs to "Delete permanently"; only j, k and q are
+                   free here and this label holds none of them. -->
+              <MenuItem Header="Show duplicate files"
+                        Command="{Binding ActiveTab.ShowDuplicatesCommand}"
+                        IsVisible="{Binding ActiveTab.IsRealFolder}"
+                        in:KeyHint.Command="ShowDuplicates"/>
+              <!-- **The safe way to act on what the scan found, and the only
+                   bulk one.** Select-all offers every member of every set, so
+                   one Delete would take both copies of everything; this leaves
+                   one of each behind by construction. Shown only in the listing
+                   it belongs to, which is also the only place it would select
+                   anything.
+
+                   No access key: every letter of "Select" is taken here too.
+                   'c' was tried and belongs to "Cut". -->
+              <MenuItem Header="Select every copy but one"
+                        Command="{Binding ActiveTab.SelectExtraCopiesCommand}"
+                        IsVisible="{Binding ActiveTab.IsDuplicatesListing}"
+                        in:KeyHint.Command="SelectExtraCopies"/>
               <!-- **Comparing had no pointer route on the left half of a split.**
                    Its switch and the copy it offers lived in the view-options
                    flyout, whose button only the right half shows, and pressing
@@ -2670,6 +2695,30 @@
                   <TextBlock x:Name="UsageTotalText" VerticalAlignment="Center"
                              TextTrimming="CharacterEllipsis"
                              Text="{Binding UsageTotalLine}"
+                             FontSize="{DynamicResource FontSizeSmall}"/>
+                </DockPanel>
+              </Border>
+              <!-- **What the scan found, which no row can say.** How many sets
+                   there are is a fact about the rows together, what could be
+                   freed counts every copy but one of each, and what could not
+                   be read changes what the whole listing MEANS — a tree only
+                   half read may hold copies it never saw.
+
+                   Same shape as the usage band above, never on screen with it,
+                   and indeterminate for the same reason: the scan reads every
+                   file that shares a length with another, and nothing knows how
+                   many that is until the walk ends. -->
+              <Border DockPanel.Dock="Top" Padding="12,6"
+                      Background="{DynamicResource ChromeBrush}"
+                      BorderThickness="0,0,0,1" BorderBrush="{DynamicResource SeparatorColour}"
+                      IsVisible="{Binding IsDuplicatesListing}">
+                <DockPanel x:Name="DuplicatesBand">
+                  <ProgressBar x:Name="DuplicatesScanning" DockPanel.Dock="Bottom"
+                               IsVisible="{Binding IsLoading}"
+                               IsIndeterminate="True" Height="3" Margin="0,6,0,0"/>
+                  <TextBlock x:Name="DuplicatesText" VerticalAlignment="Center"
+                             TextTrimming="CharacterEllipsis"
+                             Text="{Binding DuplicatesLine}"
                              FontSize="{DynamicResource FontSizeSmall}"/>
                 </DockPanel>
               </Border>

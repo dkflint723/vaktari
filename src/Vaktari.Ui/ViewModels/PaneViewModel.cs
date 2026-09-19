@@ -943,6 +943,7 @@ public sealed partial class PaneViewModel : ObservableObject, IDisposable
     /// </summary>
     private static string ViewKey(string path)
         => VirtualPaths.IsUsage(path) ? VirtualPaths.UsageViewKey
+                   : VirtualPaths.IsDuplicates(path) ? VirtualPaths.DuplicatesViewKey
                    : VirtualPaths.IsSearch(path) ? VirtualPaths.SearchViewKey
                    : path;
 
@@ -1988,6 +1989,71 @@ public sealed partial class PaneViewModel : ObservableObject, IDisposable
     }
 
     /// <summary>
+    /// True while this pane is showing the files under a folder that are copies
+    /// of each other.
+    /// </summary>
+    public bool IsDuplicatesListing => VirtualPaths.IsDuplicates(CurrentPath);
+
+    /// <summary>
+    /// What the scan came to. Cleared when a listing starts and set when one
+    /// finishes, for the reason <see cref="UsageTotal"/> is.
+    /// </summary>
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(DuplicatesLine))]
+    private Copies _duplicateTotal;
+
+    /// <summary>
+    /// Every copy but one of each set — what <see cref="SelectExtraCopies"/>
+    /// picks.
+    ///
+    /// **Not a property anything binds to**, deliberately: it is a list of
+    /// paths that would mean nothing on screen, and the one thing it is for is
+    /// the command below. Replaced wholesale when a scan finishes and emptied
+    /// when one starts, so a command pressed against the previous folder's
+    /// listing selects nothing rather than rows that are no longer there.
+    /// </summary>
+    private IReadOnlyList<string> _extraCopies = [];
+
+    /// <summary>
+    /// Selects every copy but one of each set.
+    ///
+    /// **This is the safe route to freeing the space, and the only bulk one.**
+    /// Select-all would offer every member of every set, so one Delete would
+    /// take both copies of everything; this leaves one of each behind by
+    /// construction — see <see cref="CopyRows.Extras"/>, which is where the
+    /// property is kept and tested.
+    /// </summary>
+    [RelayCommand]
+    private void SelectExtraCopies() => ReselectPaths([.. _extraCopies]);
+
+    /// <summary>
+    /// The band's sentence: how many sets there are, what deleting the spare
+    /// copies would give back, and what could not be read on the way.
+    ///
+    /// **The unreadable count has nowhere else to go**, as the measured
+    /// folder's has nowhere but its own band — and here it changes what the
+    /// figure MEANS: a scan that could not read part of the tree may have
+    /// missed copies, so "nothing here is a copy of anything else" would
+    /// otherwise be said about a tree it did not finish reading.
+    /// </summary>
+    public string DuplicatesLine
+    {
+        get
+        {
+            var line = DuplicateTotal.Sets == 0
+                ? "nothing here is a copy of anything else"
+                : $"{DuplicateTotal.Files:N0} copies in {DuplicateTotal.Sets:N0} "
+                  + $"set{(DuplicateTotal.Sets == 1 ? "" : "s")}, "
+                  + $"{ByteSize.Format(DuplicateTotal.Reclaimable)} can be freed";
+
+            if (DuplicateTotal.Unreadable == 0) return line;
+
+            return $"{line}, and {DuplicateTotal.Unreadable:N0} "
+                   + $"thing{(DuplicateTotal.Unreadable == 1 ? "" : "s")} could not be read";
+        }
+    }
+
+    /// <summary>
     /// Whether "where does this row actually live" is a question this listing
     /// can answer.
     ///
@@ -2010,7 +2076,8 @@ public sealed partial class PaneViewModel : ObservableObject, IDisposable
     /// is the only way back to the folder that was measured — and Back is gone
     /// as soon as the person goes anywhere else first.
     /// </remarks>
-    public bool CanGoToLocation => IsSearchListing || IsRecentListing || IsUsageListing;
+    public bool CanGoToLocation =>
+        IsSearchListing || IsRecentListing || IsUsageListing || IsDuplicatesListing;
 
     /// <summary>What was asked, drawn in the band and in the empty state.</summary>
     public string SearchQueryText => VirtualPaths.QueryOf(CurrentPath);
@@ -2549,6 +2616,11 @@ public sealed partial class PaneViewModel : ObservableObject, IDisposable
         // nothing in it is not "this folder is empty" about a folder the person
         // is not looking at.
         _ when IsUsageListing => "nothing is using space here",
+
+        // And above it for the same reason: a folder in which nothing is a
+        // copy of anything is not an empty folder, and saying so over a folder
+        // full of files reads as data loss.
+        _ when IsDuplicatesListing => "nothing here is a copy of anything else",
 
         _ => "this folder is empty",
     };
@@ -3134,6 +3206,17 @@ public sealed partial class PaneViewModel : ObservableObject, IDisposable
     [RelayCommand]
     public Task ShowSpaceUsageAsync()
         => IsRealFolder ? NavigateAsync(VirtualPaths.Usage(CurrentPath)) : Task.CompletedTask;
+
+    /// <summary>
+    /// Shows the files below this folder that are copies of each other.
+    ///
+    /// **Only from a real folder**, for the reason
+    /// <see cref="ShowSpaceUsageAsync"/> gives: the views hold rows from
+    /// anywhere, so there is no one tree to scan.
+    /// </summary>
+    [RelayCommand]
+    public Task ShowDuplicatesAsync()
+        => IsRealFolder ? NavigateAsync(VirtualPaths.Duplicates(CurrentPath)) : Task.CompletedTask;
 
     [RelayCommand]
     public Task OpenAsync(FileEntry entry)
@@ -4009,6 +4092,10 @@ public sealed partial class PaneViewModel : ObservableObject, IDisposable
             OnPropertyChanged(nameof(IsUsageListing));
             OnPropertyChanged(nameof(UsageFolder));
 
+            // And its twin, for the same reason: scanning a second folder moves
+            // the pane from one duplicates listing straight to another.
+            OnPropertyChanged(nameof(IsDuplicatesListing));
+
             // The menu row that goes to where a row lives is bound to this one,
             // and a change announced for IsSearchListing is not a change
             // announced for this: without the line the row keeps whatever
@@ -4859,6 +4946,19 @@ public sealed partial class PaneViewModel : ObservableObject, IDisposable
         // without racing the walk it is waiting on.
         UsageTotal = new Usage();
 
+        // Beside it, and BOTH are the same GUARD. The spare copies looked like
+        // the exception — they are paths a command acts on, so a stale list is
+        // a command aimed at the previous folder — and the mutation says
+        // otherwise: clearing them reddens nothing. The completion block
+        // replaces the list at the end of every load, so at a load BOUNDARY
+        // this changes nothing; and in the stretch between, the listing has
+        // just been emptied two lines below, so ReselectPaths can see none of
+        // the stale rows and does nothing at all. Kept for the same reason the
+        // line above it is: what it guards is true today by a coincidence of
+        // ordering rather than by anything that says so.
+        DuplicateTotal = new Copies();
+        _extraCopies = [];
+
         _all.Clear();
         Entries.Reset();
         NotifyNavigationState();
@@ -4882,6 +4982,10 @@ public sealed partial class PaneViewModel : ObservableObject, IDisposable
         // dispatcher once the load finishes.
         var measured = new Usage();
 
+        // The scan's own two, in the same shape and for the same reason.
+        var copies = new Copies();
+        IReadOnlyList<string> spare = [];
+
         var source =
             VirtualPaths.IsRecent(path) ? RecentListing.EnumerateAsync(Recents, path, ct)
             : path == VirtualPaths.Trash ? RecentListing.EnumerateTrashAsync(Trash, ct)
@@ -4893,6 +4997,11 @@ public sealed partial class PaneViewModel : ObservableObject, IDisposable
                 ? SpaceListing.EnumerateAsync(
                     VirtualPaths.FolderOf(path), ShowHidden, progress: null, ct,
                     total => measured = total)
+            : VirtualPaths.IsDuplicates(path)
+                ? DuplicateListing.EnumerateAsync(
+                    VirtualPaths.FolderOf(path), ShowHidden, ct,
+                    summary => copies = summary,
+                    extras => spare = extras)
             : _fs.EnumerateAsync(path, options, ct);
 
         var sw = Stopwatch.StartNew();
@@ -5022,6 +5131,11 @@ public sealed partial class PaneViewModel : ObservableObject, IDisposable
                 // Beside it, and for the same reason: the total is worked out
                 // on the pool, and the band binds to this.
                 UsageTotal = measured;
+
+                // Beside it, and both for the same reason: worked out on the
+                // pool, read here on the dispatcher.
+                DuplicateTotal = copies;
+                _extraCopies = spare;
 
                 // AFTER the listing is on screen, never before it. Status can
                 // take seconds on a large repository and the folder must not
