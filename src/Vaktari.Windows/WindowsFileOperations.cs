@@ -1579,8 +1579,19 @@ public sealed class WindowsFileOperations : IFileOperations
         var points = info.LinkTarget ?? throw new IOException(
             $"'{PathRules.LeafName(source)}' is a reparse point with no readable target.");
 
-        // A link whose target has gone still stands at the name, though both
-        // Exists checks answer false for it: they follow it.
+        // A link whose target has gone still stands at the name, and IsLink is
+        // what says so — but NOT for the reason this used to give.
+        //
+        // *(Corrected 2026-09-18.)* It said "both Exists checks answer false for
+        // it: they follow it". Measured since, and recorded in this file's own
+        // walk: a dangling JUNCTION answers Directory.Exists TRUE and
+        // File.Exists false, reading back [Directory, ReparsePoint] — so Exists
+        // does not miss it and does not simply follow. What the pair cannot do
+        // is tell a link from the thing it names, and on a dangling FILE link
+        // both do answer false. IsLink is here for the second case and for
+        // clarity about the first; the condition was right either way, since a
+        // third conjunct can only narrow a branch that is already about a free
+        // name.
         if (!File.Exists(target) && !Directory.Exists(target) && !IsLink(target))
         {
             beforeLinking?.Invoke(target);
@@ -2843,7 +2854,24 @@ public sealed class WindowsFileOperations : IFileOperations
             {
                 try { File.SetAttributes(remove.Path, attributes); } catch (Exception) { /* it kept its own */ }
 
-                notes.Add(e.Message);
+                // **The name is composed here, because the message does not
+                // always carry it.** Measured on Windows: Directory.Delete on a
+                // folder that will not go says "The directory is not empty." and
+                // nothing else, so the note read "everything went back, but The
+                // directory is not empty" and named no folder at all — while the
+                // summary above promises that saying where it is is the whole of
+                // what is owed. Other refusals do name the path, which is why
+                // this was easy to miss.
+                //
+                // **No mutation reddens this line**, and that is worth saying
+                // rather than dressing up: reaching it needs the removal to fail
+                // with a message that omits the path, and the walk only asks
+                // after every child has gone — so the folder is empty unless
+                // something outside puts a file in it mid-walk, which no seam
+                // here can arrange. A Linux test written for it passed with the
+                // line reverted, because the refusal there names the path.
+                notes.Add($"{PathRules.LeafName(remove.Path)} was left at "
+                          + $"{PathRules.Parent(remove.Path) ?? remove.Path}: {e.Message}");
             }
         }
 

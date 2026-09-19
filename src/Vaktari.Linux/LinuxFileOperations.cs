@@ -932,8 +932,18 @@ public sealed class LinuxFileOperations : IFileOperations
             ?? throw new IOException(
                 $"\"{Path.GetFileName(source)}\" is a link whose target could not be read.");
 
-        // A link whose target has gone is still something at the name, though
-        // both Exists checks answer false for it: they follow it.
+        // A link whose target has gone is still something at the name, and
+        // IsLink is what says so — but NOT for the reason this used to give.
+        //
+        // *(Corrected 2026-09-18.)* It said "both Exists checks answer false for
+        // it: they follow it". Measured by running it here: for a dangling
+        // symbolic link .NET answers File.Exists TRUE and Directory.Exists
+        // false — File.Exists falls back to an lstat and counts the link itself
+        // as a file. So the pair does not miss a dangling link at all, and the
+        // reasoning was backwards. What it cannot do is tell a link from the
+        // thing it names, which is what IsLink is for. The condition was right
+        // either way: a third conjunct can only narrow a branch already about a
+        // free name.
         if (!File.Exists(target) && !Directory.Exists(target) && !IsLink(target))
         {
             beforeLinking?.Invoke(target);
@@ -2090,7 +2100,13 @@ public sealed class LinuxFileOperations : IFileOperations
             }
             catch (Exception e)
             {
-                notes.Add(e.Message);
+                // **The name is composed here, because the message does not
+                // carry it**, the way the leftover note in Travelling already
+                // does. Measured: the removal that will not go says only that
+                // the directory is not empty, so the note named no folder while
+                // the summary above promised it would.
+                notes.Add($"{Path.GetFileName(remove.Path)} was left at "
+                          + $"{Path.GetDirectoryName(remove.Path) ?? remove.Path}: {e.Message}");
             }
         }
 

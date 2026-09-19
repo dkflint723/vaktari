@@ -106,15 +106,20 @@ public class UndoMergeTests
 
     /// <summary>
     /// **A junction already standing at the source does not end the undo's walk
-    /// part-way.** Undoing a moved folder copies it back entry by entry when the
-    /// folder it came from is standing again, and it puts a link back with the
-    /// routine a move lands one with. That routine now refuses a name that is
-    /// already taken rather than returning in silence, and without a check in
-    /// the walk the refusal ended it at the first junction already standing at
-    /// the source, with the rest of the folder left at the destination —
-    /// measured while this change was being made, with z.txt never coming back.
-    /// So the walk leaves a link already standing at the name as it is, and
-    /// goes on.
+    /// part-way.** With the folder it came from standing again, the undo cannot
+    /// rename it back whole, so it walks one level at a time instead — and a
+    /// junction already at one of those names is what used to stop it, with the
+    /// rest of the folder left at the destination and z.txt never coming back.
+    /// A link of the same kind pointing at the same place is taken as already
+    /// put back: the one that travelled is removed and the one standing is left
+    /// alone, so the walk goes on. A link pointing anywhere ELSE is not that
+    /// case — it is left where it is and the step waits.
+    ///
+    /// *(Rewritten 2026-09-18. This described the undo as copying back entry by
+    /// entry and putting links back with CopyLink, which was true until d5f6847
+    /// replaced the walk: it renames now and calls CopyLink nowhere. The test
+    /// itself still holds, and still passes unchanged — only its account of why
+    /// had gone stale under it.)*
     ///
     /// **The undo used to fail after the walk, and this test recorded that
     /// rather than asserting past it.** Removing the emptied folder from the
@@ -142,8 +147,9 @@ public class UndoMergeTests
 
         await Done(ops.Move([tree.At("src", "A")], tree.At("dst"), Overwrite));
 
-        // The folder is back at the source with its junction in it, which is
-        // what sends the undo down the copy-back walk rather than one rename.
+        // The folder is back at the source with its junction in it, so the name
+        // is taken and the undo walks the children rather than renaming the
+        // folder back whole.
         tree.Junction("src/A/j", outside);
 
         await ops.UndoAsync(CancellationToken.None);

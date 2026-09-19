@@ -194,6 +194,12 @@ should not be trusted for compatibility yet.
 
 ### Fixed
 
+- **An undo that leaves a folder behind now says which folder.** When
+  everything went back but the emptied folder at the other end could not be
+  taken away, the status bar said "everything went back, but The directory
+  is not empty" — naming neither the folder nor where it was, so there was
+  nothing to act on. It names both now.
+
 - **A folder Windows has marked for something other than a link is no longer
   replaced by one, and a read-only link being replaced no longer leaves a
   stray entry behind.** Windows puts reparse points on folders that are not
