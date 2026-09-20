@@ -219,7 +219,7 @@ public sealed class BatchRenameIsOneUndoStepTests : OwnedViewModels
     public void The_dialog_is_given_the_panes_group()
     {
         var body = RepoSource.Body(
-            RepoSource.Ui("MainWindow.axaml.cs"), "private void ShowBatchRename(");
+            RepoSource.UiClass("", "MainWindow"), "private void ShowBatchRename(");
 
         Assert.Contains("pane.BeginRenameGroup", body, StringComparison.Ordinal);
     }

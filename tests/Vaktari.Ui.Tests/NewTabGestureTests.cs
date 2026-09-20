@@ -134,7 +134,7 @@ public sealed class NewTabGestureTests
     [AvaloniaFact]
     public void The_gesture_opens_behind_rather_than_handing_over()
     {
-        var source = RepoSource.Ui("MainWindow.axaml.cs");
+        var source = RepoSource.UiClass("", "MainWindow");
 
         Assert.Contains("_shell.OpenBehind(opening)", source);
         Assert.DoesNotContain("_shell.OpenInNewTab(folder)", source);

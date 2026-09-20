@@ -404,7 +404,7 @@ public sealed class SideButtonNavigationTests : OwnedViewModels
     public void The_press_handler_asks_which_pane_before_navigating()
     {
         var body = RepoSource.Body(
-            RepoSource.Ui("MainWindow.axaml.cs"),
+            RepoSource.UiClass("", "MainWindow"),
             "private void OnPointerPressedAnywhere(object? sender, Avalonia.Input.PointerPressedEventArgs e)");
 
         var side = body.IndexOf("Input.SideButtons.For(", StringComparison.Ordinal);

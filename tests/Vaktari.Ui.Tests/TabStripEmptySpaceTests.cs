@@ -209,7 +209,7 @@ public sealed class TabStripEmptySpaceTests : OwnedViewModels
     public void The_strip_is_asked_before_the_single_click_preference()
     {
         var body = RepoSource.Body(
-            RepoSource.Ui("MainWindow.axaml.cs"),
+            RepoSource.UiClass("", "MainWindow"),
             "private void OnDoubleTapped(object? sender, TappedEventArgs e)");
 
         var strip = body.IndexOf("TabStripEmptySpaceAt(e.Source)", StringComparison.Ordinal);

@@ -472,7 +472,7 @@ public sealed class DefaultViewTests : OwnedViewModels
     public void The_window_writes_it_to_the_settings_file()
         => Assert.Contains(
             "_shell.DefaultViewChanged += (_, settings) => _services.SettingsStore.Save(settings);",
-            RepoSource.Ui("MainWindow.axaml.cs"));
+            RepoSource.UiClass("", "MainWindow"));
 
     /// <summary>
     /// And there is a way to press it. A command nothing binds is a feature

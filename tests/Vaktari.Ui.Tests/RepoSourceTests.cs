@@ -21,7 +21,7 @@ public sealed class RepoSourceTests
     [Fact]
     public void Source_arrives_with_one_kind_of_line_ending()
     {
-        var source = RepoSource.Ui("MainWindow.axaml.cs");
+        var source = RepoSource.UiClass("", "MainWindow");
 
         Assert.DoesNotContain('\r', source);
         Assert.Contains('\n', source);
@@ -49,6 +49,6 @@ public sealed class RepoSourceTests
     [Fact]
     public void A_method_that_is_not_there_is_an_error_rather_than_everything()
         => Assert.Throws<InvalidOperationException>(
-            () => RepoSource.Body(RepoSource.Ui("MainWindow.axaml.cs"),
+            () => RepoSource.Body(RepoSource.UiClass("", "MainWindow"),
                                   "private void NoSuchMethodExists()"));
 }

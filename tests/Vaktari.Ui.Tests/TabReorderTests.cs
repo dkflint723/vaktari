@@ -220,7 +220,7 @@ public sealed class TabReorderTests : OwnedViewModels
     // ---- that the rule is reachable ---------------------------------------
 
     private static string Window(string declaration)
-        => RepoSource.Body(RepoSource.Ui("MainWindow.axaml.cs"), declaration);
+        => RepoSource.Body(RepoSource.UiClass("", "MainWindow"), declaration);
 
     [Fact]
     public void A_press_on_a_tab_arms_a_reorder()

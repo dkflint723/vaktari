@@ -445,7 +445,7 @@ public sealed class ChooseApplicationTests : OwnedViewModels
     [AvaloniaFact]
     public void Every_pane_is_wired_to_the_window_that_draws_the_chooser()
     {
-        var body = RepoSource.Body(RepoSource.Ui("MainWindow.axaml.cs"),
+        var body = RepoSource.Body(RepoSource.UiClass("", "MainWindow"),
                                    "private void WirePane(PaneViewModel pane)");
 
         Assert.Contains("pane.ChooseApplicationRequested += OnChooseApplicationRequested;",

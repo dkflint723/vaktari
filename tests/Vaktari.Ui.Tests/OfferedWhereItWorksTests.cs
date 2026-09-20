@@ -109,7 +109,7 @@ public sealed class OfferedWhereItWorksTests : OwnedViewModels
             // which says nothing about whether the icons still are.
             "_platform.FileIcons",
             RepoSource.Body(
-                RepoSource.Ui("MainWindow.axaml.cs"), "private void ShowSettings()"));
+                RepoSource.UiClass("", "MainWindow"), "private void ShowSettings()"));
 
     /// <summary>
     /// The markup half. Hiding the checkbox in the view model buys nothing if

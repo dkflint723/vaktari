@@ -177,7 +177,7 @@ public sealed class EmptyAndAddressBarTests : OwnedViewModels
     [AvaloniaFact]
     public void The_listing_asks_for_the_listing_rule()
     {
-        var source = RepoSource.Ui("MainWindow.axaml.cs");
+        var source = RepoSource.UiClass("", "MainWindow");
 
         Assert.Contains("_shell.ActiveTab?.DismissInListing()", source);
         Assert.DoesNotContain("_shell.ActiveTab?.ClearFilter()", source);

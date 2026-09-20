@@ -196,7 +196,7 @@ public sealed class SelectionBoxTests : OwnedViewModels
         => Assert.Contains(
             "SelectAllFrom(pane.AllChosen)",
             RepoSource.Body(
-                RepoSource.Ui("MainWindow.axaml.cs"),
+                RepoSource.UiClass("", "MainWindow"),
                 "private void OnSelectAllBoxClicked("));
 
     // ---- what a press on a box does ------------------------------------------
@@ -346,7 +346,7 @@ public sealed class SelectionBoxTests : OwnedViewModels
     public void A_press_on_a_box_is_claimed_before_the_band_and_the_drag_are_armed()
     {
         var body = RepoSource.Body(
-            RepoSource.Ui("MainWindow.axaml.cs"),
+            RepoSource.UiClass("", "MainWindow"),
             "private void OnPointerPressedAnywhere(");
 
         var guard = body.IndexOf("SelectionBoxAt(e.Source)", StringComparison.Ordinal);
@@ -378,7 +378,7 @@ public sealed class SelectionBoxTests : OwnedViewModels
     public void Arming_nothing_really_forgets_the_drag()
     {
         var body = RepoSource.Body(
-            RepoSource.Ui("MainWindow.axaml.cs"), "private void ArmNothing()");
+            RepoSource.UiClass("", "MainWindow"), "private void ArmNothing()");
 
         Assert.Contains("_bandList = null;", body);
         Assert.Contains("_dragSource = null;", body);

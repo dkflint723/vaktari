@@ -1274,7 +1274,7 @@ public sealed class NewWindowTests : OwnedViewModels
     // any code that happens to contain the same text. They exist to catch a
     // regression, and each still has a real one-line mutation that reddens it.
 
-    private static string Window() => RepoSource.Ui("MainWindow.axaml.cs");
+    private static string Window() => RepoSource.UiClass("", "MainWindow");
 
     /// <summary>
     /// GUARD. The dialog awaits ShowDialog and cannot be driven headlessly, so

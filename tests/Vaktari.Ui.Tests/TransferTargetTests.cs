@@ -516,7 +516,7 @@ public sealed class TransferTargetTests : OwnedViewModels
     [Fact]
     public void The_window_answers_the_request_with_a_folder_picker()
     {
-        var source = RepoSource.Ui("MainWindow.axaml.cs");
+        var source = RepoSource.UiClass("", "MainWindow");
 
         Assert.Contains("_shell.TransferBrowseRequested += OnTransferBrowseRequested;",
                         source, StringComparison.Ordinal);

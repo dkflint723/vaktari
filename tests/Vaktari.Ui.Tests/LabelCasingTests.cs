@@ -271,7 +271,7 @@ public sealed class LabelCasingTests
     [Fact]
     public void The_prompt_bar_builds_its_labels_in_sentence_case()
     {
-        var source = RepoSource.Ui("MainWindow.axaml.cs");
+        var source = RepoSource.UiClass("", "MainWindow");
 
         var written = Regex.Matches(source, @"Prompt(?:Label\.Text|Confirm\.Content) = \$?""([^""]*)""")
             .Select(m => m.Groups[1].Value)
@@ -300,7 +300,7 @@ public sealed class LabelCasingTests
     [Fact]
     public void The_close_confirmation_builds_its_buttons_in_sentence_case()
     {
-        var built = Regex.Matches(RepoSource.Ui("MainWindow.axaml.cs"),
+        var built = Regex.Matches(RepoSource.UiClass("", "MainWindow"),
                                   @"new Button \{ Content = ""([^""]*)""")
             .Select(m => m.Groups[1].Value)
             .ToList();

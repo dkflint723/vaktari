@@ -20,7 +20,7 @@ namespace Vaktari.Ui.Tests;
 public sealed class PreviewAndMonoTests
 {
     private static string Window(string declaration)
-        => RepoSource.Body(RepoSource.Ui("MainWindow.axaml.cs"), declaration);
+        => RepoSource.Body(RepoSource.UiClass("", "MainWindow"), declaration);
 
     /// <summary>
     /// The topmost dismissible thing goes first, and it takes the key with it:

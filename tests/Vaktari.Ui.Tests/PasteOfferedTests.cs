@@ -164,7 +164,7 @@ public sealed class PasteOfferedTests : OwnedViewModels
     public void The_menu_asks_the_clipboard_as_it_opens()
     {
         var body = RepoSource.Body(
-            RepoSource.Ui("MainWindow.axaml.cs"),
+            RepoSource.UiClass("", "MainWindow"),
             "private void OnListingMenuOpening(object? sender, System.ComponentModel.CancelEventArgs e)");
 
         var probe = body.IndexOf("RefreshClipboardAsync()", StringComparison.Ordinal);

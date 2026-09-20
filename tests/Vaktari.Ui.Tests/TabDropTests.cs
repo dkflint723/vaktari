@@ -102,7 +102,7 @@ public sealed class TabDropTests : OwnedViewModels
     public void A_drag_resting_on_a_tab_is_noticed_before_it_is_refused()
     {
         var body = RepoSource.Body(
-            RepoSource.Ui("MainWindow.axaml.cs"),
+            RepoSource.UiClass("", "MainWindow"),
             "private void OnDragOver(object? sender, DragEventArgs e)");
 
         var hover = body.IndexOf("HoverTab(TabAt(e.Source))", StringComparison.Ordinal);
@@ -123,5 +123,5 @@ public sealed class TabDropTests : OwnedViewModels
     [InlineData("private void OnDrop(object? sender, DragEventArgs e)")]
     public void Ending_a_drag_stops_the_switch(string declaration)
         => Assert.Contains("HoverTab(null)",
-                           RepoSource.Body(RepoSource.Ui("MainWindow.axaml.cs"), declaration));
+                           RepoSource.Body(RepoSource.UiClass("", "MainWindow"), declaration));
 }

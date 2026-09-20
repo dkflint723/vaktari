@@ -102,7 +102,7 @@ public sealed class SidebarFoldMarkupTests
     public void The_keyboard_skips_the_headings_on_its_way_in()
     {
         var body = RepoSource.Body(
-            RepoSource.Ui("MainWindow.axaml.cs"),
+            RepoSource.UiClass("", "MainWindow"),
             "private Control? FirstSidebarRow()");
 
         Assert.Contains("is not Avalonia.Controls.Primitives.ToggleButton", body);

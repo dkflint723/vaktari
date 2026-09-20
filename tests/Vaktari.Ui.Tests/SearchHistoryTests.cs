@@ -1213,7 +1213,7 @@ public sealed class SearchHistoryTests : OwnedViewModels
         // The whole constructor call, however many arguments follow: this
         // pinned the exact tail twice and was broken twice by an argument
         // added after it — the read-only note, then the update line.
-        var source = RepoSource.Ui("MainWindow.axaml.cs");
+        var source = RepoSource.UiClass("", "MainWindow");
         var call = source[source.IndexOf("new SettingsViewModel(", StringComparison.Ordinal)..];
 
         call = call[..call.IndexOf(");", StringComparison.Ordinal)];
@@ -1234,7 +1234,7 @@ public sealed class SearchHistoryTests : OwnedViewModels
     public void The_save_handler_clears_the_store_when_the_dialog_armed_it()
         => Assert.Contains(
             "if (model.ForgetSearchHistoryOnSave) _services.Searches.ForgetAll();",
-            RepoSource.Ui("MainWindow.axaml.cs"),
+            RepoSource.UiClass("", "MainWindow"),
             StringComparison.Ordinal);
 
     /// <summary>

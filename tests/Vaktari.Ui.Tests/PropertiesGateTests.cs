@@ -21,7 +21,7 @@ namespace Vaktari.Ui.Tests;
 /// </summary>
 public sealed class PropertiesGateTests
 {
-    private static string Source() => RepoSource.Ui("MainWindow.axaml.cs");
+    private static string Source() => RepoSource.UiClass("", "MainWindow");
 
     /// <summary>
     /// **Alt+Enter went round the gate.** It called the window's own

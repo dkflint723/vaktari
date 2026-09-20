@@ -62,9 +62,17 @@ internal static class RepoSource
     {
         var directory = Path.Combine(Root, "src", "Vaktari.Ui", folder);
 
+        // **The bare Thing.cs need not exist.** MainWindow's own half is
+        // MainWindow.axaml.cs, which the wildcard already catches, and there is
+        // no MainWindow.cs to read — so including it unconditionally, as this
+        // first did, throws on the one class with the most tests reading it.
         var parts = Directory.EnumerateFiles(directory, stem + ".*.cs")
-                             .Concat([Path.Combine(directory, stem + ".cs")])
+                             .Concat(Directory.EnumerateFiles(directory, stem + ".cs"))
+                             .Distinct(StringComparer.Ordinal)
                              .OrderBy(p => p, StringComparer.Ordinal);
+
+        if (!parts.Any())
+            throw new InvalidOperationException($"no file of class '{stem}' under {directory}");
 
         return string.Join(
             "\n",

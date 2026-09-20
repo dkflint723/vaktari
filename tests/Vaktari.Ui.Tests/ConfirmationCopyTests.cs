@@ -202,7 +202,7 @@ public sealed class ConfirmationCopyTests
     [AvaloniaFact]
     public void The_prompt_bar_asks_for_the_sentence()
     {
-        var source = RepoSource.Ui("MainWindow.axaml.cs");
+        var source = RepoSource.UiClass("", "MainWindow");
 
         Assert.DoesNotContain("item(s)? this cannot be undone", source);
         Assert.DoesNotContain("item(s) to {Naming.TheBin}", source);

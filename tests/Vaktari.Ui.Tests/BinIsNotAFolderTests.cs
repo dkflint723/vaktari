@@ -297,7 +297,7 @@ public sealed class BinIsNotAFolderTests : OwnedViewModels
     [AvaloniaFact]
     public void The_pointer_route_opens_through_the_guarded_method()
     {
-        var body = RepoSource.Body(RepoSource.Ui("MainWindow.axaml.cs"),
+        var body = RepoSource.Body(RepoSource.UiClass("", "MainWindow"),
                                    "private void TryOpen(FileEntry entry)");
 
         Assert.Contains("OpenAsync(entry)", body, StringComparison.Ordinal);

@@ -180,7 +180,7 @@ public sealed class ShowInFolderTests : OwnedViewModels
     public void The_window_asks_the_shell_to_show_them()
     {
         var body = RepoSource.Body(
-            RepoSource.Ui("MainWindow.axaml.cs"),
+            RepoSource.UiClass("", "MainWindow"),
             "internal async void OnShowRequested(ShowRequest request)");
 
         var items = body.IndexOf("case ShowKind.Items:", StringComparison.Ordinal);
@@ -207,6 +207,6 @@ public sealed class ShowInFolderTests : OwnedViewModels
     public void Only_the_instance_that_owns_the_lock_answers_for_the_desktop()
         => Assert.Contains(
             "Program.Instance is not null && platform.FileManagerService is { } fileManager",
-            RepoSource.Ui("MainWindow.axaml.cs"),
+            RepoSource.UiClass("", "MainWindow"),
             StringComparison.Ordinal);
 }

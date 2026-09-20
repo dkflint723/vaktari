@@ -1049,7 +1049,7 @@ public sealed class ExpandableFoldersTests : OwnedViewModels
     public void The_press_is_taken_before_the_listing_sees_it()
     {
         var body = RepoSource.Body(
-            RepoSource.Ui("MainWindow.axaml.cs"),
+            RepoSource.UiClass("", "MainWindow"),
             "private void OnPointerPressedAnywhere(");
 
         var guard = body.IndexOf("ExpanderAt(e.Source)", StringComparison.Ordinal);
@@ -1271,7 +1271,7 @@ public sealed class ExpandableFoldersTests : OwnedViewModels
     public void The_arrows_claim_the_keystroke_only_when_they_turned_something()
     {
         var body = RepoSource.Body(
-            RepoSource.Ui("MainWindow.axaml.cs"), "private void OnWindowKeyDown(");
+            RepoSource.UiClass("", "MainWindow"), "private void OnWindowKeyDown(");
 
         Assert.Contains("e.Handled = TurnExpansion(pane, open: true);", body,
                         StringComparison.Ordinal);
@@ -1829,7 +1829,7 @@ public sealed class ExpandableFoldersTests : OwnedViewModels
 
         Assert.Contains(
             "Input.RenameRun.Next(pane.Rows,",
-            RepoSource.Body(RepoSource.Ui("MainWindow.axaml.cs"),
+            RepoSource.Body(RepoSource.UiClass("", "MainWindow"),
                             "private async Task StepRenameAsync("),
             StringComparison.Ordinal);
     }

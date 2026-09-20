@@ -169,7 +169,7 @@ public sealed class DroppedFileTests
     public void The_cursor_asks_the_reader_what_the_drop_asks()
     {
         var body = RepoSource.Body(
-            RepoSource.Ui("MainWindow.axaml.cs"), "private void OnDragOver(");
+            RepoSource.UiClass("", "MainWindow"), "private void OnDragOver(");
 
         Assert.Contains(".Read(e.DataTransfer, destination,", body, StringComparison.Ordinal);
         Assert.Contains("if (!takeable)", body, StringComparison.Ordinal);

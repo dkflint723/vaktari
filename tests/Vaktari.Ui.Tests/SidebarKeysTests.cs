@@ -322,7 +322,7 @@ public sealed class SidebarKeysTests : OwnedViewModels
     public void The_sidebars_keys_are_claimed_after_F6_has_had_the_keystroke()
     {
         var body = RepoSource.Body(
-            RepoSource.Ui("MainWindow.axaml.cs"),
+            RepoSource.UiClass("", "MainWindow"),
             "private void OnWindowKeyDown(object? sender, KeyEventArgs e)");
 
         var f6 = body.IndexOf("DispatchKeymap(e, Input.KeyTier.Guarded)", StringComparison.Ordinal);

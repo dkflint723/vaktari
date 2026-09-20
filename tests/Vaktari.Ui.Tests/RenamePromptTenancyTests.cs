@@ -260,7 +260,7 @@ public sealed class RenamePromptTenancyTests
     public void And_both_are_handled_behind_the_prompt_guard()
     {
         var body = RepoSource.Body(
-            RepoSource.Ui("MainWindow.axaml.cs"),
+            RepoSource.UiClass("", "MainWindow"),
             "private void OnWindowKeyDown(object? sender, KeyEventArgs e)");
 
         var rename = body.IndexOf("if (RenameHasTheKeyboard()) return;", StringComparison.Ordinal);
@@ -291,7 +291,7 @@ public sealed class RenamePromptTenancyTests
                         $"{gesture} is not one of the guarded commands' keys");
 
         var body = RepoSource.Body(
-            RepoSource.Ui("MainWindow.axaml.cs"),
+            RepoSource.UiClass("", "MainWindow"),
             "private void OnWindowKeyDown(object? sender, KeyEventArgs e)");
 
         var rename = body.IndexOf("if (RenameHasTheKeyboard()) return;", StringComparison.Ordinal);

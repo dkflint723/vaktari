@@ -127,5 +127,5 @@ public sealed class BinDropTests
     /// quietly widened from "inside this method" to "anywhere at all".
     /// </summary>
     private static string Body(string declaration)
-        => RepoSource.Body(RepoSource.Ui("MainWindow.axaml.cs"), declaration);
+        => RepoSource.Body(RepoSource.UiClass("", "MainWindow"), declaration);
 }

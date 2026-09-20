@@ -106,7 +106,7 @@ public sealed class WindowTitleTests : OwnedViewModels
     public void The_title_is_asked_again_when_the_folder_changes(string site)
     {
         Assert.Contains("RefreshTitle()",
-                        RepoSource.Body(RepoSource.Ui("MainWindow.axaml.cs"), site));
+                        RepoSource.Body(RepoSource.UiClass("", "MainWindow"), site));
     }
 
 }

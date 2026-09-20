@@ -103,7 +103,7 @@ public sealed class RefusedRenameTests
     public void The_window_decides_before_it_closes_the_bar()
     {
         var body = RepoSource.Body(
-            RepoSource.Ui("MainWindow.axaml.cs"), "private void ConfirmPrompt()");
+            RepoSource.UiClass("", "MainWindow"), "private void ConfirmPrompt()");
 
         var decided = body.IndexOf("RenamePrompt.Decide(", StringComparison.Ordinal);
         var closed = body.IndexOf("ClosePrompt();", StringComparison.Ordinal);

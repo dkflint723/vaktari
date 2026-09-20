@@ -709,7 +709,7 @@ public sealed class InterfaceTextSizeTests : OwnedViewModels
     [Fact]
     public void And_the_save_handler_is_what_calls_it()
     {
-        var source = RepoSource.Ui("MainWindow.axaml.cs");
+        var source = RepoSource.UiClass("", "MainWindow");
 
         var save = source.IndexOf("if (!model.Saved) return;", StringComparison.Ordinal);
 
@@ -792,7 +792,7 @@ public sealed class InterfaceTextSizeTests : OwnedViewModels
     [Fact]
     public void A_desktop_scheme_change_re_runs_the_metrics()
     {
-        var source = RepoSource.Ui("MainWindow.axaml.cs");
+        var source = RepoSource.UiClass("", "MainWindow");
 
         var handler = source.IndexOf("var palette = _theme.Read();", StringComparison.Ordinal);
 

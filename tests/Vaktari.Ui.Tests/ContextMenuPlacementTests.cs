@@ -302,7 +302,7 @@ public sealed class ContextMenuPlacementTests : OwnedViewModels
     [Fact]
     public void The_placement_is_put_back_before_the_handler_can_return_early()
     {
-        var body = RepoSource.Body(RepoSource.Ui("MainWindow.axaml.cs"),
+        var body = RepoSource.Body(RepoSource.UiClass("", "MainWindow"),
                                    "private void OnListingMenuClosed(");
 
         var restore = body.IndexOf("menu.Placement = PlacementMode.Pointer;",

@@ -1061,7 +1061,7 @@ public sealed class DragGhostTests : OwnedViewModels
     public void The_end_of_a_drag_puts_the_ghost_away()
         => Assert.Contains(
             "HideDragGhost();",
-            RepoSource.Body(RepoSource.Ui("MainWindow.axaml.cs"),
+            RepoSource.Body(RepoSource.UiClass("", "MainWindow"),
                             "private async Task BeginDragAsync("),
             StringComparison.Ordinal);
 
@@ -1080,7 +1080,7 @@ public sealed class DragGhostTests : OwnedViewModels
     [Fact]
     public void A_drag_that_starts_here_is_flagged_for_every_window()
     {
-        var body = RepoSource.Body(RepoSource.Ui("MainWindow.axaml.cs"),
+        var body = RepoSource.Body(RepoSource.UiClass("", "MainWindow"),
                                    "private async Task BeginDragAsync(");
 
         Assert.Contains("_dragBegunInThisApplication = true;", body, StringComparison.Ordinal);

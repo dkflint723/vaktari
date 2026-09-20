@@ -269,7 +269,7 @@ public sealed class SingleClickAffordanceTests : OwnedViewModels
     [Fact]
     public void A_desktop_that_changes_its_mind_reaches_the_panes()
     {
-        var source = RepoSource.Ui("MainWindow.axaml.cs");
+        var source = RepoSource.UiClass("", "MainWindow");
 
         var opens = source.IndexOf("_onThemeChanged = (_, _) =>", StringComparison.Ordinal);
         var closes = source.IndexOf("_theme.Changed += _onThemeChanged;", StringComparison.Ordinal);
