@@ -2125,6 +2125,46 @@ public partial class MainWindow : Window
     private PixelPoint? _positionBeforeGrow;
 
     /// <summary>
+    /// Whether the edge has been dragged since this class last set the width.
+    ///
+    /// Asked by both readers of the loan, so "the user has taken this width
+    /// over" is decided once. A window that has never grown answers true here —
+    /// `_grownTo` is still zero — which is why both callers establish that there
+    /// IS a loan before they ask.
+    /// </summary>
+    private bool ResizedSinceGrow => Math.Abs(Width - _grownTo) > 1;
+
+    /// <summary>
+    /// The size and place this window would be in if the panel handed its loan
+    /// back right now.
+    ///
+    /// **A loan does not survive a close, so it must not be written down as
+    /// though it were the window's own size.** CaptureGeometry stored the LIVE
+    /// width, so a window closed with a details panel still borrowing saved the
+    /// grown one — and the next launch had `_widthBeforeGrow` null, nothing to
+    /// repay, and no way to learn there had ever been a debt. The window came
+    /// back wider every time and stayed that way.
+    ///
+    /// **The pair travels together or not at all.** Growing can make the window
+    /// manager shove the whole window left to keep it on screen, so the
+    /// pre-loan width belongs with the pre-loan position — saving one with the
+    /// other lands the window somewhere it has never been, and a session that
+    /// took the width back while keeping the shoved position would walk the
+    /// window leftwards across launches instead of widening it.
+    ///
+    /// Live values once the edge has been dragged, for the reason
+    /// <see cref="ReleaseGrownWidth"/> gives for refusing there: a width the
+    /// user chose since is theirs, and writing the remembered one would undo
+    /// their drag at the next launch rather than at the next panel close.
+    /// </summary>
+    private (double Width, PixelPoint Position) WithoutTheLoan
+        => _widthBeforeGrow is { } width
+           && _positionBeforeGrow is { } place
+           && !ResizedSinceGrow
+            ? (width, place)
+            : (Width, Position);
+
+    /// <summary>
     /// Hands back the width taken for a details panel.
     ///
     /// **Refuses if the window is no longer the size we made it.** Someone who
@@ -2155,8 +2195,10 @@ public partial class MainWindow : Window
         }
 
         // A pixel of tolerance: the grow rounded up, and layout can settle a
-        // fraction either way.
-        if (Math.Abs(Width - _grownTo) > 1)
+        // fraction either way. The same question the session asks through
+        // WithoutTheLoan, so the two cannot come to different answers about
+        // whose width this is.
+        if (ResizedSinceGrow)
         {
             ViewModels.PaneGroupViewModel.PanelDebug($"[vaktari] panel: not restoring — width is {Width:F0} but we left "
                 + $"it at {_grownTo:F0}, so it was resized by hand");

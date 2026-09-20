@@ -128,17 +128,27 @@ public partial class MainWindow
         window.Show();
     }
 
+    /// <summary>
+    /// What this window is, for the session to write down.
+    ///
+    /// **The width a details panel has borrowed is not this window's size**, and
+    /// reading the live one saved it as though it were — see
+    /// <see cref="WithoutTheLoan"/>, which is where that rule is stated and
+    /// which <see cref="ReleaseGrownWidth"/> asks the same question of. The
+    /// height never grows, so it is read straight.
+    /// </summary>
     private WindowSession CaptureGeometry()
     {
         var maximized = WindowState == Avalonia.Controls.WindowState.Maximized;
+        var owned = WithoutTheLoan;
 
         return new WindowSession
         {
             // While maximized the live bounds are the screen, not the size to
             // return to, so the stored values are left alone.
-            X = maximized ? 0 : Position.X,
-            Y = maximized ? 0 : Position.Y,
-            Width = maximized ? 1000 : Width,
+            X = maximized ? 0 : owned.Position.X,
+            Y = maximized ? 0 : owned.Position.Y,
+            Width = maximized ? 1000 : owned.Width,
             Height = maximized ? 680 : Height,
             IsMaximized = maximized,
         };
