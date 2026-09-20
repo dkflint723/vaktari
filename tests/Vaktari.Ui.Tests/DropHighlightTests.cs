@@ -131,8 +131,7 @@ public sealed class DropHighlightTests
     [AvaloniaFact]
     public void All_three_listing_layouts_carry_the_ring()
     {
-        var markup = File.ReadAllText(
-            Path.Combine(Repo(), "src", "Vaktari.Ui", "MainWindow.axaml"));
+        var markup = RepoSource.Ui("MainWindow.axaml");
 
         var layouts = markup.Split("<DataTemplate x:DataType=\"fs:FileEntry\">").Length - 1;
         var rings = markup.Split("FileConverters.DropRingBrush").Length - 1;
@@ -209,8 +208,12 @@ public sealed class DropHighlightTests
     [AvaloniaFact]
     public void The_drag_reports_the_row_and_the_place_it_is_over()
     {
-        var source = File.ReadAllText(
-            Path.Combine(Repo(), "src", "Vaktari.Ui", "MainWindow.axaml.cs"));
+        // The CLASS, not the file. MainWindow is spread across partials and the
+        // drag-over handler is due to leave this one; a reader that names the
+        // file would then count zero reporting branches and call that a pass on
+        // the DoesNotContain above while failing the count below — or, if the
+        // count were the other way round, pass both while asserting nothing.
+        var source = RepoSource.UiClass("", "MainWindow");
 
         // Every accepting branch, not just one of them: the drag-over accepts a
         // drop by two routes, and a branch that forgets to report leaves the
@@ -225,13 +228,4 @@ public sealed class DropHighlightTests
             $"only {reporting} of the accepting branches report the row and the place");
     }
 
-    private static string Repo()
-    {
-        var here = AppContext.BaseDirectory;
-
-        while (here is not null && !File.Exists(Path.Combine(here, "vaktari.slnx")))
-            here = Path.GetDirectoryName(here);
-
-        return here ?? throw new InvalidOperationException("could not find the repository root");
-    }
 }

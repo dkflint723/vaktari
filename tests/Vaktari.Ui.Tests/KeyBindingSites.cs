@@ -16,27 +16,27 @@ namespace Vaktari.Ui.Tests;
 /// Both sides are read from the real source rather than listed by hand: a hand
 /// list is exactly the thing that drifts, and it would let a gesture be deleted
 /// from the application while the test that guards it went on passing.
+///
+/// **The code-behind side is read as a CLASS, not as a file**, and it had its
+/// own file-finder that could not be. MainWindow is spread across partials now,
+/// and the first of them to leave took the prompt bar's Tab and Shift+Tab with
+/// it — so Shift+Tab, still printed on the F1 sheet and still working, read as
+/// bound nowhere. A reader that names one file goes quietly weak the moment
+/// that file is split, which is the whole reason <see cref="RepoSource.UiClass"/>
+/// exists; this one was missed when the other forty-eight were converted
+/// because it reached for the source its own way.
 /// </summary>
 internal static class KeyBindingSites
 {
-    internal static string Source(string name)
-    {
-        for (var dir = new DirectoryInfo(AppContext.BaseDirectory); dir is not null; dir = dir.Parent)
-        {
-            var candidate = Path.Combine(dir.FullName, "src", "Vaktari.Ui", name);
-
-            if (File.Exists(candidate)) return candidate;
-        }
-
-        throw new FileNotFoundException($"could not find {name} above {AppContext.BaseDirectory}");
-    }
+    private static string[] CodeBehind()
+        => RepoSource.UiClass("", "MainWindow").Split('\n');
 
     /// <summary>Gesture to the command it runs, read out of the markup.</summary>
     internal static Dictionary<string, string> Markup()
     {
         var found = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
 
-        foreach (var line in File.ReadAllLines(Source("MainWindow.axaml")))
+        foreach (var line in RepoSource.Ui("MainWindow.axaml").Split('\n'))
         {
             if (!line.Contains("KeyBinding", StringComparison.Ordinal)) continue;
 
@@ -50,65 +50,23 @@ internal static class KeyBindingSites
     }
 
     /// <summary>
-    /// Gesture to the command it runs, read out of the OnWindowKeyDown switch.
-    ///
-    /// Case labels stack — Ctrl+Y and Ctrl+Shift+Z share one Redo body — so
-    /// labels accumulate until a body is found and every label in the group
-    /// gets credited with it.
-    /// </summary>
-    internal static Dictionary<string, string> CodeBehind()
-    {
-        var found = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
-        var pending = new List<string>();
-
-        foreach (var raw in File.ReadAllLines(Source("MainWindow.axaml.cs")))
-        {
-            var line = raw.Trim();
-
-            var label = Regex.Match(
-                line,
-                CaseLabel);
-
-            if (label.Success)
-            {
-                pending.Add(Gesture(label.Groups[1].Value, label.Groups[2].Value));
-                continue;
-            }
-
-            var call = Regex.Match(line, @"\.(\w+)Command\.Execute\(");
-
-            if (call.Success && pending.Count > 0)
-            {
-                foreach (var gesture in pending) found[gesture] = call.Groups[1].Value;
-                pending.Clear();
-                continue;
-            }
-
-            // A body that does something other than run a command still ends
-            // the group: crediting the NEXT case's command to these labels
-            // would invent a binding that does not exist.
-            if (line.StartsWith("break;", StringComparison.Ordinal)) pending.Clear();
-        }
-
-        return found;
-    }
-
-    /// <summary>
     /// Every gesture the code-behind has a case for, whatever the body does.
     ///
-    /// **Separate from <see cref="CodeBehind"/> on purpose.** That one answers
-    /// "which command does this key run", so it credits only labels followed by
-    /// a command call — the right rule when the question is what a key DOES.
-    /// This one answers "is this key handled at all", which is the question the
-    /// F1 list has to be checked against: Backspace, Space and Tab all do their
-    /// work inline rather than through a command, and by the stricter reading
-    /// they look unbound.
+    /// **"Handled at all" rather than "runs a command".** There used to be a
+    /// second reader here which credited only case labels followed by a command
+    /// call, to answer which command a key runs. 177d65e answered that from the
+    /// keymap instead and left the reader behind, uncalled, where it could not
+    /// pass or fail and so could not say anything; it went out with this.
+    ///
+    /// The looser question is the one the F1 list has to be checked against:
+    /// Backspace, Space and Tab all do their work inline rather than through a
+    /// command, and by the stricter reading they look unbound.
     /// </summary>
     internal static HashSet<string> CodeBehindHandled()
     {
         var found = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
 
-        foreach (var raw in File.ReadAllLines(Source("MainWindow.axaml.cs")))
+        foreach (var raw in CodeBehind())
         {
             var line = raw.Trim();
 
@@ -147,7 +105,8 @@ internal static class KeyBindingSites
     }
 
     /// <summary>
-    /// One case label of the OnWindowKeyDown switch.
+    /// One case label of a key handler's switch — the window's, and now the
+    /// prompt bar's as well, since the class is read whole.
     ///
     /// **The space mattered.** The earlier spelling required one between
     /// <c>e.KeyModifiers</c> and what follows it — which the <c>==</c> form has
