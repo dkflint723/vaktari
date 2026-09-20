@@ -1073,38 +1073,6 @@ public partial class MainWindow : Window
     // ---- ui scale ------------------------------------------------------
 
     /// <summary>
-    /// Application-level defaults, used by everything outside a pane — the
-    /// sidebar, the status bar, the properties window. Each pane overrides
-    /// these with its own dictionary via PaneScale.
-    /// </summary>
-    private void ApplyScales(double fontScale, double iconScale)
-    {
-        var target = Application.Current?.Resources ?? Resources;
-
-        foreach (var (key, value) in PaneScale.Compute(fontScale, iconScale))
-            target[key] = value;
-    }
-
-    /// <summary>
-    /// Everything a desktop scheme change moves that is not a colour: the
-    /// application-level metrics and each pane's own.
-    ///
-    /// The desktop's text size arrives on the palette, and every size in the
-    /// window multiplies it, so the read that repaints has to be followed by
-    /// the arithmetic that resizes.
-    ///
-    /// **A method rather than two lines inside the handler**, because the
-    /// handler is built in the constructor — where <c>_shell</c> has not been
-    /// assigned yet, so the compiler rightly refuses to let a lambda defined
-    /// there dereference it.
-    /// </summary>
-    private void RescaleForDesktop()
-    {
-        ApplyScales(_shell.FontScale, _shell.IconScale);
-        _shell.RefreshPaneScales();
-    }
-
-    /// <summary>
     /// Modal, unlike properties: a rename changes the very listing behind it,
     /// so letting the window sit open over a view that is mutating underneath
     /// would show a plan built from names that no longer exist.
