@@ -2737,10 +2737,49 @@ public partial class MainWindow : Window
 
             // The rows under the band have moved, so the selection has to be
             // recomputed against the rectangle as it now stands.
-            ApplyBand(live, _bandRect);
+            ReapplyBandAfterScroll(live);
         };
 
         _bandScroll.Start();
+    }
+
+    /// <summary>
+    /// Re-applies the band after the edge scroll has moved the rows under it.
+    ///
+    /// **Only when a band is what started the scrolling.** The timer above has
+    /// two callers and only one of them owns a band: UpdateBand draws one, and
+    /// DragScroll borrows the same timer for a FILE drag, which is the whole
+    /// point of the note in MainWindow.DragDrop.cs. On that second path there
+    /// is no band at all — <c>_bandKept</c> is null and <c>_bandRect</c> still
+    /// holds whatever rectangle the last band left, or nothing whatever on a
+    /// window where none has been drawn.
+    ///
+    /// Re-applying it there rebuilt the hovered listing's selection from a
+    /// rectangle that had nothing to do with the drag. An empty rect intersects
+    /// no row, so ApplyBand wanted nothing and removed everything: drag files
+    /// over a listing, rest near its top or bottom edge until it scrolls, and
+    /// that listing's selection emptied under the pointer. Dragging within the
+    /// window it is the source's own rows that vanish; OnDragOver reaches
+    /// DragScroll with no internal-drag gate, so a drag from Explorer does it
+    /// too.
+    ///
+    /// <c>_bandKept</c> is the predicate because it is exactly "a band is in
+    /// progress": null from the press, assigned by UpdateBand before it asks
+    /// for any scrolling, and null again from EndBand.
+    ///
+    /// **The one state it does not cover**, named rather than guarded: a band
+    /// left live with the button already released would still re-apply. That
+    /// needs the release to have escaped both the tunnelled handler and
+    /// UpdateBand's own button test, and such a window is broken in louder
+    /// ways first — the marquee is still drawn on the glass and _bandList is
+    /// still armed. Closing it would mean a second sentinel to keep in step
+    /// with this one, which is how the two halves of a rule drift apart.
+    /// </summary>
+    internal void ReapplyBandAfterScroll(ListBox live)
+    {
+        if (_bandKept is null) return;
+
+        ApplyBand(live, _bandRect);
     }
 
     private void StopBandScroll()
