@@ -104,10 +104,11 @@ public partial class MainWindow
     /// abandoning the drag, scrolling, and starting again — and in a folder of
     /// any size that is most of it. Both references scroll at the edges.
     ///
-    /// It borrows the rubber band's timer, which is safe because a band and a
-    /// file drag cannot both be in progress: the band needs a left press on
-    /// empty space, and by the time a drag is running that press has been spent
-    /// on the drag.
+    /// It drives the shared edge-scroll timer, which the rubber band drives
+    /// too — safely, because a band and a file drag cannot both be in progress:
+    /// the band needs a left press on empty space, and by the time a drag is
+    /// running that press has been spent on the drag. The fields still carry a
+    /// _band prefix from when the band was its only caller.
     /// </summary>
     private void DragScroll(DragEventArgs e)
     {

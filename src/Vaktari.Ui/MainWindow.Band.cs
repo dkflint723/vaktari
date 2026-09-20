@@ -7,11 +7,10 @@ namespace Vaktari.Ui;
 /// <summary>
 /// The marquee: the rectangle dragged across a listing, and what it selects.
 ///
-/// **Not the edge scrolling, which only looks like it belongs.** EdgeZone,
-/// AutoScroll and StopBandScroll stay where they are because the file drag
-/// drives that timer too — DragScroll says so in its own comment — and a
-/// shared engine filed under one of its two drivers is how the two drift
-/// apart.
+/// **Not the edge scrolling, which only looks like it belongs.** It has a file
+/// of its own, MainWindow.EdgeScroll.cs, because the file drag drives that
+/// timer too and a shared engine filed under one of its two drivers is how the
+/// two drift apart.
 ///
 /// The traffic runs BOTH ways, and it is worth being exact about which. This
 /// file drives the timer: UpdateBand starts it and EndBand stops it, exactly
