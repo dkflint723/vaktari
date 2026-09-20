@@ -4,6 +4,7 @@ using Avalonia.Input;
 using Avalonia.Interactivity;
 using Avalonia.Threading;
 using Vaktari.Ui.Input;
+using Vaktari.Core.Session;
 using Vaktari.Ui.Settings;
 using Vaktari.Ui.ViewModels;
 
@@ -537,5 +538,75 @@ public partial class MainWindow : ICommandHost
 
                 break;
         }
+    }
+    /// <summary>
+    /// Opens the folder the keyboard is on without leaving this one, or shuts
+    /// it again — and says whether it did anything.
+    ///
+    /// **False is the answer that gives the key back.** Left and Right already
+    /// mean something in the grid and compact layouts, where the wrap panel
+    /// moves the selection sideways with them, so a key claimed here whenever
+    /// it was pressed would take that away. It is claimed only for the press
+    /// that actually turns a triangle: the right key, on a folder, in the one
+    /// layout that draws them, in a state the press would change.
+    /// </summary>
+    internal static bool TurnExpansion(ViewModels.PaneViewModel pane, bool open)
+    {
+        if (!pane.IsDetailsView || !pane.CanExpandRows) return false;
+
+        if (pane.SelectedEntry is not { IsDirectory: true } row) return false;
+
+        // Already the way it was asked to be. Right on an open folder is a
+        // keystroke Dolphin spends moving into the first child; here it is left
+        // alone rather than given a second meaning nothing announces.
+        if (pane.IsExpanded(row.FullPath) == open) return false;
+
+        _ = pane.ToggleExpandAsync(row);
+
+        return true;
+    }
+
+    /// <summary>
+    /// Pages the compact listing sideways.
+    ///
+    /// **On the TUNNEL phase, because something else was claiming these keys and
+    /// doing nothing with them.** Compact disables vertical scrolling, so the
+    /// ScrollViewer cannot act on PageUp/PageDown — yet mapping them inside the
+    /// panel changed nothing, so the key was never reaching it. Tunnelling
+    /// settles it without needing to know who was eating them: nothing
+    /// downstream gets the chance.
+    ///
+    /// **Moves the VIEW, not the selection**, which is what Page already does in
+    /// the grid — there the ScrollViewer pages the viewport and leaves the cursor
+    /// where it was, and the user has said that feels right. Compact behaving
+    /// differently would be the odd one out.
+    /// </summary>
+    private bool PageCompactListing(KeyEventArgs e)
+    {
+        if (e.Key is not (Key.PageUp or Key.PageDown)) return false;
+        if (e.KeyModifiers != KeyModifiers.None) return false;
+
+        // Never while typing — a path box or the rename prompt owns its own keys.
+        if (FocusManager?.GetFocusedElement() is TextBox) return false;
+
+        if (_shell.ActiveTab is not { View: ViewMode.Compact }) return false;
+        if (ActiveListing() is not { } list || Scroller(list) is not { } scroller)
+            return false;
+
+        // A viewport less a sliver, so the column you were reading stays on
+        // screen as an anchor rather than vanishing off the edge.
+        var page = Math.Max(1, scroller.Viewport.Width - 48);
+        var step = e.Key == Key.PageDown ? page : -page;
+
+        var limit = Math.Max(0, scroller.Extent.Width - scroller.Viewport.Width);
+
+        scroller.Offset = scroller.Offset.WithX(
+            Math.Clamp(scroller.Offset.X + step, 0, limit));
+
+        // Claimed either way. At the end of the extent the key has still been
+        // dealt with, and letting it fall through hands it back to whatever was
+        // silently swallowing it before.
+        e.Handled = true;
+        return true;
     }
 }
