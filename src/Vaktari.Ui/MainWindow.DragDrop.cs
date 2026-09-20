@@ -3,6 +3,7 @@ using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Input;
 using Avalonia.Platform.Storage;
+using Avalonia.Threading;
 using Vaktari.Core;
 using Vaktari.Core.FileSystem;
 using Vaktari.Core.Places;
@@ -878,5 +879,51 @@ public partial class MainWindow
 
         // At the pointer, which at this instant is exactly the drop point.
         menu.ShowAt(this, showAtPointer: true);
+    }
+
+    // ---- spring-loaded tabs -----------------------------------------------------
+
+    private PaneViewModel? _hoverTab;
+    private DispatcherTimer? _hoverSwitch;
+
+    /// <summary>
+    /// Switches to a tab the pointer has rested on while dragging.
+    ///
+    /// **A file could not be dragged into another tab at all.** The only way
+    /// across was the split view — open the other side, drag, close it again —
+    /// for a move that both references do by hovering. Without the switch the
+    /// drop would also be blind: the destination would be a folder you cannot
+    /// see, which is not a thing to ask anyone to aim at.
+    ///
+    /// Six hundred milliseconds: long enough that dragging ACROSS the strip to
+    /// reach the listing does not shuffle through every tab on the way, short
+    /// enough not to feel stuck.
+    /// </summary>
+    private void HoverTab(PaneViewModel? tab)
+    {
+        if (ReferenceEquals(tab, _hoverTab)) return;
+
+        _hoverTab = tab;
+        _hoverSwitch?.Stop();
+        _hoverSwitch = null;
+
+        if (tab is null) return;
+
+        _hoverSwitch = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(600) };
+        _hoverSwitch.Tick += (_, _) =>
+        {
+            _hoverSwitch?.Stop();
+            _hoverSwitch = null;
+
+            // Read again rather than captured: the pointer may have moved on
+            // between the tick being queued and it running.
+            if (_hoverTab is not { } want) return;
+
+            foreach (var group in new[] { _shell.Left, _shell.Right })
+                if (group is not null && group.Tabs.Contains(want))
+                    group.ActiveTab = want;
+        };
+
+        _hoverSwitch.Start();
     }
 }
