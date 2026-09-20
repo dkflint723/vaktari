@@ -43,6 +43,34 @@ internal static class RepoSource
         => File.ReadAllText(Path.Combine([Root, "src", "Vaktari.Ui", .. parts]))
                .Replace("\r\n", "\n", StringComparison.Ordinal);
 
+    /// <summary>
+    /// Every file one partial class is spread across — <c>Thing.cs</c> and
+    /// <c>Thing.*.cs</c> — read in a fixed order and joined.
+    ///
+    /// **A scan that names ONE file goes quietly weak the moment that file is
+    /// split.** Roadmap 22 broke PaneViewModel and ShellViewModel into partials,
+    /// and a test still reading only the original is asserting about a fraction
+    /// of the class while its name claims the whole of it. One such test broke
+    /// outright — the lines it looked for had moved to another partial — and a
+    /// second was left true about the file and silent about the class.
+    ///
+    /// Use this wherever the test means "this class". Where it means one
+    /// method's internals, name the file holding that method instead: an order
+    /// assertion across a concatenation is really an assertion about file names.
+    /// </summary>
+    internal static string UiClass(string folder, string stem)
+    {
+        var directory = Path.Combine(Root, "src", "Vaktari.Ui", folder);
+
+        var parts = Directory.EnumerateFiles(directory, stem + ".*.cs")
+                             .Concat([Path.Combine(directory, stem + ".cs")])
+                             .OrderBy(p => p, StringComparer.Ordinal);
+
+        return string.Join(
+            "\n",
+            parts.Select(p => File.ReadAllText(p).Replace("\r\n", "\n", StringComparison.Ordinal)));
+    }
+
     /// <summary>Every markup file in the application, by name, for the rules
     /// that have to hold across all of them rather than in one.</summary>
     internal static IEnumerable<string> UiMarkup()

@@ -165,7 +165,7 @@ public sealed class VirtualListingActionTests : OwnedViewModels
 
         Assert.Contains(
             "ActiveTab?.IsRealFolder == true",
-            RepoSource.Ui("ViewModels", "ShellViewModel.cs"));
+            RepoSource.UiClass("ViewModels", "ShellViewModel"));
     }
 
     /// <summary>
@@ -185,7 +185,7 @@ public sealed class VirtualListingActionTests : OwnedViewModels
         => Assert.Contains(
             "(pane.IsRealFolder || pane.IsSearchListing)",
             RepoSource.Body(
-                RepoSource.Ui("ViewModels", "ShellViewModel.cs"),
+                RepoSource.Ui("ViewModels", "ShellViewModel.Places.cs"),
                 "private async Task PinCurrentAsync()"));
 
     /// <summary>

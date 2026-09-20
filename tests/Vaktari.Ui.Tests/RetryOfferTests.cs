@@ -128,7 +128,7 @@ public sealed class RetryOfferTests
     [Fact]
     public void The_offer_is_read_where_the_message_is_written()
     {
-        var source = RepoSource.Ui("ViewModels", "ShellViewModel.cs");
+        var source = RepoSource.Ui("ViewModels", "ShellViewModel.Operations.cs");
 
         var taken = source.IndexOf("Retryable = handle.Retry;", StringComparison.Ordinal);
         var described = source.IndexOf(

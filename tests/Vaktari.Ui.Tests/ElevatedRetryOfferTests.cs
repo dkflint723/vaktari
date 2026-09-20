@@ -176,7 +176,7 @@ public sealed class ElevatedRetryOfferTests : OwnedViewModels
     [Fact]
     public void The_administrator_retry_reports_on_the_pane_that_ran_it()
     {
-        var source = RepoSource.Ui("ViewModels", "ShellViewModel.cs");
+        var source = RepoSource.UiClass("ViewModels", "ShellViewModel");
 
         Assert.Equal(
             2,

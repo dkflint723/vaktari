@@ -794,7 +794,7 @@ public sealed class SearchBandTests : OwnedViewModels
     public void The_pane_never_puts_the_backend_s_name_in_front_of_anybody()
         => Assert.DoesNotContain(
             "BackendName",
-            RepoSource.Ui("ViewModels", "PaneViewModel.cs"),
+            RepoSource.UiClass("ViewModels", "PaneViewModel"),
             StringComparison.Ordinal);
 
     // ---- what the walk leaves out --------------------------------------

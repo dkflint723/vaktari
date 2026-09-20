@@ -141,7 +141,7 @@ public sealed class NewTabGestureTests
 
         Assert.Contains(
             "activate: false",
-            RepoSource.Body(RepoSource.Ui("ViewModels", "ShellViewModel.cs"),
+            RepoSource.Body(RepoSource.UiClass("ViewModels", "ShellViewModel"),
                             "public void OpenBehind(string path)"));
     }
 }
