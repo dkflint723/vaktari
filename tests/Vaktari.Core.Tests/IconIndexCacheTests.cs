@@ -14,8 +14,7 @@ namespace Vaktari.Core.Tests;
 ///
 /// The risk a cache carries is answering with something that is no longer true,
 /// so most of what follows is about the ways it must refuse to.
-/// </summary>
-/// <summary>
+///
 /// Shares a collection with <see cref="IconThemeCachedReadTests"/> because both
 /// drive the same static cache folder, and xunit runs classes in parallel.
 /// **Not a precaution:** written without this, each passed alone and they

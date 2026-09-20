@@ -18,6 +18,11 @@ namespace Vaktari.Ui.ViewModels;
 /// </summary>
 public sealed partial class ShellViewModel
 {
+    /// <summary>
+    /// Called when preferences change. Most settings are read at the moment
+    /// they matter and so need nothing; sorting is the exception, because a
+    /// listing already on screen was ordered under the old rule.
+    /// </summary>
     public void OnSettingsChanged()
     {
         // The tile and cell metrics are computed from the pane's scale AND the

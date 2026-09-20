@@ -60,16 +60,15 @@ public sealed class VolumeTrashTests : IDisposable
     }
 
     /// <summary>
-    /// **The home trash is the one that just failed.** There is nowhere left to
-    /// fall back to, and swallowing it would hide the real reason from the
-    /// per-item report the caller builds — a file reported as deleted that was
-    /// not is worse than a file reported as refused.
-    /// </summary>
-    /// <summary>
     /// The two halves no behaviour test can reach: that Trash goes through the
     /// fallback at all, and that a failing HOME trash is reported rather than
     /// swallowed. Proving the second by making the developer's own trash
     /// unusable is not something a test should attempt.
+    ///
+    /// **The home trash is the one that just failed.** There is nowhere left to
+    /// fall back to, and swallowing it would hide the real reason from the
+    /// per-item report the caller builds — a file reported as deleted that was
+    /// not is worse than a file reported as refused.
     /// </summary>
     [Fact]
     public void The_fallback_is_reached_and_does_not_swallow_a_home_failure()

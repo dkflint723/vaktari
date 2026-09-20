@@ -438,10 +438,6 @@ public sealed partial class ShellViewModel : ObservableObject, IDisposable
     /// </summary>
     public PaneViewModel? ActiveTab => ActiveGroup?.ActiveTab;
 
-    /// <summary>
-    /// The status line, named with the folder it describes. In a split, a bare
-    /// "21 items" does not say which of two identical listings it counted.
-    /// </summary>
     /// <summary>Item and selection counts, separate from the transient status
     /// so a passing message never hides them.</summary>
     public string ActiveSummary => ActiveTab?.Summary ?? "";
@@ -539,12 +535,6 @@ public sealed partial class ShellViewModel : ObservableObject, IDisposable
            && !ActiveTab.IsRecentListing
            && (ActiveTab.HasSelection || ActiveTab.IsRealFolder);
 
-    /// <summary>
-    /// Emptying the trash goes through the window, not straight to the store,
-    /// because it needs the confirm bar — and the prompt lives in the window,
-    /// which is the only thing that owns real buttons. Same arrangement as
-    /// properties and settings.
-    /// </summary>
     /// <summary>Widen the window by this many pixels, to make room for a panel
     /// that would not otherwise fit.</summary>
     public event EventHandler<double>? GrowRequested;
@@ -570,6 +560,12 @@ public sealed partial class ShellViewModel : ObservableObject, IDisposable
     [RelayCommand]
     private void TrashSelection() => TrashSelectionRequested?.Invoke(this, EventArgs.Empty);
 
+    /// <summary>
+    /// Emptying the trash goes through the window, not straight to the store,
+    /// because it needs the confirm bar — and the prompt lives in the window,
+    /// which is the only thing that owns real buttons. Same arrangement as
+    /// properties and settings.
+    /// </summary>
     public event EventHandler? EmptyTrashRequested;
 
     [RelayCommand]

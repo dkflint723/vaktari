@@ -75,12 +75,6 @@ public sealed partial class ShellViewModel
     public void MoveToOtherPane() => TransferToOther(move: true);
 
     /// <summary>
-    /// Somewhere to send files that is not the other pane. Built from the same
-    /// Places the sidebar shows, so the destinations offered are the ones the
-    /// user already keeps — no separate list to maintain, and pinning a folder
-    /// makes it a transfer target for free.
-    /// </summary>
-    /// <summary>
     /// The destination the other half of a split IS, as the first row of the
     /// transfer submenus. It was two more top-level entries — four transfer
     /// rows in a flat run — and folding it here is what let the pair collapse
@@ -125,6 +119,12 @@ public sealed partial class ShellViewModel
         Icon = "",
     });
 
+    /// <summary>
+    /// Somewhere to send files that is not the other pane. Built from the same
+    /// Places the sidebar shows, so the destinations offered are the ones the
+    /// user already keeps — no separate list to maintain, and pinning a folder
+    /// makes it a transfer target for free.
+    /// </summary>
     public IReadOnlyList<PlaceItemViewModel> TransferTargets
     {
         get

@@ -338,15 +338,6 @@ public sealed class LinuxFileOperations : IFileOperations
     }
 
     /// <summary>
-    /// Whether a partial result may go back on the stacks at all.
-    ///
-    /// **Nothing moved, so nothing is pushed back on top**: a press that put
-    /// nothing back and pushed itself back would wedge Ctrl+Z against its own
-    /// obstacle, burying anything recorded since. And if the history moved while
-    /// the walk ran, neither half goes anywhere. The Windows twin carries the
-    /// same rule with the same words.
-    /// </summary>
-    /// <summary>
     /// The walk, off the thread that asked for it. The Windows twin carries
     /// the same hop and the same measurement: a cross-volume undo of a large
     /// folder copies every byte, and it did so where the window is drawn.
@@ -356,6 +347,15 @@ public sealed class LinuxFileOperations : IFileOperations
     private static Task<IUndoable?> Walk(IUndoable action, CancellationToken ct)
         => Task.Run(() => action.UndoAsync(ct).AsTask(), ct);
 
+    /// <summary>
+    /// Whether a partial result may go back on the stacks at all.
+    ///
+    /// **Nothing moved, so nothing is pushed back on top**: a press that put
+    /// nothing back and pushed itself back would wedge Ctrl+Z against its own
+    /// obstacle, burying anything recorded since. And if the history moved while
+    /// the walk ran, neither half goes anywhere. The Windows twin carries the
+    /// same rule with the same words.
+    /// </summary>
     private bool Stackable(PartlyUndone partly, int generation)
         => partly.Done is not null && generation == _generation;
 
@@ -1042,21 +1042,6 @@ public sealed class LinuxFileOperations : IFileOperations
             Path.Combine(Resolved(Path.GetDirectoryName(target)!), Path.GetFileName(target)));
 
     /// <summary>
-    /// An absolute path with every link along it followed: the file itself
-    /// rather than one of the names that reach it.
-    ///
-    /// A component at a time, because a link can stand anywhere along a path
-    /// and each one is read from where it stands. ".." is taken from what has
-    /// been resolved so far, which is what the kernel does, and what collapsing
-    /// the text cannot do.
-    ///
-    /// <paramref name="budget"/> is ELOOP: links can point in a circle, and a
-    /// circle has no file at the end of it. The path built so far is returned
-    /// rather than throwing — it still names a link, so the comparison above
-    /// simply does not match, which is the right answer when there is no file
-    /// to protect.
-    /// </summary>
-    /// <summary>
     /// Whether two paths name the SAME directory entry, however each is spelled.
     ///
     /// **The folders are resolved and the leaf is not.** Following the last
@@ -1078,6 +1063,21 @@ public sealed class LinuxFileOperations : IFileOperations
             && string.Equals(Resolved(here), Resolved(there), StringComparison.Ordinal);
     }
 
+    /// <summary>
+    /// An absolute path with every link along it followed: the file itself
+    /// rather than one of the names that reach it.
+    ///
+    /// A component at a time, because a link can stand anywhere along a path
+    /// and each one is read from where it stands. ".." is taken from what has
+    /// been resolved so far, which is what the kernel does, and what collapsing
+    /// the text cannot do.
+    ///
+    /// <paramref name="budget"/> is ELOOP: links can point in a circle, and a
+    /// circle has no file at the end of it. The path built so far is returned
+    /// rather than throwing — it still names a link, so the comparison above
+    /// simply does not match, which is the right answer when there is no file
+    /// to protect.
+    /// </summary>
     private static string Resolved(string path, int budget = 40)
     {
         var built = "/";
@@ -1126,15 +1126,13 @@ public sealed class LinuxFileOperations : IFileOperations
     }
 
     /// <summary>
-    /// Everything under a folder, with links as leaves.
+    /// Everything under a folder, with links as leaves. Walks a tree for the
+    /// plan, recording what it could not read.
     ///
     /// Hand-rolled rather than SearchOption.AllDirectories, which follows links
     /// and walks out of the tree it was asked about - into a photo library, or
     /// round a loop. WindowsFileOperations.Descend exists for the same reason
     /// and this is its twin.
-    /// </summary>
-    /// <summary>
-    /// Walks a tree for the plan, recording what it could not read.
     ///
     /// **It used to swallow and carry on**, so a protected folder made the plan
     /// silently short and the copy reported success having quietly left files
@@ -1376,19 +1374,6 @@ public sealed class LinuxFileOperations : IFileOperations
         bool IsRoot = false, bool IsLink = false);
 
     /// <summary>
-    /// Carries a renamed folder down to everything planned inside it.
-    ///
-    /// **"Keep both" renames the folder; the plan still points its contents at
-    /// the old name.** BuildPlan fixes every descendant's target against the
-    /// original folder name before any conflict is known about, so without this
-    /// the new folder is created empty while the tree merges into the one the
-    /// user asked to keep separate — and on a move, that is the source
-    /// disappearing into a folder they were trying not to touch.
-    ///
-    /// The same routine as WindowsFileOperations.Redirect, which has had it
-    /// since the day the same fault was found there.
-    /// </summary>
-    /// <summary>
     /// Whether a planned target sits at or beneath one of these roots. The same
     /// prefix rule <see cref="Redirect"/> uses: the separator is part of the
     /// test, so "work 2" is not treated as living inside "work".
@@ -1446,6 +1431,19 @@ public sealed class LinuxFileOperations : IFileOperations
         }
     }
 
+    /// <summary>
+    /// Carries a renamed folder down to everything planned inside it.
+    ///
+    /// **"Keep both" renames the folder; the plan still points its contents at
+    /// the old name.** BuildPlan fixes every descendant's target against the
+    /// original folder name before any conflict is known about, so without this
+    /// the new folder is created empty while the tree merges into the one the
+    /// user asked to keep separate — and on a move, that is the source
+    /// disappearing into a folder they were trying not to touch.
+    ///
+    /// The same routine as WindowsFileOperations.Redirect, which has had it
+    /// since the day the same fault was found there.
+    /// </summary>
     private static string Redirect(string target, List<(string From, string To)> redirects)
     {
         foreach (var (from, to) in redirects)
@@ -1705,22 +1703,6 @@ public sealed class LinuxFileOperations : IFileOperations
     }
 
     /// <summary>
-    /// Puts moved items back where they came from.
-    ///
-    /// **Takes where they LANDED, not where they were sent.** This used to
-    /// reconstruct the landing site as destination + name, which is only true
-    /// when nothing was renamed or skipped on the way. Move notes.txt into a
-    /// folder that already has one and answer "Keep both": the file lands as
-    /// "notes (1).txt", the undo computed "notes.txt", found the pre-existing
-    /// bystander sitting there, and moved THAT out — under the name of a file
-    /// it had nothing to do with. Answering "Skip" was worse still: the item
-    /// the user explicitly refused to move was the one undo relocated.
-    ///
-    /// Carrying the pairs also fixes the redo. Reconstructing a second time
-    /// found nothing to put back, so Ctrl+Y after a bad undo quietly did
-    /// nothing while the pane refreshed as though it had worked.
-    /// </summary>
-    /// <summary>
     /// What an undo or a redo did in part and could not finish. The Windows twin
     /// carries the same two halves and the same reasoning: an IOException on
     /// purpose, so Failures.Describe passes the sentence through, with the
@@ -1765,6 +1747,19 @@ public sealed class LinuxFileOperations : IFileOperations
     /// Every name is decided by the kernel in one <c>renameat2</c> that will not
     /// replace, which also removes the kind split .NET forces: one call renames
     /// a file, a folder, a link to either, and a link whose target has gone.
+    ///
+    /// **Takes where they LANDED, not where they were sent.** This used to
+    /// reconstruct the landing site as destination + name, which is only true
+    /// when nothing was renamed or skipped on the way. Move notes.txt into a
+    /// folder that already has one and answer "Keep both": the file lands as
+    /// "notes (1).txt", the undo computed "notes.txt", found the pre-existing
+    /// bystander sitting there, and moved THAT out — under the name of a file
+    /// it had nothing to do with. Answering "Skip" was worse still: the item
+    /// the user explicitly refused to move was the one undo relocated.
+    ///
+    /// Carrying the pairs also fixes the redo. Reconstructing a second time
+    /// found nothing to put back, so Ctrl+Y after a bad undo quietly did
+    /// nothing while the pane refreshed as though it had worked.
     /// </summary>
     private sealed class UndoMove : IUndoable
     {

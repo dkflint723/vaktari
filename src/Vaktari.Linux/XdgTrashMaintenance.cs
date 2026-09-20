@@ -133,15 +133,6 @@ public sealed class XdgTrashMaintenance : ITrashMaintenance
     }
 
     /// <summary>
-    /// What is in the trash — **every trash, not just the home one.**
-    ///
-    /// This read $XDG_DATA_HOME/Trash alone, so anything Dolphin or Nautilus
-    /// had trashed onto a removable drive was invisible here, and a shipped
-    /// string in the recent listing already claimed "trash.List() walks every
-    /// volume's bin". Now that Vaktari puts a delete on the volume it came
-    /// from, its own deletions would have vanished from its own trash view too.
-    /// </summary>
-    /// <summary>
     /// Whether any trash root holds anything, without parsing a .trashinfo or
     /// sorting across volumes.
     ///
@@ -171,6 +162,15 @@ public sealed class XdgTrashMaintenance : ITrashMaintenance
         return false;
     }
 
+    /// <summary>
+    /// What is in the trash — **every trash, not just the home one.**
+    ///
+    /// This read $XDG_DATA_HOME/Trash alone, so anything Dolphin or Nautilus
+    /// had trashed onto a removable drive was invisible here, and a shipped
+    /// string in the recent listing already claimed "trash.List() walks every
+    /// volume's bin". Now that Vaktari puts a delete on the volume it came
+    /// from, its own deletions would have vanished from its own trash view too.
+    /// </summary>
     public IReadOnlyList<TrashedItem> List()
     {
         var items = new List<TrashedItem>();

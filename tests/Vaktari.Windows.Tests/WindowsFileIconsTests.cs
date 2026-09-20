@@ -54,12 +54,6 @@ public sealed class WindowsFileIconsTests : IDisposable
     }
 
     /// <summary>
-    /// Not every pixel transparent. The shell returns some 32-bit bitmaps whose
-    /// alpha channel is entirely zero, which drawn literally is an invisible
-    /// icon — the provider treats that as opaque, and this is the assertion
-    /// that would notice if it stopped.
-    /// </summary>
-    /// <summary>
     /// **The per-path half of the key has no natural ceiling.** Extensions are
     /// a small fixed set, but folders, shortcuts and executables are cached
     /// individually — so walking a drive would hold a bitmap per folder for the
@@ -224,6 +218,12 @@ public sealed class WindowsFileIconsTests : IDisposable
         }
     }
 
+    /// <summary>
+    /// Not every pixel transparent. The shell returns some 32-bit bitmaps whose
+    /// alpha channel is entirely zero, which drawn literally is an invisible
+    /// icon — the provider treats that as opaque, and this is the assertion
+    /// that would notice if it stopped.
+    /// </summary>
     [Fact]
     public void The_icon_is_not_entirely_transparent()
     {

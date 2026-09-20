@@ -13,13 +13,6 @@ namespace Vaktari.Ui.ViewModels;
 public static class FileConverters
 {
     /// <summary>
-    /// The folder an entry lives in, with the home directory shown as `~`.
-    ///
-    /// Only used by the recent listings, where rows span the whole filesystem
-    /// and a bare filename identifies nothing. Abbreviating home is what makes
-    /// the column narrow enough to be worth having — most rows are under it.
-    /// </summary>
-    /// <summary>
     /// The full path for the recent listing's Path column, or nothing when the
     /// user has turned row tooltips off.
     ///
@@ -167,6 +160,13 @@ public static class FileConverters
             return entry.IsSymlink ? name + ", link" : name;
         });
 
+    /// <summary>
+    /// The folder an entry lives in, with the home directory shown as `~`.
+    ///
+    /// Only used by the recent listings, where rows span the whole filesystem
+    /// and a bare filename identifies nothing. Abbreviating home is what makes
+    /// the column narrow enough to be worth having — most rows are under it.
+    /// </summary>
     public static readonly IValueConverter ParentPath =
         new FuncValueConverter<FileEntry, string>(entry =>
         {
@@ -239,11 +239,6 @@ public static class FileConverters
         });
 
     /// <summary>
-    /// Upper-cases a label for display only. The sidebar's group headings are
-    /// set in small caps with tracking; <c>Place.Label</c> is data read off the
-    /// desktop's places list and is never rewritten to suit a heading.
-    /// </summary>
-    /// <summary>
     /// Ghosts a hidden or system file, the way both references do.
     ///
     /// **With "show hidden files" on, they looked exactly like real content.**
@@ -273,6 +268,11 @@ public static class FileConverters
                 ? 0.55
                 : 1.0);
 
+    /// <summary>
+    /// Upper-cases a label for display only. The sidebar's group headings are
+    /// set in small caps with tracking; <c>Place.Label</c> is data read off the
+    /// desktop's places list and is never rewritten to suit a heading.
+    /// </summary>
     public static readonly IValueConverter Upper =
         new FuncValueConverter<string?, string>(s => s?.ToUpperInvariant() ?? "");
 

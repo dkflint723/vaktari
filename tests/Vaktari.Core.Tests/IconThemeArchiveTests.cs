@@ -18,8 +18,7 @@ namespace Vaktari.Core.Tests;
 /// megabytes, and the interesting cases — a name that climbs out of the
 /// destination, a link that points at the profile folder — are exactly the ones
 /// no real theme contains.
-/// </summary>
-/// <summary>
+///
 /// Shares the icon-index collection because reading a theme now WRITES a cache,
 /// and where it writes is a static. Run alongside the cache tests, this class
 /// drops its own cache files into whichever folder those tests are asserting

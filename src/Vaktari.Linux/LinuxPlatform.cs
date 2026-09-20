@@ -36,11 +36,6 @@ public sealed class LinuxPlatform : IPlatform
     public string Name => "linux";
 
     /// <summary>
-    /// Lowercase, because it is a common noun here and the desktop treats it as
-    /// one: the freedesktop specification calls it the trash, and Dolphin and
-    /// Nautilus write it in running text without capitals.
-    /// </summary>
-    /// <summary>
     /// Held as a field rather than rebuilt, because the D-Bus service asks it
     /// the same question the settings page does — whether Vaktari is the
     /// desktop's folder handler — and two objects answering it separately is
@@ -54,6 +49,11 @@ public sealed class LinuxPlatform : IPlatform
     /// Built here, dormant until something calls ReconcileAsync.</summary>
     public IFileManagerService? FileManagerService { get; }
 
+    /// <summary>
+    /// Lowercase, because it is a common noun here and the desktop treats it as
+    /// one: the freedesktop specification calls it the trash, and Dolphin and
+    /// Nautilus write it in running text without capitals.
+    /// </summary>
     public string BinName => "trash";
 
     public IFileSystemProvider FileSystem { get; } = new LinuxFileSystemProvider();

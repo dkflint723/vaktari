@@ -77,15 +77,6 @@ public class ReparsePointTests
     }
 
     /// <summary>
-    /// **A junction moved onto a taken file, answered Overwrite, replaces it.**
-    /// The answer was not carried out: CopyLink made a junction by first making
-    /// a folder at the name, which a file there refused, so the item failed
-    /// with the junction still at the source and the file still at the name,
-    /// whatever had been asked — measured. The Linux engine lost the link in the
-    /// same place. The answer is carried out now, and the source goes only once
-    /// the junction stands at the name.
-    /// </summary>
-    /// <summary>
     /// **This application never writes a junction that cannot say where it
     /// points.** A junction stores an object-manager name — <c>\??\</c> and a
     /// local path — so a UNC share cannot be expressed as one. The kernel does
@@ -272,6 +263,15 @@ public class ReparsePointTests
         Assert.Equal("elsewhere", tree.Read("outside", "kept.txt"));
     }
 
+    /// <summary>
+    /// **A junction moved onto a taken file, answered Overwrite, replaces it.**
+    /// The answer was not carried out: CopyLink made a junction by first making
+    /// a folder at the name, which a file there refused, so the item failed
+    /// with the junction still at the source and the file still at the name,
+    /// whatever had been asked — measured. The Linux engine lost the link in the
+    /// same place. The answer is carried out now, and the source goes only once
+    /// the junction stands at the name.
+    /// </summary>
     [WindowsFact]
     public async Task Moving_a_junction_onto_a_taken_file_replaces_it()
     {

@@ -11,8 +11,7 @@ namespace Vaktari.Core.Tests;
 /// it. Accepting a cache for the variant while the base has none would produce a
 /// theme that resolves folders and nothing else — icons missing rather than
 /// late, and missing for as long as the process runs. Whole chain or nothing.
-/// </summary>
-/// <summary>
+///
 /// Shares a collection with <see cref="IconIndexCacheTests"/> — see the note
 /// there. The static both classes set is the whole reason.
 /// </summary>

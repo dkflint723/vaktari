@@ -382,11 +382,6 @@ public sealed record DetailsViewSettings
 }
 
 /// <summary>
-/// Defaults a pane starts from. Panes still scale independently afterwards —
-/// these are the starting values, not a cap, because per-pane scaling is an
-/// accessibility feature and a global setting must not take it away.
-/// </summary>
-/// <summary>
 /// Version-control decorations. Its own group rather than a line in
 /// <see cref="GeneralSettings"/>, because the feature already has more than one
 /// dimension and a second provider would land here rather than widening
@@ -434,6 +429,11 @@ public enum ThemeMode
     Dark,
 }
 
+/// <summary>
+/// Defaults a pane starts from. Panes still scale independently afterwards —
+/// these are the starting values, not a cap, because per-pane scaling is an
+/// accessibility feature and a global setting must not take it away.
+/// </summary>
 public sealed record ViewSettings
 {
     /// <summary>

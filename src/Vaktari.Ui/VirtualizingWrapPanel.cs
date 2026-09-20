@@ -42,16 +42,6 @@ public class VirtualizingWrapPanel : VirtualizingPanel
         AvaloniaProperty.Register<VirtualizingWrapPanel, double>(nameof(ItemHeight), 100);
 
     /// <summary>
-    /// Gap around each tile, added to <see cref="ItemWidth"/> and
-    /// <see cref="ItemHeight"/> to give the CELL size.
-    ///
-    /// Explicit because the grid's item template carries `Margin="3"`, so its
-    /// desired size is six pixels larger than the tile in each direction.
-    /// Arranging into a cell of exactly TileWidth would clip every tile by that
-    /// margin — a quiet, uniform wrongness that is hard to spot and easy to
-    /// misread as a styling problem.
-    /// </summary>
-    /// <summary>
     /// Which way items flow before wrapping.
     ///
     /// **Horizontal** — the grid: items run left to right, wrap onto a new ROW,
@@ -74,6 +64,16 @@ public class VirtualizingWrapPanel : VirtualizingPanel
         set => SetValue(OrientationProperty, value);
     }
 
+    /// <summary>
+    /// Gap around each tile, added to <see cref="ItemWidth"/> and
+    /// <see cref="ItemHeight"/> to give the CELL size.
+    ///
+    /// Explicit because the grid's item template carries `Margin="3"`, so its
+    /// desired size is six pixels larger than the tile in each direction.
+    /// Arranging into a cell of exactly TileWidth would clip every tile by that
+    /// margin — a quiet, uniform wrongness that is hard to spot and easy to
+    /// misread as a styling problem.
+    /// </summary>
     public static readonly StyledProperty<double> ItemSpacingProperty =
         AvaloniaProperty.Register<VirtualizingWrapPanel, double>(nameof(ItemSpacing), 6);
 

@@ -123,13 +123,6 @@ public sealed class EjectFlowTests : OwnedViewModels
     /// <summary>
     /// Builds the sidebar and lets the dispatcher settle.
     ///
-    /// The reload hands its results back through Dispatcher.InvokeAsync, and in
-    /// a headless test nothing pumps that queue on its own — the established
-    /// idiom in this project's UI tests is to run the jobs by hand.
-    /// </summary>
-    /// <summary>
-    /// Builds the sidebar and lets the dispatcher settle.
-    ///
     /// **Awaiting the reload is now enough**, because a request that lands
     /// while one is in flight is folded into it rather than dropped. The
     /// earlier version of this helper spun on RunJobs to paper over that, and

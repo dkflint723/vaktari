@@ -315,11 +315,6 @@ public sealed class FreedesktopIconTheme : IIconThemeProvider
     }
 
     /// <summary>
-    /// Walks themes in inheritance order, and within a theme prefers the
-    /// closest size. "scalable" wins ties because an SVG renders correctly at
-    /// any size, whereas a fixed raster upscales badly.
-    /// </summary>
-    /// <summary>
     /// One recursive scan per theme directory, cached. Breeze ships around
     /// thirty thousand files; enumerating it per icon name, per theme in the
     /// chain, per search root — which is what the first version did — is not

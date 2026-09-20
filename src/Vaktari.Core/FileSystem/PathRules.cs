@@ -80,15 +80,6 @@ public static class PathRules
     }
 
     /// <summary>
-    /// Removes a trailing separator so two spellings of one folder compare equal
-    /// — <c>/home/flint</c> and <c>/home/flint/</c> are the same place.
-    ///
-    /// **A root keeps its separator**, because <c>/</c> and <c>C:\</c> ARE the
-    /// trailing separator; trimming it would leave <c>""</c> and <c>C:</c>, and
-    /// on Windows <c>C:</c> means "the current directory on drive C", which is a
-    /// different place entirely.
-    /// </summary>
-    /// <summary>
     /// Splits a leaf name into the part a suffix goes after, and the extension
     /// that follows it.
     ///
@@ -113,6 +104,15 @@ public static class PathRules
         return dot <= 0 ? (leaf, "") : (leaf[..dot], leaf[dot..]);
     }
 
+    /// <summary>
+    /// Removes a trailing separator so two spellings of one folder compare equal
+    /// — <c>/home/flint</c> and <c>/home/flint/</c> are the same place.
+    ///
+    /// **A root keeps its separator**, because <c>/</c> and <c>C:\</c> ARE the
+    /// trailing separator; trimming it would leave <c>""</c> and <c>C:</c>, and
+    /// on Windows <c>C:</c> means "the current directory on drive C", which is a
+    /// different place entirely.
+    /// </summary>
     public static string Normalise(string? path)
     {
         if (string.IsNullOrEmpty(path)) return "";

@@ -10,18 +10,6 @@ namespace Vaktari.Ui;
 internal sealed class Program
 {
     /// <summary>
-    /// The build, and the file it is running from.
-    ///
-    /// **This exists because a stale `~/.local` install shadowed an RPM for
-    /// three days** and every diagnosis went looking at the code instead. rpm
-    /// answers "what is installed"; only the running process can answer "what is
-    /// running", and until now it could not answer either.
-    ///
-    /// `GetName().Version` rather than reflecting over assembly attributes:
-    /// AssemblyName metadata survives trimming and NativeAOT, which is how this
-    /// ships.
-    /// </summary>
-    /// <summary>
     /// `GetName().Version` rather than reflecting over assembly attributes:
     /// AssemblyName metadata survives trimming and NativeAOT, which is how this
     /// ships. Split out from <see cref="Describe"/> so the settings dialog shows
@@ -38,6 +26,18 @@ internal sealed class Program
     /// </summary>
     internal static string RunningFrom => Environment.ProcessPath ?? "(unknown path)";
 
+    /// <summary>
+    /// The build, and the file it is running from.
+    ///
+    /// **This exists because a stale `~/.local` install shadowed an RPM for
+    /// three days** and every diagnosis went looking at the code instead. rpm
+    /// answers "what is installed"; only the running process can answer "what is
+    /// running", and until now it could not answer either.
+    ///
+    /// `GetName().Version` rather than reflecting over assembly attributes:
+    /// AssemblyName metadata survives trimming and NativeAOT, which is how this
+    /// ships.
+    /// </summary>
     private static string Describe() => $"vaktari {Version}\n{RunningFrom}";
 
     /// <summary>

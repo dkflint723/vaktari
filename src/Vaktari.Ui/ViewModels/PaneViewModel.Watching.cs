@@ -245,8 +245,7 @@ public sealed partial class PaneViewModel
     /// row, which once turned a listing into 44 seconds. Each event restarts
     /// the timer, so the subprocess runs once after the storm rather than once
     /// per raindrop.
-    /// </summary>
-    /// <summary>
+    ///
     /// Public so a settings save can take effect immediately.
     ///
     /// Turning the decorations off must clear what is already on screen, and

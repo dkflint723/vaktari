@@ -293,14 +293,14 @@ public sealed partial class ShellViewModel
         (showing ?? source).Adopt(handle);
     }
 
-    /// <summary>The other-pane transfers need both a second pane and something
-    /// to send. They were gated on the split alone, so an empty-space right-click
-    /// in a split window offered them and they returned on the empty selection.</summary>
     /// <summary>
     /// A second pane, and something real to send. **CanActOnSelection rather
     /// than HasSelection**: a bin row names where a file USED to be, so copying
     /// from one copies whatever occupies that path now — the same hazard the
     /// delete and rename guards exist for, reached through the transfers.
+    ///
+    /// They were gated on the split alone, so an empty-space right-click in a
+    /// split window offered them and they returned on the empty selection.
     /// </summary>
     public bool CanTransferToOtherPane => IsSplit && ActiveTab?.CanActOnSelection == true;
 }

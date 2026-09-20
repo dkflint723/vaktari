@@ -7,16 +7,6 @@ using Vaktari.Core.Settings;
 namespace Vaktari.Ui.ViewModels;
 
 /// <summary>
-/// Edits a copy and commits it whole, rather than writing each control as it
-/// changes. Cancel then genuinely cancels, and a half-finished set of
-/// preferences never reaches disk.
-///
-/// Only the Startup page exists so far. The remaining five are separate pieces
-/// of work, each landing with the plumbing that makes its toggles do something
-/// — a control that does nothing is worse than an absent one, and this project
-/// requires the UI to be usable by someone with no prior knowledge of it.
-/// </summary>
-/// <summary>
 /// One entry in the font dropdown.
 ///
 /// A typed record rather than a bare string **specifically so the dropdown can
@@ -38,6 +28,16 @@ public sealed record FontOption(string Name, FontFamily Family, bool IsFollowDes
 /// </summary>
 public sealed record TerminalChoice(string Id, string Name);
 
+/// <summary>
+/// Edits a copy and commits it whole, rather than writing each control as it
+/// changes. Cancel then genuinely cancels, and a half-finished set of
+/// preferences never reaches disk.
+///
+/// Only the Startup page exists so far. The remaining five are separate pieces
+/// of work, each landing with the plumbing that makes its toggles do something
+/// — a control that does nothing is worse than an absent one, and this project
+/// requires the UI to be usable by someone with no prior knowledge of it.
+/// </summary>
 public sealed partial class SettingsViewModel : ObservableObject
 {
     /// <summary>
@@ -480,6 +480,13 @@ public sealed partial class SettingsViewModel : ObservableObject
         : "";
 
     /// <summary>
+    /// Where the Proton Drive sync folder is, for the link-sharing gestures. A
+    /// typed path rather than a picker for v1: it is set once, and the person
+    /// who moved their sync folder to D: knows exactly where it went.
+    /// </summary>
+    [ObservableProperty] private string _protonDriveFolder = "";
+
+    /// <summary>
     /// Why a chosen folder was refused, shown under the row.
     ///
     /// **Said here rather than in a dialog.** The answer belongs beside the
@@ -487,13 +494,6 @@ public sealed partial class SettingsViewModel : ObservableObject
     /// report "that folder was not what I needed" is a lot of ceremony for a
     /// sentence.
     /// </summary>
-    /// <summary>
-    /// Where the Proton Drive sync folder is, for the link-sharing gestures. A
-    /// typed path rather than a picker for v1: it is set once, and the person
-    /// who moved their sync folder to D: knows exactly where it went.
-    /// </summary>
-    [ObservableProperty] private string _protonDriveFolder = "";
-
     [ObservableProperty] private string _iconThemeProblem = "";
 
     private const string ThemeGone =
@@ -1325,12 +1325,6 @@ public sealed partial class SettingsViewModel : ObservableObject
     }
     [ObservableProperty] private bool _absoluteDates;
     /// <summary>
-    /// The Size column's answer for a folder, as three radios rather than the
-    /// tick box this was: the box could say "counts" or "nothing" and had no
-    /// way to say "how big it is", so that mode sat in the settings file
-    /// unreachable from the dialog that wrote the file.
-    /// </summary>
-    /// <summary>
     /// A folder tree in the sidebar. **Reachable from here or it is not a
     /// setting**, which is the lesson the folder-size mode beside it taught:
     /// that one sat in the model for the life of the feature, writable only by
@@ -1338,6 +1332,12 @@ public sealed partial class SettingsViewModel : ObservableObject
     /// </summary>
     [ObservableProperty] private bool _showFolderTree;
 
+    /// <summary>
+    /// The Size column's answer for a folder, as three radios rather than the
+    /// tick box this was: the box could say "counts" or "nothing" and had no
+    /// way to say "how big it is", so that mode sat in the settings file
+    /// unreachable from the dialog that wrote the file.
+    /// </summary>
     [ObservableProperty] private bool _folderSizeCounts;
 
     [ObservableProperty] private bool _folderSizeContents;

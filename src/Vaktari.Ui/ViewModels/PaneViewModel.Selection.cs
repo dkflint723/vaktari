@@ -328,9 +328,10 @@ public sealed partial class PaneViewModel
         => Selection.Count > 0
             ? Selection.Select(e => e.FullPath).ToList()
             : SelectedEntry is { } one ? [one.FullPath] : [];
-    /// <summary>What is selected, by path, so it can survive the rows being
-    /// replaced by equal-but-different ones.</summary>
     /// <summary>
+    /// What is selected, by path, so it can survive the rows being replaced by
+    /// equal-but-different ones.
+    ///
     /// **A focused row with nothing in the selection counted as nothing.** In a
     /// real list the two cannot come apart — SelectedItem and SelectedItems sit
     /// behind one selection model, so the binding that sets SelectedEntry fills

@@ -539,19 +539,6 @@ public sealed partial class SidebarViewModel : ObservableObject, IDisposable
     }
 
     /// <summary>
-    /// **Locked, because this loop does not stay on one thread.** The rebuild
-    /// inside hops to the thread pool and back, so the "anything else asked
-    /// while I was working?" check and the caller setting that flag genuinely
-    /// run at the same time. Without the lock there is a window between the
-    /// last check and clearing the in-flight task where a request is folded
-    /// into a run that is already finishing — and the caller awaits a task that
-    /// completes without ever doing their rebuild.
-    ///
-    /// It is a narrow window, and it does not stay theoretical: it failed
-    /// roughly one run in four on this machine and would have been a rare,
-    /// unreproducible stale sidebar in the hand.
-    /// </summary>
-    /// <summary>
     /// Re-asks the bin whether it is holding anything and marks its row.
     ///
     /// Public because the answer changes without the PLACES changing: binning a
@@ -656,6 +643,19 @@ public sealed partial class SidebarViewModel : ObservableObject, IDisposable
         catch (Exception ex) { Vaktari.Core.Quiet.Swallowed("bin-state", ex); return false; }
     }
 
+    /// <summary>
+    /// **Locked, because this loop does not stay on one thread.** The rebuild
+    /// inside hops to the thread pool and back, so the "anything else asked
+    /// while I was working?" check and the caller setting that flag genuinely
+    /// run at the same time. Without the lock there is a window between the
+    /// last check and clearing the in-flight task where a request is folded
+    /// into a run that is already finishing — and the caller awaits a task that
+    /// completes without ever doing their rebuild.
+    ///
+    /// It is a narrow window, and it does not stay theoretical: it failed
+    /// roughly one run in four on this machine and would have been a rare,
+    /// unreproducible stale sidebar in the hand.
+    /// </summary>
     private async Task RunReloadsAsync(Vaktari.Core.Places.IPlacesProvider places)
     {
         while (true)

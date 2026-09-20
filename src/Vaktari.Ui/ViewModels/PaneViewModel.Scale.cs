@@ -24,8 +24,7 @@ public sealed partial class PaneViewModel
     /// scale, so the widths at which columns stop fitting have to grow with it
     /// too — fixed thresholds meant that at 2x every column still claimed to
     /// fit while overflowing the pane.
-    /// </summary>
-    /// <summary>
+    ///
     /// How wide this pane's text is, as a multiple of the size the columns were
     /// measured at. Column thresholds are about how much room *text* needs, so
     /// they follow the font axis — not the icon one. This was left orphaned by

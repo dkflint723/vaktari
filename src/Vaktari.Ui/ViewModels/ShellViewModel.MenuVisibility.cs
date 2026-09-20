@@ -115,11 +115,6 @@ public sealed partial class ShellViewModel
     public bool ShowCopyLocationInMenu => Menu.ShowCopyLocation;
 
     /// <summary>
-    /// The selection's path on the clipboard. Reuses CopyTextRequested, which
-    /// already exists for share URLs and mount paths — the view owns the
-    /// clipboard, so the shell asks rather than reaches.
-    /// </summary>
-    /// <summary>
     /// Every selected path, the way Explorer's verb of the same name gives
     /// them: one per line, quoted on Windows.
     ///
@@ -132,6 +127,10 @@ public sealed partial class ShellViewModel
     /// quotes and where a path with a space in it needs them to survive being
     /// pasted into a command line. A quoted path pasted back into the address
     /// bar is understood.
+    ///
+    /// Reuses CopyTextRequested, which already exists for share URLs and mount
+    /// paths — the view owns the clipboard, so the shell asks rather than
+    /// reaches.
     /// </summary>
     [RelayCommand]
     private void CopyLocation()
@@ -189,11 +188,6 @@ public sealed partial class ShellViewModel
         await PinOneAsync(path).ConfigureAwait(true);
     }
 
-    /// <summary>
-    /// Called when preferences change. Most settings are read at the moment
-    /// they matter and so need nothing; sorting is the exception, because a
-    /// listing already on screen was ordered under the old rule.
-    /// </summary>
     /// <summary>
     /// Keeps the sidebar's highlight on the place the active pane is showing.
     /// The shell is the only thing that knows which pane that is, which is the

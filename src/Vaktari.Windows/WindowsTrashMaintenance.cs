@@ -49,15 +49,6 @@ public sealed class WindowsTrashMaintenance : ITrashMaintenance
             .ToList();
 
     /// <summary>
-    /// Puts one item back, and answers with where it actually went.
-    ///
-    /// The order matters and is the same as the Linux side's: move first, drop
-    /// the metadata second. A crash between them leaves an orphaned $I file,
-    /// which lists as nothing and is harmless. The reverse order would lose the
-    /// only record of where the payload belonged while the payload still
-    /// existed — recoverable bytes with no memory of their home.
-    /// </summary>
-    /// <summary>
     /// One item, gone for good.
     ///
     /// Through the same Read and Purge that emptying uses, so a read-only tree
@@ -74,6 +65,15 @@ public sealed class WindowsTrashMaintenance : ITrashMaintenance
         if (RecycleBin.Read(trashName) is { } entry) Purge(entry);
     }
 
+    /// <summary>
+    /// Puts one item back, and answers with where it actually went.
+    ///
+    /// The order matters and is the same as the Linux side's: move first, drop
+    /// the metadata second. A crash between them leaves an orphaned $I file,
+    /// which lists as nothing and is harmless. The reverse order would lose the
+    /// only record of where the payload belonged while the payload still
+    /// existed — recoverable bytes with no memory of their home.
+    /// </summary>
     public string Restore(string trashName)
     {
         var entry = RecycleBin.Read(trashName)

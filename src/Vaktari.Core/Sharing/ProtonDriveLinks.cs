@@ -39,15 +39,15 @@ public sealed class ProtonDriveLinks : ILinkSharing
     public ProtonDriveLinks(string? binaryOverride = null)
         => _binaryOverride = binaryOverride;
 
+    /// <summary>Stands in for discovery in tests, which must not depend on
+    /// what the machine running them happens to have installed.</summary>
+    internal Func<string?>? LocateOverride { get; init; }
+
     /// <summary>
     /// Found once and remembered — but re-scannable, unlike the Lazy this
     /// replaced, whose first "not installed" answer stood for the whole run
     /// and made every install need a restart to notice.
     /// </summary>
-    /// <summary>Stands in for discovery in tests, which must not depend on
-    /// what the machine running them happens to have installed.</summary>
-    internal Func<string?>? LocateOverride { get; init; }
-
     private string? Binary
     {
         get

@@ -164,13 +164,6 @@ public sealed class ExplorerConventionTests : OwnedViewModels
     private static readonly string OnD = OperatingSystem.IsWindows() ? @"D:ackup" : "/mnt/backup";
 
     /// <summary>
-    /// **Windows decides by volume; Vaktari decided by origin.** Explorer moves
-    /// within a drive and copies between drives, because a move inside a volume
-    /// is effectively free while one across volumes is a copy and a delete.
-    /// Dragging onto a place on another disk therefore did something materially
-    /// different from what Windows would have done, and said nothing about it.
-    /// </summary>
-    /// <summary>
     /// **Ctrl+Shift is a chord, not a pair of fallbacks.** Read as two
     /// modifiers it fell through to Ctrl's copy; Explorer has meant "create a
     /// shortcut here" by it for thirty years. It wins over volume and origin
@@ -197,6 +190,13 @@ public sealed class ExplorerConventionTests : OwnedViewModels
             DragEffect.For(control: false, shift: true, alt: false, internalDrag: true, [OnC], OnD));
     }
 
+    /// <summary>
+    /// **Windows decides by volume; Vaktari decided by origin.** Explorer moves
+    /// within a drive and copies between drives, because a move inside a volume
+    /// is effectively free while one across volumes is a copy and a delete.
+    /// Dragging onto a place on another disk therefore did something materially
+    /// different from what Windows would have done, and said nothing about it.
+    /// </summary>
     [WindowsFact]
     public void An_unmodified_drag_moves_within_a_drive_and_copies_between_them()
     {

@@ -416,22 +416,6 @@ public static class RecentListing
     }
 
     /// <summary>
-    /// One store record as a listing row, or null if it is gone.
-    ///
-    /// **Entries that no longer exist are DROPPED, not shown greyed out.** A
-    /// file manager that offers you a row which cannot be opened is worse than
-    /// one that quietly forgets — and the store is not authoritative about the
-    /// filesystem, it only remembers what you asked for.
-    ///
-    /// **`LastWriteTime` carries the ACCESS time here, not the modification
-    /// time.** That is deliberate and it is the whole reason this listing needs
-    /// no new machinery: `GroupMode.Modified` then bands it into Today /
-    /// Yesterday exactly like Dolphin, sorting by time works, and the existing
-    /// timestamp column shows the right value. The cost is that one field means
-    /// something different in these two listings than everywhere else — which is
-    /// why it is written down here rather than left to be discovered.
-    /// </summary>
-    /// <summary>
     /// The trash as a listing. Rows carry the item's ORIGINAL name and the
     /// deletion time, not the deduplicated key it is filed under — the key is an
     /// implementation detail of the trash and means nothing to a person.
@@ -477,6 +461,22 @@ public static class RecentListing
         return entries;
     }
 
+    /// <summary>
+    /// One store record as a listing row, or null if it is gone.
+    ///
+    /// **Entries that no longer exist are DROPPED, not shown greyed out.** A
+    /// file manager that offers you a row which cannot be opened is worse than
+    /// one that quietly forgets — and the store is not authoritative about the
+    /// filesystem, it only remembers what you asked for.
+    ///
+    /// **`LastWriteTime` carries the ACCESS time here, not the modification
+    /// time.** That is deliberate and it is the whole reason this listing needs
+    /// no new machinery: `GroupMode.Modified` then bands it into Today /
+    /// Yesterday exactly like Dolphin, sorting by time works, and the existing
+    /// timestamp column shows the right value. The cost is that one field means
+    /// something different in these two listings than everywhere else — which is
+    /// why it is written down here rather than left to be discovered.
+    /// </summary>
     private static FileEntry? Build(RecentEntry recent)
     {
         try

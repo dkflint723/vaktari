@@ -320,19 +320,6 @@ public sealed partial class PaneViewModel : ObservableObject, IDisposable
         => View == ViewMode.Compact ? Entries : NoEntries;
 
     /// <summary>
-    /// Above this, the un-virtualized layouts are refused rather than allowed
-    /// to hang the app.
-    ///
-    /// WrapPanel realizes a container per item and Avalonia has no virtualizing
-    /// wrap panel, so switching to grid on a large folder freezes the process
-    /// outright. Refusing is ugly; truncating the listing would be worse — a
-    /// file manager that silently omits files is actively dangerous, and you
-    /// would have no way to know it had.
-    ///
-    /// Details view is virtualized and always available, so nothing becomes
-    /// unreachable.
-    /// </summary>
-    /// <summary>
     /// Per-folder view overrides. Null until the shell supplies one.
     /// </summary>
     public static IFolderViewStore? FolderViews { get; set; }
@@ -395,18 +382,6 @@ public sealed partial class PaneViewModel : ObservableObject, IDisposable
     [ObservableProperty] private bool _isRepository;
 
     /// <summary>
-    /// Applied on arrival, before the listing is asked for, so the folder is
-    /// enumerated and sorted once under its own rules rather than sorted twice.
-    /// Silent when the preference is off or the folder has no opinion.
-    ///
-    /// **Every line here reads "or keep what the pane had".** The record used
-    /// to hold no way to say "I did not mention that", so a `.directory` naming
-    /// one Dolphin key produced an opinion about all of them and arriving in
-    /// such a folder pulled a pane out of the layout it was in. Null and zero
-    /// are the two spellings of silence, and the pane's own value is what
-    /// silence means.
-    /// </summary>
-    /// <summary>
     /// The key a view is remembered under.
     ///
     /// **One key for every usage listing.** The path carries the folder that was
@@ -429,6 +404,18 @@ public sealed partial class PaneViewModel : ObservableObject, IDisposable
                    : VirtualPaths.IsSearch(path) ? VirtualPaths.SearchViewKey
                    : path;
 
+    /// <summary>
+    /// Applied on arrival, before the listing is asked for, so the folder is
+    /// enumerated and sorted once under its own rules rather than sorted twice.
+    /// Silent when the preference is off or the folder has no opinion.
+    ///
+    /// **Every line here reads "or keep what the pane had".** The record used
+    /// to hold no way to say "I did not mention that", so a `.directory` naming
+    /// one Dolphin key produced an opinion about all of them and arriving in
+    /// such a folder pulled a pane out of the layout it was in. Null and zero
+    /// are the two spellings of silence, and the pane's own value is what
+    /// silence means.
+    /// </summary>
     private void ApplyFolderView(string path)
     {
         if (!Settings.AppSettings.Current.General.RememberViewPerFolder) return;
@@ -750,10 +737,11 @@ public sealed partial class PaneViewModel : ObservableObject, IDisposable
 
 
 
-    /// <summary>An empty listing used to look identical to one still loading.</summary>
     /// <summary>
     /// The folder really has nothing in it — as distinct from a filter that
     /// matched nothing, which is a different sentence.
+    ///
+    /// An empty listing used to look identical to one still loading.
     /// </summary>
     public bool IsEmpty =>
         IsLoaded && !IsLoading && Entries.Count == 0 && !HasLoadError

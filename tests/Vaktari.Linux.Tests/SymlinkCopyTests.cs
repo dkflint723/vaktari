@@ -548,21 +548,6 @@ public sealed class SymlinkCopyTests : IDisposable
     // ---- the same file, reached another way ----------------------------------
 
     /// <summary>
-    /// **The refusal above compared the spelling of two paths, so the same file
-    /// reached by another name was destroyed anyway.** The question was
-    /// <c>PathRules.Same(Path.GetFullPath(pointsAt, …), target)</c>, which is
-    /// text and nothing else: it cannot say whether two names are one file on
-    /// disk. A SYMLINKED folder is the everyday way to hold two names for one
-    /// place — Fedora Atomic's /home is a link to var/home, and a pane opened
-    /// through such a folder keeps the name it was opened by.
-    ///
-    /// So the file at the name was renamed aside and deleted to make room, a
-    /// link pointing at itself was left standing in its place, and the move was
-    /// reported Completed with the item landed. Measured in WSL Fedora by the
-    /// review of this change, on a move and on a copy, through a folder link as
-    /// here, through a chain of links, and through ".." past a link.
-    /// </summary>
-    /// <summary>
     /// **And the folder with two names can be the link's OWN folder.** Every
     /// alias test beside this one puts the second name on the DESTINATION; put
     /// it on the folder the link already lives in and the move is a move to
@@ -606,6 +591,21 @@ public sealed class SymlinkCopyTests : IDisposable
             Directory.EnumerateFileSystemEntries(_library).Select(Path.GetFileName).Order());
     }
 
+    /// <summary>
+    /// **The refusal above compared the spelling of two paths, so the same file
+    /// reached by another name was destroyed anyway.** The question was
+    /// <c>PathRules.Same(Path.GetFullPath(pointsAt, …), target)</c>, which is
+    /// text and nothing else: it cannot say whether two names are one file on
+    /// disk. A SYMLINKED folder is the everyday way to hold two names for one
+    /// place — Fedora Atomic's /home is a link to var/home, and a pane opened
+    /// through such a folder keeps the name it was opened by.
+    ///
+    /// So the file at the name was renamed aside and deleted to make room, a
+    /// link pointing at itself was left standing in its place, and the move was
+    /// reported Completed with the item landed. Measured in WSL Fedora by the
+    /// review of this change, on a move and on a copy, through a folder link as
+    /// here, through a chain of links, and through ".." past a link.
+    /// </summary>
     [Fact]
     public async Task A_link_moved_into_a_symlinked_folder_leaves_the_file_it_points_at_alone()
     {

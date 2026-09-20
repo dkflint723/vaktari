@@ -13,8 +13,7 @@ public enum SortField { Name, Size, Modified, Kind, Created }
 /// How the listing itself is laid out. The Miller chain is deliberately NOT a
 /// member: it is a navigation strip that sits above a layout, so it can be on
 /// or off for either of these rather than being a third mutually exclusive mode.
-/// </summary>
-/// <summary>
+///
 /// Appending only: these persist as numbers, so reordering would silently
 /// reinterpret every saved session.
 /// </summary>
@@ -127,12 +126,13 @@ public sealed record WindowSession
 
     /// <summary>Multiplies the whole type scale. Persisted because it is an
     /// accessibility setting, not a transient view state.</summary>
+    public double FontScale { get; init; } = 1.0;
+
     /// <summary>
     /// Text and icons scale independently. One combined control could not
     /// express "large icons, small labels" or the reverse, and those are the
     /// two settings people actually reach for.
     /// </summary>
-    public double FontScale { get; init; } = 1.0;
     public double IconScale { get; init; } = 1.0;
 
     /// <summary>

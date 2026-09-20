@@ -1239,9 +1239,9 @@ public sealed class NewWindowTests : OwnedViewModels
                     "the tab row was taken away by a preference that is not its own");
     }
 
-    /// <summary>The preference reaches the file and comes back, like the seven
-    /// beside it.</summary>
     /// <summary>
+    /// The preference reaches the file and comes back, like the seven beside it.
+    ///
     /// **AvaloniaFact, not Fact.** The dialog's constructor asks the font
     /// manager which fonts are installed, and that needs an application — so
     /// this only ever passed because an Avalonia test ran before it in the same

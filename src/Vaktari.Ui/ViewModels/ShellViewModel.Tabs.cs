@@ -173,14 +173,6 @@ public sealed partial class ShellViewModel
     private void ReopenClosedTab() => ActiveGroup.ReopenClosedTab();
 
     /// <summary>
-    /// Opens a folder by path — used when the desktop hands one over, either on
-    /// the command line or from a later launch forwarded to this instance.
-    ///
-    /// Reuses the current tab when it is already showing that folder, so
-    /// repeatedly opening the same place from elsewhere does not stack up
-    /// identical tabs.
-    /// </summary>
-    /// <summary>
     /// Opens a folder in a tab BEHIND the current one, which is what the middle
     /// button means everywhere it works.
     ///
@@ -199,6 +191,14 @@ public sealed partial class ShellViewModel
         ActiveGroup.AddTab(path, like: ActiveTab, activate: false);
     }
 
+    /// <summary>
+    /// Opens a folder by path — used when the desktop hands one over, either on
+    /// the command line or from a later launch forwarded to this instance.
+    ///
+    /// Reuses the current tab when it is already showing that folder, so
+    /// repeatedly opening the same place from elsewhere does not stack up
+    /// identical tabs.
+    /// </summary>
     public void OpenInNewTab(string path)
     {
         if (string.IsNullOrWhiteSpace(path)) return;

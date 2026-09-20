@@ -230,7 +230,6 @@ public sealed class LinuxPlacesProvider : IPlacesProvider, IDisposable
     /// </summary>
     private static string? ReadUserDir(string key) => XdgUserDirs.Read(key);
 
-    /// <summary>Volume label to device, reversed from /dev/disk/by-label.</summary>
     /// <summary>
     /// Every device that carries a filesystem, mounted or not.
     ///
@@ -266,6 +265,7 @@ public sealed class LinuxPlacesProvider : IPlacesProvider, IDisposable
     /// tested on a machine with one disk and nothing removable.</summary>
     internal Func<IReadOnlyList<string>>? FilesystemDevices { get; init; }
 
+    /// <summary>Volume label to device, reversed from /dev/disk/by-label.</summary>
     private static Dictionary<string, string> ReadVolumeLabels()
     {
         var map = new Dictionary<string, string>(StringComparer.Ordinal);
@@ -612,11 +612,6 @@ public sealed class LinuxPlacesProvider : IPlacesProvider, IDisposable
         return result;
     }
 
-    /// <summary>
-    /// First-run import from Dolphin and GTK. Coming up with the user's real
-    /// shortcuts already in place matters more for whether they keep using this
-    /// than any individual feature does.
-    /// </summary>
     /// <summary>Paths already offered as built-in entries, so importing a
     /// bookmark to one of them adds nothing.</summary>
     private HashSet<string> BuiltInPaths()
@@ -635,6 +630,11 @@ public sealed class LinuxPlacesProvider : IPlacesProvider, IDisposable
         return set;
     }
 
+    /// <summary>
+    /// First-run import from Dolphin and GTK. Coming up with the user's real
+    /// shortcuts already in place matters more for whether they keep using this
+    /// than any individual feature does.
+    /// </summary>
     public ValueTask<int> ImportExistingAsync(CancellationToken ct)
     {
         var before = _pins.Count;

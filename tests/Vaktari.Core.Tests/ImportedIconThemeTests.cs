@@ -14,8 +14,7 @@ namespace Vaktari.Core.Tests;
 ///
 /// Built here rather than shipped as a fixture: a real theme is tens of
 /// thousands of files, and what needs proving is the reading, not the theme.
-/// </summary>
-/// <summary>
+///
 /// Shares the icon-index collection because reading a theme now WRITES a cache,
 /// and where it writes is a static. Run alongside the cache tests, this class
 /// drops its own cache files into whichever folder those tests are asserting
@@ -130,12 +129,6 @@ public sealed class ImportedIconThemeTests : IDisposable
     }
 
     /// <summary>
-    /// **The mistake this has to catch.** People pick the folder they extracted
-    /// the archive INTO rather than the theme inside it, and the difference is
-    /// invisible until no icons change — so it is refused at the moment of
-    /// choosing, while the dialog is still in mind.
-    /// </summary>
-    /// <summary>
     /// **The size chooser was dead on Windows and nothing noticed.** It split
     /// the candidate path on '/' alone, which was fine while this code was
     /// Linux-only: on Windows the whole path came back as one segment, no size
@@ -186,6 +179,12 @@ public sealed class ImportedIconThemeTests : IDisposable
         Assert.Contains($"{wanted}x{wanted}", resolved!);
     }
 
+    /// <summary>
+    /// **The mistake this has to catch.** People pick the folder they extracted
+    /// the archive INTO rather than the theme inside it, and the difference is
+    /// invisible until no icons change — so it is refused at the moment of
+    /// choosing, while the dialog is still in mind.
+    /// </summary>
     [Fact]
     public void A_folder_that_is_not_a_theme_is_refused()
     {

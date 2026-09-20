@@ -293,16 +293,6 @@ public static class ThemeApplier
     }
 
     /// <summary>
-    /// The parts that must run whichever scheme won, in the order they depend
-    /// on each other.
-    ///
-    /// Both paths through <see cref="Apply"/> end here, which is the point: the
-    /// age ramp has to be derived from the colours that FINALLY landed, and the
-    /// trace has to report the font that finally landed. Getting either from a
-    /// value written earlier is exactly the bug that let a broken font setting
-    /// ship — the log named the chosen font while the window rendered another.
-    /// </summary>
-    /// <summary>
     /// The accent, walked toward the text colour until it can be read on the
     /// surfaces it is used over.
     ///
@@ -366,6 +356,16 @@ public static class ThemeApplier
         return (hi + 0.05) / (lo + 0.05);
     }
 
+    /// <summary>
+    /// The parts that must run whichever scheme won, in the order they depend
+    /// on each other.
+    ///
+    /// Both paths through <see cref="Apply"/> end here, which is the point: the
+    /// age ramp has to be derived from the colours that FINALLY landed, and the
+    /// trace has to report the font that finally landed. Getting either from a
+    /// value written earlier is exactly the bug that let a broken font setting
+    /// ship — the log named the chosen font while the window rendered another.
+    /// </summary>
     private static void Finish(IResourceDictionary target, ThemePalette? palette, bool dark)
     {
         // **The accent does two jobs and only one of them is read.** As a fill

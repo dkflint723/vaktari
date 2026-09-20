@@ -138,12 +138,6 @@ public class CopypartyBackendTests
     }
 
     /// <summary>
-    /// A zero-byte file that is NOT a reparse point is left alone. The rule is
-    /// deliberately both conditions: an ordinary symlink to an interpreter is
-    /// how several version managers put one on PATH, and rejecting every
-    /// reparse point would break them.
-    /// </summary>
-    /// <summary>
     /// **This default is load-bearing, and it was briefly wrong.**
     ///
     /// It decides whether an install narrates "failed, trying another way"
@@ -170,6 +164,12 @@ public class CopypartyBackendTests
         Assert.False(backend.NextAttemptAddresses(""));
     }
 
+    /// <summary>
+    /// A zero-byte file that is NOT a reparse point is left alone. The rule is
+    /// deliberately both conditions: an ordinary symlink to an interpreter is
+    /// how several version managers put one on PATH, and rejecting every
+    /// reparse point would break them.
+    /// </summary>
     [Fact]
     public void A_plain_empty_file_is_still_found()
     {

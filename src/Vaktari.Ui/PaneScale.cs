@@ -21,6 +21,11 @@ namespace Vaktari.Ui;
 /// </summary>
 public static class PaneScale
 {
+    /// <summary>
+    /// Base metrics at scale 1.0. Everything in the markup is a DynamicResource
+    /// pointing at these, so re-writing them here restyles the whole window
+    /// without touching a single control.
+    /// </summary>
     private static readonly (string Key, double Value)[] FontMetrics =
     [
         ("FontSizeTiny", 11),

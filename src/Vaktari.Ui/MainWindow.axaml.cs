@@ -712,17 +712,6 @@ public partial class MainWindow : Window
     }
 
     /// <summary>
-    /// Focuses the enclosing ListBox when a press lands inside it but not on an
-    /// item, so the keyboard has somewhere to start.
-    ///
-    /// This was a NO-OP for as long as it existed, because a ListBox is not
-    /// focusable by default and `Focus()` simply returned false — a silent
-    /// refusal that made the fix look shipped when it had never run. Focus
-    /// stayed wherever it was, typically a toolbar button, and Home and End
-    /// never reached the panel at all. The three listing ListBoxes now carry
-    /// `Focusable="True"` explicitly, which is what makes this work.
-    /// </summary>
-    /// <summary>
     /// The list a press landed in, but ONLY if it landed on empty space rather
     /// than on a row. Null for a press on a row, or outside any list.
     ///
@@ -981,6 +970,17 @@ public partial class MainWindow : Window
     /// </summary>
     internal static bool SelectAllFrom(bool? chosen) => chosen != true;
 
+    /// <summary>
+    /// Focuses the enclosing ListBox when a press lands inside it but not on an
+    /// item, so the keyboard has somewhere to start.
+    ///
+    /// This was a NO-OP for as long as it existed, because a ListBox is not
+    /// focusable by default and `Focus()` simply returned false — a silent
+    /// refusal that made the fix look shipped when it had never run. Focus
+    /// stayed wherever it was, typically a toolbar button, and Home and End
+    /// never reached the panel at all. The three listing ListBoxes now carry
+    /// `Focusable="True"` explicitly, which is what makes this work.
+    /// </summary>
     private static void FocusListIfEmptySpace(object? source, KeyModifiers modifiers)
     {
         if (ListForEmptySpace(source) is not { } list) return;
@@ -1319,19 +1319,6 @@ public partial class MainWindow : Window
     // ---- ui scale ------------------------------------------------------
 
     /// <summary>
-    /// Base metrics at scale 1.0. Everything in the markup is a DynamicResource
-    /// pointing at these, so re-writing them here restyles the whole window
-    /// without touching a single control.
-    /// </summary>
-
-
-    /// <summary>
-    /// Text and icons scale on separate axes; everything structural is derived
-    /// from whichever of the two drives it. A row has to fit the taller of its
-    /// label and its thumbnail, so its height cannot be a third free setting —
-    /// it would only ever be set wrong.
-    /// </summary>
-    /// <summary>
     /// Application-level defaults, used by everything outside a pane — the
     /// sidebar, the status bar, the properties window. Each pane overrides
     /// these with its own dictionary via PaneScale.
@@ -1477,10 +1464,6 @@ public partial class MainWindow : Window
         request.Chose(folder);
     }
 
-    /// <summary>
-    /// Non-modal on purpose: you frequently want to compare two files, and a
-    /// modal dialog makes that impossible without closing it first.
-    /// </summary>
     /// <summary>
     /// Saving swaps AppSettings.Current and writes the file. Most of what the
     /// Startup page controls only means anything at launch, so it is applied
@@ -1746,6 +1729,10 @@ public partial class MainWindow : Window
         window.ShowDialog(this);
     }
 
+    /// <summary>
+    /// Non-modal on purpose: you frequently want to compare two files, and a
+    /// modal dialog makes that impossible without closing it first.
+    /// </summary>
     private void ShowProperties()
     {
         if (_shell.ActiveTab is not { } pane) return;
@@ -1964,13 +1951,6 @@ public partial class MainWindow : Window
     }
 
     /// <summary>
-    /// Releases it when the menu closes.
-    ///
-    /// **The ids are offsets into one live menu**, so they are meaningless once
-    /// it is gone — and each menu owns an STA thread, so never releasing would
-    /// leak one per right-click.
-    /// </summary>
-    /// <summary>
     /// Shows whichever Proton entries apply to the item under the menu.
     ///
     /// Decided here rather than bound, because the questions are per-item and
@@ -2086,6 +2066,13 @@ public partial class MainWindow : Window
             ? group.ActiveTab
             : null;
 
+    /// <summary>
+    /// Releases it when the menu closes.
+    ///
+    /// **The ids are offsets into one live menu**, so they are meaningless once
+    /// it is gone — and each menu owns an STA thread, so never releasing would
+    /// leak one per right-click.
+    /// </summary>
     private void OnListingMenuClosed(object? sender, RoutedEventArgs e)
     {
         // **Placement belongs to the menu, and ONE menu serves both routes.**
@@ -3211,21 +3198,6 @@ public partial class MainWindow : Window
     }
 
     /// <summary>
-    /// Every ListBoxItem beneath a control.
-    ///
-    /// Written with `GetVisualChildren` — the sibling of the `GetVisualParent`
-    /// this file already relies on — rather than an items-control API whose shape
-    /// varies between Avalonia versions.
-    /// </summary>
-    /// <summary>
-    /// The listing the user is actually looking at: visible, showing the active
-    /// tab, and able to hold more than one selection.
-    ///
-    /// Three layout lists exist per pane and all stay alive when hidden, so
-    /// identity alone is not enough — `IsVisible` is what distinguishes them,
-    /// and it is bound to the view mode.
-    /// </summary>
-    /// <summary>
     /// Pages the compact listing sideways.
     ///
     /// **On the TUNNEL phase, because something else was claiming these keys and
@@ -3617,6 +3589,14 @@ public partial class MainWindow : Window
         stops[landing].Focus(NavigationMethod.Directional);
     }
 
+    /// <summary>
+    /// The listing the user is actually looking at: visible, showing the active
+    /// tab, and able to hold more than one selection.
+    ///
+    /// Three layout lists exist per pane and all stay alive when hidden, so
+    /// identity alone is not enough — `IsVisible` is what distinguishes them,
+    /// and it is bound to the view mode.
+    /// </summary>
     private ListBox? ActiveListing()
     {
         foreach (var list in Lists(this))
@@ -3638,6 +3618,13 @@ public partial class MainWindow : Window
         }
     }
 
+    /// <summary>
+    /// Every ListBoxItem beneath a control.
+    ///
+    /// Written with `GetVisualChildren` — the sibling of the `GetVisualParent`
+    /// this file already relies on — rather than an items-control API whose shape
+    /// varies between Avalonia versions.
+    /// </summary>
     private static IEnumerable<ListBoxItem> Rows(Visual root)
     {
         foreach (var child in root.GetVisualChildren())
@@ -5093,8 +5080,6 @@ public partial class MainWindow : Window
     private void OnRunFileRequested(object? sender, RunFileViewModel model)
         => new RunFileWindow(model).ShowDialog(this);
 
-    /// <summary>Focus now happens through FocusBehavior.FocusOnVisible in the
-    /// markup, since there is no field to focus from here.</summary>
     /// <summary>
     /// Hands the keyboard back to the listing when an inline editor closes.
     ///

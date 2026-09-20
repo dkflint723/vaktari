@@ -394,11 +394,6 @@ public sealed class BinIsNotAFolderTests : OwnedViewModels
     }
 
     /// <summary>
-    /// The refusal is said out loud. A command that silently does nothing is
-    /// indistinguishable from one that is broken, and the reason this reads as
-    /// a suggestion is that Restore and Empty are the actions that do work here.
-    /// </summary>
-    /// <summary>
     /// **Duplicate was the one write in the file with no guard**, missed when
     /// the menu consolidation moved it. Its destination is CurrentPath, which
     /// in these listings is the literal string "vaktari:trash" — so on Linux
@@ -433,6 +428,11 @@ public sealed class BinIsNotAFolderTests : OwnedViewModels
         Assert.Empty(ops.Calls);
     }
 
+    /// <summary>
+    /// The refusal is said out loud. A command that silently does nothing is
+    /// indistinguishable from one that is broken, and the reason this reads as
+    /// a suggestion is that Restore and Empty are the actions that do work here.
+    /// </summary>
     [AvaloniaFact]
     public void The_refusal_names_what_to_do_instead()
     {
