@@ -79,9 +79,7 @@ public partial class MainWindow : Window
     // startup setting decides whether the session is consulted at all.
     private readonly SettingsState _settings;
 
-    private readonly IPropertiesProvider _properties;
     private readonly IThemeProvider? _theme;
-    private readonly IAccessEditor? _accessEditor;
 
     /// <summary>
     /// Held so it can be let go again. The theme provider belongs to the
@@ -1156,66 +1154,6 @@ public partial class MainWindow : Window
         if (picked.Count == 0 || picked[0].TryGetLocalPath() is not { } folder) return;
 
         request.Chose(folder);
-    }
-
-    /// <summary>
-    /// Non-modal on purpose: you frequently want to compare two files, and a
-    /// modal dialog makes that impossible without closing it first.
-    /// </summary>
-    private void ShowProperties()
-    {
-        if (_shell.ActiveTab is not { } pane) return;
-
-        var paths = pane.Selection.Count > 0
-            ? pane.Selection.Select(x => x.FullPath).ToList()
-            : pane.SelectedEntry is { } one ? [one.FullPath]
-            : new List<string> { pane.CurrentPath };
-
-        if (paths.Count == 0) return;
-
-        ShowPropertiesFor(paths);
-    }
-
-    private void ShowPropertiesFor(string path) => ShowPropertiesFor([path]);
-
-    private void ShowPropertiesFor(IReadOnlyList<string> paths)
-    {
-        if (paths.Count == 0) return;
-
-        // **A sheet for a path that has gone was confidently wrong rather than
-        // empty.** Windows answers a query about a file that is not there with
-        // a size of zero, 1601-01-01 for every date, and every attribute set —
-        // so the window filled itself in and looked authoritative. A row can go
-        // between being listed and being asked about, so refusing the bin and
-        // Recent is not enough on its own; this is a race as well as a gate.
-        var live = paths.Where(p => File.Exists(p) || Directory.Exists(p)).ToList();
-
-        if (live.Count == 0)
-        {
-            if (_shell.ActiveTab is { } gone)
-                gone.Status = paths.Count == 1
-                    ? $"{PathRules.LeafName(paths[0])} is no longer there"
-                    : "those items are no longer there";
-
-            return;
-        }
-
-        paths = live;
-
-        // **The desktop's own dialog wins where it has one.** On Windows that
-        // sheet carries Security, Details and the Unblock checkbox, and hosts
-        // the pages other applications add to the shell — none of which this
-        // application can reproduce, and all of which are why somebody opens
-        // properties there.
-        //
-        // One path only. The shell has SHMultiFileProperties for a selection,
-        // but it wants an ITEMIDLIST array rather than paths and shows a
-        // reduced sheet; a multi-select falls through to Vaktari's window,
-        // which handles several items properly already.
-        if (paths.Count == 1 && _properties.ShowSystemDialog(paths[0])) return;
-
-        // Theme and metrics are application-scoped, so this inherits them.
-        new PropertiesWindow(new PropertiesViewModel(_properties, paths, _accessEditor)).Show(this);
     }
 
     /// <summary>
