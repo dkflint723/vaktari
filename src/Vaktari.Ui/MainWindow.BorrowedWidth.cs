@@ -117,6 +117,18 @@ public partial class MainWindow
 
         // What we left it at, so a later release can tell whether the user has
         // resized in the meantime.
+        //
+        // **Written AFTER the width, which reads like a gap and is not one.**
+        // Until this line runs, _grownTo still holds its previous value, so
+        // ResizedSinceGrow answers true and WithoutTheLoan would hand the
+        // session the GROWN width — the very thing the loan exists to keep out
+        // of it. That matters only if something can read it in between, and
+        // nothing can: assigning Width is a styled-property set whose whole
+        // effect is to invalidate measure, and Avalonia queues the layout pass
+        // rather than running it, so Resized cannot fire before this statement.
+        // Checked by reading Avalonia 12.1.2's own IL rather than by argument.
+        // It is the queueing this depends on; a toolkit that ever resized
+        // synchronously would put the gap back.
         _grownTo = Width;
 
         ViewModels.PaneGroupViewModel.PanelDebug($"[vaktari] panel: grew by {Math.Ceiling(by)} to {Width:F0} "
