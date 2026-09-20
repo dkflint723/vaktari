@@ -57,8 +57,11 @@ public partial class MainWindow
     /// have opened at the pointer, ignoring the anchor.
     ///
     /// Placement is set here and put back in <see cref="OnListingMenuClosed"/>,
-    /// rather than in the markup: a RIGHT-CLICK must still open at the pointer,
-    /// and the markup has one ContextMenu serving both routes.
+    /// over in MainWindow.ListingMenu.cs, rather than in the markup: a
+    /// RIGHT-CLICK must still open at the pointer, and the markup has one
+    /// ContextMenu serving both routes. This is the only line of the keyboard
+    /// route that another file has to undo, which is why it is named on both
+    /// sides.
     /// </summary>
     private void OpenListingMenu()
     {
