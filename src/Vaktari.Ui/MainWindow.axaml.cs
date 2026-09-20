@@ -1067,8 +1067,6 @@ public partial class MainWindow : Window
         if (total > 1) _shell.SplitRatio = Math.Clamp(left / total, 0.1, 0.9);
     }
 
-    // ---- ui scale ------------------------------------------------------
-
     /// <summary>
     /// Modal, unlike properties: a rename changes the very listing behind it,
     /// so letting the window sit open over a view that is mutating underneath
