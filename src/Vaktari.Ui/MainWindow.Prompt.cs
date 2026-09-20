@@ -317,6 +317,16 @@ public partial class MainWindow
     }
 
     /// <summary>
+    /// What a confirmation is about: the multi-selection, or the one focused
+    /// row when nothing is properly selected. Both prompts read it the same
+    /// way, and the count they used to print was derived from exactly this.
+    /// </summary>
+    private static IReadOnlyList<FileEntry> Chosen(PaneViewModel pane)
+        => pane.Selection.Count > 0
+            ? pane.Selection.ToList()
+            : pane.SelectedEntry is { } one ? [one] : [];
+
+    /// <summary>
     /// Deleting for good, from wherever it was asked for.
     ///
     /// **The bin is where a confirmed yes was refused.** Its rows carry the

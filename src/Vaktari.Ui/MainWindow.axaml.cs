@@ -1547,16 +1547,6 @@ public partial class MainWindow : Window
 
     private void ShowPropertiesFor(string path) => ShowPropertiesFor([path]);
 
-    /// <summary>
-    /// What a confirmation is about: the multi-selection, or the one focused
-    /// row when nothing is properly selected. Both prompts read it the same
-    /// way, and the count they used to print was derived from exactly this.
-    /// </summary>
-    private static IReadOnlyList<FileEntry> Chosen(PaneViewModel pane)
-        => pane.Selection.Count > 0
-            ? pane.Selection.ToList()
-            : pane.SelectedEntry is { } one ? [one] : [];
-
     private void ShowPropertiesFor(IReadOnlyList<string> paths)
     {
         if (paths.Count == 0) return;
