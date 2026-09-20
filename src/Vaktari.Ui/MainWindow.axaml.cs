@@ -5,7 +5,6 @@ using Avalonia.Controls;
 using Avalonia.Input;
 using Avalonia.Input.Platform;
 using Avalonia.Interactivity;
-using Avalonia.Platform.Storage;
 using Avalonia.Threading;
 using Avalonia.VisualTree;
 using Vaktari.Core.FileSystem;
@@ -1102,58 +1101,6 @@ public partial class MainWindow : Window
             pane.BeginRenameGroup);
 
         new BatchRenameWindow(model).ShowDialog(this);
-    }
-
-    /// <summary>
-    /// A folder for a picker to open at, or null where there is nothing there
-    /// yet and the picker should choose for itself.
-    ///
-    /// A member rather than the local function it began as, because the
-    /// transfer submenus' "Choose a folder…" opens a picker from outside the
-    /// settings dialog and wants the same answer to the same question.
-    /// </summary>
-    private static async Task<Avalonia.Platform.Storage.IStorageFolder?> Suggested(
-        Window window, string path)
-    {
-        try
-        {
-            return Directory.Exists(path)
-                ? await window.StorageProvider.TryGetFolderFromPathAsync(path)
-                : null;
-        }
-        catch (Exception e) when (e is IOException or UnauthorizedAccessException)
-        {
-            return null;
-        }
-    }
-
-    /// <summary>
-    /// "Choose a folder…" at the foot of Copy to and Move to.
-    ///
-    /// The picker belongs to the window for the reason the settings dialog's
-    /// does: a view model that opened one could not be constructed in a test.
-    /// The shell is already holding the files and the direction, so the only
-    /// thing that travels back is the folder — and a dismissed picker returns
-    /// nothing and does nothing.
-    /// </summary>
-    private async void OnTransferBrowseRequested(
-        object? sender, ViewModels.TransferBrowseRequest request)
-    {
-        // Starting where the files are: a destination is more often beside the
-        // source than at home, and it is the folder the user can see.
-        var start = await Suggested(this, request.StartAt);
-
-        var picked = await StorageProvider.OpenFolderPickerAsync(
-            new Avalonia.Platform.Storage.FolderPickerOpenOptions
-            {
-                Title = request.Move ? "Choose a folder to move to" : "Choose a folder to copy to",
-                AllowMultiple = false,
-                SuggestedStartLocation = start,
-            });
-
-        if (picked.Count == 0 || picked[0].TryGetLocalPath() is not { } folder) return;
-
-        request.Chose(folder);
     }
 
     /// <summary>
