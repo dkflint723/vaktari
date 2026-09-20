@@ -16,8 +16,9 @@ namespace Vaktari.Ui;
 /// finds nothing outside this file.
 ///
 /// **Two ways in, both of which stay in the constructor.** The shell raises
-/// GrowRequested and ReleaseRequested, and MainWindow.axaml.cs:328 and :329
-/// turn those into the only two calls either method has. The shortfall itself
+/// GrowRequested and ReleaseRequested, and the two subscriptions to them in
+/// MainWindow.axaml.cs's constructor turn those into the only two calls either
+/// method has. The shortfall itself
 /// is worked out elsewhere: PaneGroupViewModel.AskForRoomIfNeeded
 /// (ViewModels/PaneGroupViewModel.cs:336-354) decides a panel does not fit and
 /// asks for the difference, and ShellViewModel divides it by the side's share
@@ -36,12 +37,13 @@ namespace Vaktari.Ui;
 /// closed while a panel was borrowing saved the borrowed width as its own and
 /// came back wider every launch.
 ///
-/// That one line is not a rare visitor. CaptureGeometry is the shell's
-/// GeometryProvider, assigned at MainWindow.axaml.cs:278 and invoked by
-/// ToWindowSession (ViewModels/ShellViewModel.Session.cs:131-133), which every
-/// session write goes through — and MainWindow.axaml.cs:568 and :569 subscribe
-/// Resized and PositionChanged to the shell's NotifyWindowChanged, which marks
-/// the session dirty. The width and position this file writes ARE resizes and
+/// That one line is not a rare visitor. CaptureGeometry is handed to the shell
+/// as its GeometryProvider where the shell is built in MainWindow.axaml.cs's
+/// constructor, and ToWindowSession
+/// (ViewModels/ShellViewModel.Session.cs:131-133) invokes it on every session
+/// write — and the same constructor subscribes the window's Resized and
+/// PositionChanged to the shell's NotifyWindowChanged, which marks the session
+/// dirty. The width and position this file writes ARE resizes and
 /// moves. So the traffic is a circuit rather than a one-way seam, and a header
 /// claiming this file is entered from two places and no more would be wrong.
 ///

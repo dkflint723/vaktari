@@ -29,10 +29,11 @@ namespace Vaktari.Ui;
 /// member on a different class that also subtracts the trash listing; the
 /// static property here is the window's own shorthand.
 ///
-/// **The wiring stays in the constructor**, at MainWindow.axaml.cs:427 and
-/// :433, which is the house pattern rather than a separation invented here —
-/// OnWindowKeyDown is wired at :434 and lives in MainWindow.Keyboard.cs,
-/// OnRenameBoxLostFocus at :447 in MainWindow.Prompt.cs. Neither handler is
+/// **The wiring stays in the constructor**, in MainWindow.axaml.cs's run of
+/// AddHandler calls, which is the house pattern rather than a separation
+/// invented here — OnWindowKeyDown is wired in that same run and lives in
+/// MainWindow.Keyboard.cs, OnRenameBoxLostFocus likewise in
+/// MainWindow.Prompt.cs. Neither handler is
 /// reachable from markup; MainWindow.axaml carries no Tapped or DoubleTapped
 /// attribute at all.
 ///
