@@ -668,4 +668,49 @@ public sealed partial class ShellViewModel
         // And the list of what it was about.
         OperationProblems = [];
     }
+
+    [RelayCommand(CanExecute = nameof(CanCancelOperation))]
+    private void CancelOperation() => ActiveOperation?.Cancel();
+
+    /// <summary>
+    /// **A button that does nothing reads as the application being broken.**
+    /// Windows recycles a whole batch through one blocking SHFileOperation, so
+    /// there is nothing to cancel from out here; the handle says so and the
+    /// button greys out rather than accepting a press that goes nowhere.
+    /// </summary>
+    private bool CanCancelOperation() => ActiveOperation?.CanCancel ?? false;
+
+    /// <inheritdoc cref="CanCancelOperation"/>
+    private bool CanPauseOperation() => ActiveOperation?.CanPause ?? false;
+
+    /// <summary>
+    /// Pauses or resumes the running operation.
+    ///
+    /// **Pause was fully implemented and unreachable.** OperationHandle has a
+    /// real gate, and BOTH engines await it between items and inside the byte
+    /// loop — so the machinery for stopping a large copy mid-flight has always
+    /// worked and nothing in the application could ask for it. The interface's
+    /// own comment justifies handles existing on the grounds that "pause and
+    /// reorder cannot be retrofitted onto a Task", which was true and was the
+    /// reason a feature nobody could use had been paid for in full.
+    /// </summary>
+    [RelayCommand(CanExecute = nameof(CanPauseOperation))]
+    private void PauseOperation()
+    {
+        if (ActiveOperation is not { } operation) return;
+
+        if (operation.State == OperationState.Paused) operation.Resume();
+        else operation.Pause();
+
+        OnPropertyChanged(nameof(PauseLabel));
+    }
+
+    /// <summary>
+    /// One button, two words — the state it is in decides which.
+    ///
+    /// **Both were lower case while every dialog button was not.** Sentence
+    /// case is the one rule now; LabelCasingTests holds it.
+    /// </summary>
+    public string PauseLabel
+        => ActiveOperation?.State == OperationState.Paused ? "Resume" : "Pause";
 }
