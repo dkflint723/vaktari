@@ -1330,22 +1330,27 @@ public partial class MainWindow : Window
     /// <summary>
     /// Keeps a sidebar place from opening a menu with nothing in it.
     ///
-    /// **Avalonia opens a ContextMenu whether or not any child is visible.**
-    /// The only entry is "Remove from places", which means nothing on the rows
-    /// the user did not put there — Home, Documents, the drives, the shares —
-    /// so gating it left every one of those rows popping a 2px sliver of menu
-    /// background at the cursor. On a fresh install with no pins, that is every
-    /// row in the sidebar.
+    /// **Avalonia opens a ContextMenu whether or not any child is visible**,
+    /// and cancelling here is the only hook that stops the popup rather than
+    /// its contents. So the question is whether there is a real place behind
+    /// the menu at all — which is all this asks, and all it has asked since
+    /// the menu stopped being about one entry.
     ///
-    /// Cancelling here is the only hook that stops the popup rather than its
-    /// contents — so every entry the menu gains needs an arm here too.
+    /// **It used to be per-ENTRY, and that is the history worth keeping.** The
+    /// menu began with a single row, "Remove from places", which means nothing
+    /// on the places the user did not put there — Home, Documents, the drives,
+    /// the shares — so every one of those popped a 2px sliver of menu
+    /// background at the cursor, which on a fresh install with no pins is every
+    /// row in the sidebar. Eject arrived next and broke the fix: the rule then
+    /// cancelled on any row that was not user-pinned, which is every DRIVE row,
+    /// precisely the ones eject exists for. It failed silently, because a
+    /// cancelled ContextMenu is not an error — it is a menu that never appears.
     ///
-    /// **Eject is the second such entry, and it is why this now asks two
-    /// questions.** The old rule cancelled on every row that was not user
-    /// pinned, which is every DRIVE row — precisely the rows eject exists for.
-    /// Adding the entry without touching this would have made the whole
-    /// context-menu route inert, and silently: a cancelled ContextMenu is not
-    /// an error, it is simply a menu that never appears.
+    /// The menu now carries nine entries and the gate is per-ROW rather than
+    /// per-entry, which is why the seven added since needed nothing here. Each
+    /// decides its own visibility in the markup. A new entry only has to come
+    /// back to this method if it must appear on a row with no path — and then
+    /// the question this asks is the one that has to change.
     /// </summary>
     private void OnPlaceMenuOpening(object? sender, CancelEventArgs e)
     {
