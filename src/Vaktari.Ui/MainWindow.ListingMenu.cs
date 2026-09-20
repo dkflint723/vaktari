@@ -206,11 +206,26 @@ public partial class MainWindow
             : null;
 
     /// <summary>
-    /// Releases it when the menu closes.
+    /// Puts back the three things opening the menu changed.
     ///
-    /// **The ids are offsets into one live menu**, so they are meaningless once
-    /// it is gone — and each menu owns an STA thread, so never releasing would
-    /// leak one per right-click.
+    /// The summary here read "Releases it when the menu closes" for a long
+    /// while. The "it" was the desktop's shell menu, which OnShellMenuOpening
+    /// had opened thirteen lines above when both were written; a hundred and
+    /// more lines have since been inserted between them, and the member has
+    /// grown two more jobs, so the sentence had lost both its antecedent and
+    /// its count.
+    ///
+    /// **The shell menu.** Its ids are offsets into one live menu, so they are
+    /// meaningless once it is gone — and each menu owns an STA thread, so
+    /// never releasing would leak one per right-click. This is the only one of
+    /// the three whose other half is in this file.
+    ///
+    /// **The placement**, set by the Menu-key route in MainWindow.MenuKey.cs
+    /// and put back here because the same ContextMenu serves the pointer.
+    ///
+    /// **The elevation flag**, armed on the right-button press in
+    /// MainWindow.axaml.cs and cleared here, so a Shift held a minute ago
+    /// cannot still be offering elevation on the next ordinary right-click.
     /// </summary>
     private void OnListingMenuClosed(object? sender, RoutedEventArgs e)
     {

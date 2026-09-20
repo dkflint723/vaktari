@@ -67,7 +67,13 @@ public partial class MainWindow
     private DateTime _lastOpenAt;
 
     /// <summary>
-    /// The single place that opens, and it de-duplicates.
+    /// The single place the POINTER opens, and it de-duplicates.
+    ///
+    /// **Not the single place anything opens**, which this said for a long
+    /// time and which is worth being exact about: Enter opens through
+    /// pane.OpenSelectedAsync in MainWindow.Keyboard.cs and the listing menu's
+    /// Open through ActiveTab.OpenSelectedCommand in the markup, and neither
+    /// passes here. What is true is that every route a POINTER can take does.
     ///
     /// TWO routes can each legitimately decide a row was double-clicked, and
     /// which one fires depends on whether Avalonia's gesture formed — so rather

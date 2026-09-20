@@ -1674,8 +1674,17 @@ public partial class MainWindow : Window
             menu.DataContext = row;
     }
 
-    /// <summary>Feeds the pane its own width so columns can drop out in
-    /// priority order rather than being squeezed.</summary>
+    /// <summary>
+    /// Feeds the pane its own width so columns can drop out in priority order
+    /// rather than being squeezed.
+    ///
+    /// **Two things listen, not one**, which is why this stayed behind when the
+    /// panel's width loan moved to MainWindow.BorrowedWidth.cs. The columns are
+    /// the obvious reader; the group also hears ViewportWidth change and re-asks
+    /// whether the details panel still fits. It measures the PANE, though, and
+    /// the loan is arithmetic about the GROUP — so it is a supplier to that
+    /// question rather than part of it.
+    /// </summary>
     private void OnListSizeChanged(object? sender, SizeChangedEventArgs e)
     {
         if (sender is Control { DataContext: PaneViewModel pane })
@@ -1834,16 +1843,8 @@ public partial class MainWindow : Window
         FocusListingSoon();
     }
 
-    /// <summary>
-    /// Puts the keyboard back in the listing on the next pass, and only if
-    /// nothing else has claimed it.
-    ///
-    /// Posted because the control being left is still collapsing: focusing now
-    /// measures against a tree that is about to change. Guarded on the focused
-    /// element because closing one editor is sometimes how another one opens —
-    /// Ctrl+F from the path box moves the keyboard to the search box ON
-    /// PURPOSE, and snatching it back would be worse than leaving it nowhere.
-    /// </summary>
+    /// <summary>Whether the title carries the whole path or just the folder's
+    /// own name. Read by TitleFor, below.</summary>
     private bool _fullPathInTitle;
 
     /// <summary>
@@ -1874,6 +1875,16 @@ public partial class MainWindow : Window
         return shown.Length > 0 ? $"{shown} — Vaktari" : "Vaktari";
     }
 
+    /// <summary>
+    /// Puts the keyboard back in the listing on the next pass, and only if
+    /// nothing else has claimed it.
+    ///
+    /// Posted because the control being left is still collapsing: focusing now
+    /// measures against a tree that is about to change. Guarded on the focused
+    /// element because closing one editor is sometimes how another one opens —
+    /// Ctrl+F from the path box moves the keyboard to the search box ON
+    /// PURPOSE, and snatching it back would be worse than leaving it nowhere.
+    /// </summary>
     private void FocusListingSoon()
         => Dispatcher.UIThread.Post(
             () =>
