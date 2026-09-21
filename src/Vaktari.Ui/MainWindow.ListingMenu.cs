@@ -29,9 +29,10 @@ namespace Vaktari.Ui;
 /// block depends on that being there, PaneFromMenuItem says so in as many
 /// words, and the markup declares the menu with an x:DataType and compiled
 /// bindings against it. The claim is true of the PLACE row's menu, which is
-/// declared inside a DataTemplate and stays behind with its own two handlers
-/// in MainWindow.axaml.cs. Filing both menus together under one true-of-one
-/// sentence is the mistake this file exists not to make.
+/// declared inside a DataTemplate and now has its own file,
+/// MainWindow.PlaceMenu.cs, where that sentence sits beside the menu it is
+/// true of. Filing both menus together under one true-of-one sentence is the
+/// mistake this file exists not to make.
 ///
 /// Every member here is reached only from markup, except PaneFromMenuItem,
 /// whose four references in the whole repository are the three Proton handlers
