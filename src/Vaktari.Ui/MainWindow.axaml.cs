@@ -1226,8 +1226,6 @@ public partial class MainWindow : Window
         if (_dragTrigger is not null) _ = BeginDragAsync(_dragSource, _dragTrigger);
     }
 
-    // ---- per-pane wiring -----------------------------------------------
-
     /// <summary>
     /// Startup preferences that act on the window once it exists. Separate from
     /// the restore decision above because these apply whether or not a session
@@ -1250,6 +1248,23 @@ public partial class MainWindow : Window
         if (startup.LocationBarEditable) pane.BeginEditPath();
     }
 
+    /// <summary>
+    /// Everything this window subscribes to on a pane, in one place.
+    ///
+    /// Called for every pane the shell creates, from the founder's block in the
+    /// constructor. **Each subscription is removed before it is added**, so
+    /// calling this twice on the same pane leaves one handler rather than two —
+    /// which matters because a pane can be re-wired after a session restore
+    /// hands it back.
+    ///
+    /// **The five handlers do not all live here, and that is worth saying
+    /// because a heading here used to imply they did.** ChooseApplication, RunFile
+    /// and the pane-editor watcher are declared below; RenameRequested and
+    /// RenameTyped belong to the inline rename and live in MainWindow.Prompt.cs
+    /// with the rest of it. Two of these are the same PropertyChanged event
+    /// subscribed twice for two unrelated reasons, which is why the pairs read
+    /// oddly.
+    /// </summary>
     private void WirePane(PaneViewModel pane)
     {
         pane.RenameRequested -= OnRenameRequested;
