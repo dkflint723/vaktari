@@ -16,6 +16,50 @@
         FontFamily="{DynamicResource AppFontFamily}"
         Width="1000" Height="680"
         MinWidth="560" MinHeight="380">
+  <!-- **This file is long on purpose, and item 22 decided to leave it that
+       way.** The roadmap item that took MainWindow.axaml.cs from 6,485 lines
+       to 1,379 across twenty-five partials looked at this file next and
+       stopped. The reasoning is recorded here rather than in a plan document
+       because the next person to meet 5,600 lines will be looking at this,
+       not at a plan.
+
+       **The count is misleading.** Of these lines, about 2,900 are markup and
+       about 2,400 are comment. The prize for lifting out the 3,967-line
+       PaneGroupTemplate is roughly 2,000 lines of UI. ViewModels/PaneViewModel.cs
+       is 3,659 lines today and the same item recorded it DONE: a file that is
+       mostly design record has already been allowed to stay big once.
+
+       **What made the code-behind safe does not exist here.** Every one of
+       those twenty-five cuts was provable twice over — the class's member set
+       was byte-identical before and after, and every moved line was found
+       verbatim in the previous commit. Markup has neither proof. It also has
+       no sibling relationship: those members moved between partials of ONE
+       class, gaining no new type, no namescope and no new test-rule surface.
+       A split here creates all three.
+
+       **And the suite cannot see the way this fails.** The headless test host
+       is built without LogToTrace, so an unresolved binding under test is not
+       thrown, not logged and not counted; it reverts the property to its
+       default, and IsVisible defaults TRUE — so a broken gate SHOWS a row that
+       should be hidden. The 111 $parent[Window] bindings holding this file
+       together are checked by string comparison against this text and by
+       nothing else, so moving them repoints every assertion and leaves it
+       green either way. Six of the flags those bindings gate —
+       ShowCopyToInMenu, ShowMoveToInMenu, ShowSortByInMenu,
+       ShowDuplicateInMenu, ShowCopyLocationInMenu and CanInstallSharing — are
+       named nowhere in the tests at all.
+
+       MarkupRulesTests has the precedent written out: consolidating the
+       right-click menu made clicking "New" terminate the process, and it
+       shipped in 0.7.0 because "the markup compiles, every binding resolves,
+       the suite passed".
+
+       **If this is ever reopened, build the probe first** — a test that opens
+       the real menus on a real window and asserts a reach-up gate in the
+       HIDDEN direction, and asserts a reach-up Command by reference identity.
+       That is the only assertion shape a fail-open binding cannot satisfy. It
+       is worth having whether or not anything is ever cut. -->
+
   <!-- **There was no floor at all, and the chrome has fixed-width parts.** The
        sidebar is 210 by default and the path bar's right-hand cluster is a
        230px search field beside a 200px filter, so a window dragged narrow ran
