@@ -166,7 +166,7 @@ public partial class MainWindow : ICommandHost
         return true;
     }
 
-    // ---- the handler itself -----------------------------------------------------
+    // ---- the handlers, and the two rules they ask -------------------------------
 
     /// <summary>
     /// The narrow set of keys that must be claimed before anything else sees
