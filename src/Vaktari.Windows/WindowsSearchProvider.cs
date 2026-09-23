@@ -9,12 +9,11 @@ namespace Vaktari.Windows;
 /// <summary>
 /// Name search by walking the tree.
 ///
-/// **No index behind it, and it says so.** <see cref="ISearchProvider"/> is
-/// documented as sitting on an index someone else maintains — Everything on
-/// Windows — and this is not that. Everything is third-party, may not be
-/// installed, and talks over an IPC protocol worth its own decision; Windows
-/// Search is COM. A managed walk is honest, has no dependency, and is the same
-/// thing the interface says the UI falls back to.
+/// **No index behind it, and it says so.** This is a managed walk of the
+/// drives. Two indexes were considered and set aside: Everything is
+/// third-party, may not be installed, and talks over an IPC protocol worth its
+/// own decision; Windows Search is COM. A managed walk is honest and has no
+/// dependency.
 ///
 /// The interface used to carry an <c>IsAvailable</c> flag, which this answered
 /// true. It meant "will this return results", not "is it fast", and returning

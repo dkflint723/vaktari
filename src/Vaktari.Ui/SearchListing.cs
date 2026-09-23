@@ -88,8 +88,8 @@ public static class SearchListing
     ///
     /// The count is of what the BACKEND handed over, hidden rows included,
     /// because the cap is applied there. That is also why the break is here
-    /// rather than left to the backend: Everything and Baloo are other people's
-    /// programs, and MaxResults is a request rather than a guarantee.
+    /// rather than left to the backend: Baloo is somebody else's program, and
+    /// MaxResults is a request rather than a guarantee.
     /// </summary>
     public static async IAsyncEnumerable<IReadOnlyList<FileEntry>> EnumerateAsync(
         ISearchProvider? search,
@@ -120,11 +120,11 @@ public static class SearchListing
         // **Every step of the backend BEGINS on the pool, and that is what the
         // pump is for.** An async iterator runs on the CALLER's thread until it
         // reaches a genuine suspension, and both backends do real work before
-        // theirs — Baloo starts a process, the fallback reads a directory,
-        // Everything opens an IPC connection. A ConfigureAwait(false) at the
-        // consuming end does not help: it governs continuations AFTER a
-        // suspension, not the prologue. This is reached from a navigation, so
-        // that work would otherwise land on the dispatcher.
+        // theirs — Baloo starts a process, the walk reads a directory. A
+        // ConfigureAwait(false) at the consuming end does not help: it governs
+        // continuations AFTER a suspension, not the prologue. This is reached
+        // from a navigation, so that work would otherwise land on the
+        // dispatcher.
         //
         // A bare Task.Yield does not fix it either — it posts straight back to
         // the context it came from, and YieldAwaitable has no ConfigureAwait to

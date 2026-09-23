@@ -16,9 +16,17 @@ public sealed record SearchQuery
 }
 
 /// <summary>
-/// Name and content search. Backed by an index someone else already maintains —
-/// Everything on Windows, Baloo on Fedora KDE. Writing our own indexer is a
-/// last resort, not a starting point.
+/// Name and content search. Two backends implement it: Baloo on a KDE desktop,
+/// which is an index someone else already maintains, and a managed directory
+/// walk everywhere else — always on Windows, and on Linux when Baloo is absent.
+/// Writing our own indexer is a last resort, not a starting point.
+///
+/// **This used to promise two things that were never built.** It named
+/// Everything as the Windows backend, and said the UI would fall back to a
+/// slow walk of its own when no index answered. Neither happened: Everything
+/// was set aside (see WindowsSearchProvider), the walk lives inside the
+/// providers themselves, and a null provider gives an empty listing rather
+/// than a fallback.
 /// </summary>
 public interface ISearchProvider
 {
