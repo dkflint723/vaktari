@@ -451,6 +451,29 @@ public sealed class SearchContentsTests : OwnedViewModels
     }
 
     /// <summary>
+    /// **The line is only drawn if its visibility is announced with it.** The
+    /// band binds IsVisible to HasSearchSkipped, which is computed from the
+    /// line — so a change to the line that did not also announce the flag
+    /// would leave the row hidden with the words already in it.
+    /// </summary>
+    [AvaloniaFact]
+    public async Task The_line_s_visibility_is_announced_with_it()
+    {
+        var pane = Own(new PaneViewModel(new NoDisk()));
+
+        UseSearch(new Recording { TooLarge = 3 });
+
+        var announced = new List<string>();
+
+        pane.PropertyChanged += (_, e) => announced.Add(e.PropertyName ?? "");
+
+        await pane.NavigateAsync(VirtualPaths.Search("report", null, false, matchContent: true));
+        await WaitUntil(() => !pane.IsLoading && pane.HasSearchSkipped);
+
+        Assert.Contains(nameof(PaneViewModel.HasSearchSkipped), announced);
+    }
+
+    /// <summary>
     /// And it goes with the answer it belonged to. A fresh tally per load, and
     /// the line cleared as the next begins, so one question's count can never
     /// stand over another's rows.
