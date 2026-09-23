@@ -11,7 +11,6 @@ public sealed record SearchQuery
 
     public bool MatchContent { get; init; }
     public bool CaseSensitive { get; init; }
-    public bool Regex { get; init; }
     public int MaxResults { get; init; } = 1000;
 }
 
