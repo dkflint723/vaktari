@@ -62,12 +62,19 @@ public sealed class LinuxSearchProvider : ISearchProvider
     /// back. So one case survives — baloosearch installed with an index never
     /// built — where the fallback walk runs without the warning.
     /// </summary>
-    public bool AnswersFromIndex(SearchQuery query) => Baloo is not null && !IsGlob(query.Text);
+    public bool AnswersFromIndex(SearchQuery query) => Baloo is not null && !query.IsPattern;
 
     public string BackendName => Baloo is null ? "walk" : "baloo";
 
-    /// <summary>Only the index can search inside files; the walk matches names.</summary>
-    public bool SupportsContentSearch => Baloo is not null;
+    /// <summary>
+    /// True with or without Baloo. The index searches inside the files it has
+    /// read; the walk reads plain text itself, through ContentMatcher.
+    ///
+    /// **It was true only with Baloo, and that was the walk's limit rather
+    /// than a rule.** The walk could match names and nothing else, so on a box
+    /// with no indexer there was no way to find a file by what was in it.
+    /// </summary>
+    public bool SupportsContentSearch => true;
 
     private static string? Locate(string name)
     {
@@ -80,10 +87,6 @@ public sealed class LinuxSearchProvider : ISearchProvider
 
         return null;
     }
-
-    /// <summary>True if the query is a shell-style pattern rather than a substring.</summary>
-    private static bool IsGlob(string text)
-        => text.Contains('*') || text.Contains('?');
 
     public IAsyncEnumerable<FileEntry> SearchAsync(SearchQuery query, CancellationToken ct)
         // Baloo indexes words, not filename patterns, so a glob has to go
@@ -111,19 +114,26 @@ public sealed class LinuxSearchProvider : ISearchProvider
     /// that was going to happen anyway on any box without Baloo, and only in
     /// the case where the fast path found nothing at all — a search that DOES
     /// hit the index still returns at index speed and never walks.
+    ///
+    /// **"Produced nothing" is counted before the name narrowing, not after.**
+    /// With "Search contents" unticked, Baloo's answers that match only by
+    /// their contents are dropped — and an index that answered with nothing
+    /// BUT those has plainly been built. Counting what survived the narrowing
+    /// would read that as no index, and walk home and every mounted drive to
+    /// give the same empty answer the index already had.
     /// </summary>
     private static async IAsyncEnumerable<FileEntry> SearchWithBalooThenWalkingAsync(
         string binary, SearchQuery query, [EnumeratorCancellation] CancellationToken ct)
     {
-        var found = 0;
+        var heard = false;
 
-        await foreach (var entry in SearchWithBalooAsync(binary, query, ct).ConfigureAwait(false))
+        await foreach (var entry in SearchWithBalooAsync(binary, query, () => heard = true, ct)
+                           .ConfigureAwait(false))
         {
-            found++;
             yield return entry;
         }
 
-        if (found > 0 || ct.IsCancellationRequested) yield break;
+        if (heard || ct.IsCancellationRequested) yield break;
 
         // Said out loud, because the two routes have very different costs and a
         // search that suddenly takes seconds should be explicable.
@@ -135,8 +145,16 @@ public sealed class LinuxSearchProvider : ISearchProvider
             yield return entry;
     }
 
+    /// <summary>
+    /// baloosearch, read line by line.
+    ///
+    /// <paramref name="heard"/> is called for every answer inside the scope,
+    /// before the name narrowing below — which is what the caller's "the index
+    /// said nothing" test has to be about.
+    /// </summary>
     private static async IAsyncEnumerable<FileEntry> SearchWithBalooAsync(
-        string binary, SearchQuery query, [EnumeratorCancellation] CancellationToken ct)
+        string binary, SearchQuery query, Action heard,
+        [EnumeratorCancellation] CancellationToken ct)
     {
         var info = new ProcessStartInfo(binary)
         {
@@ -178,6 +196,14 @@ public sealed class LinuxSearchProvider : ISearchProvider
 
                 if (Describe(path) is { } entry)
                 {
+                    heard();
+
+                    // Baloo answers from names and contents alike, however it
+                    // is asked. With the box unticked the question is about
+                    // names, so the rest are dropped here — the box has to mean
+                    // the same thing on a KDE desktop as on the walk.
+                    if (!query.MatchContent && !NamedFor(entry.Name, query.Text)) continue;
+
                     count++;
                     yield return entry;
                 }
@@ -212,6 +238,19 @@ public sealed class LinuxSearchProvider : ISearchProvider
     /// </summary>
     internal static bool InScope(string? scope, string path)
         => scope is not { Length: > 0 } || PathRules.Contains(scope, path);
+
+    /// <summary>
+    /// Whether one of Baloo's answers is there because of its name.
+    ///
+    /// **Every word, not the whole question.** Baloo reads "report 2024" as
+    /// two terms that must both be present, so it finds report-2024.pdf by its
+    /// name — and a substring test on the whole question would drop that file
+    /// for want of a space the name never had. Ignoring case, because Baloo
+    /// does.
+    /// </summary>
+    internal static bool NamedFor(string name, string text)
+        => text.Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries)
+               .All(word => name.Contains(word, StringComparison.OrdinalIgnoreCase));
 
     public string Everywhere => "your home folder and any mounted drives";
 
@@ -318,8 +357,12 @@ public sealed class LinuxSearchProvider : ISearchProvider
             : StringComparison.OrdinalIgnoreCase;
 
         var text = query.Text;
-        var glob = IsGlob(text);
+        var glob = query.IsPattern;
         var ignoreCase = !query.CaseSensitive;
+
+        // False for a pattern whatever the box says: a pattern is a question
+        // about names.
+        var contents = query.ReadsContents;
 
         var walk = new FileSystemEnumerable<string>(
             root,
@@ -342,11 +385,16 @@ public sealed class LinuxSearchProvider : ISearchProvider
 
             // A pattern is matched as a pattern; anything else is treated as a
             // substring, which is what people expect when they just type a word.
+            //
+            // Contents only after the name has failed, so a file whose name
+            // answers is never opened. The read happens here, inside the
+            // enumerator, which is already on the pool — see below.
             ShouldIncludePredicate = glob
                 ? (ref FileSystemEntry entry) =>
                     FileSystemName.MatchesSimpleExpression(text, entry.FileName, ignoreCase)
                 : (ref FileSystemEntry entry) =>
-                    entry.FileName.ToString().Contains(text, comparison),
+                    entry.FileName.ToString().Contains(text, comparison)
+                    || (contents && Contains(ref entry, query, ct)),
         };
 
         var count = 0;
@@ -380,6 +428,27 @@ public sealed class LinuxSearchProvider : ISearchProvider
             }
         }
     }
+
+    /// <summary>
+    /// Whether a file's contents answer the question, for an entry whose name
+    /// did not.
+    ///
+    /// **A link is matched by its name and not read.** What it holds is what
+    /// it points at, which is searched where it lives if it is inside the walk
+    /// at all. And here, reading through one can hang for good: the length a
+    /// directory entry gives for a link is the link's own — the length of the
+    /// path it holds, as SpaceUsage found when it counted links at exactly
+    /// that — so the zero-length rule that keeps ContentMatcher out of a FIFO
+    /// does not stop one reached through a link, and opening a FIFO for
+    /// reading blocks until something writes.
+    ///
+    /// A FIFO, socket or device node that is NOT behind a link reports a
+    /// length of zero, and ContentMatcher never opens those.
+    /// </summary>
+    private static bool Contains(ref FileSystemEntry entry, SearchQuery query, CancellationToken ct)
+        => !entry.IsDirectory
+           && !entry.Attributes.HasFlag(FileAttributes.ReparsePoint)
+           && ContentMatcher.Answers(query, entry.ToFullPath(), entry.Length, ct);
 
     private static FileEntry? Describe(string path)
     {

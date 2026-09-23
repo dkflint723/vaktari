@@ -7,7 +7,8 @@ using Vaktari.Core.Search;
 namespace Vaktari.Windows;
 
 /// <summary>
-/// Name search by walking the tree.
+/// Name search by walking the tree, and content search by reading the files
+/// the names do not answer.
 ///
 /// **No index behind it, and it says so.** This is a managed walk of the
 /// drives. Two indexes were considered and set aside: Everything is
@@ -50,11 +51,17 @@ public sealed class WindowsSearchProvider : ISearchProvider
     public string BackendName => "directory walk";
 
     /// <summary>
-    /// False. Reading every file to match text is a different order of cost from
-    /// matching names, and doing it without an index would be indistinguishable
-    /// from a hang on any real folder.
+    /// True: the walk reads a file whose name does not match when it is asked
+    /// to, through ContentMatcher.
+    ///
+    /// **This used to be false, on the grounds that reading every file without
+    /// an index "would be indistinguishable from a hang on any real folder".**
+    /// The cost is real and nothing here pretends otherwise — the band says
+    /// every text file is being read — but a hang is a wait that cannot be
+    /// ended, and this can: Stop is honoured before every 64 KB read, and a
+    /// file over ContentMatcher.MaxBytes is never opened at all.
     /// </summary>
-    public bool SupportsContentSearch => false;
+    public bool SupportsContentSearch => true;
 
     /// <summary>
     /// True, and it always was — <see cref="Walk"/> has read
@@ -155,7 +162,10 @@ public sealed class WindowsSearchProvider : ISearchProvider
     public string Everywhere => "every drive on this machine";
 
     /// <summary>
-    /// One directory read per directory, and nothing else.
+    /// One directory read per directory, and nothing else — unless the question
+    /// asks for contents, when a file whose name did not answer is opened and
+    /// read. That is the whole cost of the box, and <see cref="Contains"/> is
+    /// where it is paid.
     ///
     /// **No follow-up stat per entry.** `FileEntry`'s own rule is that nothing
     /// on it may require a second call, and this walk broke it twice: once to
@@ -212,7 +222,11 @@ public sealed class WindowsSearchProvider : ISearchProvider
         // order -- while the same query on Linux listed every C# file. A glob
         // is the one search syntax a person is likely to try without being told
         // it exists, and failing it silently reads as "there are no results".
-        var glob = query.Text.Contains('*') || query.Text.Contains('?');
+        var glob = query.IsPattern;
+
+        // Asked once rather than per file. False for a pattern whatever the
+        // box says: a pattern is a question about names.
+        var contents = query.ReadsContents;
 
         // A null scope means "everywhere indexed", and with no index the honest
         // reading is every drive on the machine — which is the phrase the box
@@ -263,11 +277,19 @@ public sealed class WindowsSearchProvider : ISearchProvider
             var directory = pending.Dequeue();
 
             // Materialised per directory so a mid-enumeration failure costs this
-            // folder rather than everything still on the frontier.
-            List<FileEntry> entries;
+            // folder rather than everything still on the frontier — and so no
+            // file is read while the directory handle is still open.
+            //
+            // The raw attributes ride along with each row because FileEntry
+            // has no slot for the one the content read needs: whether the data
+            // is on this disk at all. See Contains.
+            List<(FileEntry Entry, FileAttributes Attributes)> entries;
             try
             {
-                entries = new FileSystemEnumerable<FileEntry>(directory, Transform, options)
+                entries = new FileSystemEnumerable<(FileEntry, FileAttributes)>(
+                        directory,
+                        static (ref FileSystemEntry entry) => (Transform(ref entry), entry.Attributes),
+                        options)
                     .ToList();
             }
             catch (Exception e) when (e is IOException or UnauthorizedAccessException)
@@ -275,14 +297,17 @@ public sealed class WindowsSearchProvider : ISearchProvider
                 continue;
             }
 
-            foreach (var entry in entries)
+            foreach (var (entry, attributes) in entries)
             {
                 // A junction is a name in this folder, so it is matched below
                 // like any other; it is simply not a way in. This is where the
                 // walk terminates now that the attribute no longer hides them.
                 if (entry.IsDirectory && !entry.IsSymlink) pending.Enqueue(entry.FullPath);
 
-                if (!Matches(entry.Name, query.Text, glob, comparison, query.CaseSensitive))
+                // Name first, because it costs nothing: a file whose name
+                // answers is never opened.
+                if (!Matches(entry.Name, query.Text, glob, comparison, query.CaseSensitive)
+                    && !(contents && Contains(entry, attributes, query, ct)))
                     continue;
 
                 yield return entry;
@@ -305,6 +330,47 @@ public sealed class WindowsSearchProvider : ISearchProvider
         => glob
             ? FileSystemName.MatchesSimpleExpression(text, name, ignoreCase: !caseSensitive)
             : name.Contains(text, comparison);
+
+    /// <summary>
+    /// FILE_ATTRIBUTE_OFFLINE, FILE_ATTRIBUTE_RECALL_ON_OPEN and
+    /// FILE_ATTRIBUTE_RECALL_ON_DATA_ACCESS: the three ways a file says its
+    /// data is somewhere other than this disk. The last two have no name in
+    /// <see cref="FileAttributes"/>.
+    /// </summary>
+    internal const FileAttributes HeldOnline =
+        FileAttributes.Offline | (FileAttributes)0x0004_0000 | (FileAttributes)0x0040_0000;
+
+    /// <summary>
+    /// Whether a file's contents answer the question, for an entry whose name
+    /// did not.
+    ///
+    /// **A file held online is not opened, because opening it downloads it.**
+    /// OneDrive, and any other sync client built on the cloud files API,
+    /// leaves a placeholder carrying RECALL_ON_DATA_ACCESS, and reading one
+    /// fetches the whole file — so a content search over a synced folder would
+    /// download everything in it, silently, to answer one question. The
+    /// attribute comes out of the same directory read as the name, so refusing
+    /// costs nothing; the refusal is counted, and the band says how many.
+    ///
+    /// **A link is matched by its name and not read.** What it holds is what
+    /// it points at, which is searched where it lives if it is inside the walk
+    /// at all — and a symbolic link to a share that has gone away blocks in
+    /// the open for the whole SMB timeout, where no Stop can reach it. The same
+    /// flag marks a shortcut, which is binary and so would be refused anyway.
+    /// </summary>
+    internal static bool Contains(
+        FileEntry entry, FileAttributes attributes, SearchQuery query, CancellationToken ct)
+    {
+        if (entry.IsDirectory || entry.IsSymlink) return false;
+
+        if ((attributes & HeldOnline) != 0)
+        {
+            query.Skipped?.CountOnline();
+            return false;
+        }
+
+        return ContentMatcher.Answers(query, entry.FullPath, entry.Length, ct);
+    }
 
     private static FileEntry Transform(ref FileSystemEntry entry)
     {

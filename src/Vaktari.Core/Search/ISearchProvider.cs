@@ -9,9 +9,47 @@ public sealed record SearchQuery
     /// <summary>Null searches everything the provider reaches unscoped.</summary>
     public string? ScopePath { get; init; }
 
+    /// <summary>
+    /// Whether a file whose contents hold the text is an answer as well as one
+    /// whose name does: name OR contents, never contents alone, so ticking the
+    /// box only ever adds rows.
+    ///
+    /// Asked for, not promised — see <see cref="ReadsContents"/> for when a
+    /// walk actually opens anything.
+    /// </summary>
     public bool MatchContent { get; init; }
+
     public bool CaseSensitive { get; init; }
     public int MaxResults { get; init; } = 1000;
+
+    /// <summary>
+    /// Where a search that reads contents counts the files it would not read.
+    /// Null when nobody is going to say the number, which is every caller
+    /// except the pane.
+    /// </summary>
+    public ContentSkips? Skipped { get; init; }
+
+    /// <summary>
+    /// Whether <see cref="Text"/> is a filename pattern rather than a word.
+    ///
+    /// **One rule for both walks and the band.** Each provider had its own
+    /// copy of it — the same two characters, spelled once inline and once as a
+    /// helper — and now the band needs it too, to know whether contents are
+    /// being read. Three copies of a rule part company the first time any of
+    /// them moves.
+    /// </summary>
+    public bool IsPattern => Text.Contains('*') || Text.Contains('?');
+
+    /// <summary>
+    /// Whether a walk opens files for this question: contents were asked for,
+    /// and the text is not a pattern.
+    ///
+    /// **A pattern is a question about names.** "*.txt" asks for files called
+    /// that; nobody typing it means "files with an asterisk in them", and
+    /// reading every file on the drive to look for one would be the most
+    /// expensive way there is to answer a question nobody asked.
+    /// </summary>
+    public bool ReadsContents => MatchContent && !IsPattern;
 }
 
 /// <summary>
@@ -75,6 +113,19 @@ public interface ISearchProvider
     /// </summary>
     string BackendName { get; }
 
+    /// <summary>
+    /// Whether <see cref="SearchQuery.MatchContent"/> reaches anything here,
+    /// which is what decides whether the band draws the "Search contents" box.
+    ///
+    /// **It was true for Baloo alone and nothing read it.** No caller set
+    /// MatchContent either, so the one backend that could search inside files
+    /// never did — it searched names and contents together whatever was asked,
+    /// because that is what baloosearch does. Both shipped providers answer
+    /// true now: Baloo by its index, and both walks by ContentMatcher.
+    ///
+    /// No default, unlike the members around it: a provider has to say, the
+    /// way it has to say its <see cref="BackendName"/>.
+    /// </summary>
     bool SupportsContentSearch { get; }
 
     /// <summary>

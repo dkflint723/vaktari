@@ -128,6 +128,23 @@ public static class ContentMatcher
     }
 
     /// <summary>
+    /// The walks' one call: whether this file's contents answer the query.
+    ///
+    /// Shared so that the refusal a search has to own up to is counted in one
+    /// place. Both walks would otherwise each switch on the verdict, and the
+    /// first to forget the TooLarge arm would drop files from its answers
+    /// without the band ever hearing about them.
+    /// </summary>
+    public static bool Answers(SearchQuery query, string path, long length, CancellationToken ct)
+    {
+        var verdict = FileContains(path, length, query.Text, query.CaseSensitive, ct);
+
+        if (verdict == ContentVerdict.TooLarge) query.Skipped?.CountTooLarge();
+
+        return verdict == ContentVerdict.Found;
+    }
+
+    /// <summary>
     /// The reading half of <see cref="FileContains"/>, on any stream, so the
     /// encoding and buffer-edge rules can be tested without a file.
     ///
