@@ -50,22 +50,26 @@ public static class VirtualPaths
     /// the whole selection machinery need to know nothing about where they
     /// came from.
     ///
-    /// **Shape: prefix, query, origin, scope, case — four fields, three colons.**
+    /// **Shape: prefix, query, origin, scope, case, contents — five fields,
+    /// four colons.**
     ///
-    ///   vaktari:search:report:C%3A%5CUsers%5Cme:here:any
-    ///   vaktari:search:%2A.cs::everywhere:case
+    ///   vaktari:search:report:C%3A%5CUsers%5Cme:here:any:names
+    ///   vaktari:search:%2A.cs::everywhere:case:contents
     ///
     /// The CASE field is what makes <see cref="Core.Search.SearchQuery.CaseSensitive"/>
-    /// reachable. It is a field of the path for the same reason the scope is:
-    /// asking the same question two ways is being in two places, so Back
-    /// returns to the answer you had instead of re-running it, and a tab
-    /// restored from the session file comes back asking what it was asking.
+    /// reachable, and the CONTENTS field does the same for
+    /// <see cref="Core.Search.SearchQuery.MatchContent"/>. Each is a field of
+    /// the path for the same reason the scope is: asking the same question two
+    /// ways is being in two places, so Back returns to the answer you had
+    /// instead of re-running it, and a tab restored from the session file — or
+    /// a saved search clicked in places — comes back asking what it was asking.
     ///
-    /// **Three fields still parse, and that is not politeness.** Every path
-    /// here goes into session.json verbatim — <c>PaneViewModel.ToTabState</c>
-    /// writes <c>Path = CurrentPath</c> — so every search tab left open by a
-    /// build older than this one comes back with three. Rejecting those would
-    /// turn them into empty searches at the next start.
+    /// **Three and four fields still parse, and that is not politeness.** Every
+    /// path here goes into session.json verbatim — <c>PaneViewModel.ToTabState</c>
+    /// writes <c>Path = CurrentPath</c> — and into places when a search is
+    /// saved, so every search kept by an older build comes back with three or
+    /// four. Rejecting those would turn them into empty searches at the next
+    /// start.
     ///
     /// The ORIGIN is carried even when the search is unscoped, and that is the
     /// whole reason there is a separate flag rather than just an empty scope:
@@ -96,6 +100,14 @@ public static class VirtualPaths
     /// </summary>
     private const string Cased = "case";
     private const string AnyCase = "any";
+
+    /// <summary>
+    /// The contents field's two words, spelled out for the same reason: a
+    /// four-field path is an old one, and means names only because that is
+    /// all a search could match when it was written.
+    /// </summary>
+    private const string Contents = "contents";
+    private const string NamesOnly = "names";
 
     /// <summary>
     /// One key for every search, so a view is remembered as "how I like
@@ -176,12 +188,14 @@ public static class VirtualPaths
     public static bool IsDuplicates(string? path)
         => path is not null && path.StartsWith(DuplicatesPrefix, StringComparison.Ordinal);
 
-    public static string Search(string query, string? origin, bool scoped, bool matchCase = false)
+    public static string Search(
+        string query, string? origin, bool scoped, bool matchCase = false, bool matchContent = false)
         => SearchPrefix
            + Uri.EscapeDataString(query) + ":"
            + Uri.EscapeDataString(origin ?? "") + ":"
            + (scoped && !string.IsNullOrEmpty(origin) ? Here : Everywhere) + ":"
-           + (matchCase ? Cased : AnyCase);
+           + (matchCase ? Cased : AnyCase) + ":"
+           + (matchContent ? Contents : NamesOnly);
 
     public static bool IsSearch(string? path)
         => path is not null && path.StartsWith(SearchPrefix, StringComparison.Ordinal);
@@ -222,13 +236,19 @@ public static class VirtualPaths
     ///
     /// **The origin is carried even when the search is unscoped, and nothing
     /// reads it then.** <c>SearchListing</c> is the only place that builds a
-    /// <c>SearchQuery</c>, and it takes exactly three fields — <c>QueryOf</c>,
-    /// <c>ScopeOf</c> and <c>MatchesCase</c> — so "report" everywhere from
-    /// C:\Alpha and "report" everywhere from C:\Beta are two strings naming
-    /// one search with one answer. Kept in the path all the same, because the
-    /// origin is what "This folder only" narrows to and what Go to location
-    /// leaves the results for; it is the wrong thing to compare on, not the
-    /// wrong thing to store.
+    /// <c>SearchQuery</c>, and it takes exactly four fields — <c>QueryOf</c>,
+    /// <c>ScopeOf</c>, <c>MatchesCase</c> and <c>MatchesContent</c> — so
+    /// "report" everywhere from C:\Alpha and "report" everywhere from C:\Beta
+    /// are two strings naming one search with one answer. Kept in the path all
+    /// the same, because the origin is what "This folder only" narrows to and
+    /// what Go to location leaves the results for; it is the wrong thing to
+    /// compare on, not the wrong thing to store.
+    ///
+    /// **Rebuilt from those four fields, scoped or not, so an old spelling
+    /// and a new one are one question.** A scoped search used to be its own
+    /// identity, verbatim — and a search saved by a build that wrote four
+    /// fields would then never be the same question as the five-field path
+    /// the pane writes for it now, so asking it again would leave two rows.
     ///
     /// Not <see cref="SamePlace"/>, and the two must not be merged: that one
     /// answers "am I already here", where two spellings of one question ARE two
@@ -236,7 +256,7 @@ public static class VirtualPaths
     /// this the same question", which is what a history has one row per.
     /// </summary>
     public static string SearchIdentity(string path)
-        => IsScoped(path) ? path : Search(QueryOf(path), null, false, MatchesCase(path));
+        => Search(QueryOf(path), ScopeOf(path), IsScoped(path), MatchesCase(path), MatchesContent(path));
 
     /// <summary>
     /// Whether the capitals in the question are part of it.
@@ -248,6 +268,15 @@ public static class VirtualPaths
     /// a session file edited by hand all have to get one answer.
     /// </summary>
     public static bool MatchesCase(string path) => Part(path, 3) == Cased;
+
+    /// <summary>
+    /// Whether a file's contents can answer, as well as its name.
+    ///
+    /// **Absent means no**, for the reason it does for the case field: a path
+    /// written before this field existed asked about names, because names were
+    /// all a search could match.
+    /// </summary>
+    public static bool MatchesContent(string path) => Part(path, 4) == Contents;
 
     /// <summary>
     /// Whether two places are the same place, for the pane's "you are already
@@ -289,11 +318,12 @@ public static class VirtualPaths
     /// the session file and come back at startup; a hand-edited or truncated
     /// one must give an empty search, not stop the window opening.
     ///
-    /// **Three OR four, because the case field arrived after the other three.**
-    /// A tab left open on a search by an older build is in session.json with
-    /// three, and a parser that demanded four would reopen it as an empty
-    /// search. The missing field reads as "" and so as
-    /// <see cref="AnyCase"/> — the behaviour those paths were written under.
+    /// **Three, four OR five, because the case field and then the contents
+    /// field arrived after the first three.** A tab left open on a search by an
+    /// older build is in session.json with three or four, and a parser that
+    /// demanded five would reopen it as an empty search. A missing field reads
+    /// as "" and so as <see cref="AnyCase"/> or <see cref="NamesOnly"/> — the
+    /// behaviour those paths were written under.
     /// </summary>
     private static string Part(string path, int index)
     {
@@ -301,7 +331,7 @@ public static class VirtualPaths
 
         var parts = path[SearchPrefix.Length..].Split(':');
 
-        if (parts.Length is not (3 or 4)) return "";
+        if (parts.Length is not (3 or 4 or 5)) return "";
 
         if (index >= parts.Length) return "";
 

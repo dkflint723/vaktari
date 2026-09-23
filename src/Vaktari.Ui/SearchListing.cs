@@ -66,6 +66,10 @@ public static class SearchListing
         // they name.
         CaseSensitive = VirtualPaths.MatchesCase(path),
 
+        // Off the path for the same reason, so a saved search asks about
+        // contents again when it is clicked.
+        MatchContent = VirtualPaths.MatchesContent(path),
+
         MaxResults = limit + 1,
     };
 
@@ -90,6 +94,11 @@ public static class SearchListing
     /// because the cap is applied there. That is also why the break is here
     /// rather than left to the backend: Baloo is somebody else's program, and
     /// MaxResults is a request rather than a guarantee.
+    ///
+    /// <paramref name="skipped"/> is where the backend counts the files a
+    /// content search would not read. Handed in rather than handed back
+    /// because a stopped search never reaches the end of this method, and
+    /// what it skipped before the Stop is still worth saying.
     /// </summary>
     public static async IAsyncEnumerable<IReadOnlyList<FileEntry>> EnumerateAsync(
         ISearchProvider? search,
@@ -97,7 +106,8 @@ public static class SearchListing
         ListingOptions options,
         [System.Runtime.CompilerServices.EnumeratorCancellation] CancellationToken ct,
         int limit = Limit,
-        Action? onCapped = null)
+        Action? onCapped = null,
+        ContentSkips? skipped = null)
     {
         // An absent backend is an EMPTY listing, not a crash. The pane's empty
         // state is what says which of the two it is.
@@ -107,7 +117,7 @@ public static class SearchListing
 
         if (text.Length == 0) { yield return []; yield break; }
 
-        var query = QueryFor(path, limit);
+        var query = QueryFor(path, limit) with { Skipped = skipped };
 
         var batch = new List<FileEntry>(Batch);
 

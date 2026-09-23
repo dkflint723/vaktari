@@ -2264,6 +2264,11 @@ public sealed partial class PaneViewModel : ObservableObject, IDisposable
             OnPropertyChanged(nameof(SearchScopedHere));
             OnPropertyChanged(nameof(SearchScopeLabel));
             OnPropertyChanged(nameof(SearchMatchesCase));
+            OnPropertyChanged(nameof(SearchesContents));
+
+            // The box's tooltip asks the backend about this question, the way
+            // the warning below does, and for the same reason.
+            OnPropertyChanged(nameof(SearchContentsHint));
 
             // Both read the PATH now — the warning asks the backend about this
             // particular question, and the sentence names the folder the scope
@@ -3083,6 +3088,11 @@ public sealed partial class PaneViewModel : ObservableObject, IDisposable
         // without going through one.
         SearchHitLimit = false;
 
+        // Same reason, and a fresh tally for the same one: the next question's
+        // count starts at nothing whether or not this one finished.
+        SearchSkippedLine = "";
+        var skips = _searchSkips = new Core.Search.ContentSkips();
+
         // Same reason: the band would otherwise carry the last folder's total
         // while the next one is still being walked.
         //
@@ -3141,7 +3151,7 @@ public sealed partial class PaneViewModel : ObservableObject, IDisposable
             : path == VirtualPaths.Computer ? ComputerListing.EnumerateAsync(Places, ct)
             : VirtualPaths.IsSearch(path)
                 ? SearchListing.EnumerateAsync(
-                    Search, path, options, ct, SearchLimit, () => capped = true)
+                    Search, path, options, ct, SearchLimit, () => capped = true, skips)
             : VirtualPaths.IsUsage(path)
                 ? SpaceListing.EnumerateAsync(
                     VirtualPaths.FolderOf(path), ShowHidden, progress: null, ct,
@@ -3276,6 +3286,9 @@ public sealed partial class PaneViewModel : ObservableObject, IDisposable
                 // than where the truncation was noticed: it is noticed on the
                 // pool, and the band binds to this.
                 SearchHitLimit = capped;
+
+                // Beside it: counted on the pool by the walk, said here.
+                SearchSkippedLine = SkippedLine(skips);
 
                 // Beside it, and for the same reason: the total is worked out
                 // on the pool, and the band binds to this.

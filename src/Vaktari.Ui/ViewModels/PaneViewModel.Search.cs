@@ -1,6 +1,7 @@
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using Vaktari.Core.FileSystem;
+using Vaktari.Core.Search;
 
 namespace Vaktari.Ui.ViewModels;
 
@@ -10,8 +11,9 @@ namespace Vaktari.Ui.ViewModels;
 ///
 /// **A search is a PLACE here, not a panel** — see VirtualPaths — so the rows
 /// arrive in Entries like any other listing and this file is only what is left
-/// over: the box and its draft, the scope and the case, what the backend can
-/// and cannot promise, and the cap with the offer to go past it.
+/// over: the box and its draft, the scope, the case and the contents, what the
+/// backend can and cannot promise, what it would not read, and the cap with
+/// the offer to go past it.
 ///
 /// Sits beside PaneViewModel.SearchHistory, which remembers what was asked
 /// before. Split out under roadmap 22; nothing moved changed.
@@ -49,10 +51,12 @@ public sealed partial class PaneViewModel
             // lands; without the guard that write starts a second navigation.
             if (!IsSearchListing || value == SearchScopedHere) return;
 
-            // The case flag is carried, not defaulted: narrowing a search you
-            // had asked to match capitals must not quietly widen it back.
+            // The case and contents flags are carried, not defaulted: narrowing
+            // a search you had asked to match capitals must not quietly widen
+            // it back.
             _ = NavigateAsync(VirtualPaths.Search(
-                SearchQueryText, VirtualPaths.OriginOf(CurrentPath), value, SearchMatchesCase));
+                SearchQueryText, VirtualPaths.OriginOf(CurrentPath), value,
+                SearchMatchesCase, SearchesContents));
         }
     }
 
@@ -96,9 +100,66 @@ public sealed partial class PaneViewModel
             if (!IsSearchListing || value == SearchMatchesCase) return;
 
             _ = NavigateAsync(VirtualPaths.Search(
-                SearchQueryText, VirtualPaths.OriginOf(CurrentPath), SearchScopedHere, value));
+                SearchQueryText, VirtualPaths.OriginOf(CurrentPath), SearchScopedHere,
+                value, SearchesContents));
         }
     }
+
+    /// <summary>
+    /// Whether this backend can look inside files, which decides whether the
+    /// "Search contents" box is drawn. Both shipped providers can; the null
+    /// provider cannot, and nor can one that says it cannot.
+    ///
+    /// No change notification, on the same ordering <see cref="CanMatchCase"/>
+    /// stands on.
+    /// </summary>
+    public bool CanSearchContents => Search?.SupportsContentSearch ?? false;
+
+    /// <summary>
+    /// Whether a file's contents can answer, as well as its name.
+    ///
+    /// **SearchQuery.MatchContent had no writer, like CaseSensitive before
+    /// it**, and on Windows no reader either: the one backend that could look
+    /// inside files was Baloo, which did so whatever it was asked. Shaped
+    /// exactly like <see cref="SearchMatchesCase"/> — read off the path,
+    /// written by navigating — so the answer with contents and the answer
+    /// without are two places, and Back goes from one to the other without
+    /// reading every file again.
+    ///
+    /// Off by default, and a fresh search from a folder starts off, because
+    /// reading every text file is a different order of cost from reading
+    /// names, and the person asking is the one who should decide to pay it.
+    /// </summary>
+    public bool SearchesContents
+    {
+        get => VirtualPaths.MatchesContent(CurrentPath);
+        set
+        {
+            // The navigation below raises this property again as the path
+            // lands; without the guard that write starts a second navigation.
+            if (!IsSearchListing || value == SearchesContents) return;
+
+            _ = NavigateAsync(VirtualPaths.Search(
+                SearchQueryText, VirtualPaths.OriginOf(CurrentPath), SearchScopedHere,
+                SearchMatchesCase, value));
+        }
+    }
+
+    /// <summary>
+    /// The box's tooltip, which has to say what ticking it costs — and that
+    /// depends on who is answering.
+    ///
+    /// **An index has already read the files; a walk has to.** Over Baloo the
+    /// tick costs nothing and reaches whatever Baloo extracts text from, PDFs
+    /// and office documents included. Over a walk it reads every plain-text
+    /// file in reach, one after another, and nothing else — so the same words
+    /// on both would be a promise one of them does not keep.
+    /// </summary>
+    public string SearchContentsHint =>
+        Search is { } backend && backend.AnswersFromIndex(SearchListing.QueryFor(CurrentPath, SearchLimit))
+            ? "Also find files by the words in them, as the index has read them"
+            : "Also find plain-text files by what is in them. Each one is read, so it is slower, "
+              + "and a pattern such as *.pdf still matches names only";
 
     /// <summary>
     /// The box's own words, which carry the truth when it is disabled — a box
@@ -227,11 +288,12 @@ public sealed partial class PaneViewModel
         // nothing left to show and the crumbs can have their width back.
         IsSearchOpen = false;
 
-        // Case carries the same way the scope does, and needs no IsSearchListing
-        // clause of its own: MatchesCase answers false for a folder path, so a
-        // search begun from a folder starts case-insensitive and one refined
-        // from a search keeps what it was set to.
-        _ = NavigateAsync(VirtualPaths.Search(text, origin, scoped, SearchMatchesCase));
+        // Case and contents carry the same way the scope does, and need no
+        // IsSearchListing clause of their own: both answer false for a folder
+        // path, so a search begun from a folder starts case-insensitive and
+        // names-only, and one refined from a search keeps what it was set to.
+        _ = NavigateAsync(VirtualPaths.Search(
+            text, origin, scoped, SearchMatchesCase, SearchesContents));
     }
 
     /// <summary>
@@ -286,13 +348,22 @@ public sealed partial class PaneViewModel
     /// on screen, so "searching by reading every folder" would have gone on
     /// claiming a search was running for ever. Read in turn is how this search
     /// works, during and after.
+    ///
+    /// **And it says what is read, which the contents box changes.** Names
+    /// come from the folders; contents come from opening every text file in
+    /// them, which is the slow part and the part worth being told about.
+    /// Asked of the same query the walk runs, so a pattern — which reads
+    /// names only whatever the box says — is not claimed to read files.
     /// </summary>
     public string SearchBackendLine =>
         (VirtualPaths.ScopeOf(CurrentPath) is { Length: > 0 } scope
-            ? $"every folder in {FolderName(scope)} is read in turn — "
+            ? $"every {WhatIsRead} in {FolderName(scope)} is read in turn — "
               + "there is no index on this machine"
-            : "every folder is read in turn — there is no index on this machine")
+            : $"every {WhatIsRead} is read in turn — there is no index on this machine")
         + SearchCaveat;
+
+    private string WhatIsRead =>
+        SearchListing.QueryFor(CurrentPath).ReadsContents ? "folder and text file" : "folder";
 
     /// <summary>
     /// What the backend leaves out, appended to the line above. **A walk that
@@ -354,9 +425,56 @@ public sealed partial class PaneViewModel
         IsLoading = false;
         IsLoaded = true;
 
+        // The completion block that says this for a finished search is never
+        // reached by a stopped one, and what was skipped before the Stop is
+        // still missing from the results being kept.
+        SearchSkippedLine = SkippedLine(_searchSkips);
+
         Status = Entries.Count == 0
             ? "stopped"
             : $"stopped — {Entries.Count:N0} results so far";
+    }
+
+    /// <summary>
+    /// Where the running search counts the files it would not read. A fresh
+    /// one per load, made where the load starts, so a count can never carry
+    /// from one question into the next.
+    /// </summary>
+    private ContentSkips? _searchSkips;
+
+    /// <summary>
+    /// What a content search left unread, once it has stopped. Empty when
+    /// nothing was.
+    ///
+    /// **A file the search would not read is one it cannot say the text is not
+    /// in.** Refusing a 2 GB log is right, and so is refusing to download
+    /// every file in a synced folder to look inside it — but either, unsaid,
+    /// turns "I did not look" into "it is not there".
+    /// </summary>
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(HasSearchSkipped))]
+    private string _searchSkippedLine = "";
+
+    public bool HasSearchSkipped => SearchSkippedLine.Length > 0;
+
+    /// <summary>The sentence itself, apart from the pane so its grammar can be pinned.</summary>
+    internal static string SkippedLine(ContentSkips? skips)
+    {
+        if (skips is null) return "";
+
+        var parts = new List<string>(2);
+
+        if (skips.TooLarge is var large and > 0)
+            parts.Add(large == 1
+                ? $"1 file over {ContentMatcher.MaxBytes / (1024 * 1024)} MB was not read"
+                : $"{large:N0} files over {ContentMatcher.MaxBytes / (1024 * 1024)} MB were not read");
+
+        if (skips.Online is var online and > 0)
+            parts.Add(online == 1
+                ? "1 file kept online was not downloaded to be read"
+                : $"{online:N0} files kept online were not downloaded to be read");
+
+        return string.Join("; ", parts);
     }
 
     /// <summary>

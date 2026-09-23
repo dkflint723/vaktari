@@ -13,6 +13,19 @@ should not be trusted for compatibility yet.
 
 ### Added
 
+- **A search can look inside files.** A *Search contents* box on the band
+  above the results finds a file by what is in it as well as by its name.
+  With no index to ask — always on Windows, and on Linux where Baloo is not
+  indexing — each plain-text file is opened and read in turn, which is
+  slower, and the band says so; *Stop* still stops it straight away. Files
+  over 64 MB are not opened, and on Windows nor is a file a sync client
+  keeps online, because opening it would download it; the band says how
+  many of each were left unread. Off by default, and part of the search, so
+  Back, the history and a saved search all ask it the same way again. On a
+  KDE desktop the box works in both directions: cleared, Baloo's answers
+  are narrowed to the files named for the words, where before they took in
+  files matched on their contents whether you wanted those or not.
+
 - **There can be a folder tree in the sidebar.** Settings ▸ Views turns on
   a *FOLDERS* section under your places, rooted at each of them, and it
   follows the pane: going somewhere opens the branch that leads there. It

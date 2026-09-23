@@ -137,8 +137,8 @@ public sealed class JsonSearchHistory : ISearchHistory
             // different folders, were two entries drawing two identical rows.**
             // The origin is in the path whether or not it is the scope, and it
             // is read by nothing when it is not: SearchListing builds its query
-            // out of QueryOf, ScopeOf and MatchesCase, and ScopeOf is null for
-            // both. So the menu offered the same question twice, spelled the
+            // out of QueryOf, ScopeOf, MatchesCase and MatchesContent, and
+            // ScopeOf is null for both. So the menu offered the same question twice, spelled the
             // same and answering the same, and the store's own promise that
             // asking again moves an entry rather than adding one was off for
             // every unscoped search.
