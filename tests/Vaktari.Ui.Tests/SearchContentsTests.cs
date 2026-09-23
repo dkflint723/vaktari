@@ -729,13 +729,24 @@ public sealed class SearchContentsTests : OwnedViewModels
             var band = window.GetVisualDescendants().OfType<DockPanel>()
                 .First(d => d.Name == "SearchBand" && d.IsEffectivelyVisible);
 
-            var boxes = new[] { "SearchScope", "SearchCase", "SearchContents", "SearchStop", "SearchSave" }
+            var all = new[] { "SearchScope", "SearchCase", "SearchContents", "SearchStop", "SearchSave" }
                 .Select(name => band.GetVisualDescendants().OfType<Control>().Single(c => c.Name == name))
                 .Select(c => (c.Name, Box: new Rect(c.TranslatePoint(default, band)!.Value, c.Bounds.Size),
                               c.IsEffectivelyVisible))
                 .ToList();
 
-            Assert.All(boxes, b => Assert.True(b.IsEffectivelyVisible, $"{b.Name} is not showing"));
+            // **Match case is drawn where the platform's own backend honours
+            // capitals, and only there.** CanMatchCase has no change
+            // notification, so the box is decided as the window is built —
+            // before this test hands over its fake — from the platform
+            // provider: shown on Windows, never on Linux, as in the real
+            // application. Every other control must show on both; four still
+            // come to more than this pane can hold on one line.
+            Assert.All(all.Where(b => b.Name != "SearchCase"),
+                       b => Assert.True(b.IsEffectivelyVisible, $"{b.Name} is not showing"));
+
+            var boxes = all.Where(b => b.IsEffectivelyVisible).ToList();
+            var checks = boxes.Where(b => b.Name is "SearchScope" or "SearchCase" or "SearchContents").ToList();
 
             foreach (var a in boxes)
             {
@@ -749,10 +760,10 @@ public sealed class SearchContentsTests : OwnedViewModels
 
             // One line each: a box squeezed narrower than its label wraps it,
             // and comes out taller than the others.
-            var heights = boxes.Take(3).Select(b => b.Box.Height).Distinct().ToList();
+            var heights = checks.Select(b => b.Box.Height).Distinct().ToList();
 
             Assert.True(heights.Count == 1, "a box was squeezed onto more than one line: "
-                                            + string.Join(", ", boxes.Take(3).Select(b => $"{b.Name} {b.Box.Height}")));
+                                            + string.Join(", ", checks.Select(b => $"{b.Name} {b.Box.Height}")));
         }
         finally
         {
