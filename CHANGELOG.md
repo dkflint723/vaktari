@@ -16,15 +16,20 @@ should not be trusted for compatibility yet.
 - **A search can look inside files.** A *Search contents* box on the band
   above the results finds a file by what is in it as well as by its name.
   With no index to ask — always on Windows, and on Linux where Baloo is not
-  indexing — each plain-text file is opened and read in turn, which is
-  slower, and the band says so; *Stop* still stops it straight away. Files
-  over 64 MB are not opened, and on Windows nor is a file a sync client
-  keeps online, because opening it would download it; the band says how
-  many of each were left unread. Off by default, and part of the search, so
-  Back, the history and a saved search all ask it the same way again. On a
-  KDE desktop the box works in both directions: cleared, Baloo's answers
-  are narrowed to the files named for the words, where before they took in
-  files matched on their contents whether you wanted those or not.
+  indexing — every file is opened in turn and the plain-text ones read,
+  which is slower, and the band says so — on Linux also when Baloo is
+  installed but had nothing to say; *Stop* still works, between one 64 KiB
+  read and the next. Files over 64 MiB are not opened, and nor is a file
+  kept online — a sync client's online-only file on Windows, a network or
+  cloud mount the search walked into on Linux — because opening it would
+  download it; the band says how many of each were left unread. Hidden
+  files are opened only when hidden files are shown, and a pattern such as
+  `*.pdf` is not offered the box at all. Off by default, and part of the
+  search, so Back, the history and a saved search all ask it the same way
+  again. On a KDE desktop the box works in both directions: cleared,
+  Baloo's answers are narrowed to the files named for the words, where
+  before they took in files matched on their contents whether you wanted
+  those or not.
 
 - **There can be a folder tree in the sidebar.** Settings ▸ Views turns on
   a *FOLDERS* section under your places, rooted at each of them, and it

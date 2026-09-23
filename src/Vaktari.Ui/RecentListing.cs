@@ -60,9 +60,10 @@ public static class VirtualPaths
     /// reachable, and the CONTENTS field does the same for
     /// <see cref="Core.Search.SearchQuery.MatchContent"/>. Each is a field of
     /// the path for the same reason the scope is: asking the same question two
-    /// ways is being in two places, so Back returns to the answer you had
-    /// instead of re-running it, and a tab restored from the session file — or
-    /// a saved search clicked in places — comes back asking what it was asking.
+    /// ways is being in two places, so Back returns to the question you had
+    /// asked — asked again, since nothing is cached — and a tab restored from
+    /// the session file, or a saved search clicked in places, comes back
+    /// asking what it was asking.
     ///
     /// **Three and four fields still parse, and that is not politeness.** Every
     /// path here goes into session.json verbatim — <c>PaneViewModel.ToTabState</c>
@@ -257,6 +258,24 @@ public static class VirtualPaths
     /// </summary>
     public static string SearchIdentity(string path)
         => Search(QueryOf(path), ScopeOf(path), IsScoped(path), MatchesCase(path), MatchesContent(path));
+
+    /// <summary>
+    /// Whether two pinned places are one pin: the same question for two
+    /// searches, <see cref="PathRules.Same"/> for anything else.
+    ///
+    /// **A search saved by an older build is spelled differently from the one
+    /// the pane writes now**, one field shorter, and a pin is compared by its
+    /// path. Compared as strings, saving the same search again pinned a second
+    /// row under the same name, and the first stopped lighting up as the place
+    /// you were in. And <see cref="PathRules.Same"/> is OrdinalIgnoreCase on
+    /// Windows, which made a search minding its capitals for "README" the same
+    /// pin as one for "readme".
+    /// </summary>
+    public static bool SamePin(string? a, string? b)
+        => IsSearch(a) || IsSearch(b)
+            ? IsSearch(a) && IsSearch(b)
+              && string.Equals(SearchIdentity(a!), SearchIdentity(b!), StringComparison.Ordinal)
+            : PathRules.Same(a, b);
 
     /// <summary>
     /// Whether the capitals in the question are part of it.

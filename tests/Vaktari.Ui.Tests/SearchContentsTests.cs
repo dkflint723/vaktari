@@ -1,7 +1,10 @@
 using System.Runtime.CompilerServices;
 using System.Xml.Linq;
+using Avalonia;
+using Avalonia.Controls;
 using Avalonia.Headless.XUnit;
 using Avalonia.Threading;
+using Avalonia.VisualTree;
 using Vaktari.Core.FileSystem;
 using Vaktari.Core.Search;
 using Vaktari.Ui;
@@ -124,6 +127,27 @@ public sealed class SearchContentsTests : OwnedViewModels
         }
 
         Assert.Equal(contents, backend.Asked!.MatchContent);
+    }
+
+    /// <summary>
+    /// **The hidden-files setting reaches the backend**, so a content search
+    /// does not open files whose rows would be dropped. Both ways round, so a
+    /// constant cannot pass.
+    /// </summary>
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public async Task The_hidden_files_setting_decides_what_is_opened(bool includeHidden)
+    {
+        var backend = new Recording();
+
+        await foreach (var _ in SearchListing.EnumerateAsync(
+            backend, VirtualPaths.Search("report", null, false, matchContent: true),
+            new ListingOptions { IncludeHidden = includeHidden }, CancellationToken.None))
+        {
+        }
+
+        Assert.Equal(includeHidden, backend.Asked!.ReadsConcealed);
     }
 
     /// <summary>
@@ -324,6 +348,33 @@ public sealed class SearchContentsTests : OwnedViewModels
     public async Task One_that_cannot_is_not()
         => Assert.False((await Searching(Folder, true, backend: new Recording { Contents = false })).CanSearchContents);
 
+    /// <summary>
+    /// **Not for a pattern.** "*.pdf" is a question about names whatever the
+    /// box says, so a box beside it would walk again to the same answer. The
+    /// same backend, the same pane, asked two ways — and asserted in the
+    /// hidden direction, which is the one a dead binding cannot pass.
+    /// </summary>
+    [AvaloniaFact]
+    public async Task A_pattern_is_not_offered_the_box()
+    {
+        var pane = Own(new PaneViewModel(new NoDisk()));
+
+        UseSearch(new Recording { Contents = true });
+
+        await pane.NavigateAsync(VirtualPaths.Search("report", Folder, true));
+        Assert.True(pane.CanSearchContents);
+
+        var announced = new List<string>();
+        pane.PropertyChanged += (_, e) => announced.Add(e.PropertyName ?? "");
+
+        await pane.NavigateAsync(VirtualPaths.Search("*.pdf", Folder, true));
+
+        Assert.False(pane.CanSearchContents);
+
+        // Raised as the path moved, or a bound box would keep what it had.
+        Assert.Contains(nameof(PaneViewModel.CanSearchContents), announced);
+    }
+
     [AvaloniaFact]
     public async Task With_no_backend_there_is_no_box()
     {
@@ -347,13 +398,50 @@ public sealed class SearchContentsTests : OwnedViewModels
     {
         var walked = await Searching(Folder, true, backend: new Recording { Indexes = _ => false });
 
-        Assert.Contains("Each one is read", walked.SearchContentsHint, StringComparison.Ordinal);
+        Assert.Contains("Every file is opened", walked.SearchContentsHint, StringComparison.Ordinal);
         Assert.Contains("plain-text", walked.SearchContentsHint, StringComparison.Ordinal);
 
         var indexed = await Searching(Folder, true, backend: new Recording { Indexes = _ => true });
 
         Assert.Contains("as the index has read them", indexed.SearchContentsHint, StringComparison.Ordinal);
-        Assert.DoesNotContain("Each one is read", indexed.SearchContentsHint, StringComparison.Ordinal);
+        Assert.DoesNotContain("Every file is opened", indexed.SearchContentsHint, StringComparison.Ordinal);
+    }
+
+    /// <summary>
+    /// **An index that had nothing is said, while the walk behind it runs.**
+    /// On a KDE desktop the band decides before Baloo has answered, and Baloo
+    /// installed but switched off answers nothing — so the walk that followed,
+    /// which with the box ticked opens every file in reach, ran under a band
+    /// that said nothing at all. The sentence names the index as having had
+    /// nothing rather than claiming there is none, because there is one.
+    /// </summary>
+    [AvaloniaFact]
+    public async Task An_index_that_had_nothing_is_said_while_the_walk_runs()
+    {
+        var pane = Own(new PaneViewModel(new NoDisk()));
+        var backend = new Recording { Indexes = _ => true, WalksInstead = true };
+
+        UseSearch(backend);
+
+        var announced = new List<string>();
+        pane.PropertyChanged += (_, e) => announced.Add(e.PropertyName ?? "");
+
+        await pane.NavigateAsync(VirtualPaths.Search("report", null, false, matchContent: true));
+        await WaitUntil(() => pane.SearchUnindexed);
+
+        Assert.Equal("every folder and file is read in turn — the index had nothing for this",
+                     pane.SearchBackendLine);
+        Assert.Contains("Every file is opened", pane.SearchContentsHint, StringComparison.Ordinal);
+        Assert.Contains(nameof(PaneViewModel.SearchUnindexed), announced);
+
+        // And it belongs to that load: the next question, which the index
+        // does answer, is not said to have been walked.
+        backend.WalksInstead = false;
+
+        await pane.NavigateAsync(VirtualPaths.Search("invoice", null, false, matchContent: true));
+        await WaitUntil(() => !pane.IsLoading && pane.SearchQueryText == "invoice");
+
+        Assert.False(pane.SearchUnindexed);
     }
 
     /// <summary>
@@ -370,7 +458,7 @@ public sealed class SearchContentsTests : OwnedViewModels
 
         var contents = await Searching(null, scoped: false, contents: true);
 
-        Assert.Equal("every folder and text file is read in turn — there is no index on this machine",
+        Assert.Equal("every folder and file is read in turn — there is no index on this machine",
                      contents.SearchBackendLine);
     }
 
@@ -419,7 +507,7 @@ public sealed class SearchContentsTests : OwnedViewModels
         var one = new ContentSkips();
         one.CountTooLarge();
 
-        Assert.Equal("1 file over 64 MB was not read", PaneViewModel.SkippedLine(one));
+        Assert.Equal("1 file over 64 MiB was not read", PaneViewModel.SkippedLine(one));
 
         var many = new ContentSkips();
         for (var i = 0; i < 1200; i++) many.CountTooLarge();
@@ -427,7 +515,7 @@ public sealed class SearchContentsTests : OwnedViewModels
         many.CountOnline();
 
         Assert.Equal(
-            "1,200 files over 64 MB were not read; 2 files kept online were not downloaded to be read",
+            "1,200 files over 64 MiB were not read; 2 files kept online were not downloaded to be read",
             PaneViewModel.SkippedLine(many));
     }
 
@@ -447,7 +535,7 @@ public sealed class SearchContentsTests : OwnedViewModels
         await WaitUntil(() => !pane.IsLoading);
 
         Assert.True(pane.HasSearchSkipped);
-        Assert.Equal("3 files over 64 MB were not read", pane.SearchSkippedLine);
+        Assert.Equal("3 files over 64 MiB were not read", pane.SearchSkippedLine);
     }
 
     /// <summary>
@@ -517,7 +605,7 @@ public sealed class SearchContentsTests : OwnedViewModels
         pane.StopSearchCommand.Execute(null);
 
         Assert.False(pane.IsLoading);
-        Assert.Equal("1 file over 64 MB was not read", pane.SearchSkippedLine);
+        Assert.Equal("1 file over 64 MiB was not read", pane.SearchSkippedLine);
     }
 
     // ---- the history row and the saved search --------------------------------
@@ -598,6 +686,77 @@ public sealed class SearchContentsTests : OwnedViewModels
         Assert.Equal("{Binding HasSearchSkipped}", (string?)line.Attribute("IsVisible"));
     }
 
+    /// <summary>
+    /// **In a narrow pane every control keeps its size, and the boxes wrap.**
+    /// On one docked row, three boxes, a Stop and Save search did not fit a
+    /// narrow pane, and what gave way was the boxes — measured here with the
+    /// old markup, a 321-pixel band gave Match case and Search contents no
+    /// width at all, so they vanished while still "visible", and squeezed
+    /// "Only in Temp" into 61 pixels over three lines. A real window at that
+    /// width with every control up: a backend that honours capitals, and a
+    /// search still running so Stop shows. Every control must have width, the
+    /// three boxes one line each — the same height — and nothing may cover
+    /// anything else or run past the band.
+    /// </summary>
+    [AvaloniaFact]
+    public async Task In_a_narrow_pane_every_control_keeps_its_size()
+    {
+        UseSearch(PaneViewModel.Search);
+
+        var window = new MainWindow { Width = 560, Height = 700 };
+
+        window.Show();
+        Dispatcher.UIThread.RunJobs();
+
+        var backend = new Recording { PauseMs = 10_000, Results = [Entry("a.txt")], Capitals = true };
+        UseSearch(backend);
+
+        var pane = Assert.IsType<ShellViewModel>(window.DataContext).ActiveTab!;
+
+        try
+        {
+            _ = pane.NavigateAsync(VirtualPaths.Search("report", Path.GetTempPath(), scoped: true));
+            await WaitUntil(() => pane.IsLoading && backend.Walks > 0);
+
+            window.Measure(new Size(560, 700));
+            window.Arrange(new Rect(0, 0, 560, 700));
+            Dispatcher.UIThread.RunJobs();
+
+            var band = window.GetVisualDescendants().OfType<DockPanel>()
+                .First(d => d.Name == "SearchBand" && d.IsEffectivelyVisible);
+
+            var boxes = new[] { "SearchScope", "SearchCase", "SearchContents", "SearchStop", "SearchSave" }
+                .Select(name => band.GetVisualDescendants().OfType<Control>().Single(c => c.Name == name))
+                .Select(c => (c.Name, Box: new Rect(c.TranslatePoint(default, band)!.Value, c.Bounds.Size),
+                              c.IsEffectivelyVisible))
+                .ToList();
+
+            Assert.All(boxes, b => Assert.True(b.IsEffectivelyVisible, $"{b.Name} is not showing"));
+
+            foreach (var a in boxes)
+            {
+                Assert.True(a.Box.Width > 0, $"{a.Name} was given no width, so it is not there");
+                Assert.True(a.Box.Right <= band.Bounds.Width + 0.5, $"{a.Name} runs past the band");
+
+                foreach (var b in boxes.Where(b => b.Name != a.Name))
+                    Assert.False(a.Box.Intersects(b.Box), $"{a.Name} is drawn over {b.Name}");
+            }
+
+            // One line each: a box squeezed narrower than its label wraps it,
+            // and comes out taller than the others.
+            var heights = boxes.Take(3).Select(b => b.Box.Height).Distinct().ToList();
+
+            Assert.True(heights.Count == 1, "a box was squeezed onto more than one line: "
+                                            + string.Join(", ", boxes.Take(3).Select(b => $"{b.Name} {b.Box.Height}")));
+        }
+        finally
+        {
+            pane.StopSearchCommand.Execute(null);
+            window.Close();
+            Dispatcher.UIThread.RunJobs();
+        }
+    }
+
     // ---- machinery ----------------------------------------------------------
 
     private static FileEntry Entry(string name)
@@ -637,11 +796,18 @@ public sealed class SearchContentsTests : OwnedViewModels
         public Func<SearchQuery, bool> Indexes { get; init; } = static _ => false;
         public bool AnswersFromIndex(SearchQuery query) => Indexes(query);
 
+        /// <summary>Whether the Match case box is offered, for the test that needs every control up.</summary>
+        public bool Capitals { get; init; }
+        public bool SupportsCaseSensitivity => Capitals;
+
         public FileEntry[] Results { get; init; } = [];
         public int PauseMs { get; init; }
 
         /// <summary>How many files over the limit to report, before any result.</summary>
         public int TooLarge { get; set; }
+
+        /// <summary>Whether to say, as it starts, that it is walking rather than asking its index.</summary>
+        public bool WalksInstead { get; set; }
 
         public SearchQuery? Asked { get; private set; }
         public int Walks { get; private set; }
@@ -656,6 +822,8 @@ public sealed class SearchContentsTests : OwnedViewModels
             Walks++;
 
             for (var i = 0; i < TooLarge; i++) query.Skipped?.CountTooLarge();
+
+            if (WalksInstead) query.WalkingInstead?.Invoke();
 
             Counted = true;
 

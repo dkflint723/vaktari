@@ -390,10 +390,10 @@ public sealed class SearchCaseTests : OwnedViewModels
 
     /// <summary>
     /// **An index answers its own way.** `LinuxSearchProvider` hands the query
-    /// to baloosearch and filters the answers by scope alone, so a tick over
-    /// that backend would change nothing — the same silence this finding is
-    /// about, moved from a field to a checkbox. The provider says whether it
-    /// honours the flag, and the box is drawn from that.
+    /// to baloosearch and filters the answers without regard to case, so a
+    /// tick over that backend would change nothing — the same silence this
+    /// finding is about, moved from a field to a checkbox. The provider says
+    /// whether it honours the flag, and the box is drawn from that.
     /// </summary>
     [AvaloniaFact]
     public async Task A_backend_that_ignores_the_flag_is_not_offered_the_box()

@@ -764,11 +764,10 @@ public sealed class SearchBandTests : OwnedViewModels
     }
 
     /// <summary>
-    /// Docked under the question rather than beside it — the row above is
-    /// already carrying three boxes and a Stop — and LAST of the bottom rows,
-    /// so downwards from the question the band reads why this is slow, then
-    /// what a content search did not read, then how much was cut off, then
-    /// the bar.
+    /// Docked under the question rather than beside it, and the boxes on a row
+    /// of their own directly under the question, so downwards the band reads
+    /// how the question is asked, why this is slow, then what a content search
+    /// did not read, then how much was cut off, then the bar.
     ///
     /// **Not gated on IsLoading, unlike the bar and the Stop.** Having no index
     /// is still true when the walk stops, and that is the moment somebody looks
@@ -778,7 +777,7 @@ public sealed class SearchBandTests : OwnedViewModels
     public void The_rows_under_the_question_are_in_that_order()
     {
         Assert.Equal(
-            ["SearchWalking", "SearchCapped", "SearchSkipped", "SearchNoIndex"],
+            ["SearchWalking", "SearchCapped", "SearchSkipped", "SearchNoIndex", "SearchOptions"],
             Band().Elements()
                 .Where(e => (string?)e.Attribute("DockPanel.Dock") == "Bottom")
                 .Select(e => (string?)e.Attribute(X + "Name")));

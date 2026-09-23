@@ -104,6 +104,58 @@ public sealed class SavedSearchTests : OwnedViewModels
         }
     }
 
+    /// <summary>
+    /// **A search saved by an older build is the same pin.** Its path has one
+    /// field fewer than the one the pane writes for the same question now, and
+    /// compared as strings the second press pinned a second row under the same
+    /// name. The row also lights up as where you are.
+    /// </summary>
+    [AvaloniaFact]
+    public async Task A_search_saved_by_an_older_build_is_not_saved_again()
+    {
+        var dir = Temp();
+        var old = "vaktari:search:report:" + Uri.EscapeDataString(dir) + ":here:any";
+        var places = new Recorder(old);
+
+        try
+        {
+            var shell = Shell(dir, places);
+
+            await shell.Sidebar.ReloadAsync();
+
+            var search = VirtualPaths.Search("report", dir, scoped: true);
+            Assert.NotEqual(old, search);
+
+            shell.ActiveTab!.CurrentPath = search;
+            shell.Sidebar.SetCurrentPath(search);
+
+            await shell.PinCurrentCommand.ExecuteAsync(null);
+
+            Assert.Empty(places.Pinned);
+            Assert.EndsWith("is already in places", shell.ActiveTab.Status, StringComparison.Ordinal);
+            Assert.True(shell.Sidebar.Groups.SelectMany(g => g.Places).Single(p => p.Path == old).IsCurrent);
+        }
+        finally
+        {
+            Directory.Delete(dir, recursive: true);
+        }
+    }
+
+    /// <summary>
+    /// And the rule is the question, not only the spelling: minding capitals
+    /// is part of it, whatever the platform's rule for folder names.
+    /// </summary>
+    [Fact]
+    public void Two_questions_that_differ_only_in_capitals_are_two_pins_when_capitals_count()
+    {
+        var upper = VirtualPaths.Search("README", null, false, matchCase: true);
+        var lower = VirtualPaths.Search("readme", null, false, matchCase: true);
+
+        Assert.False(VirtualPaths.SamePin(upper, lower));
+        Assert.True(VirtualPaths.SamePin(upper, upper));
+        Assert.False(VirtualPaths.SamePin(upper, Path.GetTempPath()));
+    }
+
     // ---- the row -------------------------------------------------------------------
 
     /// <summary>

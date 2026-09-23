@@ -283,7 +283,9 @@ public sealed partial class SidebarViewModel : ObservableObject, IDisposable
 
         foreach (var item in rows)
         {
-            item.IsCurrent = PathRules.Same(item.Path, path);
+            // A saved search lights up for the question it asks, however an
+            // older build spelled it; a folder, as ever, by the platform rule.
+            item.IsCurrent = VirtualPaths.SamePin(item.Path, path);
             item.HoldsCurrent = false;
 
             if (!PathRules.Contains(item.Path, path)) continue;

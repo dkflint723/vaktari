@@ -2266,6 +2266,10 @@ public sealed partial class PaneViewModel : ObservableObject, IDisposable
             OnPropertyChanged(nameof(SearchMatchesCase));
             OnPropertyChanged(nameof(SearchesContents));
 
+            // Half of it is about the question, which is on the path: a
+            // pattern is offered no contents box.
+            OnPropertyChanged(nameof(CanSearchContents));
+
             // The box's tooltip asks the backend about this question, the way
             // the warning below does, and for the same reason.
             OnPropertyChanged(nameof(SearchContentsHint));
@@ -3093,6 +3097,17 @@ public sealed partial class PaneViewModel : ObservableObject, IDisposable
         SearchSkippedLine = "";
         var skips = _searchSkips = new Core.Search.ContentSkips();
 
+        // And the backend's word that it is walking rather than asking its
+        // index, which belongs to the load that heard it. Announced when it
+        // was set, since a reload of the same search moves no path to say so.
+        if (_walkingInstead)
+        {
+            _walkingInstead = false;
+            OnPropertyChanged(nameof(SearchUnindexed));
+            OnPropertyChanged(nameof(SearchBackendLine));
+            OnPropertyChanged(nameof(SearchContentsHint));
+        }
+
         // Same reason: the band would otherwise carry the last folder's total
         // while the next one is still being walked.
         //
@@ -3151,7 +3166,8 @@ public sealed partial class PaneViewModel : ObservableObject, IDisposable
             : path == VirtualPaths.Computer ? ComputerListing.EnumerateAsync(Places, ct)
             : VirtualPaths.IsSearch(path)
                 ? SearchListing.EnumerateAsync(
-                    Search, path, options, ct, SearchLimit, () => capped = true, skips)
+                    Search, path, options, ct, SearchLimit, () => capped = true, skips,
+                    () => OnWalkingInstead(generation))
             : VirtualPaths.IsUsage(path)
                 ? SpaceListing.EnumerateAsync(
                     VirtualPaths.FolderOf(path), ShowHidden, progress: null, ct,

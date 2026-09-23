@@ -99,6 +99,10 @@ public static class SearchListing
     /// content search would not read. Handed in rather than handed back
     /// because a stopped search never reaches the end of this method, and
     /// what it skipped before the Stop is still worth saying.
+    ///
+    /// <paramref name="onWalkingInstead"/> is the backend saying that the index
+    /// it was expected to answer from had nothing, and that it is walking the
+    /// folders instead. It arrives on the pool, mid-search.
     /// </summary>
     public static async IAsyncEnumerable<IReadOnlyList<FileEntry>> EnumerateAsync(
         ISearchProvider? search,
@@ -107,7 +111,8 @@ public static class SearchListing
         [System.Runtime.CompilerServices.EnumeratorCancellation] CancellationToken ct,
         int limit = Limit,
         Action? onCapped = null,
-        ContentSkips? skipped = null)
+        ContentSkips? skipped = null,
+        Action? onWalkingInstead = null)
     {
         // An absent backend is an EMPTY listing, not a crash. The pane's empty
         // state is what says which of the two it is.
@@ -117,7 +122,14 @@ public static class SearchListing
 
         if (text.Length == 0) { yield return []; yield break; }
 
-        var query = QueryFor(path, limit) with { Skipped = skipped };
+        // The hidden-files setting reaches the backend for one purpose only:
+        // not opening files whose rows the check below will drop anyway.
+        var query = QueryFor(path, limit) with
+        {
+            Skipped = skipped,
+            ReadsConcealed = options.IncludeHidden,
+            WalkingInstead = onWalkingInstead,
+        };
 
         var batch = new List<FileEntry>(Batch);
 

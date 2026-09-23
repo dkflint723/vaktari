@@ -106,14 +106,21 @@ public sealed partial class PaneViewModel
     }
 
     /// <summary>
-    /// Whether this backend can look inside files, which decides whether the
-    /// "Search contents" box is drawn. Both shipped providers can; the null
-    /// provider cannot, and nor can one that says it cannot.
+    /// Whether the "Search contents" box is drawn: the backend can look inside
+    /// files, and the question is one a file's contents could answer.
     ///
-    /// No change notification, on the same ordering <see cref="CanMatchCase"/>
-    /// stands on.
+    /// **Not for a pattern.** "*.pdf" is a question about names, and both
+    /// walks and the band read it that way whatever the box says — so a box
+    /// offered beside one would navigate, walk again and come back with the
+    /// same answer. Hidden rather than disabled, which is this band's rule
+    /// for a tick that could change nothing (see the Match case box).
+    ///
+    /// The backend half needs no change notification, on the ordering
+    /// <see cref="CanMatchCase"/> stands on. The question half does, because
+    /// it moves with the path, and OnCurrentPathChanged raises it.
     /// </summary>
-    public bool CanSearchContents => Search?.SupportsContentSearch ?? false;
+    public bool CanSearchContents =>
+        (Search?.SupportsContentSearch ?? false) && !SearchListing.QueryFor(CurrentPath).IsPattern;
 
     /// <summary>
     /// Whether a file's contents can answer, as well as its name.
@@ -122,9 +129,10 @@ public sealed partial class PaneViewModel
     /// it**, and on Windows no reader either: the one backend that could look
     /// inside files was Baloo, which did so whatever it was asked. Shaped
     /// exactly like <see cref="SearchMatchesCase"/> — read off the path,
-    /// written by navigating — so the answer with contents and the answer
-    /// without are two places, and Back goes from one to the other without
-    /// reading every file again.
+    /// written by navigating — so the question with contents and the question
+    /// without are two places, and Back goes from one to the other. It asks
+    /// again when it gets there: nothing is cached, and a content search is
+    /// read afresh.
     ///
     /// Off by default, and a fresh search from a folder starts off, because
     /// reading every text file is a different order of cost from reading
@@ -149,17 +157,20 @@ public sealed partial class PaneViewModel
     /// The box's tooltip, which has to say what ticking it costs — and that
     /// depends on who is answering.
     ///
-    /// **An index has already read the files; a walk has to.** Over Baloo the
-    /// tick costs nothing and reaches whatever Baloo extracts text from, PDFs
-    /// and office documents included. Over a walk it reads every plain-text
-    /// file in reach, one after another, and nothing else — so the same words
-    /// on both would be a promise one of them does not keep.
+    /// **An index has already read the files; a walk has to.** Where Baloo
+    /// answers, the tick costs nothing and reaches whatever Baloo extracts text
+    /// from, PDFs and office documents included. Over a walk — including the
+    /// one Baloo's provider falls back to when the index has nothing — it opens
+    /// every file in reach, one after another, and finds text only in the
+    /// plain-text ones. So the same words on both would be a promise one of
+    /// them does not keep, and this follows <see cref="SearchUnindexed"/>,
+    /// which learns of that fallback while it runs.
     /// </summary>
     public string SearchContentsHint =>
-        Search is { } backend && backend.AnswersFromIndex(SearchListing.QueryFor(CurrentPath, SearchLimit))
+        !SearchUnindexed
             ? "Also find files by the words in them, as the index has read them"
-            : "Also find plain-text files by what is in them. Each one is read, so it is slower, "
-              + "and a pattern such as *.pdf still matches names only";
+            : "Also find plain-text files by what is in them. Every file is opened to look, "
+              + "so it is slower";
 
     /// <summary>
     /// The box's own words, which carry the truth when it is disabled — a box
@@ -350,20 +361,53 @@ public sealed partial class PaneViewModel
     /// works, during and after.
     ///
     /// **And it says what is read, which the contents box changes.** Names
-    /// come from the folders; contents come from opening every text file in
-    /// them, which is the slow part and the part worth being told about.
-    /// Asked of the same query the walk runs, so a pattern — which reads
-    /// names only whatever the box says — is not claimed to read files.
+    /// come from the folders; contents come from opening every file in them —
+    /// every file, not every text file, because a file is opened before it can
+    /// be told to be binary — which is the slow part and the part worth being
+    /// told about. Asked of the same query the walk runs, so a pattern, which
+    /// reads names only, is not claimed to read files.
     /// </summary>
     public string SearchBackendLine =>
         (VirtualPaths.ScopeOf(CurrentPath) is { Length: > 0 } scope
-            ? $"every {WhatIsRead} in {FolderName(scope)} is read in turn — "
-              + "there is no index on this machine"
-            : $"every {WhatIsRead} is read in turn — there is no index on this machine")
+            ? $"every {WhatIsRead} in {FolderName(scope)} is read in turn — {WhyWalked}"
+            : $"every {WhatIsRead} is read in turn — {WhyWalked}")
         + SearchCaveat;
 
+    /// <summary>
+    /// Why no index is answering. There may BE one: on a KDE desktop Baloo is
+    /// asked first and the walk runs only when it has nothing to say, and
+    /// "there is no index on this machine" would then be false on the one
+    /// machine where somebody is most likely to know better.
+    /// </summary>
+    private string WhyWalked => _walkingInstead
+        ? "the index had nothing for this"
+        : "there is no index on this machine";
+
+    /// <summary>
+    /// Set when the backend reports that it meant to answer from its index and
+    /// is walking instead — see <see cref="Core.Search.SearchQuery.WalkingInstead"/>.
+    /// Cleared as each load begins, like the other things a load learns.
+    /// </summary>
+    private bool _walkingInstead;
+
+    /// <summary>
+    /// What the backend said about walking, arriving from the pool. Posted to
+    /// the dispatcher, and dropped if a newer load has started meanwhile.
+    /// </summary>
+    private void OnWalkingInstead(int generation)
+        => Avalonia.Threading.Dispatcher.UIThread.Post(() =>
+        {
+            if (generation != _generation) return;
+
+            _walkingInstead = true;
+
+            OnPropertyChanged(nameof(SearchUnindexed));
+            OnPropertyChanged(nameof(SearchBackendLine));
+            OnPropertyChanged(nameof(SearchContentsHint));
+        });
+
     private string WhatIsRead =>
-        SearchListing.QueryFor(CurrentPath).ReadsContents ? "folder and text file" : "folder";
+        SearchListing.QueryFor(CurrentPath).ReadsContents ? "folder and file" : "folder";
 
     /// <summary>
     /// What the backend leaves out, appended to the line above. **A walk that
@@ -401,7 +445,8 @@ public sealed partial class PaneViewModel
     /// attaches. The PATH half does change, and OnCurrentPathChanged raises it.
     /// </summary>
     public bool SearchUnindexed =>
-        Search is not { } backend
+        _walkingInstead
+        || Search is not { } backend
         || !backend.AnswersFromIndex(SearchListing.QueryFor(CurrentPath, SearchLimit));
 
     /// <summary>
@@ -464,10 +509,13 @@ public sealed partial class PaneViewModel
 
         var parts = new List<string>(2);
 
+        // In the unit the Size column uses. The limit is 64 × 1024 × 1024
+        // bytes, and calling that "64 MB" is the decimal name on a binary
+        // quantity that ByteSize was written to stop.
         if (skips.TooLarge is var large and > 0)
             parts.Add(large == 1
-                ? $"1 file over {ContentMatcher.MaxBytes / (1024 * 1024)} MB was not read"
-                : $"{large:N0} files over {ContentMatcher.MaxBytes / (1024 * 1024)} MB were not read");
+                ? $"1 file over {ByteSize.Format(ContentMatcher.MaxBytes)} was not read"
+                : $"{large:N0} files over {ByteSize.Format(ContentMatcher.MaxBytes)} were not read");
 
         if (skips.Online is var online and > 0)
             parts.Add(online == 1
