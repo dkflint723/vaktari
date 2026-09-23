@@ -575,6 +575,13 @@ public sealed class KeymapTests : OwnedViewModels
     [AvaloniaFact]
     public void The_search_tip_names_the_key_in_force()
     {
+        // **No history, said rather than assumed.** The tooltip grows a
+        // "right-click for recent searches" when PaneViewModel.Searches is set,
+        // and every test that builds a real MainWindow sets it to the shipped
+        // store. Whether one of those had run first decided this test: it
+        // passed in the full suite and failed in a run filtered to searches.
+        UseSearchHistory(null);
+
         var pane = Own(new PaneViewModel(new Inert()));
         var told = 0;
 

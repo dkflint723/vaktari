@@ -701,7 +701,11 @@ public sealed class SearchContentsTests : OwnedViewModels
     [AvaloniaFact]
     public async Task In_a_narrow_pane_every_control_keeps_its_size()
     {
+        // Building a MainWindow hands the pane the platform's search backend
+        // and the shipped search history; borrowing both here gives them back
+        // when this class is done, so no later class inherits either.
         UseSearch(PaneViewModel.Search);
+        UseSearchHistory(PaneViewModel.Searches);
 
         var window = new MainWindow { Width = 560, Height = 700 };
 
