@@ -97,9 +97,11 @@ public sealed class CompositionRootTests : IDisposable
     /// Identity rather than "not null and looks right": it is the only shape
     /// that distinguishes the object Create() built from one some earlier test
     /// happened to leave lying in the same static.
+    ///
+    /// An AvaloniaFact rather than a plain Fact because Create() reaches
+    /// FontManager.Current while sizing the interface, and that throws outside
+    /// an Avalonia app context.
     /// </summary>
-    /// Needs the Avalonia app context: Create() reaches FontManager.Current
-    /// while sizing the interface, which throws outside one.
     [AvaloniaFact]
     public async Task Create_hands_every_service_it_builds_to_the_static_that_reads_it()
     {
