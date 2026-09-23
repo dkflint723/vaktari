@@ -59,8 +59,11 @@ public sealed class LinuxSearchProvider : ISearchProvider
     /// and <c>SearchWithBalooThenWalkingAsync</c> exists for exactly that gap.
     /// Nothing here can close it: whether Baloo has anything to say is only
     /// learned by asking it, and the band is drawn before the answer comes
-    /// back. So one case survives — baloosearch installed with an index never
-    /// built — where the fallback walk runs without the warning.
+    /// back. Every empty answer inside the scope falls back to the walk — an
+    /// index never built, one switched off, a folder it does not cover, a word
+    /// nothing holds — and the walk says so as it starts, through
+    /// <see cref="SearchQuery.WalkingInstead"/>, so the band can take back
+    /// what this told it.
     /// </summary>
     public bool AnswersFromIndex(SearchQuery query) => Baloo is not null && !query.IsPattern;
 
@@ -136,7 +139,10 @@ public sealed class LinuxSearchProvider : ISearchProvider
         if (heard || ct.IsCancellationRequested) yield break;
 
         // Said out loud, because the two routes have very different costs and a
-        // search that suddenly takes seconds should be explicable.
+        // search that suddenly takes seconds should be explicable — to the
+        // band, which drew itself before this was known, and to the log.
+        query.WalkingInstead?.Invoke();
+
         Console.Error.WriteLine(
             "[vaktari] search: baloo returned nothing — walking the folder instead "
             + "(an index that is switched off or was never built looks exactly like no matches)");
@@ -364,6 +370,12 @@ public sealed class LinuxSearchProvider : ISearchProvider
         // about names.
         var contents = query.ReadsContents;
 
+        // Where files are not opened, decided from the mount table once for
+        // the walk rather than once per file.
+        var mounts = contents
+            ? new MountRules(MountLines is { } stub ? stub() : MountTable.Lines(), root)
+            : null;
+
         var walk = new FileSystemEnumerable<string>(
             root,
             static (ref FileSystemEntry entry) => entry.ToFullPath(),
@@ -394,7 +406,7 @@ public sealed class LinuxSearchProvider : ISearchProvider
                     FileSystemName.MatchesSimpleExpression(text, entry.FileName, ignoreCase)
                 : (ref FileSystemEntry entry) =>
                     entry.FileName.ToString().Contains(text, comparison)
-                    || (contents && Contains(ref entry, query, ct)),
+                    || (contents && Contains(ref entry, query, mounts!, ct)),
         };
 
         var count = 0;
@@ -445,10 +457,89 @@ public sealed class LinuxSearchProvider : ISearchProvider
     /// A FIFO, socket or device node that is NOT behind a link reports a
     /// length of zero, and ContentMatcher never opens those.
     /// </summary>
-    private static bool Contains(ref FileSystemEntry entry, SearchQuery query, CancellationToken ct)
-        => !entry.IsDirectory
-           && !entry.Attributes.HasFlag(FileAttributes.ReparsePoint)
-           && ContentMatcher.Answers(query, entry.ToFullPath(), entry.Length, ct);
+    private static bool Contains(
+        ref FileSystemEntry entry, SearchQuery query, MountRules mounts, CancellationToken ct)
+    {
+        if (entry.IsDirectory || entry.Attributes.HasFlag(FileAttributes.ReparsePoint)) return false;
+
+        // A row the pane is going to drop is not worth opening. The same rule
+        // Describe marks Hidden by.
+        if (!query.ReadsConcealed && entry.FileName.StartsWith('.')) return false;
+
+        var path = entry.ToFullPath();
+
+        if (mounts.IsKernel(path)) return false;
+
+        if (mounts.IsRemote(path))
+        {
+            query.Skipped?.CountOnline();
+            return false;
+        }
+
+        return ContentMatcher.Answers(query, path, entry.Length, ct);
+    }
+
+    /// <summary>
+    /// Which files a content search does not open, by the filesystem each one
+    /// is on — the deepest mount point above it, so a local disk mounted
+    /// inside a share is local.
+    ///
+    /// **A kernel filesystem is never read.** /proc, /sys and their kind are
+    /// windows onto the running system; a search scoped to / walks into them,
+    /// and sysfs reports 4096 bytes for files that hold a line, so the
+    /// zero-length rule that keeps procfs out does not keep sysfs out. Not
+    /// counted: nobody searching for words means those.
+    ///
+    /// **A network or cloud mount the walk only reached by walking down into it
+    /// is not read, and is counted.** An rclone or sshfs mount under the home
+    /// folder is an ordinary folder to the walk, and reading every file in it
+    /// fetches every file from the other end — what the Windows walk refuses
+    /// to do to a sync client's placeholders, for the same reason. A search
+    /// SCOPED to such a mount is read: somebody went there on purpose, the way
+    /// a search of a mapped drive on Windows reads the share.
+    /// </summary>
+    internal sealed class MountRules
+    {
+        private readonly List<(string Point, string Type)> _mounts = [];
+        private readonly bool _rootIsRemote;
+
+        internal MountRules(IEnumerable<string> lines, string root)
+        {
+            foreach (var line in lines)
+            {
+                var parts = line.Split(' ');
+                if (parts.Length < 3) continue;
+
+                var point = MountTable.Unescape(parts[1]).TrimEnd('/');
+
+                _mounts.Add((point.Length == 0 ? "/" : point, parts[2]));
+            }
+
+            // Deepest first, so the first that contains a path is its own.
+            _mounts.Sort((a, b) => b.Point.Length.CompareTo(a.Point.Length));
+
+            _rootIsRemote = TypeOf(root) is { } type && MountTable.IsNetworkFs(type);
+        }
+
+        internal bool IsKernel(string path) => TypeOf(path) is { } type && MountTable.IsKernelFs(type);
+
+        internal bool IsRemote(string path)
+            => !_rootIsRemote && TypeOf(path) is { } type && MountTable.IsNetworkFs(type);
+
+        private string? TypeOf(string path)
+        {
+            foreach (var (point, type) in _mounts)
+            {
+                if (string.Equals(path, point, StringComparison.Ordinal)) return type;
+
+                if (path.StartsWith(point, StringComparison.Ordinal)
+                    && (point == "/" || path[point.Length] is '/' or '\\'))
+                    return type;
+            }
+
+            return null;
+        }
+    }
 
     private static FileEntry? Describe(string path)
     {

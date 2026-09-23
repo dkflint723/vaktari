@@ -199,4 +199,144 @@ public sealed class ContentMatcherTests : IDisposable
             () => ContentMatcher.StreamContains(new MemoryStream(Ascii("anything at all")), "all",
                                                 false, cancelled.Token));
     }
+
+    /// <summary>
+    /// **Stop is honoured between reads, not only before the first.** The test
+    /// above cancels before the call, so the check ahead of the first read is
+    /// the one that throws and the one inside the loop is never reached — and
+    /// that one is what makes Stop take effect within one read of a long file.
+    /// Here the token is cancelled from inside the first read.
+    /// </summary>
+    [Fact]
+    public void A_stop_between_reads_ends_the_read()
+    {
+        using var stop = new CancellationTokenSource();
+
+        var stream = new Generated(3L * ContentMatcher.BufferSize, onFirstRead: stop.Cancel);
+
+        Assert.Throws<OperationCanceledException>(
+            () => ContentMatcher.StreamContains(stream, "needle", false, stop.Token));
+    }
+
+    /// <summary>
+    /// **Stop is honoured before the open, too.** An open on a share whose
+    /// server has gone waits out the network timeout, so a Stop has to be
+    /// seen before the next one starts. Asked with a path that does not exist:
+    /// had it been opened, the answer would be Unreadable rather than a throw.
+    /// </summary>
+    [Fact]
+    public void A_stop_before_the_open_is_honoured()
+    {
+        using var stop = new CancellationTokenSource();
+        stop.Cancel();
+
+        Assert.Throws<OperationCanceledException>(
+            () => ContentMatcher.FileContains(Path.Combine(_root, "not-there.txt"), 100, "milk",
+                                              false, stop.Token));
+    }
+
+    /// <summary>
+    /// The same through a real file, which is where the stream's own buffer
+    /// would come in: a FileStream that buffers makes a 64 KB array of its own
+    /// the moment a short file's second read comes back smaller.
+    /// </summary>
+    [Fact]
+    public void Reading_many_files_on_disk_does_not_allocate_a_buffer_for_each()
+    {
+        var path = Path.Combine(_root, "small.txt");
+        File.WriteAllBytes(path, Ascii("the quick brown fox"));
+        var length = new FileInfo(path).Length;
+
+        ContentMatcher.FileContains(path, length, "purple", false, CancellationToken.None);
+
+        var before = GC.GetAllocatedBytesForCurrentThread();
+
+        for (var i = 0; i < 200; i++)
+            ContentMatcher.FileContains(path, length, "purple", false, CancellationToken.None);
+
+        var spent = GC.GetAllocatedBytesForCurrentThread() - before;
+
+        Assert.True(spent < 4 * 1024 * 1024, $"200 files allocated {spent:N0} bytes");
+    }
+
+    [Fact]
+    public void Utf32_big_endian_with_a_mark_is_read() =>
+        Assert.Equal(ContentVerdict.Found,
+                     Search(Concat([0x00, 0x00, 0xFE, 0xFF], new UTF32Encoding(true, false).GetBytes("hello world")),
+                            "world"));
+
+    /// <summary>
+    /// **A file that grows past the limit while it is being read stops at
+    /// the limit.** The length the walk had can be out of date by the time the
+    /// file is open; an unbounded read is the one thing Stop cannot shorten.
+    /// Generated rather than held in memory, so the test does not need the
+    /// sixty-four megabytes it reads.
+    /// </summary>
+    [Fact]
+    public void A_stream_longer_than_the_limit_stops_at_it()
+    {
+        var stream = new Generated(ContentMatcher.MaxBytes + 2L * ContentMatcher.BufferSize);
+
+        Assert.Equal(ContentVerdict.TooLarge,
+                     ContentMatcher.StreamContains(stream, "needle", false, CancellationToken.None));
+    }
+
+    /// <summary>
+    /// **A search of contents does this once per file, so it must not cost a
+    /// large array per file.** The decoded characters of one read are about
+    /// 128 KB, past the size where an array goes on the large object heap.
+    /// Two hundred small reads made fresh would allocate some forty megabytes;
+    /// with the buffers rented they allocate next to nothing.
+    /// </summary>
+    [Fact]
+    public void Reading_many_files_does_not_allocate_a_buffer_for_each()
+    {
+        var text = Ascii("the quick brown fox");
+
+        // Warm: the first rent on a thread does allocate, once.
+        ContentMatcher.StreamContains(new MemoryStream(text), "purple", false, CancellationToken.None);
+
+        var before = GC.GetAllocatedBytesForCurrentThread();
+
+        for (var i = 0; i < 200; i++)
+            ContentMatcher.StreamContains(new MemoryStream(text), "purple", false, CancellationToken.None);
+
+        var spent = GC.GetAllocatedBytesForCurrentThread() - before;
+
+        Assert.True(spent < 4 * 1024 * 1024, $"200 reads allocated {spent:N0} bytes");
+    }
+
+    /// <summary>
+    /// 'x' for as long as it is told to be, without holding any of it — and,
+    /// if asked, something to do the first time it is read.
+    /// </summary>
+    private sealed class Generated(long length, Action? onFirstRead = null) : Stream
+    {
+        private long _position;
+        private Action? _first = onFirstRead;
+
+        public override int Read(byte[] buffer, int offset, int count)
+            => Read(buffer.AsSpan(offset, count));
+
+        public override int Read(Span<byte> buffer)
+        {
+            _first?.Invoke();
+            _first = null;
+
+            var n = (int)Math.Min(buffer.Length, length - _position);
+            buffer[..n].Fill((byte)'x');
+            _position += n;
+            return n;
+        }
+
+        public override bool CanRead => true;
+        public override bool CanSeek => false;
+        public override bool CanWrite => false;
+        public override long Length => length;
+        public override long Position { get => _position; set => throw new NotSupportedException(); }
+        public override void Flush() { }
+        public override long Seek(long offset, SeekOrigin origin) => throw new NotSupportedException();
+        public override void SetLength(long value) => throw new NotSupportedException();
+        public override void Write(byte[] buffer, int offset, int count) => throw new NotSupportedException();
+    }
 }

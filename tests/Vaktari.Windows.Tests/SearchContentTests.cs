@@ -25,7 +25,7 @@ public sealed class SearchContentTests
 {
     private static async Task<List<string>> Walk(
         string scope, string text, bool contents,
-        bool caseSensitive = false, ContentSkips? skipped = null)
+        bool caseSensitive = false, ContentSkips? skipped = null, bool readsConcealed = true)
     {
         var query = new SearchQuery
         {
@@ -34,6 +34,7 @@ public sealed class SearchContentTests
             MatchContent = contents,
             CaseSensitive = caseSensitive,
             Skipped = skipped,
+            ReadsConcealed = readsConcealed,
             MaxResults = 50,
         };
 
@@ -48,6 +49,95 @@ public sealed class SearchContentTests
 
         found.Sort(StringComparer.Ordinal);
         return found;
+    }
+
+    /// <summary>
+    /// **A hidden file is not opened when hidden files are not shown.** Its
+    /// row would be dropped by the pane after the walk had read it, so reading
+    /// it was a cost with nothing to show — and a whole AppData of them.
+    /// Asked of a file whose name cannot answer, so only the read is at stake.
+    /// </summary>
+    [WindowsFact]
+    public async Task A_hidden_file_is_read_only_when_hidden_files_are_shown()
+    {
+        using var tree = new TempTree();
+
+        var scope = tree.Dir("tree");
+        var hidden = tree.Write("tree/notes.txt", "remember the milk");
+        File.SetAttributes(hidden, File.GetAttributes(hidden) | FileAttributes.Hidden);
+
+        Assert.Equal(["notes.txt"], await Walk(scope, "milk", contents: true, readsConcealed: true));
+        Assert.Empty(await Walk(scope, "milk", contents: true, readsConcealed: false));
+
+        // And its NAME still answers either way; the pane decides whether the
+        // row is shown, as it always has.
+        Assert.Equal(["notes.txt"], await Walk(scope, "notes", contents: true, readsConcealed: false));
+    }
+
+    /// <summary>
+    /// **A log a program still has open is read.** NTFS updates the size in a
+    /// file's directory entry when a handle closes, so the walk lists a file
+    /// that is being written as 0 bytes — and a zero length used to mean "never
+    /// open it". Checked first that the listing really does say 0 here, since
+    /// the test proves nothing on a filesystem that reports the live size.
+    /// </summary>
+    [WindowsFact]
+    public async Task A_file_still_being_written_is_read()
+    {
+        using var tree = new TempTree();
+
+        var scope = tree.Dir("tree");
+        var log = Path.Combine(scope, "app.log");
+
+        using var writer = new FileStream(log, FileMode.CreateNew, FileAccess.Write, FileShare.ReadWrite);
+        writer.Write("remember the milk"u8);
+        writer.Flush();
+
+        Assert.True(new DirectoryInfo(scope).EnumerateFiles().Single().Length == 0,
+            "the listing already reports the live size, so this proves nothing");
+
+        Assert.Equal(["app.log"], await Walk(scope, "milk", contents: true));
+    }
+
+    /// <summary>
+    /// **Each entry is judged by its own contents**, including the names the
+    /// Win32 path rules would rewrite: "report." opens as its neighbour
+    /// "report", and "nul" as the NUL device. Made through the extended prefix,
+    /// the only way to make them, and removed the same way — TempTree's own
+    /// cleanup would be rewritten too.
+    /// </summary>
+    [WindowsFact]
+    public async Task A_name_windows_would_rewrite_is_read_as_itself()
+    {
+        using var tree = new TempTree();
+
+        var scope = tree.Dir("tree");
+        var dotted = @"\\?\" + Path.Combine(scope, "report.");
+        var device = @"\\?\" + Path.Combine(scope, "nul");
+
+        tree.Write("tree/report", "plain report holds banana");
+        File.WriteAllText(dotted, "the dotted one holds cherry");
+        File.WriteAllText(device, "remember the milk");
+
+        try
+        {
+            Assert.Equal(["report"], await Walk(scope, "banana", contents: true));
+            Assert.Equal(["report."], await Walk(scope, "cherry", contents: true));
+            Assert.Equal(["nul"], await Walk(scope, "milk", contents: true));
+        }
+        finally
+        {
+            File.Delete(dotted);
+            File.Delete(device);
+        }
+    }
+
+    [WindowsFact]
+    public void The_extended_prefix_is_added_once_and_keeps_a_share()
+    {
+        Assert.Equal(@"\\?\C:\x\report.", WindowsSearchProvider.Extended(@"C:\x\report."));
+        Assert.Equal(@"\\?\UNC\server\share\a.txt", WindowsSearchProvider.Extended(@"\\server\share\a.txt"));
+        Assert.Equal(@"\\?\C:\x\a.txt", WindowsSearchProvider.Extended(@"\\?\C:\x\a.txt"));
     }
 
     [WindowsFact]
@@ -140,8 +230,8 @@ public sealed class SearchContentTests
     /// <summary>
     /// **A file held online is not opened, because opening it downloads it.**
     /// OFFLINE is the one of the three "not on this disk" attributes a test can
-    /// set without a sync client; the rule reads all three as one mask, and
-    /// the next test pins the other two.
+    /// set without a sync client, so it is the one the whole walk is asked
+    /// about; the tests below pin the mask and the exposed read.
     /// </summary>
     [WindowsFact]
     public async Task A_file_held_online_is_not_read_and_is_counted()
@@ -163,13 +253,103 @@ public sealed class SearchContentTests
 
     /// <summary>
     /// RECALL_ON_OPEN and RECALL_ON_DATA_ACCESS, which only a cloud files
-    /// provider can set, asked of the rule directly against a real file that
-    /// DOES hold the text — so false can only mean it was not read.
+    /// provider can set, so no test can put them on a file. What can be pinned
+    /// is that the rule reads all three "not on this disk" bits.
     /// </summary>
     [WindowsTheory]
+    [InlineData(0x0000_1000)]
     [InlineData(0x0004_0000)]
     [InlineData(0x0040_0000)]
-    public void A_placeholder_is_refused_by_its_attribute(int attribute)
+    public void Each_of_the_three_not_here_bits_counts_as_online(int attribute)
+    {
+        using var tree = new TempTree();
+
+        var scope = tree.Dir("tree");
+
+        Assert.NotEqual(0, (int)(Placeholders.HeldOnline & (FileAttributes)attribute));
+
+        // And the one a test CAN set is read by the exposed read itself, not
+        // only listed in the mask.
+        if (attribute == 0x0000_1000)
+        {
+            var held = tree.Write("tree/synced.txt", "x");
+            File.SetAttributes(held, File.GetAttributes(held) | FileAttributes.Offline);
+
+            Assert.Contains("synced.txt", Placeholders.HeldOnlineIn(scope));
+        }
+    }
+
+    /// <summary>
+    /// **The question is asked with placeholders exposed, and only for as long
+    /// as it takes.** This process sees a sync client's placeholders disguised
+    /// as ordinary files, so a read in its own mode could not tell an
+    /// online-only file from one on the disk. The mode is read from inside the
+    /// exposed read, and again after it, on the same thread.
+    /// </summary>
+    [WindowsFact]
+    public void The_online_question_is_asked_with_placeholders_exposed()
+    {
+        using var tree = new TempTree();
+
+        var scope = tree.Dir("tree");
+        var before = Placeholders.RtlQueryThreadPlaceholderCompatibilityMode();
+        sbyte during = -1;
+
+        Placeholders.WhileExposed = dir =>
+        {
+            if (dir == scope) during = Placeholders.RtlQueryThreadPlaceholderCompatibilityMode();
+        };
+
+        try
+        {
+            Placeholders.HeldOnlineIn(scope);
+        }
+        finally
+        {
+            Placeholders.WhileExposed = null;
+        }
+
+        Assert.Equal(2, during);
+        Assert.Equal(before, Placeholders.RtlQueryThreadPlaceholderCompatibilityMode());
+    }
+
+    /// <summary>
+    /// **A content walk asks, and a name walk does not.** The walk's own rows
+    /// cannot say which files are online, so a content search that did not ask
+    /// would open every placeholder it met; and a name search that did would
+    /// pay a second read of every folder for nothing.
+    /// </summary>
+    [WindowsFact]
+    public async Task A_content_walk_asks_which_files_are_online_and_a_name_walk_does_not()
+    {
+        using var tree = new TempTree();
+
+        var scope = tree.Dir("tree");
+        tree.Write("tree/notes.txt", "remember the milk");
+
+        var asked = 0;
+        Placeholders.WhileExposed = dir => { if (dir == scope) Interlocked.Increment(ref asked); };
+
+        try
+        {
+            await Walk(scope, "milk", contents: false);
+            Assert.Equal(0, asked);
+
+            await Walk(scope, "milk", contents: true);
+            Assert.Equal(1, asked);
+        }
+        finally
+        {
+            Placeholders.WhileExposed = null;
+        }
+    }
+
+    /// <summary>
+    /// The rule itself, against a real file that DOES hold the text — so false
+    /// can only mean it was not read — and the refusal is counted.
+    /// </summary>
+    [WindowsFact]
+    public void A_file_held_online_is_refused_and_counted()
     {
         using var tree = new TempTree();
 
@@ -179,8 +359,10 @@ public sealed class SearchContentTests
         var skipped = new ContentSkips();
         var query = new SearchQuery { Text = "milk", MatchContent = true, Skipped = skipped };
 
-        Assert.True(WindowsSearchProvider.Contains(entry, FileAttributes.Normal, query, CancellationToken.None));
-        Assert.False(WindowsSearchProvider.Contains(entry, (FileAttributes)attribute, query, CancellationToken.None));
+        Assert.True(WindowsSearchProvider.Contains(entry, heldOnline: false, query, CancellationToken.None));
+        Assert.Equal(0, skipped.Online);
+
+        Assert.False(WindowsSearchProvider.Contains(entry, heldOnline: true, query, CancellationToken.None));
         Assert.Equal(1, skipped.Online);
     }
 
@@ -200,7 +382,7 @@ public sealed class SearchContentTests
                                  DateTimeOffset.UnixEpoch, EntryFlags.Symlink);
         var query = new SearchQuery { Text = "milk", MatchContent = true };
 
-        Assert.False(WindowsSearchProvider.Contains(link, FileAttributes.ReparsePoint, query, CancellationToken.None));
+        Assert.False(WindowsSearchProvider.Contains(link, heldOnline: false, query, CancellationToken.None));
     }
 
     /// <summary>

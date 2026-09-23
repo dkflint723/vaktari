@@ -59,8 +59,30 @@ internal static class MountTable
         return true;
     }
 
+    /// <summary>
+    /// A filesystem whose files live on another machine. Read by the watcher,
+    /// which polls these because inotify hears nothing of a change made at the
+    /// other end, and by a content search, which does not read through one it
+    /// only reached by walking down into it.
+    ///
+    /// fuse.rclone is here for the second reason as much as the first: rclone
+    /// mounts a cloud drive, and every file read through it is fetched from
+    /// the cloud.
+    /// </summary>
     internal static bool IsNetworkFs(string fsType) => fsType
-        is "cifs" or "smb3" or "nfs" or "nfs4" or "fuse.sshfs" or "fuse.kio" or "fuse.gvfsd-fuse";
+        is "cifs" or "smb3" or "nfs" or "nfs4" or "fuse.sshfs" or "fuse.kio" or "fuse.gvfsd-fuse"
+            or "fuse.rclone";
+
+    /// <summary>
+    /// A filesystem the kernel makes up rather than stores: its files are
+    /// windows onto the running system, and reading one can do something.
+    /// Reading a PCI device's config file wakes the device; sysfs reports 4096
+    /// bytes for files that hold a line, so a size rule does not keep them out.
+    /// </summary>
+    internal static bool IsKernelFs(string fsType) => fsType
+        is "proc" or "sysfs" or "devtmpfs" or "devpts" or "debugfs" or "tracefs" or "securityfs"
+            or "efivarfs" or "cgroup" or "cgroup2" or "configfs" or "pstore" or "bpf"
+            or "fusectl" or "mqueue" or "hugetlbfs" or "binfmt_misc" or "autofs";
 
     /// <summary>
     /// Whether a folder sits on a network filesystem, by the DEEPEST mount

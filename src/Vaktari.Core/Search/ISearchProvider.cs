@@ -30,6 +30,34 @@ public sealed record SearchQuery
     public ContentSkips? Skipped { get; init; }
 
     /// <summary>
+    /// Whether a hidden file is worth opening to read. True unless a caller
+    /// says otherwise, so a query built by hand reads everything it walks.
+    ///
+    /// **The pane drops hidden rows after the backend has found them**, so a
+    /// content search that opened them read files nobody would be shown — a
+    /// whole AppData or ~/.cache, one file after another — and counted the
+    /// large ones among what it "could not read". Names are still matched as
+    /// before: a hidden file is cheap to match and the pane's rule decides
+    /// whether its row is shown.
+    /// </summary>
+    public bool ReadsConcealed { get; init; } = true;
+
+    /// <summary>
+    /// Called by a backend that meant to answer from its index and is walking
+    /// the folders instead, at the moment it starts to — so the band can say
+    /// so while the walk runs rather than after. Null when nobody is listening.
+    ///
+    /// **The band decides whether to explain a wait before the backend has
+    /// answered**, from <see cref="ISearchProvider.AnswersFromIndex"/>, and on
+    /// a KDE desktop the answer is often wrong: Baloo installed but switched
+    /// off, a folder it does not index, or a word nothing holds, and Baloo
+    /// says nothing and the walk runs. That was a silent name walk before; with
+    /// Search contents ticked it opens every file in reach, and the one line
+    /// that says so was hidden because an index was supposed to be answering.
+    /// </summary>
+    public Action? WalkingInstead { get; init; }
+
+    /// <summary>
     /// Whether <see cref="Text"/> is a filename pattern rather than a word.
     ///
     /// **One rule for both walks and the band.** Each provider had its own
@@ -76,13 +104,14 @@ public interface ISearchProvider
     ///
     /// **The band used to ask <c>IsAvailable</c>, and both shipped providers
     /// hardcoded that true.** It meant "will this return results at all", and
-    /// WindowsSearchProvider spelled out why it had to go on meaning that: it
-    /// IS the fallback walk, so answering false would have sent the UI to a
-    /// second fallback walk of its own. A machine with no index therefore
-    /// reported exactly what a machine with one did, and the sentence hung on
-    /// the false arm was unreachable in the source before anybody noticed that
-    /// no markup file bound it either. Nothing read IsAvailable once the band
-    /// stopped, so it is gone rather than left as a member with no consequence.
+    /// WindowsSearchProvider argued it had to go on meaning that: false, its
+    /// comment said, would send the UI to a fallback walk of its own — a walk
+    /// the UI never had, but the argument kept the flag true. A machine with
+    /// no index therefore reported exactly what a machine with one did, and
+    /// the sentence hung on the false arm was unreachable in the source before
+    /// anybody noticed that no markup file bound it either. Nothing read
+    /// IsAvailable once the band stopped, so it is gone rather than left as a
+    /// member with no consequence.
     ///
     /// **A parameter rather than a property, because the routing takes one.**
     /// LinuxSearchProvider sends a glob past Baloo to the walk — the index
@@ -118,10 +147,11 @@ public interface ISearchProvider
     /// which is what decides whether the band draws the "Search contents" box.
     ///
     /// **It was true for Baloo alone and nothing read it.** No caller set
-    /// MatchContent either, so the one backend that could search inside files
-    /// never did — it searched names and contents together whatever was asked,
-    /// because that is what baloosearch does. Both shipped providers answer
-    /// true now: Baloo by its index, and both walks by ContentMatcher.
+    /// MatchContent either, so the flag reached nothing: the walks could not
+    /// look inside a file, and Baloo, the one backend that could, did so
+    /// whatever was asked, because that is what baloosearch does. Both
+    /// shipped providers answer true now: Baloo by its index, and both walks
+    /// by ContentMatcher.
     ///
     /// No default, unlike the members around it: a provider has to say, the
     /// way it has to say its <see cref="BackendName"/>.
@@ -141,9 +171,10 @@ public interface ISearchProvider
     /// The box that sets it is drawn from this rather than unconditionally,
     /// because an index answers however it answers: on a KDE box
     /// <c>SearchWithBalooAsync</c> hands the query to baloosearch and filters
-    /// its answers by scope alone, so a tick there would change nothing at all
-    /// — which is the same silence this whole finding is about, moved from a
-    /// field to a checkbox.
+    /// its answers by scope, and by name when contents were not asked for —
+    /// ignoring case both times, as Baloo does — so a tick there would change
+    /// nothing at all, which is the same silence this whole finding is about,
+    /// moved from a field to a checkbox.
     ///
     /// Defaulted to FALSE, the opposite way round from <see cref="Everywhere"/>
     /// below: a phrase that has not been thought about is merely vague, while a

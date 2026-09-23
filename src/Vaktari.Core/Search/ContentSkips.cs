@@ -30,9 +30,10 @@ public sealed class ContentSkips
     public int TooLarge => Volatile.Read(ref _tooLarge);
 
     /// <summary>
-    /// Files whose contents are held by a cloud client rather than on the disk,
-    /// never opened because opening one downloads it. Only the Windows walk can
-    /// see this; elsewhere it stays zero.
+    /// Files whose contents are somewhere other than this disk, never opened
+    /// because opening one fetches it: on Windows a sync client's online-only
+    /// placeholders, and on Linux the files of a network or cloud mount the
+    /// walk only reached by walking down into it.
     /// </summary>
     public int Online => Volatile.Read(ref _online);
 
