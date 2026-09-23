@@ -740,6 +740,7 @@ public sealed class SearchContentsTests : OwnedViewModels
             foreach (var a in boxes)
             {
                 Assert.True(a.Box.Width > 0, $"{a.Name} was given no width, so it is not there");
+                Assert.True(a.Box.X >= -0.5, $"{a.Name} starts before the band");
                 Assert.True(a.Box.Right <= band.Bounds.Width + 0.5, $"{a.Name} runs past the band");
 
                 foreach (var b in boxes.Where(b => b.Name != a.Name))
