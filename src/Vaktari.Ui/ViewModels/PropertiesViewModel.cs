@@ -308,8 +308,18 @@ public sealed partial class PropertiesViewModel : ObservableObject
 
         try
         {
-            var result = await Checksums.ComputeAsync(_paths[0], progress, ct)
-                                        .ConfigureAwait(false);
+            // **On the pool, from the first line.** An async method runs on
+            // the caller's thread until its first real await, and the open
+            // before that is not free: on something that is not a file it
+            // can wait for ever, and the caller is the window.
+            //
+            // **And Stop stops waiting.** An open that blocks does not look at
+            // the token, so the button read Stop for good; the wait is what
+            // honours it now, and the blocked open is left to the pool.
+            var path = _paths[0];
+            var result = await Task.Run(() => Checksums.ComputeAsync(path, progress, ct), ct)
+                                   .WaitAsync(ct)
+                                   .ConfigureAwait(false);
 
             await Dispatcher.UIThread.InvokeAsync(() =>
             {
@@ -378,7 +388,9 @@ public sealed partial class PropertiesViewModel : ObservableObject
             // Only ever for one actual file: a folder has no digest, and
             // hashing a multi-selection would be three answers to a question
             // nobody asked in the singular.
-            CanChecksum = !details.IsDirectory && _paths.Count == 1;
+            // Not for a FIFO, socket or device: opening one to read waits
+            // until something writes, and the button froze the window doing it.
+            CanChecksum = !details.IsDirectory && !details.IsSpecial && _paths.Count == 1;
 
             var general = new List<PropertyRow>();
 

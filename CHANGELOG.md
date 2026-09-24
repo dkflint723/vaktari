@@ -186,6 +186,20 @@ should not be trusted for compatibility yet.
 
 ### Security
 
+- **On Linux, a permission change applied to a folder and everything in it
+  stays inside that folder.** It listed a folder, then visited each folder
+  inside it and changed each mode by name later on — and a name can be
+  swapped for a link in between. Someone else able to write into a shared
+  folder could replace a subfolder not yet reached with a link to your
+  home, and "others can read" went on into it, ~/.ssh included. Each entry
+  is now opened relative to the folder already open above it, never
+  following a link, and changed through what was opened — on 64-bit Intel
+  and ARM machines with /proc, which is every desktop Vaktari is built for;
+  anywhere else the old walk remains. Taking away your own read permission,
+  while keeping your own search (execute) permission, now reaches everything
+  inside as well, where it used to stop at the first folder it had just
+  closed to itself.
+
 - **A folder name can no longer smuggle options to git.** The status call
   that draws the M, A, D, ? and ! marks handed git its arguments as one quoted
   string, and a folder whose name held a double quote — legal on Linux — could
@@ -242,6 +256,100 @@ should not be trusted for compatibility yet.
   status line.
 
 ### Fixed
+
+- **A confirmation acts on what it asked about.** The question sits in a
+  bar under a listing that stays live, so the selection could change before
+  the answer — a click on another row, or an operation finishing and
+  selecting what it had put there — and a yes then deleted, for good, files
+  the question never named. The same held for *move to the bin* and for
+  deleting from the bin. A yes now means the files the question showed,
+  whatever is selected by then, and wherever the pane has gone: asked in a
+  folder and answered in the bin, it deletes the file it named, where it
+  used to destroy whatever was selected in the bin. And with "ask before
+  moving to the bin" turned on, Delete in the bin no longer asks a question
+  it cannot act on; it says at once that the items are already there.
+
+- **Moving something into the folder it is already in, by another name, no
+  longer deletes it.** On Windows a mapped drive and its share, a subst
+  drive, or a path written with `\\?\`; on Linux a bind mount. The move
+  took the copy route and asked whether to replace the file with itself;
+  on *Replace* it landed the copy over it — which was itself — and then
+  deleted the source, which was what had landed: gone, from no bin, with
+  nothing to undo. The file system is now asked whether two folders are
+  one before a move copies anything, and whether two files are one before
+  a source is deleted.
+
+- **On Linux, two bins holding one name are two items.** A file deleted
+  from your home folder and another of the same name deleted from a stick
+  sat in two bins under one name, and every action took the first it found:
+  *Restore* on the stick's row brought back the home one, *Delete
+  permanently* destroyed whichever the bin listed first, and Ctrl+Z after
+  deleting from the stick restored the other file.
+
+- **On Linux, a delete to the bin that cannot be a rename no longer loses
+  anything.** A folder whose parent you cannot write was copied into the
+  bin, emptied, and then left in place empty, the copy hidden; a folder
+  whose copy arrived whole but could not be fully removed had its bin entry
+  thrown away, so the whole of it sat in the bin where nothing could list
+  or restore it. Now only a move across drives is copied, a copy that fails
+  is taken back, and an item that reached the bin stays listed, and you are
+  told part of it could not be removed from where it was, and why. A
+  mounted drive is refused — its bin is inside it, and the copy walked into
+  itself until the path ran out — also when it is reached through a linked
+  folder. And a leftover in the bin with no record of its own no longer
+  blocks the next delete of that name, which failed with "already exists"
+  or, for a folder, was poured into the leftover.
+
+- **On Linux, a move within one drive is not refused for lack of space.**
+  Every move was held to the room a copy would need, so 80 GB moved within
+  a /home with 30 GB free failed with "not enough room" though a rename
+  needs none. A move out of a folder that is a link to another drive is
+  still checked, since it is really a copy.
+
+- **"Do the same for the rest" on a folder's Merge no longer answers the
+  file clashes too.** Merge keeps what is there; ticked on a folder, it
+  went on to overwrite every file that clashed afterwards without asking,
+  the files inside the merge among them. Folders and files now remember
+  their own answers.
+
+- **Undoing a copy or a new item leaves the step before it on top.** The
+  undo sent what it took back to the bin through the Delete key's own road,
+  which records a step of its own — so the next Ctrl+Z read "Undo delete",
+  put the copy straight back, and cleared what could be redone.
+
+- **On Windows, undoing a delete puts back what that delete removed, and
+  no longer what another program or pane deleted in the same few
+  seconds.** Those were restored along with it.
+
+- **On Windows, a folder named "data " or "data." is no longer shown as
+  "data".** Windows drops a trailing space or dot before it opens a path,
+  so opening such a folder listed its neighbour — rows, paths and all, and
+  a delete there emptied the wrong folder. The folder itself now refuses
+  to open and says why, as does making a new folder in it; the space-usage
+  view and a duplicate scan count it as unreadable rather than showing the
+  other's files, and a folder's size in properties leaves out such folders
+  inside it rather than counting their neighbours twice.
+
+- **A duplicate scan no longer offers one file as a copy of itself.** Two
+  names for one file — a hard link, or a folder reached twice through a
+  bind mount — were listed as copies, with space to give back that deleting
+  them does not; and for a folder reached twice, *Select every copy but one*
+  could pick the only one. And a
+  folder that can be listed but not opened no longer ends the scan, the
+  space-usage view or a folder's size: it is counted as unreadable and the
+  rest carries on.
+
+- **Invert selection keeps to the folder you are in when folders are
+  opened in place.** In the List layout it selected rows from inside the
+  opened folders as well.
+
+- **The Share row names what it will share.** It kept the name from the
+  last time the menu opened, so it could name a folder selected earlier —
+  "photos" — and share the folder you were in.
+
+- **On Linux, asking for the checksums of a named pipe no longer freezes
+  the application.** The button is not offered for one, and *Stop* now
+  stops waiting on a file that will not open.
 
 - **On Windows, a file marked for something other than a link is no
   longer shown as one.** Windows puts the mark a link carries on other

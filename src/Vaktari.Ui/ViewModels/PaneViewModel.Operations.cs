@@ -326,19 +326,54 @@ public sealed partial class PaneViewModel
     /// </summary>
     private bool RefusedVirtualDestination(string destination)
     {
-        if (!VirtualPaths.IsVirtual(destination)) return false;
+        if (VirtualPaths.IsVirtual(destination))
+        {
+            Status = "this listing is a view, not a folder — open a real folder first";
+            return true;
+        }
 
-        Status = "this listing is a view, not a folder — open a real folder first";
-        return true;
+        // **Nor a folder that cannot be reached by its name.** Its listing is
+        // refused, but the pane still stands in it — and a new folder made in
+        // "data " was made in "data", because Windows rewrites the path on
+        // the way in. What cannot be listed is not written into either.
+        if (Vaktari.Core.FileSystem.ReachablePath.Refuse(destination) is { } why)
+        {
+            Status = why;
+            return true;
+        }
+
+        return false;
     }
 
     /// <summary>Delete key. Recoverable, so no confirmation prompt.</summary>
     [RelayCommand]
     public void TrashSelected()
     {
-        if (_ops is null || RefusedInBin()) return;
+        if (RefusedInBin()) return;
 
-        var paths = SelectionPaths();
+        TrashChosen(SelectionPaths());
+    }
+
+    /// <summary>
+    /// What <see cref="TrashSelected"/> does, to paths named by the caller
+    /// rather than read off the selection as it stands.
+    ///
+    /// **A confirmation names what it is about, and a yes has to mean that.**
+    /// The prompt is a bar, not a dialog: the listing stays live under it, so
+    /// the selection can change between the question and the answer — a click
+    /// on another row, an operation finishing and selecting what it put here.
+    /// Read at the answer, the selection was a different set from the one the
+    /// question named. The prompt keeps what it asked about and hands it here.
+    ///
+    /// **Whatever the pane shows by the time of the answer.** The paths were
+    /// named in a real folder — the prompt routes a question asked in the bin
+    /// elsewhere — so the bin's refusal, which reads where the pane is NOW,
+    /// would decline a yes given after the pane moved into the bin.
+    /// </summary>
+    public void TrashChosen(IReadOnlyList<string> paths)
+    {
+        if (_ops is null) return;
+
         if (paths.Count == 0) return;
 
         // **Delete, Delete, Delete did not work.** After the rows went, nothing
@@ -361,6 +396,13 @@ public sealed partial class PaneViewModel
     private void SelectAfterRemoving(IReadOnlyList<string> going)
     {
         var doomed = new HashSet<string>(going, StringComparer.Ordinal);
+
+        // Named somewhere this pane no longer shows: nothing here moves.
+        if (!Entries.Any(e => e.FullPath is { } p && doomed.Contains(p)))
+        {
+            _selectAfterRemoval = null;
+            return;
+        }
 
         var survivors = Entries
             .Select(e => e.FullPath)
@@ -406,9 +448,22 @@ public sealed partial class PaneViewModel
     [RelayCommand]
     public void DeleteSelected()
     {
-        if (_ops is null || RefusedInBin()) return;
+        if (RefusedInBin()) return;
 
-        var paths = SelectionPaths();
+        DeleteChosen(SelectionPaths());
+    }
+
+    /// <summary>
+    /// What <see cref="DeleteSelected"/> does, to exactly the paths a
+    /// confirmation named — see <see cref="TrashChosen"/>. Here the difference
+    /// is the whole of the finding: deleting for good whatever happened to be
+    /// selected when Enter was pressed destroyed files the prompt never showed.
+    /// </summary>
+    public void DeleteChosen(IReadOnlyList<string> paths)
+    {
+        // Not refused for the bin, for TrashChosen's reason.
+        if (_ops is null) return;
+
         if (paths.Count == 0) return;
 
         Track(_ops.Delete(paths));
@@ -932,14 +987,23 @@ public sealed partial class PaneViewModel
     /// A fresh closure per operation, so "do the same for the rest" means this
     /// copy and not every copy from now on — and no answer at all outlives the
     /// operation it was given for.
+    ///
+    /// **And a folder's answer is not a file's.** One remembered answer served
+    /// both, so ticking "do the same for the rest" on a folder's Merge — which
+    /// keeps what is already there — also overwrote every file clash after it
+    /// without asking, including the ones inside the merge. Merge and Overwrite
+    /// are one resolution with two meanings; each shape remembers its own.
     /// </summary>
     private static Func<FileConflict, ValueTask<ConflictResolution>> Conflicts()
     {
-        ConflictResolution? remembered = null;
+        ConflictResolution? rememberedForFolders = null;
+        ConflictResolution? rememberedForFiles = null;
 
         return async conflict =>
         {
-            if (remembered is { } answer) return answer;
+            var merge = ConflictViewModel.IsMerge(conflict);
+
+            if ((merge ? rememberedForFolders : rememberedForFiles) is { } answer) return answer;
 
             // Nothing to ask with — a headless run, or a test. Behaving as the
             // application did before there was a prompt is the safe default:
@@ -948,7 +1012,11 @@ public sealed partial class PaneViewModel
 
             var (resolution, applyToRest) = await ask(conflict).ConfigureAwait(false);
 
-            if (applyToRest) remembered = resolution;
+            if (applyToRest)
+            {
+                if (merge) rememberedForFolders = resolution;
+                else rememberedForFiles = resolution;
+            }
 
             return resolution;
         };
