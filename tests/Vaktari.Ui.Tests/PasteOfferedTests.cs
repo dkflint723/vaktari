@@ -159,13 +159,17 @@ public sealed class PasteOfferedTests : OwnedViewModels
     /// And something asks, as the menu opens. In the ActiveTab block
     /// specifically — above the early return further down that has swallowed
     /// work in this handler before.
+    ///
+    /// Read from PrepareListingMenu rather than OnListingMenuOpening, because
+    /// that is where the body went when the Menu key was given it too: the
+    /// handler is now one line, and only the right-click route reaches it.
     /// </summary>
     [Fact]
     public void The_menu_asks_the_clipboard_as_it_opens()
     {
         var body = RepoSource.Body(
             RepoSource.UiClass("", "MainWindow"),
-            "private void OnListingMenuOpening(object? sender, System.ComponentModel.CancelEventArgs e)");
+            "private void PrepareListingMenu(ContextMenu menu, PaneGroupViewModel? group)");
 
         var probe = body.IndexOf("RefreshClipboardAsync()", StringComparison.Ordinal);
 
