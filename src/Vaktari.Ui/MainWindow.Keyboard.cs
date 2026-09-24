@@ -188,6 +188,8 @@ public partial class MainWindow : ICommandHost
             if (e.Handled) return;
         }
 
+        if (AnswerForTheRow(sender, e)) return;
+
         if (PageCompactListing(e)) return;
 
         if (e.Key != Key.Tab || e.KeyModifiers != KeyModifiers.None) return;
@@ -243,9 +245,54 @@ public partial class MainWindow : ICommandHost
         e.Handled = true;
     }
 
+    /// <summary>
+    /// Enter and Space on a focused listing row, answered by the window before
+    /// the row can take them.
+    ///
+    /// **Enter on a clicked row did nothing.** Avalonia 12's ListBoxItem has an
+    /// OnKeyDown of its own that selects the row on Enter and Space — toggles
+    /// it, with Ctrl — and marks the key handled whatever it did. A click leaves
+    /// the keyboard on the ROW, not the ListBox, so the bubble handler below
+    /// never saw either key: Enter did not open and Space did not preview, and
+    /// both worked only in the rarer state where the ListBox itself was
+    /// focused.
+    ///
+    /// **The whole bubble handler, rather than the two answers pulled out of
+    /// it**, so the prompt, the rename box, the sidebar and the text-box guard
+    /// decide exactly as they did, and a key somebody rebinds onto Enter or
+    /// Space is found the same way. Whatever it leaves unhandled goes on to the
+    /// row — Ctrl+Space toggling a row in a multiple selection is the row's,
+    /// and nothing here answers it.
+    ///
+    /// Only these two keys, and only for a row of the listing on show: any
+    /// other key reaches the bubble handler already, and a row in some other
+    /// list keeps its own keys.
+    /// </summary>
+    private bool AnswerForTheRow(object? sender, KeyEventArgs e)
+    {
+        if (e.Key is not (Key.Enter or Key.Space)) return false;
+
+        if (FocusManager?.GetFocusedElement() is not ListBoxItem row) return false;
+        if (ActiveListing() is not { } list
+            || !ReferenceEquals(ItemsControl.ItemsControlFromItemContainer(row), list))
+            return false;
+
+        OnWindowKeyDown(sender, e);
+        _answeredOnTheTunnel = e;
+
+        return e.Handled;
+    }
+
+    /// <summary>The keystroke <see cref="AnswerForTheRow"/> already ran the
+    /// bubble handler for, so a key the row then leaves alone is not answered
+    /// twice. The same arguments travel both phases of one keystroke.</summary>
+    private KeyEventArgs? _answeredOnTheTunnel;
+
     private void OnWindowKeyDown(object? sender, KeyEventArgs e)
     {
         if (_shell is null) return;
+
+        if (ReferenceEquals(e, _answeredOnTheTunnel)) return;
 
         // The prompt owns the keyboard while it is open.
         if (IsConfirming)
