@@ -70,6 +70,26 @@ public sealed class TrashTwoBinsTests : IDisposable
     private static TrashedItem Item(XdgTrashMaintenance bin, string originalEndsWith)
         => bin.List().Single(i => i.OriginalPath.EndsWith(originalEndsWith, StringComparison.Ordinal));
 
+    /// <summary>
+    /// **The bins looked for are read off the mount table's text.** Asking
+    /// each mount whether it was ready was a stat of every one, on the
+    /// window's thread; and an automount point is not looked inside at all,
+    /// because looking is what mounts it. A network share stays: something
+    /// deleted there is in that share's bin.
+    /// </summary>
+    [Fact]
+    public void The_kernels_own_filesystems_are_not_asked_about_a_bin()
+        => Assert.Equal(
+            ["/", "/run/media/me/STICK", "/mnt/nas"],
+            XdgTrash.MountedIn(
+            [
+                "/dev/nvme0n1p2 / ext4 rw 0 0",
+                "proc /proc proc rw 0 0",
+                "systemd-1 /mnt/auto autofs rw 0 0",
+                "/dev/sdb1 /run/media/me/STICK vfat rw 0 0",
+                "//nas/share /mnt/nas cifs rw 0 0",
+            ]));
+
     [Fact]
     public void Both_items_are_listed_under_keys_that_differ()
     {

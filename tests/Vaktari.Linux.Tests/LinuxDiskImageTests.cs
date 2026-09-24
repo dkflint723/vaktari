@@ -4,6 +4,19 @@ using Xunit;
 namespace Vaktari.Linux.Tests;
 
 /// <summary>
+/// **The loop device is the last one named**: the image's own path comes
+/// first in the sentence, and an image under ~/dev/loop0-tests/ read as
+/// /dev/loop0 — so the mount and the clean-up went to another image's device.
+/// </summary>
+public sealed class LoopDeviceNameTests
+{
+    [Fact]
+    public void The_device_is_read_after_the_file_that_names_one_too()
+        => Assert.Equal("/dev/loop5",
+            LinuxDiskImages.LoopDeviceIn("Mapped file /home/me/dev/loop0-tests/x.iso as /dev/loop5.\n"));
+}
+
+/// <summary>
 /// Mounting an image through udisks2: which files are offered, what is said to
 /// the tool, and the parsing of what it says back — which is the risky part,
 /// because the loop device it picked is only reported in prose.

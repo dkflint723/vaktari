@@ -7,6 +7,33 @@ using Xunit;
 namespace Vaktari.Linux.Tests;
 
 /// <summary>
+/// **The D-Bus Exec line is quoted.** Both bus daemons split it at every
+/// unquoted space, so a copy in a folder with a space in its name was started
+/// as the part before the space, which does not exist.
+/// </summary>
+public sealed class ServiceExecQuotingTests
+{
+    [Fact]
+    public void A_path_with_a_space_is_one_argument()
+    {
+        const string exec = "/home/me/Apps/Vaktari 0.10/vaktari";
+
+        var line = FileManager1ServiceFile.Text(exec).Split('\n').Single(l => l.StartsWith("Exec=", StringComparison.Ordinal));
+
+        Assert.Equal("Exec='/home/me/Apps/Vaktari 0.10/vaktari'", line);
+        Assert.Equal(exec, FileManager1ServiceFile.ExecIn([line]));
+    }
+
+    [Fact]
+    public void A_quote_in_the_path_survives_the_round_trip()
+    {
+        const string exec = "/home/o'brien/vaktari";
+
+        Assert.Equal(exec, FileManager1ServiceFile.ExecIn(FileManager1ServiceFile.Text(exec).Split('\n')));
+    }
+}
+
+/// <summary>
 /// Answering the desktop's "show me this file where it lives".
 ///
 /// **This is the other half of being the default file manager, and Vaktari had

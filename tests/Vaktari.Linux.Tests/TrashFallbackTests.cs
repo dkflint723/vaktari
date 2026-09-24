@@ -154,6 +154,137 @@ public sealed class TrashFallbackTests : IDisposable
     }
 
     /// <summary>
+    /// **A volume's trash is readable by its owner alone.** It was made as
+    /// the umask allowed, 0755 as a rule, so a file deleted from a private
+    /// folder on a shared volume could be read out of the trash by anyone.
+    /// </summary>
+    [PosixFact]
+    public void A_volume_trash_is_made_private()
+    {
+        Environment.SetEnvironmentVariable("XDG_DATA_HOME", Path.Combine(_root, "data"));
+
+        var volume = Path.Combine(_root, "volume", ".Trash-1000");
+        Directory.CreateDirectory(Path.GetDirectoryName(volume)!);
+
+        Assert.Equal(volume, XdgTrash.PrepareRoot(volume));
+
+        const UnixFileMode Private = UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute;
+
+        foreach (var folder in new[] { volume, Path.Combine(volume, "files"), Path.Combine(volume, "info") })
+            Assert.Equal(Private, File.GetUnixFileMode(folder) & (UnixFileMode)0x1FF);
+    }
+
+    /// <summary>
+    /// **One an earlier build left readable by everyone is closed up.**
+    /// </summary>
+    [PosixFact]
+    public void An_existing_open_volume_trash_is_made_private()
+    {
+        Environment.SetEnvironmentVariable("XDG_DATA_HOME", Path.Combine(_root, "data"));
+
+        var volume = Directory.CreateDirectory(Path.Combine(_root, "volume", ".Trash-1000")).FullName;
+        File.SetUnixFileMode(volume, (UnixFileMode)0x1ED); // 0755
+
+        Assert.Equal(volume, XdgTrash.PrepareRoot(volume));
+        Assert.Equal((UnixFileMode)0x1C0, File.GetUnixFileMode(volume) & (UnixFileMode)0x1FF); // 0700
+    }
+
+    /// <summary>
+    /// The owner is read from the entry itself: root owns "/", and this user
+    /// owns the folder it just made. What pins the st_uid offset.
+    /// </summary>
+    [PosixFact]
+    public void The_owner_read_is_the_real_one()
+    {
+        Assert.Equal(0u, FileIdentity.OwnerOf("/"));
+
+        using var id = System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo("id", "-u")
+        {
+            RedirectStandardOutput = true,
+            UseShellExecute = false,
+        })!;
+
+        var uid = uint.Parse(id.StandardOutput.ReadToEnd().Trim(), System.Globalization.CultureInfo.InvariantCulture);
+        id.WaitForExit();
+
+        Assert.Equal(uid, FileIdentity.OwnerOf(_root));
+
+        // Group and owner told apart: a folder given another of this user's
+        // groups still reads as owned by the user. Where the user has no
+        // other group, owner and group are one number and this says nothing.
+        var groups = Run("id", "-G").Split(' ', StringSplitOptions.RemoveEmptyEntries);
+        var primary = Run("id", "-g");
+
+        if (groups.FirstOrDefault(g => g != primary) is { } other)
+        {
+            var grouped = Directory.CreateDirectory(Path.Combine(_root, "grouped")).FullName;
+            Run("chgrp", other, grouped);
+            Assert.Equal(uid, FileIdentity.OwnerOf(grouped));
+        }
+
+        // And a real folder another user owns is not this user's trash.
+        if (uid != 0) Assert.False(XdgTrash.Mine("/"));
+    }
+
+    private static string Run(string program, params string[] arguments)
+    {
+        var info = new System.Diagnostics.ProcessStartInfo(program) { RedirectStandardOutput = true, UseShellExecute = false };
+        foreach (var argument in arguments) info.ArgumentList.Add(argument);
+
+        using var process = System.Diagnostics.Process.Start(info)!;
+        var output = process.StandardOutput.ReadToEnd().Trim();
+        process.WaitForExit();
+        return output;
+    }
+
+    /// <summary>
+    /// **A filesystem that makes owners up is not someone else's planting.**
+    /// A share mounted without uid= says root owns everything, the trash just
+    /// made included; that trash is owned like the volume's top, and kept.
+    /// One owned by another user who does not own the top is not.
+    /// </summary>
+    [PosixFact]
+    public void A_trash_owned_like_its_volume_is_kept_and_one_owned_otherwise_is_not()
+    {
+        var top = Directory.CreateDirectory(Path.Combine(_root, "share")).FullName;
+        var trash = Directory.CreateDirectory(Path.Combine(top, ".Trash-1000")).FullName;
+
+        try
+        {
+            XdgTrash.OwnerOverride = path => path == top ? 0u : 0u;
+            Assert.True(XdgTrash.Mine(trash));
+
+            XdgTrash.OwnerOverride = path => path == top ? 0u : 4242u;
+            Assert.False(XdgTrash.Mine(trash));
+        }
+        finally
+        {
+            XdgTrash.OwnerOverride = null;
+        }
+    }
+
+    /// <summary>
+    /// **And one that is not a folder of this user's own is not used.** A
+    /// .Trash-1000 planted by someone else — here a link to a folder of
+    /// theirs — took every delete from the volume. The home trash is used
+    /// instead, and nothing is made inside the planted one.
+    /// </summary>
+    [PosixFact]
+    public void A_planted_volume_trash_is_refused()
+    {
+        var data = Path.Combine(_root, "data");
+        Environment.SetEnvironmentVariable("XDG_DATA_HOME", data);
+
+        var theirs = Directory.CreateDirectory(Path.Combine(_root, "theirs")).FullName;
+        var planted = Path.Combine(_root, "volume", ".Trash-1000");
+        Directory.CreateDirectory(Path.GetDirectoryName(planted)!);
+        Directory.CreateSymbolicLink(planted, theirs);
+
+        Assert.Equal(Path.Combine(data, "Trash"), XdgTrash.PrepareRoot(planted));
+        Assert.Empty(Directory.EnumerateFileSystemEntries(theirs));
+    }
+
+    /// <summary>
     /// **A payload with no info file does not lend its name.** One left in
     /// files/ — another program's crash — held "report.txt"; the move onto it
     /// failed, and the failure was taken for an arrival, so the stranger was

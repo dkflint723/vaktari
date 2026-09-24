@@ -162,8 +162,24 @@ public static partial class XdgTrash
     {
         try
         {
-            Directory.CreateDirectory(Path.Combine(preferred, "files"));
-            Directory.CreateDirectory(Path.Combine(preferred, "info"));
+            Private(preferred);
+
+            // **A volume's trash must be this user's own folder.** On a volume
+            // whose top anyone can write, another user could make
+            // .Trash-1000 first — and every delete then landed where they
+            // could read it, and their planted entries showed in this bin.
+            // Refused, as gio refuses it, and the home trash taken instead —
+            // asked before anything is made inside it.
+            if (!string.Equals(preferred, TrashRoot, StringComparison.Ordinal))
+            {
+                if (!Mine(preferred))
+                    throw new UnauthorizedAccessException($"{preferred} is not this user's own folder");
+
+                Tighten(preferred);
+            }
+
+            Private(Path.Combine(preferred, "files"));
+            Private(Path.Combine(preferred, "info"));
 
             return preferred;
         }
@@ -178,8 +194,9 @@ public static partial class XdgTrash
 
             Vaktari.Core.Quiet.Swallowed("trash", e);
 
-            Directory.CreateDirectory(Path.Combine(home, "files"));
-            Directory.CreateDirectory(Path.Combine(home, "info"));
+            Private(home);
+            Private(Path.Combine(home, "files"));
+            Private(Path.Combine(home, "info"));
 
             return home;
         }
@@ -427,12 +444,37 @@ public static partial class XdgTrash
 
             // Only ones that exist: naming a trash on every mounted volume
             // would have the listing create directories on read-only media.
-            if (Directory.Exists(root)) yield return root;
+            // And only this user's own — see PrepareRoot.
+            if (Directory.Exists(root) && Mine(root)) yield return root;
         }
     }
 
+    /// <summary>
+    /// The mount points a bin might be on, from the mount table's text.
+    ///
+    /// **Not DriveInfo, whose IsReady is a stat of every mount** — and this
+    /// is asked for the bin's icon. The kernel's own filesystems, autofs among
+    /// them, cannot hold a bin and are not visited at all: looking inside an
+    /// automount point is what mounts it. Network filesystems stay, because a
+    /// file deleted there went to that volume's bin and must be found again.
+    /// </summary>
     private static IEnumerable<string> Drives()
     {
+        if (File.Exists("/proc/mounts"))
+        {
+            List<string> lines;
+
+            try { lines = [.. File.ReadLines("/proc/mounts")]; }
+            catch (Exception e) when (e is IOException or UnauthorizedAccessException)
+            {
+                Vaktari.Core.Quiet.Swallowed("trash", e);
+                yield break;
+            }
+
+            foreach (var root in MountedIn(lines)) yield return root;
+            yield break;
+        }
+
         DriveInfo[] drives;
 
         try { drives = DriveInfo.GetDrives(); }
@@ -453,6 +495,94 @@ public static partial class XdgTrash
             }
 
             if (root is not null) yield return root;
+        }
+    }
+
+    /// <summary>
+    /// Makes a trash folder if it is missing, readable by this user alone.
+    ///
+    /// **It was made readable by everyone**, as far as the umask allowed —
+    /// 0755 as a rule — so a file deleted from a private folder on a shared
+    /// volume could be read out of the volume's trash by any other user, and
+    /// where it came from out of its info file. gio and KIO both make it
+    /// 0700. An existing folder is left as it is: a FAT stick answers 0755
+    /// for everything and cannot be told otherwise.
+    /// </summary>
+    private static void Private(string path)
+    {
+        if (OperatingSystem.IsLinux())
+            Directory.CreateDirectory(path, UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute);
+        else
+            Directory.CreateDirectory(path);
+    }
+
+    /// <summary>
+    /// **A trash an earlier build made readable by everyone is closed up.**
+    /// Making new ones private left every existing one 0755, and what was
+    /// deleted into it readable by the machine's other users. Best effort: a
+    /// filesystem that has no modes to change keeps its trash as it is.
+    /// </summary>
+    private static void Tighten(string root)
+    {
+        if (!OperatingSystem.IsLinux()) return;
+
+        const UnixFileMode Private = UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute;
+
+        try
+        {
+            if ((File.GetUnixFileMode(root) & ~(Private | UnixFileMode.SetUser | UnixFileMode.SetGroup | UnixFileMode.StickyBit)) != 0)
+                File.SetUnixFileMode(root, Private);
+        }
+        catch (Exception e) when (e is IOException or UnauthorizedAccessException or PlatformNotSupportedException)
+        {
+            Vaktari.Core.Quiet.Swallowed("trash", e);
+        }
+    }
+
+    /// <summary>
+    /// Whether a trash folder is a real folder owned by this user. Unknown
+    /// owners count as this user's — a C library too old to ask, or a
+    /// filesystem that has no owners — which is the old behaviour.
+    /// </summary>
+    internal static bool Mine(string path)
+    {
+        try
+        {
+            if ((File.GetAttributes(path) & FileAttributes.ReparsePoint) != 0) return false;
+        }
+        catch (Exception e) when (e is IOException or UnauthorizedAccessException)
+        {
+            return false;
+        }
+
+        if (!OperatingSystem.IsLinux()) return true;
+
+        var ownerOf = OwnerOverride ?? FileIdentity.OwnerOf;
+
+        if (ownerOf(path) is not { } owner || owner == GetUid()) return true;
+
+        // **A filesystem that makes owners up gives everything the same one.**
+        // A CIFS share mounted without uid=, an NTFS or exFAT partition from
+        // fstab, NFS squashing every user to one: the trash made a moment ago
+        // reads as root's, and refusing it sent every delete there across the
+        // network into the home trash. Owned like the volume's own top folder,
+        // it is the filesystem's answer and not another user's planting — who
+        // would own the top as well, and so the volume.
+        return TopDirOf(path) is { } top && ownerOf(top) == owner;
+    }
+
+    /// <summary>Stands in for the owner read, for the tests that cannot chown. Null in the application.</summary>
+    internal static Func<string, uint?>? OwnerOverride { get; set; }
+
+    /// <summary>The mount points in a mount table, without the kernel's own filesystems.</summary>
+    internal static IEnumerable<string> MountedIn(IEnumerable<string> lines)
+    {
+        foreach (var line in lines)
+        {
+            var parts = line.Split(' ');
+            if (parts.Length < 3 || MountTable.IsKernelFs(parts[2])) continue;
+
+            yield return MountTable.Unescape(parts[1]);
         }
     }
 

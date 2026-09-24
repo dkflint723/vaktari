@@ -54,6 +54,35 @@ public sealed class TerminalFallbackTests
     }
 
     /// <summary>
+    /// **The last resort does not read the folder's name as a command.** It
+    /// was "cd folder &amp;&amp; $SHELL" handed to xterm's shell, so a ; in the name
+    /// ran what followed it. Now xterm is started in the folder, and the name
+    /// is on no command line.
+    /// </summary>
+    [Fact]
+    public void The_xterm_fallback_carries_the_folder_as_its_working_directory()
+    {
+        var launcher = new LinuxLauncher();
+        var started = new List<(string Directory, IReadOnlyList<string> Argv)>();
+
+        launcher.UseTerminals([Missing("one")]);
+        launcher.SpawnOverride = (directory, argv) =>
+        {
+            started.Add((directory, argv));
+            return false;
+        };
+
+        const string folder = "/tmp/a;touch pwned";
+
+        launcher.OpenTerminal(folder, launcher.Terminals[0]);
+
+        var last = started[^1];
+        Assert.Equal(["xterm"], last.Argv);
+        Assert.Equal(folder, last.Directory);
+        Assert.DoesNotContain(started, s => s.Argv.Any(a => a.Contains("cd ", StringComparison.Ordinal)));
+    }
+
+    /// <summary>
     /// Nothing detected at all is the ordinary state on a headless box, and it
     /// must still be quiet rather than throwing out of a keypress.
     /// </summary>

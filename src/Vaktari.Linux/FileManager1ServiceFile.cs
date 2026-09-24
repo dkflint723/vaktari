@@ -75,10 +75,40 @@ internal static class FileManager1ServiceFile
     /// it resolves the ~/.local/bin/vaktari symlink to the real binary, which is
     /// what has to be executed anyway.
     /// </summary>
+    ///
+    /// **And quoted.** Both bus daemons split Exec the way a shell does, at
+    /// every unquoted space, so a copy in "~/Apps/Vaktari 0.10/" was started as
+    /// "~/Apps/Vaktari" with an argument — which does not exist, and the name
+    /// was never claimed. Single quotes, with a quote inside written '\''.
+    /// </summary>
     internal static string Text(string exec)
         => "[D-BUS Service]\n"
          + $"Name={FreedesktopFileManager.BusName}\n"
-         + $"Exec={exec}\n";
+         + $"Exec='{exec.Replace("'", @"'\''", StringComparison.Ordinal)}'\n";
+
+    /// <summary>The first word of an Exec value, its shell quoting taken off.</summary>
+    internal static string Unquoted(string value)
+    {
+        var word = new System.Text.StringBuilder();
+        var quoted = false;
+
+        for (var i = 0; i < value.Length; i++)
+        {
+            var c = value[i];
+
+            if (quoted)
+            {
+                if (c == '\'') quoted = false;
+                else word.Append(c);
+            }
+            else if (c == '\'') quoted = true;
+            else if (c == '\\' && i + 1 < value.Length) word.Append(value[++i]);
+            else if (char.IsWhiteSpace(c)) break;
+            else word.Append(c);
+        }
+
+        return word.ToString();
+    }
 
     /// <summary>
     /// Writes it if it is missing or names a different binary, and otherwise
@@ -137,7 +167,7 @@ internal static class FileManager1ServiceFile
             var line = raw.Trim();
 
             if (line.StartsWith("Exec=", StringComparison.Ordinal))
-                return line[5..].Trim();
+                return Unquoted(line[5..].Trim());
         }
 
         return null;

@@ -40,6 +40,29 @@ public sealed partial class LinuxRemoteMounts : IRemoteMounts
 
     public string AddressHint => "smb:// · sftp:// · ftp:// · dav://";
 
+    /// <summary>
+    /// **sshfs and rclone count too.** Only gvfs and kio-fuse mounts were
+    /// known to be remote, and .NET calls every FUSE filesystem local — so a
+    /// plain `sshfs host: ~/nas` was probed row by row over the wire, and
+    /// properties on the folder holding it walked the share unasked.
+    /// </summary>
+    public IReadOnlyList<string> NetworkRoots() => NetworkRootsIn(MountTable.Lines());
+
+    internal static IReadOnlyList<string> NetworkRootsIn(IEnumerable<string> lines)
+    {
+        var roots = new List<string>();
+
+        foreach (var line in lines)
+        {
+            var parts = line.Split(' ');
+            if (parts.Length < 3 || !MountTable.IsNetworkFs(parts[2])) continue;
+
+            roots.Add(MountTable.Unescape(parts[1]));
+        }
+
+        return roots;
+    }
+
     public IReadOnlyList<RemoteMount> Discover()
     {
         var found = new List<RemoteMount>();

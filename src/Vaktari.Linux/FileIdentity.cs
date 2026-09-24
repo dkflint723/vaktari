@@ -25,6 +25,34 @@ internal static partial class FileIdentity
                    SetLastError = true)]
     private static partial int Stat(string path, ref byte buffer);
 
+    [LibraryImport("libc", EntryPoint = "lstat", StringMarshalling = StringMarshalling.Utf8,
+                   SetLastError = true)]
+    private static partial int LStat(string path, ref byte buffer);
+
+    /// <summary>
+    /// The owner of an entry itself — a link as the link — or null when that
+    /// cannot be told. st_uid sits just after st_mode on x86-64, four bytes
+    /// on; on aarch64 a 4-byte st_nlink comes between, so eight.
+    /// </summary>
+    public static uint? OwnerOf(string path)
+    {
+        var at = ModeOffset;
+
+        if (at < 0 || !_available || !OperatingSystem.IsLinux()) return null;
+
+        var owner = RuntimeInformation.ProcessArchitecture == Architecture.Arm64 ? at + 8 : at + 4;
+        var buffer = new byte[256];
+
+        try
+        {
+            return LStat(path, ref buffer[0]) == 0 ? BitConverter.ToUInt32(buffer, owner) : null;
+        }
+        catch (Exception e) when (e is EntryPointNotFoundException or DllNotFoundException)
+        {
+            return null;
+        }
+    }
+
     [LibraryImport("libc", EntryPoint = "realpath", StringMarshalling = StringMarshalling.Utf8,
                    SetLastError = true)]
     private static partial nint RealPathOf(string path, ref byte resolved);

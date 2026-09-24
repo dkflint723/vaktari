@@ -186,6 +186,37 @@ should not be trusted for compatibility yet.
 
 ### Security
 
+- **On Windows, a script of yours is given file names, never commands.** A
+  .bat or .cmd in the scripts folder is run by cmd.exe, which reads the
+  whole command line again by its own rules, and a selected name with no
+  space in it went through unquoted: a file called `report&ver` ran `ver`,
+  a comma split one name into two paths, and a file called `x&payload` in
+  a downloaded folder ran the `payload.bat` beside it. Every name is now
+  quoted for cmd.exe. A name with `%` in it is refused with a message,
+  since cmd.exe expands `%NAME%` even inside quotes and the script would be
+  handed another file.
+
+- **"Open terminal here" in a folder whose name has a `;` in it opens that
+  folder.** Windows Terminal splits its arguments at every `;`, quotes or
+  no quotes, and runs what follows as a second command — through *as
+  administrator*, elevated, behind a consent prompt that named only the
+  terminal. The `;` is now escaped for Windows Terminal.
+
+- **On Linux, a bin on a shared drive is yours alone.** The bin made at
+  the top of a drive for your deletions was readable by every other user
+  of the machine, so a file deleted from a private folder could be read
+  back out of it; it is now made readable by you only, and an existing one
+  is closed up the next time you delete something on that drive. And one
+  that is not your own folder — made there first by someone else — is no
+  longer used, as GNOME refuses it too: your deletions go to your home bin
+  instead. A network share or a Windows-formatted drive that shows every
+  file as one owner's keeps its bin as before.
+
+- **On Linux, the last-resort terminal no longer reads a folder's name as
+  a command.** With no terminal detected that would start, *Open terminal
+  here* fell back to xterm with `cd <folder> && $SHELL`, so a `;` in the
+  folder's name ran what followed it. xterm is now started in the folder.
+
 - **On Linux, a permission change applied to a folder and everything in it
   stays inside that folder.** It listed a folder, then visited each folder
   inside it and changed each mode by name later on — and a name can be
@@ -256,6 +287,90 @@ should not be trusted for compatibility yet.
   status line.
 
 ### Fixed
+
+- **On Windows, files dragged out of a zip opened in Explorer land in
+  Vaktari.** Explorer hands such files over as contents rather than as
+  files on disk, and reading them never worked: the drop always ended with
+  the message about archives. They are now written where they were
+  dropped, with the folders that hold them — an empty folder included.
+
+- **On Windows, ejecting a drive a program is still writing to leaves that
+  program's work alone.** When the drive could not be locked because a file
+  on it was open, the eject dismounted it anyway, which cuts every open file
+  off mid-write, and only then asked Windows to remove the device. Now a
+  drive that cannot be locked is not dismounted; Windows' refusal is what
+  you are told, naming the program when Windows says which one. The same for a disc: one with a
+  file open on it keeps its tray shut and says so, where the tray used to
+  open under the program.
+
+- **On Windows, a shortcut to a folder with accented letters in its name
+  opens that folder.** A shortcut that keeps its path only in your
+  language's code page — "Música" — was read back as a folder that does not
+  exist: double-clicking it opened Explorer, and the places import skipped
+  it. The path is now read in the machine's own code page, which is what
+  wrote it.
+
+- **On Windows, double-clicking a drive opens it in Vaktari when Vaktari is
+  the default file manager.** The drive was handed over as `C:"` rather
+  than `C:\`, and Vaktari came up without opening it. Setting Vaktari as
+  the default again writes the corrected command, and a drive handed over
+  the old way is understood as well.
+
+- **On Windows, a mounted disc image is told apart from another file with
+  the same name.** Windows names a mounted image without its drive, and any
+  file whose path ended the same way — `D:\ISO\x.iso` when it was
+  `C:\ISO\x.iso` that was mounted — was taken for it: the menu offered
+  *Unmount* for a file that was not mounted and hid *Mount*.
+
+- **On Windows, a network drive whose server has gone no longer freezes
+  the window.** Deciding the bin's icon asked every mapped drive whether it
+  was ready, at startup and after every copy or delete; opening *This PC*
+  or the menu on the machine's crumb asked every drive how full it was;
+  and listing network connections asked each share whether it answered —
+  all on the window's thread, where a dead server does not answer. The bin
+  no longer asks network drives at all, and the other two ask off the
+  window's thread.
+
+- **On Linux, ejecting one partition of a drive with two says so when the
+  other is in use.** Only the partition clicked was unmounted, so the drive
+  could not be powered off with the other still mounted — and that read as
+  "written out and safe to unplug". Every mounted partition of the drive is
+  now unmounted first, and one in use is what you are told about. A
+  partition of a disk inside the machine — the Windows partition beside
+  Linux, say — is simply unmounted: the system's own partitions on that
+  disk are left alone and nothing is powered off.
+
+- **On Linux, *Open terminal as administrator* opens in the folder, and a
+  file run as administrator runs in its own folder.** Both started in
+  root's home folder, /root, because the step that asks for the password
+  moves there first. Where root cannot enter the folder — a home on a
+  network share, say — the terminal opens in /root and says why, and a
+  file is not run at all rather than run somewhere else.
+
+- **On Linux, properties on "/" no longer count what is not on disk.**
+  The size walked into /proc, where one file alone reads as 128 TiB, and
+  into /sys; the walks behind folder sizes, space usage and duplicates now
+  list those folders without going into them. And a folder holding a
+  network share is not measured until you ask, as a folder on one already
+  was not.
+
+- **On Linux, a network mount whose server has gone no longer freezes the
+  window.** Deciding the bin's icon looked into every mounted drive's bin,
+  and listing network places read each one — both on the window's thread,
+  where a dead server does not answer. Both are asked off it now, one at a
+  time, and the bin's icon no longer looks inside an automount point that
+  is not yet mounted, so it never mounts one.
+  Folders on sshfs and rclone mounts are now known to be remote, so they
+  are not read row by row for icons or measured unasked.
+
+- **On Linux, Vaktari installed in a folder with a space in its name can
+  be started when another program asks it to show a file in its folder.**
+  The line that tells the session how to start it was split at the space.
+
+- **On Linux, mounting a disc image whose path has `/dev/loop` in it — kept
+  under a folder called `dev`, say — mounts that image.** The name of the device Linux gave
+  the image was read from the first `/dev/loop` in the reply, which could
+  be part of the image's own path.
 
 - **A confirmation acts on what it asked about.** The question sits in a
   bar under a listing that stays live, so the selection could change before

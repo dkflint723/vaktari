@@ -23,10 +23,13 @@ public sealed class UdisksEjectorTests
     private static UdisksEjector Ejector(
         Func<IReadOnlyList<string>, UdisksEjector.CliResult> answer,
         List<IReadOnlyList<string>>? spoken = null,
-        bool haveTool = true)
+        bool haveTool = true,
+        string[]? lines = null,
+        bool removable = true)
         => new()
         {
-            MountLines = () => Lines,
+            MountLines = () => lines ?? Lines,
+            TraitsOverride = _ => new DeviceTraits(removable, OnUsbBus: removable),
             HaveToolOverride = _ => haveTool,
             RunOverride = (argv, _) =>
             {
@@ -81,6 +84,100 @@ public sealed class UdisksEjectorTests
         Assert.Equal(
             ["power-off", "--no-user-interaction", "-b", "/dev/sdb1"], spoken[1]);
     }
+
+    /// <summary>A stick with two partitions, both mounted, and a loop device
+    /// that is no relation of either.</summary>
+    private static readonly string[] TwoPartitions =
+    [
+        "/dev/nvme0n1p2 / ext4 rw,relatime 0 0",
+        "/dev/sdb1 /run/media/flint/A vfat rw,nosuid 0 0",
+        "/dev/sdb2 /run/media/flint/B ext4 rw,nosuid 0 0",
+        "/dev/loop3 /run/media/flint/IMAGE iso9660 ro 0 0",
+    ];
+
+    /// <summary>
+    /// **Every partition of the drive is unmounted before it is powered off.**
+    /// Only the one clicked was, so udisks refused the power-off with B still
+    /// mounted — and that read as "written out and safe to unplug".
+    /// </summary>
+    [Fact]
+    public async Task The_other_partition_is_unmounted_before_the_power_off()
+    {
+        var spoken = new List<IReadOnlyList<string>>();
+
+        var result = await Ejector(_ => Ok, spoken, lines: TwoPartitions)
+            .EjectAsync("/run/media/flint/A", CancellationToken.None);
+
+        Assert.Equal(EjectOutcome.Ejected, result.Outcome);
+        Assert.Equal(
+            [
+                ["unmount", "--no-user-interaction", "-b", "/dev/sdb1"],
+                ["unmount", "--no-user-interaction", "-b", "/dev/sdb2"],
+                ["power-off", "--no-user-interaction", "-b", "/dev/sdb1"],
+            ],
+            spoken);
+    }
+
+    /// <summary>The other partition in use is the answer, and nothing is powered off.</summary>
+    [Fact]
+    public async Task A_busy_other_partition_is_reported_and_nothing_is_powered_off()
+    {
+        var spoken = new List<IReadOnlyList<string>>();
+
+        var result = await Ejector(
+                argv => argv[^1] == "/dev/sdb2"
+                    ? new UdisksEjector.CliResult(1, "", "GDBus.Error:org.freedesktop.UDisks2.Error.DeviceBusy: target is busy")
+                    : Ok,
+                spoken, lines: TwoPartitions)
+            .EjectAsync("/run/media/flint/A", CancellationToken.None);
+
+        Assert.Equal(EjectOutcome.InUse, result.Outcome);
+        Assert.DoesNotContain(spoken, argv => argv[0] == "power-off");
+    }
+
+    /// <summary>A power-off refused because the drive is in use is not "safe to unplug".</summary>
+    [Fact]
+    public async Task A_power_off_refused_as_busy_is_not_safe_to_unplug()
+    {
+        var result = await Ejector(
+                argv => argv[0] == "power-off"
+                    ? new UdisksEjector.CliResult(1, "",
+                        "Error powering off drive: GDBus.Error:org.freedesktop.UDisks2.Error.DeviceBusy: The drive in use: Device /dev/sdb2 is mounted")
+                    : Ok)
+            .EjectAsync("/run/media/flint/STICK", CancellationToken.None);
+
+        Assert.Equal(EjectOutcome.InUse, result.Outcome);
+    }
+
+    /// <summary>
+    /// **An internal drive is left as it is.** Opening the Windows partition
+    /// of the machine's own disk and ejecting it unmounted "/", /home and
+    /// /boot/efi too — or tried to, and reported the refusal as the eject
+    /// failing. Only the partition asked about goes, and nothing is powered off.
+    /// </summary>
+    [Fact]
+    public async Task On_an_internal_disk_only_the_partition_asked_about_is_unmounted()
+    {
+        var spoken = new List<IReadOnlyList<string>>();
+
+        var result = await Ejector(_ => Ok, spoken, lines: TwoPartitions, removable: false)
+            .EjectAsync("/run/media/flint/A", CancellationToken.None);
+
+        Assert.Equal(EjectOutcome.Ejected, result.Outcome);
+        Assert.Equal([["unmount", "--no-user-interaction", "-b", "/dev/sdb1"]], spoken);
+    }
+
+    /// <summary>The system's root is never a sibling to unmount.</summary>
+    [Fact]
+    public void The_root_is_never_a_sibling()
+        => Assert.Empty(UdisksEjector.SiblingsOf(
+            ["/dev/sdb2 / ext4 rw 0 0", "/dev/sdb1 /run/media/flint/A vfat rw 0 0"], "/dev/sdb1"));
+
+    /// <summary>Loop devices are not partitions of one drive.</summary>
+    [Fact]
+    public void A_loop_device_has_no_siblings()
+        => Assert.Empty(UdisksEjector.SiblingsOf(
+            [.. TwoPartitions, "/dev/loop4 /run/media/flint/OTHER iso9660 ro 0 0"], "/dev/loop3"));
 
     /// <summary>
     /// The ordinary refusal, and it must never read as success. udisks answers
