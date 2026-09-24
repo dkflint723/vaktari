@@ -211,8 +211,10 @@ public sealed class XdgTrashMaintenance : ITrashMaintenance
                 var original = XdgTrash.OriginalPathOf(infoPath);
                 if (string.IsNullOrEmpty(original)) continue;
 
+                // Keyed by the info file's full path, not the bare name: a
+                // name is unique in one trash only. See XdgTrash.Trash.
                 items.Add(new TrashedItem(
-                    trashName,
+                    infoPath,
                     original,
                     payload,
                     ReadDeletionDate(infoPath) is { } d
@@ -247,6 +249,9 @@ public sealed class XdgTrashMaintenance : ITrashMaintenance
     /// </summary>
     private static string InfoPathOf(TrashedItem item)
     {
+        // The key already is it, for every item this listing produces.
+        if (Path.IsPathRooted(item.TrashName)) return item.TrashName;
+
         var filesDir = Path.GetDirectoryName(item.Payload);
         var root = filesDir is null ? null : Path.GetDirectoryName(filesDir);
 
@@ -268,7 +273,14 @@ public sealed class XdgTrashMaintenance : ITrashMaintenance
     /// </summary>
     public void Delete(string trashName)
     {
-        if (List().FirstOrDefault(i => i.TrashName == trashName) is not { } item) return;
+        // Matched on the key, which names one item in one trash. The bare name
+        // it used to be matched the newest item of that name in ANY trash, so
+        // deleting one of two same-named rows for good could destroy the
+        // other. A bare name still resolves, the way Restore resolves one.
+        var (root, name) = XdgTrash.Locate(trashName);
+        var key = Path.Combine(root, "info", name + ".trashinfo");
+
+        if (List().FirstOrDefault(i => i.TrashName == key) is not { } item) return;
 
         Remove(new Entry(InfoPathOf(item), item.Payload, item.Deleted.DateTime, item.Size));
     }

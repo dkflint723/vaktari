@@ -499,7 +499,13 @@ public static class RecentListing
             ct.ThrowIfCancellationRequested();
 
             var name = Path.GetFileName(item.OriginalPath);
-            if (string.IsNullOrEmpty(name)) name = item.TrashName;
+
+            // A key can be a whole path (the Linux bin keys by its info file,
+            // Windows by its $I file), which is not a name to show.
+            if (string.IsNullOrEmpty(name))
+                name = Path.IsPathRooted(item.TrashName)
+                    ? Path.GetFileNameWithoutExtension(item.TrashName)
+                    : item.TrashName;
 
             var flags = item.IsDirectory ? EntryFlags.Directory : EntryFlags.None;
             if (name.StartsWith('.')) flags |= EntryFlags.Hidden;

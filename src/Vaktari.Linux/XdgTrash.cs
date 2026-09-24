@@ -186,12 +186,27 @@ public static partial class XdgTrash
     }
 
     /// <summary>
-    /// Moves one item to the trash and returns the name it was given there, so
-    /// an undo can find it again.
+    /// Moves one item to the trash and returns its key there — the full path of
+    /// its .trashinfo — so an undo can find exactly it again.
+    ///
+    /// **The key was the bare name, and a name is only unique in one trash.**
+    /// A file deleted from the home folder and another of the same name
+    /// deleted from a stick both became "notes.txt", one in each trash. Restore
+    /// took the first trash holding the name, which is always the home one,
+    /// so undoing the stick's delete brought back the other file; and deleting
+    /// one of the two rows for good destroyed whichever the bin listed first.
+    /// The info file's path names one item in one trash, which is what the
+    /// Windows bin has always keyed on for the same reason.
     /// </summary>
     public static string Trash(string sourcePath)
     {
         var full = Path.GetFullPath(sourcePath);
+
+        // Before anything is created: the trash a mount point would be given
+        // is INSIDE it. See IsMountPoint.
+        if (IsMountPoint(full))
+            throw new IOException(
+                $"{Path.GetFileName(full)} is a mounted drive — unmount it rather than deleting it");
 
         // The trash on the volume the file lives on, so a delete is a rename
         // rather than a copy across devices — and so the entry stays with the
@@ -203,21 +218,177 @@ public static partial class XdgTrash
         var name = ReserveName(Path.GetFileName(full), full, root);
 
         var destination = Path.Combine(filesDir, name);
+        var infoPath = Path.Combine(infoDir, name + ".trashinfo");
+
+        MoveIntoTrash(full, destination, infoPath);
+
+        return infoPath;
+    }
+
+    /// <summary>The mount points, for <see cref="IsMountPoint"/>. Null in the
+    /// application; a test that needs a folder to be one sets it.</summary>
+    internal static Func<IReadOnlyList<string>>? MountPointsOverride { get; set; }
+
+    /// <summary>
+    /// Whether a path is itself where a volume is mounted.
+    ///
+    /// **Deleting one copied the volume into itself.** The trash for a path is
+    /// the one at the top of its volume, and for a mount point that top is the
+    /// mount point — so the trash chosen was inside the folder being deleted.
+    /// The rename out failed across devices, the copy began, and it walked into
+    /// its own destination and copied what it had copied, over and over, until
+    /// the path was too long or the share was full; then the info file went,
+    /// leaving the nested tree in no bin at all. Refused before anything is
+    /// written: a mounted drive is unmounted, not binned.
+    /// </summary>
+    internal static bool IsMountPoint(string full)
+    {
+        // A link is moved as a link, whatever it points at.
+        if (new FileInfo(full).LinkTarget is not null) return false;
+
+        var points = MountPointsOverride?.Invoke()
+                     ?? (OperatingSystem.IsLinux() ? Volumes.MountPoints() : []);
+
+        // **Through the folder's real path.** The mount table holds real
+        // paths, so a mount reached through a linked folder — ~/nas pointing
+        // at /mnt, the share mounted at /mnt/share — was not found by the text
+        // it was asked by, and was copied into itself as before.
+        var real = Path.GetDirectoryName(full) is { } parent && FileIdentity.RealPath(parent) is { } resolved
+            ? Path.Combine(resolved, Path.GetFileName(full))
+            : full;
+
+        static string Trimmed(string path) => path.Length > 1 ? path.TrimEnd('/') : path;
+
+        if (points.Any(point =>
+                string.Equals(Trimmed(point), Trimmed(full), StringComparison.Ordinal)
+                || string.Equals(Trimmed(point), Trimmed(real), StringComparison.Ordinal)))
+            return true;
+
+        // And by device: a folder on another device than the one holding it
+        // is where something is mounted, whatever any table says.
+        return MountPointsOverride is null
+               && FileIdentity.Of(full) is { } self
+               && Path.GetDirectoryName(full) is { } above
+               && FileIdentity.Of(above) is { } holder
+               && self.Device != holder.Device;
+    }
+
+    /// <summary>
+    /// Thrown when an item reached the bin whole but some of it could not be
+    /// removed from where it was. The item is listed and can be restored — it
+    /// carries its key — and the person is told what was left behind.
+    /// </summary>
+    public sealed class PartlyTrashedException(string key, string source, Exception inner)
+        : IOException($"{Path.GetFileName(source)} is in the bin, but some of it could not be "
+                      + $"removed from where it was: {inner.Message}", inner)
+    {
+        public string Key { get; } = key;
+    }
+
+    /// <summary>
+    /// The move into the trash, and what its info file does when the move fails.
+    ///
+    /// **The info file went whenever anything failed, including when the move
+    /// had already copied everything.** Across devices a folder is copied and
+    /// then deleted; when the delete failed partway — one folder in the tree
+    /// that could not be emptied — most of the original was already gone, the
+    /// whole of it sat in the trash, and removing the info file hid that copy
+    /// from every bin there is. Nothing lists a payload without its info file,
+    /// and nothing sweeps it.
+    ///
+    /// So the info file goes only when nothing reached the trash, which is the
+    /// case its removal was written for: a phantom entry pointing at nothing.
+    /// When the payload is there, the entry stays, and what was left behind is
+    /// said instead.
+    /// </summary>
+    internal static void MoveIntoTrash(string source, string destination, string infoPath)
+    {
+        // What the move is asked to carry, and whether anything stood where it
+        // was going before it began — asked now, because afterwards the answer
+        // is about what the failure left.
+        var folder = Directory.Exists(source) && new FileInfo(source).LinkTarget is null;
+        var stoodThere = Occupied(destination);
 
         try
         {
-            MoveAcrossDevices(full, destination);
+            MoveAcrossDevices(source, destination);
         }
-        catch
+        catch (Exception e)
         {
-            // Never leave an info file pointing at something that isn't there —
-            // that would show as a phantom entry in every trash browser.
-            File.Delete(Path.Combine(infoDir, name + ".trashinfo"));
+            // **Only what this move put there counts as arrived.** Something
+            // already at the destination is not this item, whatever it is; nor
+            // is the remains of a copy that failed before the original was
+            // touched.
+            if (stoodThere || !Occupied(destination) || e is NothingMovedException)
+            {
+                File.Delete(infoPath);
+
+                if (e is NothingMovedException { InnerException: { } cause })
+                    System.Runtime.ExceptionServices.ExceptionDispatchInfo.Throw(cause);
+
+                throw;
+            }
+
+            // A file or a link is whole in one place or the other: still at its
+            // source, it did not go, and what reached the trash is a duplicate
+            // — the copy a move across devices makes before it deletes, or the
+            // link made in its place. Taken back, so the bin does not list a
+            // file that never left.
+            if (!folder && Occupied(source))
+            {
+                try { File.Delete(destination); }
+                catch (Exception cleanup) when (cleanup is IOException or UnauthorizedAccessException)
+                {
+                    Vaktari.Core.Quiet.Swallowed("trash", cleanup);
+                }
+
+                if (!Occupied(destination)) File.Delete(infoPath);
+                throw;
+            }
+
+            if (e is IOException or UnauthorizedAccessException)
+                throw new PartlyTrashedException(infoPath, source, e);
+
             throw;
         }
-
-        return name;
     }
+
+    /// <summary>A move that failed before it removed anything from where the item was.</summary>
+    private sealed class NothingMovedException(Exception inner) : IOException(inner.Message, inner);
+
+    /// <summary>Whether anything at all is at a path: a file, a folder, or a link to nothing.</summary>
+    private static bool Occupied(string path)
+        => File.Exists(path) || Directory.Exists(path) || new FileInfo(path).LinkTarget is not null;
+
+    /// <summary>
+    /// The trash an item's key names, and its name inside it.
+    ///
+    /// A key is the full path of the item's .trashinfo, so both come straight
+    /// off it: the info file sits at $root/info/$name.trashinfo. A bare name —
+    /// what keys used to be — cannot say which trash it means, so it is looked
+    /// for in each trash in turn, home first, which is only right while no two
+    /// trashes hold the name; nothing in Vaktari makes one any more.
+    /// </summary>
+    internal static (string Root, string Name) Locate(string key)
+    {
+        if (Path.IsPathRooted(key)
+            && Path.GetDirectoryName(key) is { } infoDir
+            && Path.GetDirectoryName(infoDir) is { } root)
+            return (root, Path.GetFileNameWithoutExtension(key));
+
+        var found = AllRoots().FirstOrDefault(r =>
+            File.Exists(Path.Combine(r, "info", key + ".trashinfo")))
+            ?? TrashRoot;
+
+        return (found, key);
+    }
+
+    /// <summary>
+    /// More trashes to list beside the home one, for the tests that need two
+    /// trashes holding one name — which otherwise takes two mounted volumes.
+    /// Null in the application.
+    /// </summary>
+    internal static Func<IEnumerable<string>>? ExtraRoots { get; set; }
 
     /// <summary>
     /// Every trash this user has on this machine: the home one, and one per
@@ -231,6 +402,11 @@ public static partial class XdgTrash
     internal static IEnumerable<string> AllRoots()
     {
         yield return TrashRoot;
+
+        if (ExtraRoots is { } extra)
+        {
+            foreach (var root in extra()) yield return root;
+        }
 
         var home = TrashRoot;
         string? homeMount = null;
@@ -284,11 +460,9 @@ public static partial class XdgTrash
     /// Puts a trashed item back where it came from, from whichever trash holds
     /// it.
     /// </summary>
-    public static string Restore(string trashName)
+    public static string Restore(string key)
     {
-        var root = AllRoots().FirstOrDefault(r =>
-            File.Exists(Path.Combine(r, "info", trashName + ".trashinfo")))
-            ?? TrashRoot;
+        var (root, trashName) = Locate(key);
 
         var infoPath = Path.Combine(root, "info", trashName + ".trashinfo");
         var originalPath = ReadOriginalPath(infoPath)
@@ -324,6 +498,13 @@ public static partial class XdgTrash
         {
             var candidate = i == 0 ? preferred : $"{stem}.{i}{ext}";
             var infoPath = Path.Combine(infoDir, candidate + ".trashinfo");
+
+            // **Free in files/ as well, as the spec asks.** A payload with no
+            // info file — another program's crash, or this one's before its
+            // info file was kept — held the name, the move onto it failed, and
+            // the failure read as a payload that had arrived: the stranger was
+            // listed under this file's name and restored in its place.
+            if (Occupied(Path.Combine(root, "files", candidate))) continue;
 
             try
             {
@@ -486,9 +667,34 @@ public static partial class XdgTrash
             {
                 Directory.Move(source, destination);
             }
-            catch (IOException)
+            catch (IOException e) when (IsCrossDevice(e))
             {
-                CopyDirectory(source, destination);
+                // **Only across devices.** Any refused rename used to come here
+                // — a parent folder the user cannot write refuses it too — and
+                // the copy-then-delete that followed emptied the folder and
+                // then failed at the one step it could never do, removing the
+                // folder itself from a parent it had no right to change.
+                try
+                {
+                    CopyDirectory(source, destination);
+                }
+                catch (Exception copyFailure)
+                {
+                    // Nothing has been deleted yet, so a partial copy is only
+                    // clutter — clutter no bin lists, since it has no info
+                    // file. Taken away before the failure is reported.
+                    try { Directory.Delete(destination, recursive: true); }
+                    catch (Exception again) when (again is IOException or UnauthorizedAccessException)
+                    {
+                        Vaktari.Core.Quiet.Swallowed("trash", again);
+                    }
+
+                    // Said, so what is left of a copy that could not be taken
+                    // away is not then read as an arrival: the original is
+                    // whole, and a part of a copy is not the item.
+                    throw new NothingMovedException(copyFailure);
+                }
+
                 Directory.Delete(source, recursive: true);
             }
         }
@@ -507,6 +713,14 @@ public static partial class XdgTrash
             Xattrs.Apply(destination, carried);
         }
     }
+
+    /// <summary>
+    /// Whether a refused move was refused because the two paths are on
+    /// different filesystems — EXDEV on Linux, ERROR_NOT_SAME_DEVICE where these
+    /// tests also run — which is the only refusal a copy can get round.
+    /// </summary>
+    internal static bool IsCrossDevice(IOException e)
+        => e.HResult is 18 or unchecked((int)0x80070011);
 
     /// <summary>
     /// The copy behind the cross-device fallback above: the folder itself, then

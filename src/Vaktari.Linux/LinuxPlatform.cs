@@ -31,6 +31,7 @@ public sealed class LinuxPlatform : IPlatform
         // one place a platform is chosen: Core cannot reference this assembly,
         // and a launcher's name is a parse of a freedesktop file.
         FileKind.LauncherName = path => DesktopEntries.Launcher(path).Name;
+        DuplicateFinder.Identity = path => FileIdentity.Of(path) is { } id ? (id.Device, id.Inode, 0) : null;
     }
 
     public string Name => "linux";

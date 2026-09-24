@@ -73,7 +73,7 @@ public sealed class TrashDeleteOneTests : IDisposable
 
         var left = Assert.Single(bin.List());
 
-        Assert.Equal("keep.txt", left.TrashName);
+        Assert.Equal("keep.txt", Path.GetFileNameWithoutExtension(left.TrashName));
     }
 
     /// <summary>
