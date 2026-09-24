@@ -34,6 +34,9 @@ public sealed class WindowsTrashMaintenance : ITrashMaintenance
     /// </summary>
     public IEnumerable<string> Keys() => RecycleBin.Names();
 
+    /// <summary>One <c>$I</c> file read, rather than every one in every bin.</summary>
+    public string? OriginalPathOf(string key) => RecycleBin.Read(key)?.OriginalPath;
+
     public IReadOnlyList<TrashedItem> List()
         => RecycleBin.List()
             .Select(e => new TrashedItem(

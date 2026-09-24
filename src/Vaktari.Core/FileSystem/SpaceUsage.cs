@@ -178,6 +178,13 @@ public static class SpaceUsage
 
         try
         {
+            // **Only by a name that reaches it.** "data " is listed as "data"
+            // — Windows rewrites the path on the way in — so the view of one
+            // showed the other's rows, and a delete from it took the other's
+            // files. Refused the way a folder that will not list is.
+            if (!ReachablePath.IsReachable(folder))
+                throw new IOException(ReachablePath.Refuse(folder) ?? folder);
+
             children = new DirectoryInfo(folder).EnumerateFileSystemInfos();
         }
         catch (Exception e) when (e is IOException or UnauthorizedAccessException)
@@ -189,9 +196,31 @@ public static class SpaceUsage
             return new UsageListing(rows, nothing);
         }
 
-        foreach (var child in children)
+        // By hand, for the reason SafeWalk.Descend gives: the listing opens
+        // nothing until the first MoveNext, and on Linux a folder that lists
+        // but cannot be searched throws there — which failed the whole view
+        // rather than counting one folder it could not read.
+        using var entries = children.GetEnumerator();
+        var stopped = false;
+
+        while (true)
         {
             ct.ThrowIfCancellationRequested();
+
+            FileSystemInfo child;
+
+            try
+            {
+                if (!entries.MoveNext()) break;
+
+                child = entries.Current;
+            }
+            catch (Exception e) when (e is IOException or UnauthorizedAccessException)
+            {
+                done = done with { Unreadable = done.Unreadable + 1 };
+                stopped = true;
+                break;
+            }
 
             // The walk's own question, asked of this child. SafeWalk.IsLink says
             // what a link is on each platform.
@@ -241,8 +270,9 @@ public static class SpaceUsage
             progress?.Report(done.Counted);
         }
 
-        // Nothing in the loop reported, because the loop did not run.
-        if (rows.Count == 0) progress?.Report(done.Counted);
+        // Nothing in the loop reported, because the loop did not run; or the
+        // loop stopped with a count it has not reported.
+        if (rows.Count == 0 || stopped) progress?.Report(done.Counted);
 
         return new UsageListing(rows, done);
     }

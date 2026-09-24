@@ -65,6 +65,7 @@ public sealed class WindowsPlatform : IPlatform
         // assembly, and telling a link from a placeholder on Windows takes a
         // call into the operating system.
         SafeWalk.ReparseTag = ReparseTags.Of;
+        DuplicateFinder.Identity = FileIdentity.Of;
     }
 
     /// <summary>Where this application's own per-user state lives.</summary>

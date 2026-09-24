@@ -45,6 +45,11 @@ public sealed class TrashKeyWalkTests
 
         public List<string> Restored { get; } = [];
 
+        /// <summary>Where every item in this bin came from; the test says.</summary>
+        public string Origin { get; set; } = @"C:\somewhere\notes.txt";
+
+        public string? OriginalPathOf(string key) => _keys.Contains(key) ? Origin : null;
+
         public void Arrive(string trashName) => _keys.Add(trashName);
 
         /// <summary>A metadata file whose payload has gone: a key, never an item.</summary>
@@ -105,9 +110,9 @@ public sealed class TrashKeyWalkTests
             => ValueTask.FromResult(TrashSweepResult.Nothing);
     }
 
-    private static (CountingBin Bin, WindowsFileOperations Ops) Recycling(string arrival)
+    private static (CountingBin Bin, WindowsFileOperations Ops) Recycling(string arrival, string from)
     {
-        var bin = new CountingBin();
+        var bin = new CountingBin { Origin = from };
         bin.WhenFirstAsked = () => bin.Arrive(arrival);
 
         return (bin, new WindowsFileOperations
@@ -127,7 +132,7 @@ public sealed class TrashKeyWalkTests
         using var tree = new TempTree();
         var file = tree.Write("notes.txt", "keep me");
 
-        var (bin, ops) = Recycling("R1A2B3");
+        var (bin, ops) = Recycling("R1A2B3", file);
 
         await ops.Trash([file]).Completion;
 
@@ -150,7 +155,7 @@ public sealed class TrashKeyWalkTests
         using var tree = new TempTree();
         var file = tree.Write("notes.txt", "keep me");
 
-        var (bin, ops) = Recycling("R1A2B3");
+        var (bin, ops) = Recycling("R1A2B3", file);
 
         // Sitting there before the Delete key was ever pressed.
         bin.Leftover("ORPHAN9");
