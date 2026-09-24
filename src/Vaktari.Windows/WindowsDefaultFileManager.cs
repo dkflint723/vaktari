@@ -150,6 +150,19 @@ internal sealed class WindowsDefaultFileManager : IDefaultFileManager
         }
     }
 
+    /// <summary>
+    /// The command a folder or a drive is opened with.
+    ///
+    /// A folder's "%1" is quoted: a path with a space in it is the common case,
+    /// not the edge case. **A drive's is not.** Its "%1" is a root, C:\, and
+    /// quoted it ends the line in \" — which the command-line rules every
+    /// program follows read as an escaped quote, so the argument arrived as
+    /// C:" and double-clicking a drive opened nothing. A drive root has no
+    /// space in it to protect.
+    /// </summary>
+    internal static string CommandFor(string exe, string cls)
+        => cls == "Drive" ? $"\"{exe}\" %1" : $"\"{exe}\" \"%1\"";
+
     /// <summary>The executable out of a `"path" "%1"` command line.</summary>
     private static bool TargetExists(string command)
     {
@@ -206,9 +219,7 @@ internal sealed class WindowsDefaultFileManager : IDefaultFileManager
                 using var command = verb.CreateSubKey("command")
                     ?? throw new InvalidOperationException("cannot create the command key");
 
-                // Quoted, and "%1" quoted too: a path with a space in it is the
-                // common case, not the edge case.
-                command.SetValue(null, $"\"{_exe}\" \"%1\"");
+                command.SetValue(null, CommandFor(_exe, cls));
 
                 shell.SetValue(null, Verb);
             }

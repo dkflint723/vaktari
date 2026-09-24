@@ -50,6 +50,26 @@ public sealed class WindowsShortcutsTests : IDisposable
         Assert.Equal(target, WindowsShortcuts.ReadTarget(landing), ignoreCase: true);
     }
 
+    /// <summary>
+    /// **A folder named outside plain ASCII is read back as itself.** The
+    /// ANSI fields were decoded as UTF-8, so "Música" came back "M?sica", and
+    /// double-clicking the shortcut opened Explorer instead of the folder. A
+    /// name the code page cannot hold, "Folderł", is read from the Unicode
+    /// fields the shell writes beside them.
+    /// </summary>
+    [Theory]
+    [InlineData("Música")]
+    [InlineData("Folderł")]
+    public void A_shortcut_to_a_folder_with_accents_resolves_to_it(string name)
+    {
+        var target = Path.Combine(_root, name);
+        Directory.CreateDirectory(target);
+
+        var landing = new WindowsShortcuts().CreateShortcut(target, _root);
+
+        Assert.Equal(target, new WindowsShortcuts().TargetOf(landing), ignoreCase: true);
+    }
+
     /// <summary>Explorer's own numbering when the name is taken.</summary>
     [Fact]
     public void A_second_shortcut_steps_aside()

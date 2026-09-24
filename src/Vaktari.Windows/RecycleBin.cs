@@ -72,7 +72,7 @@ internal static class RecycleBin
         foreach (var drive in drives)
         {
             bool ready;
-            try { ready = drive.IsReady && drive.DriveType is DriveType.Fixed or DriveType.Removable; }
+            try { ready = Eligible(drive.DriveType, () => drive.IsReady); }
             catch (IOException) { continue; }
 
             if (!ready) continue;
@@ -278,4 +278,17 @@ internal static class RecycleBin
         var nul = value.IndexOf('\0');
         return (nul < 0 ? value : value[..nul]).Trim();
     }
+
+    /// <summary>
+    /// Whether a drive can hold a bin worth looking in.
+    ///
+    /// **The type first, because it costs nothing, and readiness is a trip to
+    /// the drive.** Asked the other way round, every mapped network drive was
+    /// asked whether it was ready — a directory check that a dead server does
+    /// not answer — and this runs on the window's thread at startup and after
+    /// every copy or delete, to decide the bin's icon. A network drive has no
+    /// bin here, so it is never asked.
+    /// </summary>
+    internal static bool Eligible(DriveType type, Func<bool> isReady)
+        => type is DriveType.Fixed or DriveType.Removable && isReady();
 }

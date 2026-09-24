@@ -12,6 +12,10 @@
     <EnableAotAnalyzer>false</EnableAotAnalyzer>
     <EnableSingleFileAnalyzer>false</EnableSingleFileAnalyzer>
     <PublishTrimmed>false</PublishTrimmed>
+
+    <!-- NativeDropSource is a source-generated COM server, and the generator
+         writes unsafe code — the same reason Vaktari.Windows sets it. -->
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
   </PropertyGroup>
 
   <!-- Plain net10.0, matching Vaktari.Windows itself, so this project still

@@ -540,6 +540,16 @@ internal static partial class Native
 
     internal const uint STORAGE_DEPENDENCY_INFO_VERSION_2 = 2;
 
+    [LibraryImport("kernel32.dll", EntryPoint = "GetVolumePathNameW",
+        StringMarshalling = StringMarshalling.Utf16, SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    internal static partial bool GetVolumePathName(string fileName, [Out] char[] volumePath, uint length);
+
+    [LibraryImport("kernel32.dll", EntryPoint = "GetVolumeNameForVolumeMountPointW",
+        StringMarshalling = StringMarshalling.Utf16, SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    internal static partial bool GetVolumeNameForVolumeMountPoint(string mountPoint, [Out] char[] volumeName, uint length);
+
     [LibraryImport("virtdisk.dll", EntryPoint = "GetStorageDependencyInformation")]
     internal static partial int GetStorageDependencyInformation(
         nint objectHandle, uint flags, uint infoSize, nint info, out uint sizeUsed);

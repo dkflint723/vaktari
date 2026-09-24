@@ -30,8 +30,13 @@ public sealed class BinAndLinkGlyphTests
         public int Probed { get; private set; }
         public bool Throws { get; init; }
 
+        /// <summary>Held shut, a bin that does not answer — a volume whose
+        /// server has gone.</summary>
+        public ManualResetEventSlim? Gate { get; init; }
+
         public bool HasAny()
         {
+            Gate?.Wait(TimeSpan.FromSeconds(10));
             Probed++;
 
             return Throws ? throw new IOException("the bin will not answer") : holding;
@@ -155,14 +160,58 @@ public sealed class BinAndLinkGlyphTests
         => new(places: null, trash: () => bin);
 
     [AvaloniaFact]
-    public void The_sidebar_asks_the_bin_what_it_holds()
+    public async Task The_sidebar_asks_the_bin_what_it_holds()
     {
         var bin = new Bin(holding: true);
         var sidebar = Sidebar(bin);
 
-        sidebar.RefreshBinState();
+        await sidebar.RefreshBinStateAsync();
 
         Assert.Equal(1, bin.Probed);
+    }
+
+    /// <summary>
+    /// **Asked off the window's thread.** It visits every mounted volume's
+    /// bin, and a volume whose server has gone does not answer — which froze
+    /// the window at startup and after every copy or delete.
+    /// </summary>
+    [AvaloniaFact]
+    public async Task A_bin_that_does_not_answer_does_not_hold_the_window()
+    {
+        using var gate = new ManualResetEventSlim();
+        var sidebar = Sidebar(new Bin(holding: true) { Gate = gate });
+        var row = BinRowIn(sidebar);
+
+        var asking = sidebar.RefreshBinStateAsync();
+
+        Assert.False(asking.IsCompleted, "the window waited for the bin");
+
+        gate.Set();
+        await asking;
+
+        Assert.True(row.BinHasItems);
+    }
+
+    /// <summary>
+    /// **One ask at a time.** Every copy and every rebuild asked again, and
+    /// behind a mount that never answers each ask held a pool thread for good.
+    /// Asks made while one is out are folded into one more.
+    /// </summary>
+    [AvaloniaFact]
+    public async Task Asks_made_while_one_is_out_are_folded_together()
+    {
+        using var gate = new ManualResetEventSlim();
+        var bin = new Bin(holding: true) { Gate = gate };
+        var sidebar = Sidebar(bin);
+
+        var first = sidebar.RefreshBinStateAsync();
+        var second = sidebar.RefreshBinStateAsync();
+        var third = sidebar.RefreshBinStateAsync();
+
+        gate.Set();
+        await Task.WhenAll(first, second, third);
+
+        Assert.Equal(2, bin.Probed);
     }
 
     /// <summary>
@@ -171,11 +220,11 @@ public sealed class BinAndLinkGlyphTests
     /// this on every rebuild — none of that work answers the question.
     /// </summary>
     [AvaloniaFact]
-    public void Without_listing_the_whole_bin_to_do_it()
+    public async Task Without_listing_the_whole_bin_to_do_it()
     {
         var bin = new Bin(holding: true);
 
-        Sidebar(bin).RefreshBinState();
+        await Sidebar(bin).RefreshBinStateAsync();
 
         Assert.Equal(0, bin.Listed);
     }
@@ -190,12 +239,12 @@ public sealed class BinAndLinkGlyphTests
     }
 
     [AvaloniaFact]
-    public void A_full_bin_marks_its_row()
+    public async Task A_full_bin_marks_its_row()
     {
         var sidebar = Sidebar(new Bin(holding: true));
         var row = BinRowIn(sidebar);
 
-        sidebar.RefreshBinState();
+        await sidebar.RefreshBinStateAsync();
 
         Assert.True(row.BinHasItems);
         Assert.Equal("trash-full", row.IconToken);
@@ -207,12 +256,12 @@ public sealed class BinAndLinkGlyphTests
     /// volume refused to answer sends you looking for something to restore.
     /// </summary>
     [AvaloniaFact]
-    public void And_one_that_will_not_answer_is_drawn_empty()
+    public async Task And_one_that_will_not_answer_is_drawn_empty()
     {
         var sidebar = Sidebar(new Bin(holding: true) { Throws = true });
         var row = BinRowIn(sidebar);
 
-        sidebar.RefreshBinState();
+        await sidebar.RefreshBinStateAsync();
 
         Assert.False(row.BinHasItems);
         Assert.Equal("trash", row.IconToken);
@@ -224,7 +273,7 @@ public sealed class BinAndLinkGlyphTests
     /// forever and the bin never fills.
     /// </summary>
     [AvaloniaFact]
-    public void The_trash_is_read_when_asked_rather_than_captured()
+    public async Task The_trash_is_read_when_asked_rather_than_captured()
     {
         ITrashMaintenance? installed = null;
         var sidebar = new SidebarViewModel(
@@ -233,13 +282,13 @@ public sealed class BinAndLinkGlyphTests
         var row = BinRowIn(sidebar);
 
         // Nothing installed yet: the row must not claim anything.
-        sidebar.RefreshBinState();
+        await sidebar.RefreshBinStateAsync();
         Assert.False(row.BinHasItems);
 
         var bin = new Bin(holding: true);
         installed = bin;
 
-        sidebar.RefreshBinState();
+        await sidebar.RefreshBinStateAsync();
 
         Assert.Equal(1, bin.Probed);
         Assert.True(row.BinHasItems);

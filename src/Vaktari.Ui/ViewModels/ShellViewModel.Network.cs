@@ -206,6 +206,11 @@ public sealed partial class ShellViewModel
         {
             var mount = await _remotes.MountAsync(uri, CancellationToken.None).ConfigureAwait(true);
 
+            // **Known to be remote before its first row is drawn.** The list
+            // is refreshed on the pool now, and navigating straight in drew
+            // the new share as local: a folder read per row, over the wire.
+            Thumbnails.ThumbnailLoader.RemoteRoots = [.. Thumbnails.ThumbnailLoader.RemoteRoots, mount.Path];
+
             Sidebar.RefreshRemotes();
             await pane.NavigateAsync(mount.Path).ConfigureAwait(true);
 

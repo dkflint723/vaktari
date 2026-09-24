@@ -475,9 +475,16 @@ public sealed partial class PropertiesViewModel : ObservableObject
     ///
     /// Any remote path in a multiple selection is enough to wait: the walk
     /// would cross it either way.
+    ///
+    /// **And none that holds one.** Only a path UNDER a share counted, so
+    /// properties on a home folder with an sshfs mount inside it, or on /mnt,
+    /// walked the share unasked.
     /// </summary>
     private bool ShouldMeasureNow
-        => CanMeasure && !_paths.Any(Thumbnails.ThumbnailLoader.IsRemote);
+        => CanMeasure
+           && !_paths.Any(Thumbnails.ThumbnailLoader.IsRemote)
+           && !_paths.Any(path => Thumbnails.ThumbnailLoader.RemoteRoots.Any(
+               root => Vaktari.Core.FileSystem.PathRules.Contains(path, root)));
 
     /// <summary>
     /// **The stop button was disabled while measuring.** This is one command
@@ -536,7 +543,11 @@ public sealed partial class PropertiesViewModel : ObservableObject
                 }
             }
 
-            foreach (var path in _paths.Where(Directory.Exists))
+            // One of several selected is not walked when it is /proc or /sys:
+            // selecting everything in "/" is not asking what /proc holds. One
+            // on its own is, and is.
+            foreach (var path in _paths.Where(Directory.Exists)
+                         .Where(p => _paths.Count == 1 || Core.FileSystem.SafeWalk.DoNotEnter?.Invoke(p) != true))
             {
                 var result = await _provider.MeasureAsync(path, progress, ct).ConfigureAwait(false);
                 bytes += result.Bytes;

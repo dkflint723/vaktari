@@ -95,8 +95,10 @@ public sealed class WindowsScriptRunner : IScriptRunner
     /// and the default execution policy would refuse it anyway. Everything else
     /// runs directly.
     /// </summary>
-    private static ProcessStartInfo Build(ScriptCommand script, IReadOnlyList<string> paths)
+    internal static ProcessStartInfo Build(ScriptCommand script, IReadOnlyList<string> paths)
     {
+        if (IsBatch(script.Path)) return Batch(script.Path, paths);
+
         if (!Path.GetExtension(script.Path).Equals(".ps1", StringComparison.OrdinalIgnoreCase))
         {
             var direct = new ProcessStartInfo(script.Path);
@@ -116,12 +118,64 @@ public sealed class WindowsScriptRunner : IScriptRunner
         return shell;
     }
 
+    private static bool IsBatch(string path)
+        => Path.GetExtension(path).Equals(".bat", StringComparison.OrdinalIgnoreCase)
+           || Path.GetExtension(path).Equals(".cmd", StringComparison.OrdinalIgnoreCase);
+
+    /// <summary>
+    /// A .bat or .cmd, through cmd.exe with every path quoted by hand.
+    ///
+    /// **A file's name was run as a command.** A batch file is not a program:
+    /// Windows hands it to cmd.exe, which reads the whole command line again
+    /// by its own rules — and the quoting .NET applies is for programs, so a
+    /// name without a space went through bare. "report&amp;ver" ran ver; a comma,
+    /// a semicolon or an equals sign split one name into two paths, neither of
+    /// them selected; and a file called "x&amp;payload" in a downloaded folder ran
+    /// the payload.bat beside it, from that folder. Inside double quotes cmd
+    /// takes &amp;, |, &lt;, &gt;, ^ and the separators as they are, and a Windows path
+    /// cannot hold a quote, so every path is quoted. /d skips AutoRun, /v:off
+    /// keeps ! literal, and /s keeps the outer quotes where they are put.
+    /// </summary>
+    private static ProcessStartInfo Batch(string script, IReadOnlyList<string> paths)
+    {
+        var line = new StringBuilder("/d /v:off /s /c \"");
+        line.Append('"').Append(script).Append('"');
+
+        foreach (var path in paths) line.Append(" \"").Append(path).Append('"');
+
+        line.Append('"');
+
+        return new ProcessStartInfo(Path.Combine(Environment.SystemDirectory, "cmd.exe"))
+        {
+            Arguments = line.ToString(),
+        };
+    }
+
+    /// <summary>
+    /// Why a batch file cannot be given these paths, or null when it can.
+    ///
+    /// **cmd expands %NAME% even inside quotes**, and there is no escape for
+    /// it on a command line: "a%OS%b.txt" arrived as "aWindows_NTb.txt", a
+    /// file that is not the one selected. Refused, with the name, rather than
+    /// run on something else.
+    /// </summary>
+    internal static string? Refused(ScriptCommand script, IReadOnlyList<string> paths)
+    {
+        if (!IsBatch(script.Path)) return null;
+
+        return paths.Concat([script.Path]).FirstOrDefault(p => p.Contains('%')) is { } named
+            ? $"{script.Name} was not run: a batch file cannot be given a name with % in it ({Path.GetFileName(named)})"
+            : null;
+    }
+
     public async ValueTask<string> RunAsync(
         ScriptCommand script,
         string workingDirectory,
         IReadOnlyList<string> paths,
         CancellationToken ct)
     {
+        if (Refused(script, paths) is { } why) return why;
+
         var info = Build(script, paths);
 
         info.WorkingDirectory = workingDirectory;

@@ -17,6 +17,17 @@ namespace Vaktari.Core.FileSystem;
 /// </summary>
 public static class SafeWalk
 {
+
+    /// <summary>
+    /// Folders a walk lists but does not go into, as the platform says — on
+    /// Linux, where the kernel's own filesystems are mounted.
+    ///
+    /// **A walk of "/" went through /proc**, where kcore alone reads as 128
+    /// TiB, and through /sys, whose files are not files. The folder is still
+    /// found, as a folder; what is under it is not walked. The folder a walk
+    /// starts at is always entered: that one was asked for. Null elsewhere.
+    /// </summary>
+    public static Func<string, bool>? DoNotEnter { get; set; }
     /// <summary>One entry found underneath a root.</summary>
     /// <param name="Path">Where it is.</param>
     /// <param name="IsDirectory">A real directory — never a link to one.</param>
@@ -184,7 +195,8 @@ public static class SafeWalk
                 if (child is DirectoryInfo)
                 {
                     yield return new Found(child.FullName, IsDirectory: true, IsLink: false);
-                    pending.Push(child.FullName);
+
+                    if (DoNotEnter?.Invoke(child.FullName) != true) pending.Push(child.FullName);
                 }
                 else
                 {

@@ -184,6 +184,34 @@ public sealed class FolderSizeTests : IDisposable
     }
 
     /// <summary>
+    /// **Nor a folder that holds a share.** Only a path under one counted, so
+    /// properties on a home folder with an sshfs mount inside it walked the
+    /// share without being asked.
+    /// </summary>
+    [AvaloniaFact]
+    public async Task A_folder_holding_a_share_waits_to_be_asked()
+    {
+        var before = Vaktari.Ui.Thumbnails.ThumbnailLoader.RemoteRoots;
+
+        try
+        {
+            var home = Folder("home");
+            Vaktari.Ui.Thumbnails.ThumbnailLoader.RemoteRoots = [Path.Combine(home, "nas")];
+
+            var model = new PropertiesViewModel(new Measures(4096), [home], access: null);
+
+            await model.LoadAsync();
+            await Quiet();
+
+            Assert.Equal("not measured", model.SizeText);
+        }
+        finally
+        {
+            Vaktari.Ui.Thumbnails.ThumbnailLoader.RemoteRoots = before;
+        }
+    }
+
+    /// <summary>
     /// A file has nothing to walk, so nothing starts — its size was on the page
     /// already.
     /// </summary>

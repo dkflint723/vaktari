@@ -29,7 +29,13 @@ public static class ComputerListing
             yield break;
         }
 
-        var groups = await places.GetPlacesAsync(ct).ConfigureAwait(false);
+        // **On the pool.** A provider answers synchronously — the Windows one
+        // asks every drive whether it is ready and how full it is, and every
+        // pin whether it exists — and nothing above this awaits before the
+        // first batch is asked for, so all of that ran on the window's thread:
+        // a dead mapped drive froze This PC and the machine crumb's menu.
+        // RecentListing explains the same trap.
+        var groups = await Task.Run(() => places.GetPlacesAsync(ct).AsTask(), ct).ConfigureAwait(false);
 
         yield return Build(groups);
     }

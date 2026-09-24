@@ -268,11 +268,21 @@ public static class RowMetadata
     /// </summary>
     private static async Task<string?> MeasureAsync(string path, CancellationToken ct)
     {
+        // A row for /proc or /sys in a listing of "/" is not measured: it is
+        // one of many rows, not a folder anybody asked about.
+        if (Core.FileSystem.SafeWalk.DoNotEnter?.Invoke(path) == true) return null;
+
         try
         {
             var usage = await Task.Run(
                 () => Core.FileSystem.SpaceUsage.Measure(path, progress: null, ct), ct)
                 .ConfigureAwait(true);
+
+            // **Nothing read is not zero bytes.** Measure answers a folder it
+            // could not open at all with an empty total and one unreadable,
+            // and that drew "0 B" — for System Volume Information, or /root —
+            // where the doc above promises the em dash.
+            if (usage is { Files: 0, Folders: 0, Unreadable: > 0 }) return null;
 
             return ByteSize.Format(usage.Bytes);
         }

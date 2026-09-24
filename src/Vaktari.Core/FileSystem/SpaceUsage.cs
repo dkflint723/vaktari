@@ -232,7 +232,19 @@ public static class SpaceUsage
 
             UsageRow row;
 
-            if (child is DirectoryInfo && !link)
+            if (child is DirectoryInfo && !link && SafeWalk.DoNotEnter?.Invoke(child.FullName) == true)
+            {
+                // A folder the platform says not to enter — /proc, /sys — is
+                // a row of its own and nothing more. Measured, it was the
+                // ROOT of a walk, which is always entered: /proc read 128 TiB.
+                row = new UsageRow(
+                    child.FullName,
+                    IsDirectory: true,
+                    IsLink: false,
+                    new Usage(0, 0, 1, 0),
+                    IsConcealed: concealed);
+            }
+            else if (child is DirectoryInfo && !link)
             {
                 var inside = Measure(child.FullName, new Relative(progress, done), ct);
 
