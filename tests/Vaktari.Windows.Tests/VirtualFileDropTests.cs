@@ -268,7 +268,7 @@ public class VirtualFileDropTests
 
     /// <summary>Avalonia's OleDataObjectToDataTransferWrapper, as far as the
     /// drop can tell: a private field by that name.</summary>
-    private sealed class AvaloniaShapedWrapper(object held)
+    internal sealed class AvaloniaShapedWrapper(object held)
     {
         private readonly object _oleDataObject = held;
 
@@ -277,7 +277,7 @@ public class VirtualFileDropTests
 
     /// <summary>A MicroCom proxy, as far as the drop can tell: the pointer in a
     /// public NativePointer.</summary>
-    private sealed class MicroComShapedProxy(IntPtr pointer)
+    internal sealed class MicroComShapedProxy(IntPtr pointer)
     {
         public IntPtr NativePointer { get; } = pointer;
     }
