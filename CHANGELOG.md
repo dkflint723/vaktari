@@ -288,6 +288,16 @@ should not be trusted for compatibility yet.
 
 ### Fixed
 
+- **The menu the Menu key opens is as up to date as a right-click's.**
+  Opened with Menu or Shift+F10, the listing's menu showed what the last
+  right-click had found: a script or template added since was missing, the
+  *Undo* row could name a step that was no longer the last one, *Paste*
+  could be greyed with files on the clipboard or live with none, and the
+  Proton Drive link rows kept whatever the last right-click had shown, or
+  none at all when nothing had been right-clicked yet. The keyboard's menu
+  now looks at all of these each time it opens, as the right-click menu
+  always did.
+
 - **On Windows, files dragged out of a zip opened in Explorer land in
   Vaktari.** Explorer hands such files over as contents rather than as
   files on disk, and reading them never worked: the drop always ended with
