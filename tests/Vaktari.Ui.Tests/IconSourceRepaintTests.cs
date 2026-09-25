@@ -135,12 +135,31 @@ public sealed class IconSourceRepaintTests : OwnedViewModels
         Assert.True(shell.IsSplit, "the split is what puts a pane on the right");
         Assert.True(tabs >= 2, $"expected a pane each side, saw {tabs}");
 
+        // **Waited on, not pumped once.** A load now waits a moment for its
+        // folder's watch to open before its first read, so one pump of the
+        // dispatcher no longer finishes it — measured on the CI agents, where
+        // this read 0 re-lists of 2. First every pane's own first listing, so
+        // the count below is only the re-lists; then the re-lists themselves.
+        Until(() => shell.Left.Tabs.Concat(shell.Right?.Tabs ?? []).All(t => t.IsLoaded));
+
         var before = files.Reads;
 
         shell.RefreshPaneListings();
-        Settle();
+        Until(() => files.Reads - before >= tabs);
 
         Assert.Equal(tabs, files.Reads - before);
+    }
+
+    /// <summary>Pumps the dispatcher until <paramref name="done"/>, for at most ten seconds.</summary>
+    private static void Until(Func<bool> done)
+    {
+        var deadline = DateTime.UtcNow + TimeSpan.FromSeconds(10);
+
+        while (!done() && DateTime.UtcNow < deadline)
+        {
+            Thread.Sleep(5);
+            Settle();
+        }
     }
 
     /// <summary>
