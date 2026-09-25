@@ -24,7 +24,11 @@ public sealed class SingleInstance : IDisposable
     private Socket? _listener;
     private CancellationTokenSource? _stopping;
 
-    /// <summary>Paths sent by a later launch, already on the UI thread.</summary>
+    /// <summary>
+    /// Paths sent by a later launch, already on the UI thread, exactly as they
+    /// were sent. Empty when the launch named none — which is still a request,
+    /// to bring the running window forward.
+    /// </summary>
     public event EventHandler<string[]>? PathsReceived;
 
     /// <summary>
@@ -113,6 +117,22 @@ public sealed class SingleInstance : IDisposable
         return true;
     }
 
+    /// <summary>
+    /// The most one launch may hand over. Far past any real selection —
+    /// ten thousand paths of a hundred bytes each — and small enough that a
+    /// client which never stops sending cannot grow the running window without
+    /// bound.
+    /// </summary>
+    internal const int MaxHandoverBytes = 1024 * 1024;
+
+    /// <summary>
+    /// How long one launch has to finish sending. TryForward writes and closes
+    /// at once, so this only ever runs out on a client that connected and then
+    /// stalled — and without it that client would hold the one accept loop,
+    /// and with it every later handover, for as long as it stayed connected.
+    /// </summary>
+    private static readonly TimeSpan HandoverTimeout = TimeSpan.FromSeconds(5);
+
     private async Task AcceptAsync(CancellationToken ct)
     {
         while (!ct.IsCancellationRequested && _listener is { } listener)
@@ -121,23 +141,33 @@ public sealed class SingleInstance : IDisposable
             {
                 using var client = await listener.AcceptAsync(ct).ConfigureAwait(false);
 
-                var buffer = new byte[8192];
-                var read = await client.ReceiveAsync(buffer, SocketFlags.None, ct)
-                                       .ConfigureAwait(false);
+                if (await ReceiveAllAsync(client, ct).ConfigureAwait(false) is not { } message)
+                    continue;
 
-                if (read <= 0) continue;
-
-                var paths = Encoding.UTF8.GetString(buffer, 0, read)
-                    .Split('\n', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
-
-                if (paths.Length == 0) continue;
+                // **Split, never trimmed.** This split with TrimEntries, and a
+                // space at either end of a name is part of the name on Linux:
+                // a folder called "old " handed over opened "old" if there was
+                // one — the wrong folder, confidently — and nothing if not.
+                // Program sends exactly what it was given, one per line.
+                //
+                // **And an empty message is still delivered.** A launch with no
+                // folder sends nothing at all, and this used to stop there on
+                // "nothing read" and again on "no paths", so PathsReceived never
+                // fired and the window it was asked to raise stayed where it
+                // was — while the launch printed "raising the existing window".
+                // The handler opens no tabs for an empty list and raises the
+                // window, which is what starting Vaktari again means.
+                var paths = message.Length == 0
+                    ? []
+                    : Encoding.UTF8.GetString(message)
+                              .Split('\n', StringSplitOptions.RemoveEmptyEntries);
 
                 // Raised on the UI thread: handlers open tabs and activate the
                 // window, neither of which is safe from a socket thread.
                 await Avalonia.Threading.Dispatcher.UIThread.InvokeAsync(
                     () => PathsReceived?.Invoke(this, paths));
             }
-            catch (OperationCanceledException)
+            catch (OperationCanceledException) when (ct.IsCancellationRequested)
             {
                 return;
             }
@@ -149,11 +179,80 @@ public sealed class SingleInstance : IDisposable
     }
 
     /// <summary>
-    /// Hands paths to the running instance. Returns false if nothing answered,
-    /// in which case the caller should start normally rather than vanish.
+    /// Everything one launch sent, or null when it sent more than
+    /// <see cref="MaxHandoverBytes"/>.
+    ///
+    /// **One read of 8 KiB was taken as the whole message.** A handover of
+    /// about eighty paths or more arrived cut off mid-name: measured at 120,
+    /// the last one delivered was "C:\Users\someone\D", which failed
+    /// Directory.Exists and was dropped without a word — and a cut that happens
+    /// to land on a folder that exists opens the wrong one. The sender closes
+    /// when it is done, so a read of zero is the end, and nothing is decoded
+    /// before it: a UTF-8 character split across two reads would otherwise
+    /// decode as two replacement characters.
+    ///
+    /// Over the cap the message is refused whole rather than cut, because a cut
+    /// is the fault being fixed.
     /// </summary>
-    public static bool TryForward(string[] paths)
+    private static async Task<byte[]?> ReceiveAllAsync(Socket client, CancellationToken ct)
     {
+        using var stalled = CancellationTokenSource.CreateLinkedTokenSource(ct);
+        stalled.CancelAfter(HandoverTimeout);
+
+        using var message = new MemoryStream();
+        var buffer = new byte[8192];
+
+        while (true)
+        {
+            var read = await client.ReceiveAsync(buffer, SocketFlags.None, stalled.Token)
+                                   .ConfigureAwait(false);
+
+            if (read <= 0) return message.ToArray();
+
+            if (message.Length + read > MaxHandoverBytes)
+            {
+                Console.Error.WriteLine(
+                    $"[vaktari] instance channel: a handover over {MaxHandoverBytes} bytes was refused");
+
+                return null;
+            }
+
+            message.Write(buffer, 0, read);
+        }
+    }
+
+    /// <summary>What became of a handover.</summary>
+    public enum Handover
+    {
+        /// <summary>The running copy has the paths.</summary>
+        Handed,
+
+        /// <summary>Nothing answered; the caller should start normally rather
+        /// than vanish.</summary>
+        NoAnswer,
+
+        /// <summary>More than <see cref="MaxHandoverBytes"/>: never sent, and
+        /// the running copy would have refused it whole.</summary>
+        TooLarge,
+    }
+
+    /// <summary>
+    /// Hands paths to the running instance.
+    ///
+    /// **A handover over the cap opened a second window.** The running copy
+    /// refuses one whole and closes on it; the launch, still blocked sending
+    /// a megabyte into a socket buffer a fifth that size, got a reset, read
+    /// it as "nothing answered" and started a copy of its own on the shared
+    /// session file — the outcome single-instance exists to prevent. The size
+    /// is known before connecting, so it is measured here and said as what it
+    /// is, and Program stops rather than opening anything.
+    /// </summary>
+    public static Handover TryForward(string[] paths)
+    {
+        var message = Encoding.UTF8.GetBytes(string.Join('\n', paths));
+
+        if (message.Length > MaxHandoverBytes) return Handover.TooLarge;
+
         try
         {
             using var socket = new Socket(AddressFamily.Unix, SocketType.Stream,
@@ -162,13 +261,21 @@ public sealed class SingleInstance : IDisposable
             // Short: the whole point is to return before the calling
             // application notices it launched anything.
             socket.Connect(new UnixDomainSocketEndPoint(SocketPath));
-            socket.Send(Encoding.UTF8.GetBytes(string.Join('\n', paths)));
+            socket.Send(message);
 
-            return true;
+            // Said, not left to Dispose: the running copy reads until the
+            // stream ends, and this is the end. Its own catch, because the
+            // paths are already sent — failing here must not report "nobody
+            // answered" and open a second window for a folder already handed
+            // over; Dispose closes the stream either way.
+            try { socket.Shutdown(SocketShutdown.Send); }
+            catch (Exception ex) { Quiet.Swallowed("instance", ex); }
+
+            return Handover.Handed;
         }
         catch
         {
-            return false;
+            return Handover.NoAnswer;
         }
     }
 

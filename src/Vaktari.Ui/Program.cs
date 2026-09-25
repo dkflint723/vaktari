@@ -303,9 +303,106 @@ internal sealed class Program
             ? argument.TrimEnd('"') + "\\"
             : argument;
 
+    /// <summary>
+    /// Each path on the command line made absolute against
+    /// <paramref name="baseDirectory"/>, where it was relative; URIs, full
+    /// paths and anything <see cref="Vaktari.Core.FileSystem.FileUri"/> cannot
+    /// open left exactly as they came.
+    ///
+    /// **Nothing on this route ever made a path absolute.** "vaktari ." handed
+    /// "." to a copy already running, which read it against its OWN working
+    /// directory and opened the wrong folder; "vaktari sub" failed
+    /// Directory.Exists there and was dropped without a word. Started fresh,
+    /// "." became a tab whose Up did nothing and a session that saved "." as
+    /// where it had been. Only the launch knows where it was started, so this
+    /// is done here, before anything is handed over.
+    ///
+    /// A URI is recognised by FileUri handing back something other than what
+    /// it was given, and is kept as it came: trash:/// still reaches OpenPaths
+    /// to be refused out loud, and a file: URI names an absolute path by
+    /// definition. Taking the base as an argument is what lets a test say
+    /// where it is.
+    ///
+    /// **Reading the base on every launch killed launches that never needed
+    /// it.** It was read up front, and on Linux the working directory of a
+    /// terminal whose folder has been deleted cannot be read at all: getcwd
+    /// fails and .NET throws, before the lock or the handover, so "vaktari
+    /// /home/me/Documents" from that terminal died with every argument
+    /// absolute. So it is asked for only when an argument is relative, once,
+    /// and a base that cannot be read leaves that argument as it came — what
+    /// every launch did before this existed — rather than failing the rest.
+    /// </summary>
+    internal static string[] ResolveArguments(IEnumerable<string> arguments, Func<string> baseDirectory)
+    {
+        var started = new Lazy<string>(baseDirectory);
+
+        return [.. arguments.Select(argument =>
+            Vaktari.Core.FileSystem.FileUri.ToLocalPath(argument) is { } local
+            && local == argument
+            && !Path.IsPathFullyQualified(local)
+                ? Resolved(local, started)
+                : argument)];
+    }
+
+    private static string Resolved(string relative, Lazy<string> started)
+    {
+        try
+        {
+            return Path.GetFullPath(relative, started.Value);
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            Console.Error.WriteLine(
+                $"[vaktari] cannot tell where this was started ({ex.Message}); passing \"{relative}\" on as it came");
+
+            return relative;
+        }
+    }
+
+    /// <summary>
+    /// What a launch that lost the lock says before it exits, or null when it
+    /// should open a window of its own instead.
+    ///
+    /// Said out loud either way. Refusing silently with exit code 0 is
+    /// indistinguishable from crashing on startup — which cost a diagnostic
+    /// round trip when the published binary "did nothing" and the real answer
+    /// was that a copy was already running.
+    ///
+    /// **Too many paths opened a second window.** A handover over the cap
+    /// came back as "nobody answered", and nobody answering with folders to
+    /// show is the one case that opens a window of its own — so the launch
+    /// the cap refused started a second copy on the shared session file.
+    /// Too large is its own answer now, and the launch stops at it.
+    /// </summary>
+    internal static string? AfterHandover(SingleInstance.Handover result, int paths) => result switch
+    {
+        SingleInstance.Handover.Handed => paths > 0
+            ? $"[vaktari] already running — handed over {paths} path(s)"
+            : "[vaktari] already running — raising the existing window",
+
+        SingleInstance.Handover.TooLarge =>
+            $"[vaktari] already running — {paths} path(s) is too many to hand over; nothing was opened",
+
+        // Nobody answered: a copy holds the lock but its channel is gone.
+        //
+        // With folders to show, opening our own window is the lesser fault.
+        // Two windows sharing a session file can duplicate tabs, which is why
+        // single-instance exists at all — but a file manager that does NOTHING
+        // when you double-click a folder is not a file manager, and this is
+        // the path the desktop takes for every folder on the machine. A
+        // visible extra window can be closed; a launch that vanishes leaves no
+        // way to even tell what went wrong.
+        //
+        // With no folders, there is nothing to show and the existing window is
+        // still there, so this stays out of the way as before.
+        _ => paths == 0 ? "[vaktari] already running, but it did not answer — nothing to open" : null,
+    };
+
     private static void Run(string[] args)
     {
-        var paths = args.Where(a => !a.StartsWith('-')).Select(Repaired).ToArray();
+        var paths = ResolveArguments(
+            args.Where(a => !a.StartsWith('-')).Select(Repaired),
+            () => Environment.CurrentDirectory);
 
         var instance = new SingleInstance();
 
@@ -327,39 +424,17 @@ internal sealed class Program
             // and the process exited having opened nothing — indistinguishable,
             // from outside, from working. The bug that made it fail every time
             // lived in SingleInstance.Dispose, one line above this call.
-            var handed = SingleInstance.TryForward(paths);
-
-            if (handed)
-            {
-                // Said out loud. Refusing silently with exit code 0 is
-                // indistinguishable from crashing on startup — which cost a
-                // diagnostic round trip when the published binary "did nothing"
-                // and the real answer was that a copy was already running.
-                Console.Error.WriteLine(
-                    paths.Length > 0
-                        ? $"[vaktari] already running — handed over {paths.Length} path(s)"
-                        : "[vaktari] already running — raising the existing window");
-
-                return;
-            }
-
-            // Nobody answered: a copy holds the lock but its channel is gone.
             //
-            // With folders to show, opening our own window is the lesser fault.
-            // Two windows sharing a session file can duplicate tabs, which is
-            // why single-instance exists at all — but a file manager that does
-            // NOTHING when you double-click a folder is not a file manager, and
-            // this is the path the desktop takes for every folder on the
-            // machine. A visible extra window can be closed; a launch that
-            // vanishes leaves no way to even tell what went wrong.
-            //
-            // With no folders, there is nothing to show and the existing window
-            // is still there, so this stays out of the way as before.
-            if (paths.Length == 0)
+            // **Granted first, or the window it raises only flashes.** Windows
+            // refuses the foreground to a background process, which the
+            // running copy is; this launch holds the right and passes it on.
+            // See ForegroundHandover.
+#if VAKTARI_WINDOWS
+            if (OperatingSystem.IsWindows()) Vaktari.Windows.ForegroundHandover.Allow();
+#endif
+            if (AfterHandover(SingleInstance.TryForward(paths), paths.Length) is { } said)
             {
-                Console.Error.WriteLine(
-                    "[vaktari] already running, but it did not answer — nothing to open");
-
+                Console.Error.WriteLine(said);
                 return;
             }
 

@@ -61,11 +61,9 @@ public sealed class SymlinkCopyTests : IDisposable
     /// **The one that destroys data.** Moving a folder that contains a link to
     /// somewhere else must not touch what the link points at.
     /// </summary>
-    [Fact]
+    [PosixFact]
     public async Task Moving_a_folder_holding_a_link_leaves_the_real_folder_alone()
     {
-        if (!OperatingSystem.IsLinux()) return;
-
         var holder = Path.Combine(_from, "holder");
         Directory.CreateDirectory(holder);
         File.WriteAllText(Path.Combine(holder, "own.txt"), "own");
@@ -85,11 +83,9 @@ public sealed class SymlinkCopyTests : IDisposable
     }
 
     /// <summary>Copying reproduces the link rather than the tree behind it.</summary>
-    [Fact]
+    [PosixFact]
     public async Task Copying_a_link_to_a_folder_reproduces_the_link()
     {
-        if (!OperatingSystem.IsLinux()) return;
-
         var link = Path.Combine(_from, "photos");
         Directory.CreateSymbolicLink(link, _library);
 
@@ -109,11 +105,9 @@ public sealed class SymlinkCopyTests : IDisposable
 
     /// <summary>A link to a FILE is reproduced too, and keeps its target text
     /// exactly — a relative link is usually relative on purpose.</summary>
-    [Fact]
+    [PosixFact]
     public async Task A_relative_link_keeps_its_target_verbatim()
     {
-        if (!OperatingSystem.IsLinux()) return;
-
         File.WriteAllText(Path.Combine(_from, "real.txt"), "real");
         File.CreateSymbolicLink(Path.Combine(_from, "alias.txt"), "real.txt");
 
@@ -127,11 +121,9 @@ public sealed class SymlinkCopyTests : IDisposable
     /// Moving the link itself removes the link and nothing else — the file it
     /// pointed at stays exactly where it was.
     /// </summary>
-    [Fact]
+    [PosixFact]
     public async Task Moving_a_link_moves_only_the_link()
     {
-        if (!OperatingSystem.IsLinux()) return;
-
         var link = Path.Combine(_from, "photos");
         Directory.CreateSymbolicLink(link, _library);
 
@@ -158,11 +150,9 @@ public sealed class SymlinkCopyTests : IDisposable
     /// Answered Overwrite, the answer is carried out: the file that was there
     /// is replaced by the link. A FOLDER at that name is refused, below.
     /// </summary>
-    [Fact]
+    [PosixFact]
     public async Task Moving_a_link_onto_a_taken_name_replaces_what_was_there()
     {
-        if (!OperatingSystem.IsLinux()) return;
-
         var link = Path.Combine(_from, "photos");
         Directory.CreateSymbolicLink(link, _library);
 
@@ -191,11 +181,9 @@ public sealed class SymlinkCopyTests : IDisposable
     /// The source is left standing, and nothing is recorded: a link that was
     /// not written is not a landing.
     /// </summary>
-    [Fact]
+    [PosixFact]
     public async Task Moving_a_link_onto_a_taken_folder_is_refused_with_a_sentence()
     {
-        if (!OperatingSystem.IsLinux()) return;
-
         var link = Path.Combine(_from, "photos");
         Directory.CreateSymbolicLink(link, _library);
 
@@ -223,11 +211,9 @@ public sealed class SymlinkCopyTests : IDisposable
     /// changed and no mutation of CopyLink can turn it red. It is here to catch
     /// Skip ever reaching the arm.
     /// </summary>
-    [Fact]
+    [PosixFact]
     public async Task A_link_answered_Skip_stays_where_it_is()
     {
-        if (!OperatingSystem.IsLinux()) return;
-
         var link = Path.Combine(_from, "photos");
         Directory.CreateSymbolicLink(link, _library);
 
@@ -253,11 +239,9 @@ public sealed class SymlinkCopyTests : IDisposable
     /// that was never made, needed Overwrite to appear, and the test after this
     /// one is where that is pinned.
     /// </summary>
-    [Fact]
+    [PosixFact]
     public async Task A_link_copied_and_answered_Skip_is_not_recorded()
     {
-        if (!OperatingSystem.IsLinux()) return;
-
         var link = Path.Combine(_from, "photos");
         Directory.CreateSymbolicLink(link, _library);
 
@@ -280,11 +264,9 @@ public sealed class SymlinkCopyTests : IDisposable
     /// link was never written, measured — and the item was recorded as landed
     /// regardless. An undo of that copy would have taken away the bystander.
     /// </summary>
-    [Fact]
+    [PosixFact]
     public async Task Copying_a_link_onto_a_taken_name_answered_Overwrite_replaces_it()
     {
-        if (!OperatingSystem.IsLinux()) return;
-
         var link = Path.Combine(_from, "photos");
         Directory.CreateSymbolicLink(link, _library);
 
@@ -315,11 +297,9 @@ public sealed class SymlinkCopyTests : IDisposable
     /// rather than leaving neither. The refusal is stood in for here, because
     /// no filesystem to hand refuses a link while letting the name be taken.
     /// </summary>
-    [Fact]
+    [PosixFact]
     public async Task A_link_that_cannot_be_made_leaves_what_was_at_the_name()
     {
-        if (!OperatingSystem.IsLinux()) return;
-
         var link = Path.Combine(_from, "photos");
         Directory.CreateSymbolicLink(link, _library);
 
@@ -350,11 +330,9 @@ public sealed class SymlinkCopyTests : IDisposable
     /// answers to Directory.Exists, and is still not a folder; replacing it
     /// removes the link and never what it pointed at.
     /// </summary>
-    [Fact]
+    [PosixFact]
     public async Task Moving_a_link_onto_a_taken_link_replaces_it()
     {
-        if (!OperatingSystem.IsLinux()) return;
-
         var elsewhere = Path.Combine(_root, "elsewhere");
         Directory.CreateDirectory(elsewhere);
         File.WriteAllText(Path.Combine(elsewhere, "kept.txt"), "kept");
@@ -377,11 +355,9 @@ public sealed class SymlinkCopyTests : IDisposable
 
     /// <summary>An EMPTY folder at the name is refused as well: the rule is
     /// about what a folder is, not about what happens to be in it.</summary>
-    [Fact]
+    [PosixFact]
     public async Task Moving_a_link_onto_a_taken_empty_folder_is_refused()
     {
-        if (!OperatingSystem.IsLinux()) return;
-
         var link = Path.Combine(_from, "photos");
         Directory.CreateSymbolicLink(link, _library);
 
@@ -414,11 +390,9 @@ public sealed class SymlinkCopyTests : IDisposable
     /// Both facts are read without following the link, since a link that points
     /// at itself cannot be followed.
     /// </summary>
-    [Fact]
+    [PosixFact]
     public async Task A_link_moved_onto_the_file_it_points_at_leaves_that_file_alone()
     {
-        if (!OperatingSystem.IsLinux()) return;
-
         var real = Path.Combine(_into, "report.pdf");
         File.WriteAllText(real, "the only copy");
 
@@ -437,11 +411,9 @@ public sealed class SymlinkCopyTests : IDisposable
     /// stands: "../into/report.pdf" from the source folder is the file at the
     /// name, and from the destination folder it is that name itself.
     /// </summary>
-    [Fact]
+    [PosixFact]
     public async Task A_relative_link_moved_onto_the_file_it_points_at_leaves_that_file_alone()
     {
-        if (!OperatingSystem.IsLinux()) return;
-
         var real = Path.Combine(_into, "report.pdf");
         File.WriteAllText(real, "the only copy");
 
@@ -461,11 +433,9 @@ public sealed class SymlinkCopyTests : IDisposable
     /// stands, and from the destination folder names a place outside this tree
     /// altogether — so only the question asked from the source catches it.
     /// </summary>
-    [Fact]
+    [PosixFact]
     public async Task A_relative_link_from_a_deeper_folder_moved_onto_the_file_it_points_at_leaves_that_file_alone()
     {
-        if (!OperatingSystem.IsLinux()) return;
-
         var real = Path.Combine(_into, "report.pdf");
         File.WriteAllText(real, "the only copy");
 
@@ -489,11 +459,9 @@ public sealed class SymlinkCopyTests : IDisposable
     /// would destroy the file and leave a link pointing at itself, and only the
     /// question asked from the destination catches it.
     /// </summary>
-    [Fact]
+    [PosixFact]
     public async Task A_relative_link_that_would_point_at_itself_once_moved_leaves_the_file_at_the_name_alone()
     {
-        if (!OperatingSystem.IsLinux()) return;
-
         var real = Path.Combine(_into, "report.pdf");
         File.WriteAllText(real, "the only copy");
 
@@ -512,11 +480,9 @@ public sealed class SymlinkCopyTests : IDisposable
 
     /// <summary>A copy reaches the same place: the source link survives a copy
     /// regardless, so what is at stake is the file it points at.</summary>
-    [Fact]
+    [PosixFact]
     public async Task A_link_copied_onto_the_file_it_points_at_leaves_that_file_alone()
     {
-        if (!OperatingSystem.IsLinux()) return;
-
         var real = Path.Combine(_into, "report.pdf");
         File.WriteAllText(real, "the only copy");
 
@@ -563,11 +529,9 @@ public sealed class SymlinkCopyTests : IDisposable
     /// The same shape 3c9a45c was written to end, in the one case its four
     /// tests did not cover.
     /// </summary>
-    [Fact]
+    [PosixFact]
     public async Task A_link_moved_into_its_own_folder_under_a_second_name_is_not_lost()
     {
-        if (!OperatingSystem.IsLinux()) return;
-
         var link = Path.Combine(_from, "photos");
         Directory.CreateSymbolicLink(link, _library);
 
@@ -606,11 +570,9 @@ public sealed class SymlinkCopyTests : IDisposable
     /// review of this change, on a move and on a copy, through a folder link as
     /// here, through a chain of links, and through ".." past a link.
     /// </summary>
-    [Fact]
+    [PosixFact]
     public async Task A_link_moved_into_a_symlinked_folder_leaves_the_file_it_points_at_alone()
     {
-        if (!OperatingSystem.IsLinux()) return;
-
         var real = Path.Combine(_into, "report.pdf");
         File.WriteAllText(real, "the only copy");
 
@@ -633,11 +595,9 @@ public sealed class SymlinkCopyTests : IDisposable
     /// happens, so what is at stake here is only the file at the name — and it
     /// was destroyed, with the copy recording a landing for it.
     /// </summary>
-    [Fact]
+    [PosixFact]
     public async Task A_link_copied_into_a_symlinked_folder_leaves_the_file_it_points_at_alone()
     {
-        if (!OperatingSystem.IsLinux()) return;
-
         var real = Path.Combine(_into, "report.pdf");
         File.WriteAllText(real, "the only copy");
 
@@ -660,11 +620,9 @@ public sealed class SymlinkCopyTests : IDisposable
     /// path, which is not the name being replaced, so the text comparison was
     /// satisfied and the file at the end of the chain went.
     /// </summary>
-    [Fact]
+    [PosixFact]
     public async Task A_link_that_reaches_the_file_through_another_link_leaves_it_alone()
     {
-        if (!OperatingSystem.IsLinux()) return;
-
         var real = Path.Combine(_into, "report.pdf");
         File.WriteAllText(real, "the only copy");
 
@@ -692,11 +650,9 @@ public sealed class SymlinkCopyTests : IDisposable
     /// that collapsing the text names a third place that has nothing in it, and
     /// only following the link reaches the file.
     /// </summary>
-    [Fact]
+    [PosixFact]
     public async Task A_link_whose_text_climbs_out_of_a_symlinked_folder_leaves_the_file_it_points_at_alone()
     {
-        if (!OperatingSystem.IsLinux()) return;
-
         var real = Path.Combine(_into, "report.pdf");
         File.WriteAllText(real, "the only copy");
 
@@ -716,11 +672,9 @@ public sealed class SymlinkCopyTests : IDisposable
     }
 
     /// <summary>An ordinary folder with no links behaves exactly as before.</summary>
-    [Fact]
+    [PosixFact]
     public async Task An_ordinary_folder_still_copies_whole()
     {
-        if (!OperatingSystem.IsLinux()) return;
-
         var plain = Path.Combine(_from, "plain");
         Directory.CreateDirectory(Path.Combine(plain, "inner"));
         File.WriteAllText(Path.Combine(plain, "a.txt"), "a");

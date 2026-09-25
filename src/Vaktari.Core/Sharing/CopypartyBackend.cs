@@ -79,6 +79,18 @@ public abstract class CopypartyBackend
     public virtual string? StartWarning() => null;
 
     /// <summary>
+    /// Ties a server just started to the life of this process, where the
+    /// platform can: called the moment it has started, before anything else.
+    ///
+    /// **A share went on serving after Vaktari crashed or was killed.** Only
+    /// closing the last window stopped one, and Windows never ends a child
+    /// with its parent. Windows answers that here with a job object;
+    /// elsewhere this does nothing, and the record the share leaves beside its
+    /// config is what the next start finds the orphan by.
+    /// </summary>
+    public virtual void Contain(Process process) { }
+
+    /// <summary>
     /// The first executable of this name on PATH, or null.
     ///
     /// Here rather than in each subclass because the only real difference is

@@ -181,12 +181,34 @@ public static class Log
         });
     }
 
-    // A drive-rooted Windows path, a UNC path, or an absolute Unix path, running
-    // to the next whitespace or quote. Deliberately greedy about what counts:
-    // hiding one path too many costs a diagnosis nothing, and leaking one costs
-    // the user something.
+    // A drive-rooted Windows path, a UNC path, or an absolute Unix path.
+    // Deliberately greedy about what counts: hiding one path too many costs a
+    // diagnosis nothing, and leaking one costs the user something.
+    //
+    // **A match stopped at the first space, so every folder after it was
+    // written out whole.** "C:\Users\John Smith\AppData\...\vaktari.exe" hid
+    // "C:\Users" and kept "\John", then left " Smith\AppData\..." as ordinary
+    // text — and the diagnostics bundle opens with exactly that line, so a
+    // per-user install under a spaced name put its owner's full name at the
+    // top of every bug report. A FOLDER may now hold a space, as long as the
+    // space does not start a new root; that exception is what keeps
+    // "C:\a\one.txt to D:\b\two.txt" two paths rather than one path whose
+    // folder is "one.txt to D:". The leaf still stops at a space, so prose
+    // after a path is not swallowed into it. The lookahead after the root
+    // keeps a bare "/" in "3 / 5" out, which the one-or-more of the old
+    // pattern did.
+    //
+    // **And every folder after an apostrophe was written out the same way.**
+    // A folder stopped at ', so "C:\Users\O'Brien\AppData\..." hid
+    // "C:\Users", kept "\O", and left "'Brien\AppData\..." as plain text — the
+    // same name at the top of the same bundle, for an account Windows allows.
+    // A folder may hold one now. What keeps a quoted path from running into
+    // the next is the space rule, which looks past an opening quote: in
+    // "'C:\a\one.txt' to 'D:\b\two.txt'" the space before 'D:\ starts a new
+    // root, so "one.txt' to" can never become a folder of the second path's.
+    // The leaf still stops at a quote, so a quoted path ends where it closes.
     private static readonly Regex PathPattern = new(
-        @"(?:[A-Za-z]:\\|\\\\|/)[^\s""'<>|]+",
+        @"(?:[A-Za-z]:\\|\\\\|/)(?=[^\s""'<>|])(?:(?:[^\s""<>|\\/]|[ \t](?![""']?(?:[A-Za-z]:\\|\\\\|/)))*[\\/])*[^\s""'<>|]*",
         RegexOptions.Compiled | RegexOptions.CultureInvariant);
 
     private static string Hash(string text)

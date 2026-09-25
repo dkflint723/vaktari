@@ -239,7 +239,7 @@ public sealed class ColumnWidthTests : OwnedViewModels
     /// split's — would move the column a different distance from the pointer.
     /// </summary>
     [AvaloniaFact]
-    public void The_grip_moves_the_column_and_letting_go_writes_the_file()
+    public async Task The_grip_moves_the_column_and_letting_go_writes_the_file()
     {
         UseSearch(PaneViewModel.Search);
 
@@ -270,6 +270,10 @@ public sealed class ColumnWidthTests : OwnedViewModels
         Assert.Equal(0, window.Services.SettingsStore.Load().Views.Details.ModifiedColumn);
 
         grip.RaiseEvent(new VectorEventArgs { RoutedEvent = Thumb.DragCompletedEvent, Vector = new Vector(40, 0) });
+
+        // The save goes to the disk on the pool, off the window's thread;
+        // what letting go promises is that it has been asked for.
+        await window.Services.SettingsStore.Writes.Idle;
 
         Assert.Equal(170, window.Services.SettingsStore.Load().Views.Details.ModifiedColumn);
     }

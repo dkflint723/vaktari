@@ -146,7 +146,8 @@ public sealed class JsonFolderViewStore : IFolderViewStore
                         new FolderViewFile { Folders = _states },
                         FolderViewJsonContext.Default.FolderViewFile);
 
-                    stream.Flush();
+                    // To the disk — see JsonSettingsStore.Save.
+                    stream.Flush(flushToDisk: true);
                 }
 
                 File.Move(_tempPath, _path, overwrite: true);

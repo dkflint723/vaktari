@@ -471,7 +471,7 @@ public sealed class DefaultViewTests : OwnedViewModels
     [AvaloniaFact]
     public void The_window_writes_it_to_the_settings_file()
         => Assert.Contains(
-            "_shell.DefaultViewChanged += (_, settings) => _services.SettingsStore.Save(settings);",
+            "_shell.DefaultViewChanged += (_, settings) => _ = _services.SettingsStore.SaveAsync(settings);",
             RepoSource.UiClass("", "MainWindow"));
 
     /// <summary>

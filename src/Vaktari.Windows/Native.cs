@@ -181,6 +181,68 @@ internal static partial class Native
     [return: MarshalAs(UnmanagedType.Bool)]
     internal static partial bool CloseHandle(nint handle);
 
+    // ---- Job objects -------------------------------------------------------
+
+    internal const int JobObjectExtendedLimitInformation = 9;
+    internal const uint JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE = 0x00002000;
+
+    [StructLayout(LayoutKind.Sequential)]
+    internal struct JOBOBJECT_BASIC_LIMIT_INFORMATION
+    {
+        internal long PerProcessUserTimeLimit;
+        internal long PerJobUserTimeLimit;
+        internal uint LimitFlags;
+        internal nuint MinimumWorkingSetSize;
+        internal nuint MaximumWorkingSetSize;
+        internal uint ActiveProcessLimit;
+        internal nuint Affinity;
+        internal uint PriorityClass;
+        internal uint SchedulingClass;
+    }
+
+    [StructLayout(LayoutKind.Sequential)]
+    internal struct IO_COUNTERS
+    {
+        internal ulong ReadOperationCount;
+        internal ulong WriteOperationCount;
+        internal ulong OtherOperationCount;
+        internal ulong ReadTransferCount;
+        internal ulong WriteTransferCount;
+        internal ulong OtherTransferCount;
+    }
+
+    [StructLayout(LayoutKind.Sequential)]
+    internal struct JOBOBJECT_EXTENDED_LIMIT_INFORMATION
+    {
+        internal JOBOBJECT_BASIC_LIMIT_INFORMATION BasicLimitInformation;
+        internal IO_COUNTERS IoInfo;
+        internal nuint ProcessMemoryLimit;
+        internal nuint JobMemoryLimit;
+        internal nuint PeakProcessMemoryUsed;
+        internal nuint PeakJobMemoryUsed;
+    }
+
+    /// <summary>A job handle, closed by the runtime rather than by hand —
+    /// and closing it is the whole point of a kill-on-close job.</summary>
+    internal sealed class SafeJobHandle : Microsoft.Win32.SafeHandles.SafeHandleZeroOrMinusOneIsInvalid
+    {
+        public SafeJobHandle() : base(ownsHandle: true) { }
+
+        protected override bool ReleaseHandle() => CloseHandle(handle);
+    }
+
+    [LibraryImport("kernel32.dll", EntryPoint = "CreateJobObjectW", SetLastError = true)]
+    internal static partial SafeJobHandle CreateJobObject(nint attributes, nint name);
+
+    [LibraryImport("kernel32.dll", EntryPoint = "SetInformationJobObject", SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    internal static partial bool SetInformationJobObject(
+        SafeJobHandle job, int infoClass, in JOBOBJECT_EXTENDED_LIMIT_INFORMATION info, uint size);
+
+    [LibraryImport("kernel32.dll", EntryPoint = "AssignProcessToJobObject", SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    internal static partial bool AssignProcessToJobObject(SafeJobHandle job, nint process);
+
     // ---- Reparse tags ------------------------------------------------------
 
     internal const uint FILE_READ_ATTRIBUTES = 0x00000080;

@@ -285,7 +285,7 @@ internal sealed class WindowServices
         // errors and buried the #error that explains what actually went wrong.
 #if VAKTARI_LINUX
         if (OperatingSystem.IsLinux())
-            platform = new LinuxPlatform(JsonSessionStore.DefaultDirectory());
+            platform = new LinuxPlatform(JsonSessionStore.DefaultDirectory(), JsonSessionStore.PortableRoot);
         else
             throw new PlatformNotSupportedException(Unsupported);
 #elif VAKTARI_WINDOWS
@@ -338,6 +338,23 @@ internal sealed class WindowServices
         var settings = settingsStore.Load();
         var firstRun = settingsStore.EnsureFileExists(settings);
 
+        // Before the theme is looked for below, so a portable copy's fetched
+        // themes are looked for where its files went. What it downloads goes
+        // where the rest of a portable copy's state goes, and so does the
+        // Proton Drive tool, further down.
+        Vaktari.Core.FileSystem.IconThemeCatalogue.PortableRoot = JsonSessionStore.PortableRoot;
+
+        // A theme chosen on a stick mounted somewhere else last time: its
+        // saved path names a drive or mount point this machine does not have,
+        // and the theme is sitting in this copy's own folder. See Relocated.
+        settings = settings with
+        {
+            General = settings.General with
+            {
+                IconThemeFolder = Vaktari.Core.FileSystem.IconThemeCatalogue.Relocated(settings.General.IconThemeFolder),
+            },
+        };
+
         AppSettings.Apply(settings);
 
         // **After Apply, and that ordering is the whole of it.** This was
@@ -379,6 +396,10 @@ internal sealed class WindowServices
             LocalRoot = AppSettings.Current.General.ProtonDriveFolder is { Length: > 0 } chosen
                 ? chosen
                 : Vaktari.Core.Sharing.ProtonDriveLinks.GuessLocalRoot() ?? "",
+
+            // What it downloads goes where the rest of a portable copy's
+            // state goes, as fetched icon themes do, above.
+            PortableRoot = JsonSessionStore.PortableRoot,
         };
         var driveLinkStore = new JsonDriveLinkStore(JsonSessionStore.DefaultDirectory());
 
@@ -599,9 +620,24 @@ internal sealed class WindowServices
                 // Per application, so only the last one out may write them: an
                 // earlier Flush from a closing window would put its own stale
                 // snapshot over what the windows still open have since changed.
-                FolderViews.Flush();
-                Recents.Flush();
-                Searches.Flush();
+                //
+                // **On the pool, and awaited.** Each flush now waits for the
+                // disk, three of them in a row, and this runs on the UI thread;
+                // awaited, so they are down before the process goes, exactly
+                // as when they ran here. The saves the window's handlers
+                // queued — settings, drive links, pins — are waited for too,
+                // for the same reason: they were on the disk before the
+                // handler returned, and the way out keeps that promise.
+                await Task.Run(() =>
+                {
+                    FolderViews.Flush();
+                    Recents.Flush();
+                    Searches.Flush();
+                });
+
+                await SettingsStore.Writes.Idle;
+                await DriveLinkStore.Writes.Idle;
+                await Platform.Places.Written;
 
                 _trashTimer?.Stop();
                 _trashTimer = null;

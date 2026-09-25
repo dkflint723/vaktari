@@ -320,7 +320,7 @@ public partial class MainWindow
             // dropped or it keeps serving files from the theme just abandoned.
             WindowServices.InstallIconTheme(_platform);
             Thumbnails.IconLoader.Invalidate();
-            _services.SettingsStore.Save(model.Result);
+            _ = _services.SettingsStore.SaveAsync(model.Result);
 
             // Turned on just now: ask now rather than tomorrow. The check's
             // own cadence keeps a save that leaves it on from asking twice.

@@ -68,11 +68,9 @@ public sealed class SearchFallbackTests : IDisposable
     /// The one that matters: the index says nothing, and the file is found
     /// anyway.
     /// </summary>
-    [Fact]
+    [PosixFact]
     public async Task An_index_with_nothing_in_it_falls_back_to_the_walk()
     {
-        if (!OperatingSystem.IsLinux()) return;
-
         var script = SilentBaloo();
 
         LinuxSearchProvider.BalooOverride = () => script;
@@ -84,11 +82,9 @@ public sealed class SearchFallbackTests : IDisposable
     /// And a search that genuinely matches nothing still says nothing — the
     /// fallback must not start inventing results.
     /// </summary>
-    [Fact]
+    [PosixFact]
     public async Task A_query_that_matches_nothing_still_finds_nothing()
     {
-        if (!OperatingSystem.IsLinux()) return;
-
         var script = SilentBaloo();
 
         LinuxSearchProvider.BalooOverride = () => script;
@@ -100,11 +96,9 @@ public sealed class SearchFallbackTests : IDisposable
     /// With no Baloo at all the walk was always used, and still is. This is the
     /// path that was working, and it has to keep working.
     /// </summary>
-    [Fact]
+    [PosixFact]
     public async Task With_no_baloo_the_walk_is_used_as_before()
     {
-        if (!OperatingSystem.IsLinux()) return;
-
         // **The assertion used to be behind a BackendName check**, because a
         // null override meant "go and look at this machine" and a developer box
         // with a working index would answer from it. A probe can say absent, so

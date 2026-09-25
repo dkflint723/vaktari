@@ -6,8 +6,27 @@ namespace Vaktari.Linux;
 
 public sealed class LinuxScriptRunner : IScriptRunner
 {
-    public LinuxScriptRunner()
+    /// <summary>
+    /// The scripts folder under the user's data directory, or under
+    /// <paramref name="portableRoot"/> for a portable copy.
+    ///
+    /// **A portable copy made its scripts folder on every machine it ran on**,
+    /// and went looking there for the old names' folders to move — writing
+    /// outside the one folder it promises to stay in, and finding none of the
+    /// scripts it carried. The Windows runner was already built from the state
+    /// directory, which is the portable folder when there is one; this is the
+    /// same answer, given only to a portable copy so an installed one keeps
+    /// the ~/.local/share folder its scripts have always been in.
+    /// </summary>
+    public LinuxScriptRunner(string? portableRoot = null)
     {
+        if (portableRoot is not null)
+        {
+            ScriptsDirectory = Path.Combine(portableRoot, "scripts");
+            EnsureDirectory();
+            return;
+        }
+
         var dataHome = Environment.GetEnvironmentVariable("XDG_DATA_HOME");
         if (string.IsNullOrWhiteSpace(dataHome))
             dataHome = Path.Combine(

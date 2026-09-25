@@ -143,12 +143,14 @@ Ctrl+Z takes the copies back, though not the older files they replaced.
 
 **The List layout chooses its columns.** Name, Type, Size, Modified and
 Created, with Type and Created off until you ask for them; right-click the
-headings or use *Arrange ▸ Columns*. All five sort. Clicking Size, Modified or
-Created starts descending, so the download that just finished is at the top.
-`file2` sorts before `file10`, and *Écoles* sorts beside *Ecoles* rather than
-after *Zebra*. Sorting folders before files is a switch you can turn off, which
-is what finally lets "sort by Modified" answer *what changed here* when the
-answer is a folder.
+headings or use *Arrange ▸ Columns*. Drag the right edge of any heading but Name
+to make its column wider or narrower — Name takes whatever is left — and every
+pane follows; *Reset column widths*, in the same two menus, puts them all back.
+All five sort. Clicking Size, Modified or Created starts descending, so the
+download that just finished is at the top. `file2` sorts before `file10`, and
+*Écoles* sorts beside *Ecoles* rather than after *Zebra*. Sorting folders before
+files is a switch you can turn off, which is what finally lets "sort by
+Modified" answer *what changed here* when the answer is a folder.
 
 **What is using the space in a folder.** *Show space usage*, in the listing's
 menu or the command box, replaces the listing with one row for each item in the
@@ -163,7 +165,9 @@ it points at. Hidden items count towards the total and appear as rows only while
 hidden files are shown. It measures when you ask and never on its own, since
 walking a tree costs what it costs. It is a view of one folder rather than a
 folder itself: comparing, copying across, properties and pinning are not offered
-in it, and *Go to the folder* takes you back.
+in it. *Open file location*, on a row's right-click menu, goes into a folder
+row and shows a file row lit in its folder, and Back (`Alt+←`) returns to the
+folder that was measured.
 
 **The files that are copies of each other.** *Show duplicate files*, in the
 listing's menu or the command box, replaces the listing with every file below
@@ -179,7 +183,8 @@ size nothing else shares is never opened, and what survives that is compared
 byte for byte rather than trusted to a digest, because the cost of a collision
 here is somebody deleting a file that was not a copy. Empty files are left out,
 since every one of them matches every other. Like the space listing it is a
-view rather than a folder, and *Go to the folder* takes you back.
+view rather than a folder: *Open file location* shows the selected copy lit in
+its own folder, and Back (`Alt+←`) returns to the folder that was scanned.
 
 **Folders open where they stand.** In the List layout, press the triangle on a
 folder row — or `→` with the row selected — and its contents appear underneath
@@ -380,8 +385,10 @@ rather than acting on whatever sits there now.
 **Confirmations name what they are about to destroy** — "permanently delete
 report.pdf? this cannot be undone" rather than "1 item(s)". A very long name is
 shortened in the middle so the extension survives, since `.pdf` against `.exe`
-is the part that changes what deleting it means. Each confirmation can be
-switched off.
+is the part that changes what deleting it means. Under Settings ▸ General you
+choose whether moving to the bin asks, which it does not until you turn it on,
+and whether deleting for good does. Emptying the bin and copying one side of a
+split to the other always ask.
 
 **Also on the right-click menu:** *Mount* for a disk image, which attaches it
 and takes you inside, and *Unmount* when you are done. *New folder*, *New file*
@@ -595,10 +602,19 @@ which is the quickest way to tell which one you have.
 Your tabs, places, folder views and settings live in `~/.local/state/vaktari`,
 with a small log under `logs/` beside them — paths in it are reduced to file
 names, so it can go straight into a bug report.
+Your `scripts` folder, fetched icon themes and the Proton Drive tool are under
+`~/.local/share` instead, in `vaktari/scripts`, `Vaktari/Icons` and
+`vaktari/tools`.
 There is no uninstaller for the tarball — removing it by hand means deleting
 `~/.local/bin/vaktari`, `~/.local/lib/vaktari` and
 `~/.local/share/applications/vaktari.desktop` and the icons under
-`~/.local/share/icons/hicolor/*/apps/vaktari*`.
+`~/.local/share/icons/hicolor/*/apps/vaktari*`. If you made Vaktari the
+default file manager, delete
+`~/.local/share/dbus-1/services/org.freedesktop.FileManager1.service` as well
+(under `$XDG_DATA_HOME` if you set it): only a running Vaktari that is no
+longer the default removes it, and left behind it points other applications'
+"show in folder" at a program that is not there. Choosing another default and
+starting Vaktari once before you remove it does the same.
 
 ### Windows
 
@@ -620,13 +636,28 @@ them gone — but note what is in it first.
 ### Portable
 
 Vaktari can carry its state with it. Make a folder named `portable` beside
-the executable — next to `vaktari.exe` in a copy of the installed folder, or
-next to `vaktari` in the unpacked tarball — and everything it would keep under
-`%LOCALAPPDATA%\vaktari` or `~/.local/state/vaktari` goes in there instead:
-tabs, places, folder views, settings, recents and the log. Nothing is written
-outside it except the single-instance lock, which lives in the per-user
-runtime folder and is named for the portable folder, so a copy on a stick and
-an installed copy run side by side rather than handing folders to each other.
+the executable — next to `Vaktari.Ui.exe` in a copy of the installed folder,
+or next to `Vaktari.Ui` inside the unpacked `vaktari` folder — and everything
+it would keep under `%LOCALAPPDATA%\vaktari` or `~/.local/state/vaktari` (tabs,
+places, folder views, settings, recents and the log) goes in there instead,
+along with your `scripts` folder and the icon themes and Proton Drive tool it
+downloads for you, which on Linux otherwise live under `~/.local/share`
+(`vaktari/scripts`, `Vaktari/Icons` and `vaktari/tools`). A theme chosen on
+the stick is found again when the stick comes up under another drive letter or
+mount point. A portable copy also leaves "show in folder" requests from other
+applications to the installed Vaktari, if there is one.
+
+It still writes a few things outside that folder:
+
+- the single-instance lock, which lives in the per-user runtime folder and is
+  named for the portable folder, so a copy on a stick and an installed copy
+  run side by side rather than handing folders to each other;
+- short-lived working files in the system's temporary or runtime folder, such
+  as items staged by a drag and drop, or a running share's configuration;
+- anything that belongs to the machine rather than to Vaktari: files you
+  delete go to that machine's bin, a Proton Drive sign-in is kept in its
+  credential store, and a choice you make in Settings about the desktop, such
+  as the default file manager, is made for that machine.
 
 ### Building it yourself
 
@@ -697,7 +728,7 @@ promise yet. Worth knowing before you decide:
   item hands off to Windows' own sheet, and Vaktari's checksum panel is on the
   window that only appears for multi-item selections.
 - The **folder tree** in the sidebar is off until you turn it on, under
-  Settings ▸ Views, and it is a tree of folders rather than a second
+  Settings ▸ View modes, and it is a tree of folders rather than a second
   listing: it opens one level at a time and forgets a branch when you close
   it. Expandable folders in the List layout do the same job inside the
   listing, and they are List-only — as is grouping.
@@ -705,7 +736,7 @@ promise yet. Worth knowing before you decide:
   and closing always keeps the left.
 - A tab can be dragged within its own strip, but not to the other half of a
   split, to another window, or off into a new one.
-- Columns cannot be resized or reordered by hand.
+- Columns can be dragged wider or narrower, but not reordered.
 - The Small grid draws no thumbnails, and on Linux Vaktari does not *generate*
   video or PDF thumbnails — it only reads ones your desktop's thumbnailers
   already made.

@@ -53,12 +53,64 @@ public static class IconThemeCatalogue
 
     /// <summary>
     /// Where fetched themes are kept: per user, beside everything else this
-    /// application stores, and needing no elevation to write.
+    /// application stores, and needing no elevation to write — or in the
+    /// portable folder, for a copy that has one.
     /// </summary>
     public static string InstallRoot => InstallRootOverride ?? Path.Combine(
-        Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
-        "Vaktari",
+        PortableRoot ?? Path.Combine(
+            Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Vaktari"),
         "Icons");
+
+    /// <summary>
+    /// The portable folder when this copy is a portable one, and null for an
+    /// installed copy. Set by the application at startup, which is where
+    /// "portable" is decided; Core cannot ask for itself.
+    ///
+    /// **A portable copy fetched its themes into the machine's own folder**,
+    /// so a theme chosen on the stick was left behind on every machine it
+    /// was fetched on and missing on the next — the one thing a portable
+    /// copy exists not to do. The files travel now; <see cref="Relocated"/>
+    /// is what lets the saved choice find them where the stick is mounted
+    /// this time.
+    /// </summary>
+    public static string? PortableRoot { get; set; }
+
+    /// <summary>
+    /// The folder a saved theme choice names, or — when that folder is gone —
+    /// the theme of the same pack and name under <see cref="InstallRoot"/>,
+    /// if there is one there. Anything else comes back as it was saved.
+    ///
+    /// **Moving the fetched themes onto the stick did not make the choice
+    /// travel.** The choice is saved as a full path, and a stick is E: on one
+    /// machine and F: on the next, or under another user's /run/media: the
+    /// files arrived and the path to them did not, so the theme was missing
+    /// on the next machine exactly as before, only with its files beside it.
+    /// A saved folder that no longer exists but whose last two names are a
+    /// theme this copy fetched is taken to be that theme. Both separators are
+    /// split on, because the path was written by whichever system the stick
+    /// was last in.
+    /// </summary>
+    public static string Relocated(string saved)
+    {
+        if (saved.Length == 0 || Directory.Exists(saved)) return saved;
+
+        var names = saved.Split(['\\', '/'], StringSplitOptions.RemoveEmptyEntries);
+
+        if (names.Length < 2) return saved;
+
+        // A theme in its pack's folder, as a fetch leaves it, or one unpacked
+        // straight into the install root — the two shapes Installed finds.
+        foreach (var candidate in new[]
+                 {
+                     Path.Combine(InstallRoot, names[^2], names[^1]),
+                     Path.Combine(InstallRoot, names[^1]),
+                 })
+        {
+            if (File.Exists(Path.Combine(candidate, "index.theme"))) return candidate;
+        }
+
+        return saved;
+    }
 
     /// <summary>Where tests install to, so a test of the fetch never writes
     /// into the developer's own icon folder. Null in production.</summary>

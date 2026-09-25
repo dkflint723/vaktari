@@ -109,6 +109,19 @@ public interface IPlacesProvider
     ValueTask ReorderAsync(IReadOnlyList<string> orderedIds, CancellationToken ct);
 
     /// <summary>
+    /// Completes once every change to the pins asked for so far is on the
+    /// disk.
+    ///
+    /// **The pins are written on the pool now**, where they used to be written
+    /// on the UI thread before Pin or Reorder returned — so a pin made the
+    /// moment before the last window closed could still be in flight when the
+    /// process ended. The way out awaits this, which keeps "saved by the time
+    /// Vaktari exits" true. Done by default, for a provider that writes as it
+    /// goes or writes nothing.
+    /// </summary>
+    Task Written => Task.CompletedTask;
+
+    /// <summary>
     /// The name this machine gives a path, when it has a better one than the
     /// path's own last segment. Null when it has not.
     ///

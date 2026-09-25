@@ -1,3 +1,5 @@
+using Avalonia.Headless.XUnit;
+using Avalonia.Threading;
 using Vaktari.Ui;
 using Xunit;
 
@@ -121,8 +123,15 @@ public sealed class SingleInstanceHandoverTests : IDisposable
     /// Asserting on TryForward's return rather than on the received paths keeps
     /// this off the dispatcher — delivery raises the event on the UI thread,
     /// which is the window's business and not this channel's.
+    ///
+    /// **An AvaloniaFact all the same, and so is the next one.** As plain
+    /// facts, the running copy's accept loop was the first thing in the run to
+    /// ask for Dispatcher.UIThread, from a socket thread, which then owned it:
+    /// run as a class on its own on Linux, every AvaloniaFact after them failed
+    /// its cleanup with "a different thread owns it". On the headless session,
+    /// the dispatcher is the session's before anything is handed over.
     /// </summary>
-    [Fact]
+    [AvaloniaFact]
     public void A_launch_that_lost_can_still_hand_its_paths_over()
     {
         using var running = new SingleInstance();
@@ -132,8 +141,7 @@ public sealed class SingleInstanceHandoverTests : IDisposable
         Assert.False(launch.TryAcquire());
         launch.Dispose();
 
-        Assert.True(SingleInstance.TryForward([Path.GetTempPath()]),
-            "nothing answered the socket");
+        Assert.Equal(SingleInstance.Handover.Handed, SingleInstance.TryForward([Path.GetTempPath()]));
     }
 
     /// <summary>
@@ -141,7 +149,7 @@ public sealed class SingleInstanceHandoverTests : IDisposable
     /// destroyed the channel and only the second showed it — a test that
     /// forwarded a single path would have passed against the broken code.
     /// </summary>
-    [Fact]
+    [AvaloniaFact]
     public void And_again_after_the_first_one()
     {
         using var running = new SingleInstance();
@@ -153,8 +161,7 @@ public sealed class SingleInstanceHandoverTests : IDisposable
             launch.TryAcquire();
             launch.Dispose();
 
-            Assert.True(SingleInstance.TryForward([Path.GetTempPath()]),
-                $"handover {i + 1} found nothing listening");
+            Assert.Equal(SingleInstance.Handover.Handed, SingleInstance.TryForward([Path.GetTempPath()]));
         }
     }
 
@@ -166,7 +173,7 @@ public sealed class SingleInstanceHandoverTests : IDisposable
     [Fact]
     public void With_nothing_running_the_handover_reports_failure()
     {
-        Assert.False(SingleInstance.TryForward([Path.GetTempPath()]));
+        Assert.Equal(SingleInstance.Handover.NoAnswer, SingleInstance.TryForward([Path.GetTempPath()]));
     }
 
     /// <summary>
@@ -198,6 +205,123 @@ public sealed class SingleInstanceHandoverTests : IDisposable
             else
                 File.SetUnixFileMode(SingleInstance.LockPath, UnixFileMode.UserRead | UnixFileMode.UserWrite);
         }
+    }
+
+    /// <summary>
+    /// What the running copy's PathsReceived delivers for one handover, pumped
+    /// on the headless dispatcher — delivery is raised on the UI thread — under
+    /// a wall-clock ceiling. Null when nothing arrived, which is the failure the
+    /// tests below are about, so it is an answer rather than a hang.
+    /// </summary>
+    private static string[]? Delivered(SingleInstance running, string[] sent)
+    {
+        string[]? received = null;
+        running.PathsReceived += (_, paths) => received = paths;
+
+        Assert.Equal(SingleInstance.Handover.Handed, SingleInstance.TryForward(sent));
+
+        var deadline = DateTime.UtcNow.AddSeconds(10);
+
+        while (received is null && DateTime.UtcNow < deadline)
+        {
+            Dispatcher.UIThread.RunJobs();
+            Thread.Sleep(5);
+        }
+
+        return received;
+    }
+
+    /// <summary>
+    /// **A second launch with no folder raised nothing.** It sends an empty
+    /// message, and the running copy stopped at "nothing read" before the event
+    /// — so the window stayed buried while the launch printed "raising the
+    /// existing window". Empty is still a request, and the handler raises the
+    /// window for it.
+    /// </summary>
+    [AvaloniaFact]
+    public void A_launch_with_no_folder_still_reaches_the_window()
+    {
+        using var running = new SingleInstance();
+        Assert.True(running.TryAcquire());
+
+        var delivered = Delivered(running, []);
+
+        Assert.NotNull(delivered);
+        Assert.Empty(delivered);
+    }
+
+    /// <summary>
+    /// **One read of 8 KiB was the whole message.** At 120 paths the last one
+    /// delivered was "C:\Users\someone\D" — a folder that does not exist, or
+    /// worse, one that does. Two hundred long paths is about 30 KB, several
+    /// reads' worth, and every one must arrive whole.
+    /// </summary>
+    [AvaloniaFact]
+    public void A_long_handover_arrives_whole()
+    {
+        using var running = new SingleInstance();
+        Assert.True(running.TryAcquire());
+
+        var sent = Enumerable.Range(0, 200)
+            .Select(i => Path.Combine(Path.GetTempPath(), "a folder with a long name, number " + i,
+                                      "and a child folder with a longer name still, ünïcödé " + i))
+            .ToArray();
+
+        Assert.Equal(sent, Delivered(running, sent));
+    }
+
+    /// <summary>
+    /// **A space at either end of a name is part of the name on Linux**, and
+    /// the handover trimmed it: a folder called "old " opened "old" — the
+    /// wrong one, if there was one. What was sent is what arrives.
+    /// </summary>
+    [AvaloniaFact]
+    public void A_name_keeps_the_spaces_at_its_ends()
+    {
+        using var running = new SingleInstance();
+        Assert.True(running.TryAcquire());
+
+        string[] sent = ["/home/me/old ", " /home/me/lead"];
+
+        Assert.Equal(sent, Delivered(running, sent));
+    }
+
+    /// <summary>
+    /// **A handover over the cap opened a second window.** The running copy
+    /// refused it and closed; the launch, still blocked sending into a buffer
+    /// far smaller than a megabyte, was reset, took that for "nobody answered",
+    /// and started a copy of its own. It is measured before anything is sent
+    /// and answered as what it is, and the running window is handed nothing.
+    /// </summary>
+    [AvaloniaFact]
+    public void A_handover_over_the_cap_is_refused_before_it_is_sent()
+    {
+        using var running = new SingleInstance();
+        Assert.True(running.TryAcquire());
+
+        var delivered = false;
+        running.PathsReceived += (_, _) => delivered = true;
+
+        var sent = Enumerable.Range(0, SingleInstance.MaxHandoverBytes / 200 + 1)
+            .Select(i => Path.Combine(Path.GetTempPath(), new string('x', 200) + i))
+            .ToArray();
+
+        // Over the cap wherever the temp folder is — "/tmp/" is short enough
+        // that a fixture sized on Windows came in under it on Linux.
+        Assert.True(System.Text.Encoding.UTF8.GetByteCount(string.Join('\n', sent)) > SingleInstance.MaxHandoverBytes);
+
+        Assert.Equal(SingleInstance.Handover.TooLarge, SingleInstance.TryForward(sent));
+
+        // Long enough for a delivery that was coming to have come.
+        var deadline = DateTime.UtcNow.AddMilliseconds(500);
+
+        while (DateTime.UtcNow < deadline)
+        {
+            Dispatcher.UIThread.RunJobs();
+            Thread.Sleep(5);
+        }
+
+        Assert.False(delivered, "the running window was handed a message over the cap");
     }
 
     /// <summary>

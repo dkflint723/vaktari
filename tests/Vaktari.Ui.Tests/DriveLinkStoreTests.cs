@@ -1,3 +1,4 @@
+using System.Runtime.Versioning;
 using Vaktari.Core.Sharing;
 using Vaktari.Ui.Settings;
 using Xunit;
@@ -52,6 +53,72 @@ public sealed class DriveLinkStoreTests : IDisposable
         File.WriteAllText(Path.Combine(_root, "drive-links.json"), "{not json");
 
         Assert.Empty(new JsonDriveLinkStore(_root).Load());
+    }
+
+    // ---- whose file it is ---------------------------------------------------
+
+    /// <summary>For <c>SkipUnless</c>: the modes below are a Linux fact.</summary>
+    public static bool IsLinux => OperatingSystem.IsLinux();
+
+    private const string LinuxOnly = "Asserts Unix file modes; runs on Linux only.";
+
+    private const UnixFileMode OwnerOnly = UnixFileMode.UserRead | UnixFileMode.UserWrite;
+
+    private string LinksFile => Path.Combine(_root, "drive-links.json");
+
+    /// <summary>
+    /// **Every URL in this file carries its decryption key, and the file was
+    /// 0644** — the default create mode, readable by any account that could
+    /// reach the state folder.
+    /// </summary>
+    [Fact(Skip = LinuxOnly, SkipUnless = nameof(IsLinux), SkipType = typeof(DriveLinkStoreTests))]
+    [UnsupportedOSPlatform("windows")]
+    public void A_saved_file_is_readable_by_its_owner_alone()
+    {
+        new JsonDriveLinkStore(_root).Save([new DriveLink("/home/me/a", "/my-files/a", "https://u#key")]);
+
+        Assert.Equal(OwnerOnly, File.GetUnixFileMode(LinksFile));
+    }
+
+    /// <summary>
+    /// An open temp left by a crashed write under the older build. The create
+    /// mode applies only to a file that is created, so reusing the leftover
+    /// would carry its mode through the rename; it is deleted first.
+    /// </summary>
+    [Fact(Skip = LinuxOnly, SkipUnless = nameof(IsLinux), SkipType = typeof(DriveLinkStoreTests))]
+    [UnsupportedOSPlatform("windows")]
+    public void A_leftover_open_temp_does_not_lend_the_file_its_mode()
+    {
+        // A mode no fresh file is given, so the one that arrives can only be
+        // the leftover's if it was reused.
+        const UnixFileMode leftover = OwnerOnly | UnixFileMode.GroupRead | UnixFileMode.GroupWrite
+                                      | UnixFileMode.OtherRead | UnixFileMode.OtherWrite;
+
+        var temp = LinksFile + ".tmp";
+        File.WriteAllText(temp, "[]");
+        File.SetUnixFileMode(temp, leftover);
+
+        new JsonDriveLinkStore(_root).Save([new DriveLink("/home/me/a", "/my-files/a", "https://u#key")]);
+
+        // Before anything reads it: a read tightens the file, and would hide
+        // a save that had carried the leftover's mode across.
+        Assert.NotEqual(leftover, File.GetUnixFileMode(LinksFile));
+        Assert.Single(new JsonDriveLinkStore(_root).Load());
+    }
+
+    /// <summary>A file the older build wrote is tightened the first time it is
+    /// read — before any save, which may not come for weeks.</summary>
+    [Fact(Skip = LinuxOnly, SkipUnless = nameof(IsLinux), SkipType = typeof(DriveLinkStoreTests))]
+    [UnsupportedOSPlatform("windows")]
+    public void An_open_file_from_before_is_closed_when_it_is_read()
+    {
+        File.WriteAllText(
+            LinksFile,
+            """[{"LocalPath":"/home/me/a","RemotePath":"/my-files/a","Url":"https://u#key"}]""");
+        File.SetUnixFileMode(LinksFile, OwnerOnly | UnixFileMode.GroupRead | UnixFileMode.OtherRead);
+
+        Assert.Single(new JsonDriveLinkStore(_root).Load());
+        Assert.Equal(OwnerOnly, File.GetUnixFileMode(LinksFile));
     }
 
     [Fact]

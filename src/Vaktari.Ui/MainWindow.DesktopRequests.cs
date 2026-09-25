@@ -48,6 +48,27 @@ public partial class MainWindow
     private static string? LocalPath(string raw) => FileUri.ToLocalPath(raw);
 
     /// <summary>
+    /// Whether this process answers org.freedesktop.FileManager1 for the
+    /// desktop: only one that owns the single-instance lock, and never a
+    /// portable copy.
+    ///
+    /// **A portable copy took the role, and the activation file with it.** Its
+    /// lock is named for its own folder (SingleInstance.Suffix), so it always
+    /// owns one, and on a machine whose default is the installed Vaktari the
+    /// desktop's answer to "is this the default?" is yes for it too — so it
+    /// rewrote ~/.local/share/dbus-1/services to start the binary on the
+    /// stick, and on a machine where Vaktari is not the default it went there
+    /// to remove the file instead. Either way it wrote outside the folder it
+    /// exists to stay inside. The role belongs to whatever the desktop entry
+    /// names, and a portable copy installs no desktop entry.
+    ///
+    /// A predicate of its own because Program.Instance cannot be set from a
+    /// test; whether the lock is owned is the caller's to say.
+    /// </summary>
+    internal static bool AnswersForTheDesktop(bool ownsLock)
+        => ownsLock && Session.JsonSessionStore.PortableRoot is null;
+
+    /// <summary>
     /// Says which of the four things happened, on the same terminal as the
     /// running-from line. **A file manager that silently does not answer looks
     /// exactly like one that answered and did nothing**, and that is the whole

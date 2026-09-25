@@ -19,11 +19,9 @@ public sealed class LinuxShortcutsTests : IDisposable
         try { Directory.Delete(_root, recursive: true); } catch { }
     }
 
-    [Fact]
+    [PosixFact]
     public void A_link_to_a_file_points_at_its_absolute_path()
     {
-        if (!OperatingSystem.IsLinux()) return;
-
         var target = Path.Combine(_root, "notes.txt");
         File.WriteAllText(target, "x");
         var into = Directory.CreateDirectory(Path.Combine(_root, "elsewhere")).FullName;
@@ -36,11 +34,9 @@ public sealed class LinuxShortcutsTests : IDisposable
         Assert.Equal(target, new FileInfo(landing).LinkTarget);
     }
 
-    [Fact]
+    [PosixFact]
     public void A_link_beside_its_target_steps_aside()
     {
-        if (!OperatingSystem.IsLinux()) return;
-
         var target = Path.Combine(_root, "notes.txt");
         File.WriteAllText(target, "x");
 
@@ -51,11 +47,9 @@ public sealed class LinuxShortcutsTests : IDisposable
         Assert.Equal(target, new FileInfo(landing).LinkTarget);
     }
 
-    [Fact]
+    [PosixFact]
     public void A_link_to_a_folder_is_a_folder_link()
     {
-        if (!OperatingSystem.IsLinux()) return;
-
         var target = Directory.CreateDirectory(Path.Combine(_root, "my.photos")).FullName;
         var into = Directory.CreateDirectory(Path.Combine(_root, "elsewhere")).FullName;
 

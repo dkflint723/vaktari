@@ -87,6 +87,26 @@ public sealed class FileUriTests
     public void A_windows_drive_is_handed_back_whole()
         => Assert.Equal(@"C:\Users\me", FileUri.ToLocalPath(@"C:\Users\me"));
 
+    /// <summary>
+    /// **A space at either end of a name is part of the name on Linux**, and a
+    /// plain path came back trimmed: "old " on the command line opened "old"
+    /// if there was one — the wrong folder, confidently. Pure string shape, so
+    /// it runs the same on both CI jobs.
+    /// </summary>
+    [Theory]
+    [InlineData("/home/me/old ")]
+    [InlineData(" /home/me/lead")]
+    [InlineData("relative ")]
+    public void A_plain_path_keeps_the_spaces_at_its_ends(string raw)
+        => Assert.Equal(raw, FileUri.ToLocalPath(raw));
+
+    /// <summary>A URI cannot hold a bare space, so the whitespace a caller
+    /// leaves around one — a CR from a text/uri-list — is still not part of
+    /// it.</summary>
+    [Fact]
+    public void Whitespace_around_a_uri_is_still_dropped()
+        => Assert.Equal("/tmp/x", FileUri.ToLocalPath(" file:///tmp/x\r"));
+
     [Theory]
     [InlineData(null)]
     [InlineData("")]

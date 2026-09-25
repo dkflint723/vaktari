@@ -1,4 +1,6 @@
+using System.ComponentModel;
 using System.Diagnostics;
+using System.Runtime.InteropServices;
 using Vaktari.Core;
 using Vaktari.Core.Sharing;
 
@@ -160,6 +162,77 @@ public sealed class WindowsCopyparty : CopypartyBackend
             Quiet.Swallowed("sharing", ex);
             return null;
         }
+    }
+
+    private readonly Lock _jobGate = new();
+    private Native.SafeJobHandle? _job;
+
+    /// <summary>The job every share's server runs in, once one has started;
+    /// tests close it to see what a Vaktari that died would leave.</summary>
+    internal SafeHandle? Job => _job;
+
+    /// <summary>
+    /// Puts the server in a job that Windows ends when its last handle
+    /// closes — and the only handle is this process's, so a crash, a kill
+    /// from Task Manager or a logoff ends the share with Vaktari.
+    ///
+    /// **A share went on serving after Vaktari crashed or was killed.**
+    /// Windows never ends a child with its parent, and the only thing that
+    /// stopped a server was the last window closing normally. A job reaches
+    /// what a parent-child tree cannot: the standalone copyparty.exe starts a
+    /// second copy of itself to do the serving, and a process started inside
+    /// a job is in it too. The one gap is a child the server starts before
+    /// this call lands, since Process.Start cannot start a process suspended.
+    /// The window is the few instructions between CreateProcess returning and
+    /// this line. It is not measured against copyparty.exe, which unpacks
+    /// itself before it starts anything; a child that did slip through would
+    /// outlive the job as every server did before it.
+    ///
+    /// One job for every share rather than one each, held for the life of
+    /// the backend: a stopped share is still killed by its process tree, and
+    /// the job is only ever the answer to the process going away.
+    /// </summary>
+    public override void Contain(Process process)
+    {
+        try
+        {
+            Native.SafeJobHandle job;
+
+            lock (_jobGate) job = _job ??= KillOnCloseJob();
+
+            if (!Native.AssignProcessToJobObject(job, process.Handle))
+                throw new Win32Exception(Marshal.GetLastPInvokeError());
+        }
+        catch (Exception ex)
+        {
+            // The share still works; it is only as mortal as it was before.
+            Quiet.Swallowed("sharing", ex);
+        }
+    }
+
+    private static Native.SafeJobHandle KillOnCloseJob()
+    {
+        var job = Native.CreateJobObject(0, 0);
+
+        if (job.IsInvalid)
+        {
+            var created = Marshal.GetLastPInvokeError();
+            job.Dispose();
+            throw new Win32Exception(created);
+        }
+
+        var limits = new Native.JOBOBJECT_EXTENDED_LIMIT_INFORMATION();
+        limits.BasicLimitInformation.LimitFlags = Native.JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE;
+
+        if (!Native.SetInformationJobObject(job, Native.JobObjectExtendedLimitInformation, limits,
+                (uint)Marshal.SizeOf<Native.JOBOBJECT_EXTENDED_LIMIT_INFORMATION>()))
+        {
+            var set = Marshal.GetLastPInvokeError();
+            job.Dispose();
+            throw new Win32Exception(set);
+        }
+
+        return job;
     }
 
     public override string NotInstalledHint =>

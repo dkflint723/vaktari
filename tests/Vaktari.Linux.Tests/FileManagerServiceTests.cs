@@ -278,13 +278,34 @@ public sealed class FileManagerServiceTests : IDisposable
     [Fact]
     public async Task Giving_up_the_role_takes_the_activation_file_with_it()
     {
-        FileManager1ServiceFile.Install("/opt/vaktari/vaktari");
+        FileManager1ServiceFile.Install("/opt/my apps/vaktari/Vaktari.Ui");
 
         Assert.True(File.Exists(FileManager1ServiceFile.FilePath));
 
         await new FreedesktopFileManager(new Chosen(false), address: null).ReconcileAsync();
 
         Assert.False(File.Exists(FileManager1ServiceFile.FilePath));
+    }
+
+    /// <summary>
+    /// **But only a file Vaktari wrote.** The per-user services folder is
+    /// where somebody pins Nemo or Thunar as the answer over their
+    /// distribution's, and giving up the role deleted that too — on every
+    /// start, on exactly the machines where Vaktari is not the default.
+    /// </summary>
+    [Fact]
+    public async Task Giving_up_the_role_leaves_someone_elses_activation_file_alone()
+    {
+        const string theirs =
+            "[D-BUS Service]\nName=org.freedesktop.FileManager1\nExec=/usr/bin/nemo --no-desktop\n";
+
+        Directory.CreateDirectory(FileManager1ServiceFile.Directory);
+        File.WriteAllText(FileManager1ServiceFile.FilePath, theirs);
+
+        await new FreedesktopFileManager(new Chosen(false), address: null).ReconcileAsync();
+
+        Assert.True(File.Exists(FileManager1ServiceFile.FilePath), "the user's own override was deleted");
+        Assert.Equal(theirs, File.ReadAllText(FileManager1ServiceFile.FilePath));
     }
 
     /// <summary>Nothing to remove is not a failure.</summary>

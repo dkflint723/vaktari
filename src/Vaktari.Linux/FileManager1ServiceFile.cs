@@ -146,12 +146,26 @@ internal static class FileManager1ServiceFile
     /// Takes it away again. Called when Vaktari is not the desktop's file
     /// manager, so a user who changed their mind is not left with a bus that
     /// starts Vaktari for a role it will decline the moment it is up.
+    ///
+    /// **It deleted whatever was at that path, and the path is not only ours.**
+    /// $XDG_DATA_HOME/dbus-1/services is exactly where a user puts a
+    /// hand-written override — Nemo or Thunar pinned as the FileManager1
+    /// answer over the one their distribution ships — and this runs on every
+    /// start of a Vaktari that is not the default, which is the very machine
+    /// such a user has. Nothing in our packaging writes the file, so one that
+    /// Vaktari did not write belongs to the user and is left alone.
+    ///
+    /// Ours is told by its Exec rather than by a marker comment: every copy
+    /// Vaktari ever wrote names its own binary, which is Vaktari.Ui wherever
+    /// it was installed, or this very process when it was started some other
+    /// way. A marker would miss every file written before it existed.
     /// </summary>
     internal static void Remove()
     {
         try
         {
-            if (File.Exists(FilePath)) File.Delete(FilePath);
+            if (File.Exists(FilePath) && IsOurs(ExecIn(File.ReadAllLines(FilePath))))
+                File.Delete(FilePath);
         }
         catch (Exception ex)
         {
@@ -159,7 +173,21 @@ internal static class FileManager1ServiceFile
         }
     }
 
-    /// <summary>The Exec line, for the tests and for nothing else.</summary>
+    /// <summary>
+    /// Whether an Exec names a Vaktari binary: the file name every package
+    /// installs, or the path of the process asking. Ordinal, because Linux
+    /// file names are.
+    /// </summary>
+    internal static bool IsOurs(string? exec)
+        => exec is { Length: > 0 }
+           && (string.Equals(Path.GetFileName(exec), BinaryName, StringComparison.Ordinal)
+               || string.Equals(exec, Environment.ProcessPath, StringComparison.Ordinal));
+
+    /// <summary>What every package and the tarball call the executable.</summary>
+    internal const string BinaryName = "Vaktari.Ui";
+
+    /// <summary>The Exec line, its quoting taken off: what <see cref="Remove"/>
+    /// asks <see cref="IsOurs"/> about, and what the tests read back.</summary>
     internal static string? ExecIn(IEnumerable<string> lines)
     {
         foreach (var raw in lines)

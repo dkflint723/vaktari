@@ -12,11 +12,9 @@ namespace Vaktari.Ui.Tests;
 /// </summary>
 public sealed class QuotedRootArgumentTests
 {
-    [Fact]
+    [WindowsFact]
     public void A_root_that_lost_its_backslash_to_a_quote_gets_it_back()
     {
-        if (!OperatingSystem.IsWindows()) return;
-
         Assert.Equal(@"C:\", Program.Repaired("C:\""));
     }
 

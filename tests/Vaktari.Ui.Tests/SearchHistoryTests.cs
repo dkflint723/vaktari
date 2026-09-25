@@ -354,6 +354,27 @@ public sealed class SearchHistoryTests : OwnedViewModels
         Assert.Equal(0, Store().Count);
     }
 
+    /// <summary>
+    /// **Valid JSON with a null list threw from the constructor** — the
+    /// serializer gives a null key back as null, whatever the property says,
+    /// and the copy into an ordinal dictionary refused it. Hand-edited or
+    /// written by something else, it is still a file that must not stop the
+    /// first window.
+    /// </summary>
+    [Fact]
+    public void A_file_with_a_null_list_is_an_empty_history()
+    {
+        File.WriteAllText(Path.Combine(_root, "searches.json"), """{"version":1,"searches":null}""");
+
+        var store = Store();
+
+        Assert.Equal(0, store.Count);
+
+        // And it still records: the empty list is a real one.
+        store.Record("vaktari:search:q:::any");
+        Assert.Equal(1, store.Count);
+    }
+
     /// <summary>Bounded, or this becomes a record of somebody's year.</summary>
     [Fact]
     public void It_keeps_a_bounded_number_of_searches()

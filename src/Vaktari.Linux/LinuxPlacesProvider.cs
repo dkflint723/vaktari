@@ -1,6 +1,7 @@
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using System.Xml.Linq;
+using Vaktari.Core;
 using Vaktari.Core.Places;
 
 namespace Vaktari.Linux;
@@ -34,6 +35,11 @@ public sealed class LinuxPlacesProvider : IPlacesProvider, IDisposable
 
     /// <summary>Stands in for the by-label directory walk, for the same reason.</summary>
     internal Func<Dictionary<string, string>>? VolumeLabels { get; init; }
+
+    /// <summary>Stands in for the home folder the import reads Dolphin's and
+    /// GTK's lists from — and only for that, so the built-in rows a test sees
+    /// are still this machine's.</summary>
+    internal Func<string>? ImportHome { get; init; }
     /// <summary>
     /// **Replaced, never mutated in place** — the same reason as the Windows
     /// provider: building the places list reads this off the UI thread while
@@ -493,16 +499,14 @@ public sealed class LinuxPlacesProvider : IPlacesProvider, IDisposable
         if (_pins.Any(p => p.Path == path)) return ValueTask.CompletedTask;
 
         _pins = [.. _pins, new PinnedPlace(path, label ?? Path.GetFileName(path.TrimEnd('/')))];
-        SavePins();
-        return ValueTask.CompletedTask;
+        return new ValueTask(SavePins());
     }
 
     public ValueTask UnpinAsync(string id, CancellationToken ct)
     {
         var path = id.StartsWith("pin:", StringComparison.Ordinal) ? id[4..] : id;
         _pins = _pins.Where(p => p.Path != path).ToList();
-        SavePins();
-        return ValueTask.CompletedTask;
+        return new ValueTask(SavePins());
     }
 
     public ValueTask RenameAsync(string id, string label, CancellationToken ct)
@@ -519,8 +523,7 @@ public sealed class LinuxPlacesProvider : IPlacesProvider, IDisposable
             .Select(p => p.Path == path ? p with { Label = tidy } : p)
             .ToList();
 
-        SavePins();
-        return ValueTask.CompletedTask;
+        return new ValueTask(SavePins());
     }
 
     public ValueTask ReorderAsync(IReadOnlyList<string> orderedIds, CancellationToken ct)
@@ -531,8 +534,7 @@ public sealed class LinuxPlacesProvider : IPlacesProvider, IDisposable
             .ToList();
 
         _pins = _pins.OrderBy(p => order.IndexOf(p.Path) is var i && i < 0 ? int.MaxValue : i).ToList();
-        SavePins();
-        return ValueTask.CompletedTask;
+        return new ValueTask(SavePins());
     }
 
     /// <summary>The prefix an unmounted volume's id carries, so mounting knows
@@ -635,26 +637,29 @@ public sealed class LinuxPlacesProvider : IPlacesProvider, IDisposable
     /// shortcuts already in place matters more for whether they keep using this
     /// than any individual feature does.
     /// </summary>
-    public ValueTask<int> ImportExistingAsync(CancellationToken ct)
+    public async ValueTask<int> ImportExistingAsync(CancellationToken ct)
     {
         var before = _pins.Count;
 
         var builtIn = BuiltInPaths();
 
-        ImportXbel(Path.Combine(Home, ".local", "share", "user-places.xbel"), builtIn);
-        ImportGtkBookmarks(Path.Combine(Home, ".config", "gtk-3.0", "bookmarks"), builtIn);
+        var home = ImportHome?.Invoke() ?? Home;
+
+        ImportXbel(Path.Combine(home, ".local", "share", "user-places.xbel"), builtIn);
+        ImportGtkBookmarks(Path.Combine(home, ".config", "gtk-3.0", "bookmarks"), builtIn);
 
         // Anything previously imported that duplicates a built-in is dropped
         // too, so an existing places.json is repaired rather than preserved.
         _pins = _pins.Where(pin => !builtIn.Contains(pin.Path.TrimEnd('/'))).ToList();
 
-        if (_pins.Count != before || builtIn.Overlaps(_pins.Select(p => p.Path.TrimEnd('/'))))
+        // Not over a places.json that could not be read — see _loadFailed.
+        if (!_loadFailed && (_pins.Count != before || builtIn.Overlaps(_pins.Select(p => p.Path.TrimEnd('/')))))
         {
-            SavePins();
+            await SavePins().ConfigureAwait(false);
             PlacesChanged?.Invoke(this, EventArgs.Empty);
         }
 
-        return ValueTask.FromResult(_pins.Count - before);
+        return _pins.Count - before;
     }
 
     private void ImportXbel(string path, HashSet<string> builtIn)
@@ -710,6 +715,15 @@ public sealed class LinuxPlacesProvider : IPlacesProvider, IDisposable
         catch { /* same */ }
     }
 
+    /// <summary>
+    /// Set when places.json exists and could not be read, until the first
+    /// save has put a copy of it aside. The Windows twin gives the reasons;
+    /// here the import wrote at every startup that found a GTK bookmark or a
+    /// Dolphin place, so an unreadable file was gone before the window had
+    /// finished drawing.
+    /// </summary>
+    private volatile bool _loadFailed;
+
     private List<PinnedPlace> LoadPins()
     {
         try
@@ -721,17 +735,50 @@ public sealed class LinuxPlacesProvider : IPlacesProvider, IDisposable
         }
         catch
         {
+            _loadFailed = true;
             return [];
         }
     }
 
-    private void SavePins()
+    /// <summary>
+    /// Writes the pins as they are now, on the pool, behind any write still
+    /// in flight; the task completes when they are on the disk. The Windows
+    /// twin gives the reasons: a sidebar click flushed to the disk on the UI
+    /// thread.
+    /// </summary>
+    private Task SavePins()
+    {
+        var pins = _pins;
+        return Writes.Enqueue(() => WritePins(pins));
+    }
+
+    /// <summary>This provider's writes, in order and off the caller's thread.</summary>
+    internal WriteBehind Writes { get; } = new();
+
+    /// <inheritdoc/>
+    public Task Written => Writes.Idle;
+
+    private void WritePins(List<PinnedPlace> pins)
     {
         try
         {
+            // Copied before the write, as on Windows: a copy that fails
+            // leaves the old file in place and skips the replace.
+            if (_loadFailed)
+            {
+                File.Copy(_pinsPath, _pinsPath + ".bak", overwrite: true);
+                _loadFailed = false;
+            }
+
             var temp = _pinsPath + ".tmp";
             using (var stream = File.Create(temp))
-                JsonSerializer.Serialize(stream, _pins, PinnedPlacesJsonContext.Default.ListPinnedPlace);
+            {
+                JsonSerializer.Serialize(stream, pins, PinnedPlacesJsonContext.Default.ListPinnedPlace);
+
+                // To the disk, not only out of the process — see
+                // JsonSettingsStore.Save in the Ui project.
+                stream.Flush(flushToDisk: true);
+            }
 
             File.Move(temp, _pinsPath, overwrite: true);
             PlacesChanged?.Invoke(this, EventArgs.Empty);

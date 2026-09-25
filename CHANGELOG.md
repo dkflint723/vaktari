@@ -31,7 +31,7 @@ should not be trusted for compatibility yet.
   before they took in files matched on their contents whether you wanted
   those or not.
 
-- **There can be a folder tree in the sidebar.** Settings ▸ Views turns on
+- **There can be a folder tree in the sidebar.** Settings ▸ View modes turns on
   a *FOLDERS* section under your places, rooted at each of them, and it
   follows the pane: going somewhere opens the branch that leads there. It
   is a tree of folders rather than a second listing — no files, one level
@@ -41,7 +41,7 @@ should not be trusted for compatibility yet.
   Off unless you ask for it, since expandable folders in the List layout
   already do the same job inside the listing.
 
-- **A folder's Size column can show how big it is.** Settings ▸ Views now
+- **A folder's Size column can show how big it is.** Settings ▸ View modes now
   offers three answers for a folder — how many things are in it, how big
   its contents are, or nothing — where it offered a tick box that could
   say only the first and the last. The middle one existed in the settings
@@ -125,16 +125,25 @@ should not be trusted for compatibility yet.
   kept twelve and forgot the rest.
 
 - **Portable mode.** A folder named `portable` beside the executable makes
-  Vaktari keep everything in it — tabs, places, folder views, settings,
-  recents, the log — instead of under `%LOCALAPPDATA%` or `~/.local/state`,
-  so a copy on a stick carries its state with it and leaves nothing behind
-  on the machines it visits. A portable copy and an installed one run side
-  by side; before this the second to start handed its folder to the first
-  and quit.
+  Vaktari keep its tabs, places, folder views, settings, recents and log in
+  it instead of under `%LOCALAPPDATA%` or `~/.local/state` — and your
+  scripts folder, the icon themes it fetches and the Proton Drive tool it
+  installs as well — so a copy on a stick carries its state, scripts and
+  downloads with it, and a theme it fetched is found again when the stick
+  comes up under another drive letter or mount point. Outside that folder
+  it still writes its single-instance lock, short-lived working files in
+  the temporary or runtime folder, and what belongs to the machine rather
+  than to Vaktari, such as its bin, a Proton Drive sign-in kept in its
+  credential store, and desktop choices like the default file manager. On
+  Linux it does not answer other applications' "show in folder", and does
+  not write or remove the file that lets the desktop start Vaktari for it;
+  that stays with whichever file manager the desktop names. A
+  portable copy and an installed one run side by side; before this the
+  second to start handed its folder to the first and quit.
 
 - **Any command, by name.** Ctrl+Shift+P — or *View options (≡) ▸
   Commands…* — opens a box: type a few letters of what you want, and Enter
-  runs the highlighted match. Sixty-odd commands are in it, from *New tab*
+  runs the highlighted match. Seventy-odd commands are in it, from *New tab*
   to *Empty the bin*, each printed with the key that also runs it, so the
   key gets learnt from the box. What needs a file under the pointer or a
   choice of its own — *Open with*, *Copy to* — stays on the right-click
@@ -285,6 +294,26 @@ should not be trusted for compatibility yet.
   written to the session's private folder, readable by this user alone; and
   on Windows, a share started on a network marked public says so on the
   status line.
+
+- **A share left serving by a Vaktari that crashed or was killed is
+  stopped.** A share's server stopped only when you stopped it or the last
+  window closed, so after a crash or a kill it went on serving the folder,
+  password and all, and nothing could find it again: which servers were
+  running lived only in memory. On Windows the server now runs in a job
+  that Windows closes when Vaktari ends, which stops it. On every platform
+  each share now writes down its server and the Vaktari that started it,
+  and the next start stops a server whose Vaktari is no longer running and
+  deletes its config, which holds the password. A share started by another copy of
+  Vaktari that is still running — a portable one beside an installed one —
+  is left alone, and so is a server Vaktari cannot be sure is the one it
+  started.
+
+- **On Linux, the file of Proton Drive links is readable by you alone.**
+  Each link in it carries the key that decrypts what it shares, and the
+  file was created readable by every account that could reach Vaktari's
+  state folder. It is now created readable and writable by its owner only,
+  and a file left by an earlier version is closed up the first time
+  Vaktari reads it.
 
 ### Fixed
 
@@ -841,6 +870,69 @@ should not be trusted for compatibility yet.
   so the highlight simply replaced it. Most of the band now survives the
   pointer: enough that the row still belongs to its stripe, and it still lights
   up plainly enough to see which row you are on.
+
+- **Starting Vaktari again brings the open window forward, with or without
+  a folder to open.** A second launch with no folder named printed "raising
+  the existing window" and raised nothing: the running copy stopped at the
+  empty message before it reached the window. On Windows the launch now
+  also hands the running window its right to come to the front, which
+  Windows withholds from a program in the background — without it the
+  window could only flash its taskbar button.
+
+- **`vaktari .` and other relative paths open the folder you meant.** A
+  relative path was never made absolute: handed to a copy already running,
+  it was read against that copy's own working directory, which opened the
+  wrong folder, or nothing at all for `vaktari sub`; started fresh, `.`
+  became a tab whose Up went nowhere. A relative path is now resolved
+  against the folder the command was run in, before anything is handed
+  over.
+
+- **A large selection handed to a running Vaktari arrives whole.** The
+  running copy read the first 8 KiB of a handover and took it for the whole
+  message, so a selection of about eighty long paths or more was cut off
+  mid-name — the rest dropped, or the cut landed on a folder that exists
+  and opened the wrong one. It now reads to the end. A handover too large
+  even for that, over a megabyte, is refused by the launch, which opens
+  nothing and says so on its terminal, where it could open a second window
+  on the same session.
+
+- **On Linux, a folder whose name begins or ends with a space opens
+  itself.** A folder called "old " opened "old" if there was one — the
+  wrong folder, confidently — and nothing if there was not, whether it was
+  named on the command line or handed to a running copy: both routes
+  trimmed the name.
+
+- **A places.json that cannot be read is put aside, not overwritten.** When
+  the file could not be read — damaged, or only locked for a moment — the
+  sidebar came up without its pins and the next save replaced the file, and
+  the next save came soon: the import at startup finding one bookmark or
+  Quick access folder, or the first pin. Every pin went with it. The import
+  now leaves the file alone, and the first pin, unpin, rename or reorder
+  copies it to places.json.bak before writing a new one.
+
+- **A session.json or searches.json with a list missing no longer stops
+  Vaktari starting.** A file that was valid JSON but held `null` where a
+  list belongs stopped startup. The session now falls back to its backup,
+  and opens with a fresh window, as if there were no saved session, when
+  that is no better; the search history starts empty.
+
+- **Settings, the session, places, recents, folder views, search history
+  and drive links reach the disk before they replace the file they
+  update.** Each was written beside the real file and renamed over it, and
+  on Windows the rename could reach the disk before the data did: a power
+  cut or a system crash just after a save could leave a file of the right
+  length full of zeros — the session and settings fell back to an older
+  backup at best, and the rest read as empty. The data is now forced to
+  the disk first, and settings, drive links and places are saved in the
+  background rather than on the window's thread; Vaktari waits for those
+  saves before it closes.
+
+- **Vaktari no longer deletes a "show in folder" override it did not
+  write.** A `~/.local/share/dbus-1/services/org.freedesktop.FileManager1.service`
+  written by hand, to send other applications' "show in folder" to a file
+  manager of your choice, was deleted every time Vaktari started while it
+  was not the default file manager. Only a file that starts Vaktari is
+  removed now.
 
 ## [0.10.2] — 2026-09-06
 

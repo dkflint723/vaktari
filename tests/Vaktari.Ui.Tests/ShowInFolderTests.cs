@@ -206,7 +206,7 @@ public sealed class ShowInFolderTests : OwnedViewModels
     [Fact]
     public void Only_the_instance_that_owns_the_lock_answers_for_the_desktop()
         => Assert.Contains(
-            "Program.Instance is not null && platform.FileManagerService is { } fileManager",
+            "AnswersForTheDesktop(ownsLock: Program.Instance is not null)",
             RepoSource.UiClass("", "MainWindow"),
             StringComparison.Ordinal);
 }

@@ -79,11 +79,9 @@ public sealed class PathCompleterTests : IDisposable
     /// back a mix of the two looks like a bug even where the path is valid.
     /// Windows only: on Linux a backslash is part of a name, not a separator.
     /// </summary>
-    [Fact]
+    [WindowsFact]
     public void The_spelling_is_kept()
     {
-        if (!OperatingSystem.IsWindows()) return;
-
         var backslashes = new PathCompleter().Complete(_root + @"\Mus");
 
         Assert.NotNull(backslashes);
@@ -165,11 +163,9 @@ public sealed class PathCompleterTests : IDisposable
     /// wherever the process happens to be on that drive. Windows only; no such
     /// spelling exists elsewhere.
     /// </summary>
-    [Fact]
+    [WindowsFact]
     public void A_bare_drive_letter_does_not_complete_from_the_working_directory()
     {
-        if (!OperatingSystem.IsWindows()) return;
-
         var completed = new PathCompleter().Complete(@"C:\Wind");
 
         if (completed is not null)

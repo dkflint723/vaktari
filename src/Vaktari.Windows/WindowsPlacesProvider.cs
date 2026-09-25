@@ -311,16 +311,14 @@ public sealed class WindowsPlacesProvider : IPlacesProvider, IDisposable
         if (_pins.Any(p => PathRules.Same(p.Path, path))) return ValueTask.CompletedTask;
 
         _pins = [.. _pins, new PinnedPlace(path, label ?? PathRules.LeafName(path))];
-        SavePins();
-        return ValueTask.CompletedTask;
+        return new ValueTask(SavePins());
     }
 
     public ValueTask UnpinAsync(string id, CancellationToken ct)
     {
         var path = id.StartsWith("pin:", StringComparison.Ordinal) ? id[4..] : id;
         _pins = _pins.Where(p => !PathRules.Same(p.Path, path)).ToList();
-        SavePins();
-        return ValueTask.CompletedTask;
+        return new ValueTask(SavePins());
     }
 
     public ValueTask RenameAsync(string id, string label, CancellationToken ct)
@@ -336,8 +334,7 @@ public sealed class WindowsPlacesProvider : IPlacesProvider, IDisposable
             .Select(p => PathRules.Same(p.Path, path) ? p with { Label = tidy } : p)
             .ToList();
 
-        SavePins();
-        return ValueTask.CompletedTask;
+        return new ValueTask(SavePins());
     }
 
     public ValueTask ReorderAsync(IReadOnlyList<string> orderedIds, CancellationToken ct)
@@ -353,8 +350,7 @@ public sealed class WindowsPlacesProvider : IPlacesProvider, IDisposable
                 : i)
             .ToList();
 
-        SavePins();
-        return ValueTask.CompletedTask;
+        return new ValueTask(SavePins());
     }
 
     /// <summary>
@@ -421,7 +417,7 @@ public sealed class WindowsPlacesProvider : IPlacesProvider, IDisposable
     /// .lnk gave it — that name was typed by a person, and Quick access has
     /// only the folder's own.
     /// </summary>
-    public ValueTask<int> ImportExistingAsync(CancellationToken ct)
+    public async ValueTask<int> ImportExistingAsync(CancellationToken ct)
     {
         var before = _pins.Count;
         var builtIn = BuiltInPaths();
@@ -446,13 +442,16 @@ public sealed class WindowsPlacesProvider : IPlacesProvider, IDisposable
             .Where(pin => !builtIn.Contains(PathRules.Normalise(pin.Path)))
             .ToList();
 
-        if (_pins.Count != before)
+        // Not over a places.json that could not be read: what was imported is
+        // on screen, and reaches the file with the first deliberate change,
+        // which puts the unread file aside first. See _loadFailed.
+        if (_pins.Count != before && !_loadFailed)
         {
-            SavePins();
+            await SavePins().ConfigureAwait(false);
             PlacesChanged?.Invoke(this, EventArgs.Empty);
         }
 
-        return ValueTask.FromResult(_pins.Count - before);
+        return _pins.Count - before;
     }
 
     /// <summary>
@@ -547,6 +546,20 @@ public sealed class WindowsPlacesProvider : IPlacesProvider, IDisposable
         return paths;
     }
 
+    /// <summary>
+    /// Set when places.json exists and could not be read, until the first
+    /// save has put a copy of it aside.
+    ///
+    /// **A file that failed to load was overwritten by the next save**, and
+    /// the next save came soon: a pin, a rename, a reorder, or the import at
+    /// startup finding one Quick access folder. Every pin and every saved
+    /// search went with it, from a file that may only have been locked for a
+    /// moment. The load still answers empty — a sidebar must come up — but
+    /// the import does not write while this is set, and the first deliberate
+    /// save copies the old file to places.json.bak before replacing it.
+    /// </summary>
+    private volatile bool _loadFailed;
+
     private List<PinnedPlace> LoadPins()
     {
         try
@@ -558,17 +571,56 @@ public sealed class WindowsPlacesProvider : IPlacesProvider, IDisposable
         }
         catch
         {
+            _loadFailed = true;
             return [];
         }
     }
 
-    private void SavePins()
+    /// <summary>
+    /// Writes the pins as they are now, on the pool, behind any write still
+    /// in flight; the task completes when they are on the disk. The list is
+    /// taken here, on the caller's thread — it is replaced, never edited, so
+    /// the one taken is the one written.
+    ///
+    /// **A pin, an unpin, a rename or a reorder flushed to the disk on the UI
+    /// thread**, where a sidebar click or the end of a drag calls this. See
+    /// WriteBehind for what that cost and why the queue.
+    /// </summary>
+    private Task SavePins()
+    {
+        var pins = _pins;
+        return Writes.Enqueue(() => WritePins(pins));
+    }
+
+    /// <summary>This provider's writes, in order and off the caller's thread.</summary>
+    internal WriteBehind Writes { get; } = new();
+
+    /// <inheritdoc/>
+    public Task Written => Writes.Idle;
+
+    private void WritePins(List<PinnedPlace> pins)
     {
         try
         {
+            // Copied rather than moved, and before the write rather than
+            // after: a copy that fails leaves the old file where it was and
+            // the catch below skips the replace, which is the outcome this
+            // exists for.
+            if (_loadFailed)
+            {
+                File.Copy(_pinsPath, _pinsPath + ".bak", overwrite: true);
+                _loadFailed = false;
+            }
+
             var temp = _pinsPath + ".tmp";
             using (var stream = File.Create(temp))
-                JsonSerializer.Serialize(stream, _pins, PinnedPlacesJsonContext.Default.ListPinnedPlace);
+            {
+                JsonSerializer.Serialize(stream, pins, PinnedPlacesJsonContext.Default.ListPinnedPlace);
+
+                // To the disk, not only out of the process — see
+                // JsonSettingsStore.Save in the Ui project.
+                stream.Flush(flushToDisk: true);
+            }
 
             File.Move(temp, _pinsPath, overwrite: true);
             PlacesChanged?.Invoke(this, EventArgs.Empty);

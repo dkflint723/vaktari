@@ -104,6 +104,30 @@ public sealed class DiagnosticsTests : OwnedViewModels
         Assert.Null(Log.TakeCrashMarker());
     }
 
+    /// <summary>
+    /// **The startup line recorded only the time.** The marker holds the time
+    /// and then what happened, and the log line took the first line alone.
+    /// Marked directly rather than through Fatal, so the FATAL line — which
+    /// carries the message too — is not in the log to satisfy the assertion.
+    /// </summary>
+    [AvaloniaFact]
+    public void The_startup_line_after_a_crash_says_what_happened()
+    {
+        UseSearch(PaneViewModel.Search);
+
+        Log.MarkCrash("System.InvalidOperationException: Boom\n   at Somewhere");
+
+        var window = _window = new MainWindow();
+        window.Show();
+        Settle();
+
+        var line = Assert.Single(
+            Log.Tail(200).Split('\n'),
+            l => l.Contains("previous run ended unexpectedly", StringComparison.Ordinal));
+
+        Assert.Contains("Boom", line, StringComparison.Ordinal);
+    }
+
     [AvaloniaFact]
     public void A_window_after_a_clean_run_says_nothing()
     {

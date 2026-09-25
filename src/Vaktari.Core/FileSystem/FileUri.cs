@@ -27,6 +27,12 @@ public static class FileUri
     {
         if (string.IsNullOrWhiteSpace(raw)) return null;
 
+        // **Trimmed to look for a scheme, and only for that.** The plain path
+        // used to be handed back trimmed as well, and a space at either end of
+        // a name is part of the name on Linux: "old " on the command line
+        // opened "old" if there was one — the wrong folder, confidently — and
+        // nothing if not. A URI cannot hold a bare space, so trimming one
+        // loses nothing.
         var value = raw.Trim();
 
         // **Tested by looking for a scheme rather than by asking Uri.**
@@ -34,9 +40,9 @@ public static class FileUri
         // asking it first sends every Windows path down the URI branch — while
         // a Linux path is rejected by it, so the two platforms would take
         // different routes through the same function for the same input shape.
-        if (!HasScheme(value)) return value;
+        if (!HasScheme(value)) return raw;
 
-        if (!Uri.TryCreate(value, UriKind.Absolute, out var uri)) return value;
+        if (!Uri.TryCreate(value, UriKind.Absolute, out var uri)) return raw;
 
         // trash://, recent://, sftp://, mtp:// — all real things a desktop
         // sends. Null rather than the raw string: handing "trash:///x" on to

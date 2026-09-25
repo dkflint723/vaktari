@@ -82,5 +82,14 @@ package() {
         "$pkgdir/usr/share/icons/hicolor/symbolic/apps/$_projname-symbolic.svg"
 
     install -Dm644 LICENSE "$pkgdir/usr/share/licenses/$pkgname/LICENSE"
+
+    # The notices for the components the binary carries, which this package
+    # was leaving behind while the tarball, the installer and the RPM all
+    # shipped them. Their licences ask for each notice to travel with every
+    # copy, and the README promises them inside every package. Beside LICENSE,
+    # because that is where Arch keeps a package's licence texts.
+    install -Dm644 THIRD-PARTY-NOTICES.txt \
+        "$pkgdir/usr/share/licenses/$pkgname/THIRD-PARTY-NOTICES.txt"
+
     install -Dm644 README.md "$pkgdir/usr/share/doc/$pkgname/README.md"
 }

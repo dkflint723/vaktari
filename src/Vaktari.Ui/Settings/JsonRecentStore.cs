@@ -168,7 +168,8 @@ public sealed class JsonRecentStore : IRecentStore
                         new RecentFile { Files = _files, Folders = _folders },
                         RecentJsonContext.Default.RecentFile);
 
-                    stream.Flush();
+                    // To the disk — see JsonSettingsStore.Save.
+                    stream.Flush(flushToDisk: true);
                 }
 
                 File.Move(_tempPath, _path, overwrite: true);

@@ -180,6 +180,35 @@ public sealed class QuickAccessImportTests : IDisposable
         Assert.DoesNotContain(places, p => p.Path.Contains("went-away", StringComparison.Ordinal));
     }
 
+    /// <summary>
+    /// **A places.json that could not be read was overwritten by the next
+    /// save**, taking every pin and saved search in it — and the import at
+    /// startup was a next save whenever Quick access held one folder. In this
+    /// class rather than one of its own because it sets the static seam, which
+    /// the class comment says only this class may.
+    ///
+    /// Two halves, one per rule: the import leaves the file alone, and the
+    /// first deliberate change keeps a copy before it replaces it.
+    /// </summary>
+    [WindowsFact]
+    public async Task An_unreadable_places_file_is_put_aside_rather_than_overwritten()
+    {
+        var file = Path.Combine(_root, "state", "places.json");
+        Directory.CreateDirectory(Path.GetDirectoryName(file)!);
+        File.WriteAllText(file, "{not json");
+        var original = File.ReadAllBytes(file);
+
+        var provider = Provider(Folder("Screenshots"));
+
+        Assert.True(await provider.ImportExistingAsync(CancellationToken.None) > 0, "the import found nothing to add");
+        Assert.Equal(original, File.ReadAllBytes(file));
+
+        await provider.PinAsync(Folder("Later"), null, CancellationToken.None);
+
+        Assert.Equal(original, File.ReadAllBytes(file + ".bak"));
+        Assert.Contains("Later", File.ReadAllText(file), StringComparison.Ordinal);
+    }
+
     /// <summary>An empty Quick access changes nothing and does not throw.</summary>
     [WindowsFact]
     public async Task No_pins_at_all_is_not_a_failure()

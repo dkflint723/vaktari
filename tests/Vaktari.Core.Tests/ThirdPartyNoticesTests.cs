@@ -66,6 +66,26 @@ public sealed class ThirdPartyNoticesTests
         Assert.Contains(expected, Notices, StringComparison.Ordinal);
     }
 
+    /// <summary>
+    /// Every way Vaktari leaves this repository carries the file.
+    ///
+    /// **The Arch package left it out while the README said it shipped
+    /// "inside every tarball, installer and package".** The PKGBUILD installed
+    /// LICENSE and README.md and nothing else, and nothing read the PKGBUILD,
+    /// so the one channel that builds from source was the one that shipped no
+    /// notices. One row per channel, each the line that does the copying,
+    /// because a notices file nobody installs satisfies nothing.
+    /// </summary>
+    [Theory]
+    [InlineData("packaging/PKGBUILD", "install -Dm644 THIRD-PARTY-NOTICES.txt")]
+    [InlineData("packaging/vaktari.spec", "%license THIRD-PARTY-NOTICES.txt")]
+    [InlineData("packaging/vaktari.iss", "Source: \"..\\THIRD-PARTY-NOTICES.txt\"")]
+    [InlineData(".github/workflows/build.yml", "cp LICENSE THIRD-PARTY-NOTICES.txt README.md dist/vaktari/")]
+    public void Every_package_carries_the_notices(string channel, string line)
+    {
+        Assert.Contains(line, RepoSource.Read(channel.Split('/')), StringComparison.Ordinal);
+    }
+
     /// <summary>The MIT text has to be there in full, not summarised.</summary>
     [Fact]
     public void The_mit_permission_notice_is_reproduced_in_full()

@@ -114,9 +114,16 @@ dotnet build
 dotnet run --project src/Vaktari.Ui
 ```
 
-The first build restores Avalonia 12.1 and CommunityToolkit.Mvvm from NuGet.
-Nothing else is fetched, and no native library is compiled — a debug build needs
-only the SDK.
+The first build restores the application's packages from NuGet — Avalonia 12.1,
+CommunityToolkit.Mvvm, SharpCompress and Tmds.DBus.Protocol, with what they
+depend on, SkiaSharp and HarfBuzzSharp among them — and
+AvaloniaUI.DiagnosticsSupport, which is restored for every build but left out of
+a Release one. The test projects add xUnit, the test SDK, Avalonia's headless
+test host and XAML loader, and BenchmarkDotNet. The SDK adds its own trimming
+analysers, because every project under src/ is marked AOT-compatible (the test
+and benchmark projects opt out). No native library is
+compiled, since the ones SkiaSharp and HarfBuzzSharp need arrive prebuilt — a
+debug build needs only the SDK.
 
 **`TreatWarningsAsErrors` is on for every project.** A warning you might ignore
 elsewhere fails the build here, deliberately. Trim, AOT and single-file analysers
@@ -234,7 +241,7 @@ Four projects, some 4,000 cases:
 | `Vaktari.Core.Tests` | the platform-neutral rules: paths, names, sorting, the copy staging, settings migration, the git arguments, the download checks | both |
 | `Vaktari.Linux.Tests` | `Vaktari.Linux` — the mount table, xattrs, trash, desktop entries, the poll on network mounts. Most of it is logic and runs on Windows too; a `PosixFact` needs a real Linux filesystem and skips elsewhere | both |
 | `Vaktari.Windows.Tests` | `Vaktari.Windows` — the file operations, the shell, the registry. Runs on Windows only | Windows |
-| `Vaktari.Ui.Tests` | the windows and view models, driven headless through Avalonia — a real `MainWindow`, no display needed. A test asserting something only Windows offers says so with `OnlyOn.Windows` and skips on Linux | both |
+| `Vaktari.Ui.Tests` | the windows and view models, driven headless through Avalonia — a real `MainWindow`, no display needed. A test asserting something only Windows offers says so — `WindowsFact`, or `OnlyOn.Windows` on an `AvaloniaFact` — and skips on Linux; one asserting a Linux path is a `PosixFact` | both |
 
 **The Ui suite ran on Windows alone until September 2026.** Two of its
 source-reading tests had broken on CI for exactly that reason — once reading
@@ -340,17 +347,28 @@ from source, which is the Arch convention and what the AUR expects.
 
 **Publishing to the AUR is deliberately not automated.** It needs an SSH key with
 push rights to `aur.archlinux.org`, and putting one in repository secrets so a
-workflow can publish on your behalf is a decision worth making consciously. The
-manual path:
-
-```bash
-git clone ssh://aur@aur.archlinux.org/vaktari.git
-cp packaging/PKGBUILD packaging/.SRCINFO vaktari/
-cd vaktari && git commit -am "0.1.0" && git push
-```
+workflow can publish on your behalf is a decision worth making consciously.
 
 Update `sha256sums` in the PKGBUILD first — it ships as `SKIP`, which the AUR
-accepts but which verifies nothing.
+accepts but which verifies nothing. Then, on an Arch machine:
+
+```bash
+(cd packaging && makepkg --printsrcinfo > .SRCINFO)
+git -c init.defaultBranch=master clone ssh://aur@aur.archlinux.org/vaktari.git
+cp packaging/PKGBUILD packaging/.SRCINFO vaktari/
+cd vaktari && git add PKGBUILD .SRCINFO && git commit -m "0.1.0" && git push
+```
+
+`.SRCINFO` is not kept in this repository, so the first line makes it from
+the PKGBUILD, after the checksum, because the checksum is in it too. The Arch
+job in `distro.yml` makes one the same way and uploads it with its artifacts,
+but that copy still says `SKIP`. The `git add` is there because
+`git commit -a` only stages files git already tracks, and the AUR repository
+of a package that has never been pushed is empty, so the first push would
+commit nothing. And the clone names its branch, because the AUR accepts pushes
+to `master` only, and cloning an empty repository otherwise names the branch
+after your own `init.defaultBranch` — `main` on many set-ups, which the first
+push would then be refused for.
 
 ---
 

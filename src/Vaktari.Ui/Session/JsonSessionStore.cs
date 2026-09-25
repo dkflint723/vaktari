@@ -184,13 +184,40 @@ public sealed class JsonSessionStore : ISessionStore, IAsyncDisposable
         {
             if (!File.Exists(path)) return null;
             using var stream = File.OpenRead(path);
-            return JsonSerializer.Deserialize(stream, SessionJsonContext.Default.SessionState);
+            var state = JsonSerializer.Deserialize(stream, SessionJsonContext.Default.SessionState);
+            return state is not null && HasEveryList(state) ? state : null;
         }
         catch
         {
             // Corrupt, truncated, unreadable — all the same answer.
             return null;
         }
+    }
+
+    /// <summary>
+    /// Whether every list the restore walks is really there.
+    ///
+    /// **`"windows": null` stopped the application starting.** The serializer
+    /// gives a null — or, for a key that is absent, nothing, since it does not
+    /// run property initializers — whatever the model's annotations promise,
+    /// and the window's constructor then asked the null list for its first
+    /// entry. The same for a null window, pane or tab inside it, and a null
+    /// Panes or Tabs. Refused here rather than repaired, so a file shaped like
+    /// this is the same answer as a truncated one: the .bak gets its turn, and
+    /// failing that the app opens empty. The two lists that were already
+    /// allowed to be absent — the back and forward stacks, the folded
+    /// sections — are read with `?? []` where they are used, and are not
+    /// asked about.
+    /// </summary>
+    private static bool HasEveryList(SessionState state)
+    {
+        static bool Usable(PaneState? pane)
+            => pane is { Tabs: not null } && pane.Tabs.All(t => t is { Path: not null });
+
+        return state.Windows is not null
+               && state.Windows.All(w => w is { Panes: not null }
+                                         && w.Panes.All(Usable)
+                                         && (w.RememberedRightPane is null || Usable(w.RememberedRightPane)));
     }
 
     public void NotifyChanged(SessionState state)
@@ -237,14 +264,21 @@ public sealed class JsonSessionStore : ISessionStore, IAsyncDisposable
                 await JsonSerializer.SerializeAsync(
                     stream, state, SessionJsonContext.Default.SessionState, ct)
                     .ConfigureAwait(false);
-                await stream.FlushAsync(ct).ConfigureAwait(false);
+
+                // To the disk, not just out of the process — see
+                // JsonSettingsStore.Save. On the pool, because there is no
+                // asynchronous flush-to-disk and this can be on the UI thread:
+                // the debounce timer ticks there, and when the lock is free
+                // and the serializer never yields nothing above has left it.
+                await Task.Run(() => stream.Flush(flushToDisk: true), ct).ConfigureAwait(false);
             }
 
             if (File.Exists(_path))
                 File.Copy(_path, _backupPath, overwrite: true);
 
             // Rename is atomic on both ext4/btrfs and NTFS, so a crash mid-save
-            // leaves either the old file or the new one, never a half-written one.
+            // leaves either the old file or the new one, never a half-written one
+            // — and with the flush above, a power cut does too.
             File.Move(_tempPath, _path, overwrite: true);
         }
         catch

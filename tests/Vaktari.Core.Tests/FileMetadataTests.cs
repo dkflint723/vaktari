@@ -1,3 +1,4 @@
+using System.Runtime.Versioning;
 using Vaktari.Core.FileSystem;
 using Xunit;
 
@@ -54,11 +55,9 @@ public sealed class FileMetadataTests : IDisposable
     /// runs at all.** A copied shell script that will not execute is the loss
     /// people actually hit.
     /// </summary>
-    [Fact]
+    [PosixFact, SupportedOSPlatform("linux")]
     public void A_copied_script_on_linux_can_still_be_run()
     {
-        if (OperatingSystem.IsWindows()) return;
-
         var source = Make("run.sh", "#!/bin/sh\necho hi\n");
         var target = Make("run-copy.sh", "#!/bin/sh\necho hi\n");
 
@@ -75,11 +74,9 @@ public sealed class FileMetadataTests : IDisposable
     /// The other direction, and the one that is a security problem rather than
     /// an annoyance: a private key copied out to be readable by everyone.
     /// </summary>
-    [Fact]
+    [PosixFact, SupportedOSPlatform("linux")]
     public void A_copied_private_key_on_linux_stays_private()
     {
-        if (OperatingSystem.IsWindows()) return;
-
         var source = Make("id_ed25519", "secret");
         var target = Make("id_ed25519.bak", "secret");
 
@@ -96,11 +93,9 @@ public sealed class FileMetadataTests : IDisposable
         Assert.False(mode.HasFlag(UnixFileMode.GroupRead));
     }
 
-    [Fact]
+    [WindowsFact]
     public void A_copy_keeps_the_read_only_and_hidden_marks_on_windows()
     {
-        if (!OperatingSystem.IsWindows()) return;
-
         var source = Make("marked.txt");
         var target = Make("marked-copy.txt");
 
@@ -128,11 +123,9 @@ public sealed class FileMetadataTests : IDisposable
     /// timestamps, so the wrong order silently drops the dates on exactly the
     /// archival files most likely to be marked read-only.
     /// </summary>
-    [Fact]
+    [WindowsFact]
     public void A_read_only_file_still_gets_its_timestamp()
     {
-        if (!OperatingSystem.IsWindows()) return;
-
         var source = Make("old.txt");
         var target = Make("old-copy.txt");
 
@@ -172,11 +165,9 @@ public sealed class FileMetadataTests : IDisposable
     /// Directory and reparse-point flags describe what a file IS, not how it is
     /// marked. Carrying them onto a plain copy either throws or lies about it.
     /// </summary>
-    [Fact]
+    [WindowsFact]
     public void The_flags_that_describe_what_a_file_is_are_not_carried()
     {
-        if (!OperatingSystem.IsWindows()) return;
-
         var source = Make("plain.txt");
         var target = Make("plain-copy.txt");
 

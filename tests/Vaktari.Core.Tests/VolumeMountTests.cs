@@ -83,11 +83,9 @@ public sealed class VolumeMountTests
 
     // ---- and what that means for a drag -------------------------------------
 
-    [Fact]
+    [PosixFact]
     public void Two_paths_on_one_volume_are_the_same_volume()
     {
-        if (OperatingSystem.IsWindows()) return;
-
         Assert.True(Volumes.Same("/home/flint/a.txt", "/home/flint/b", Table));
     }
 
@@ -95,11 +93,9 @@ public sealed class VolumeMountTests
     /// The case the whole rule exists for: dragging to another volume copies
     /// and leaves the original alone.
     /// </summary>
-    [Fact]
+    [PosixFact]
     public void A_path_on_a_removable_disk_is_a_different_volume()
     {
-        if (OperatingSystem.IsWindows()) return;
-
         Assert.False(Volumes.Same("/home/flint/a.txt", "/media/flint/My Backup", Table));
     }
 
@@ -110,22 +106,18 @@ public sealed class VolumeMountTests
     /// source and destination differ and a plain drag copies, which is what
     /// leaves the original where it is.
     /// </summary>
-    [Fact]
+    [PosixFact]
     public void An_unreachable_mount_is_still_a_boundary()
     {
-        if (OperatingSystem.IsWindows()) return;
-
         Assert.Contains("/mnt/nfs", Table);
         Assert.False(Volumes.Same("/home/flint/a.txt", "/mnt/nfs/share", Table));
     }
 
     /// <summary>Nothing to compare against is "different", which errs towards
     /// copying.</summary>
-    [Fact]
+    [PosixFact]
     public void An_empty_table_answers_different()
     {
-        if (OperatingSystem.IsWindows()) return;
-
         Assert.False(Volumes.Same("/home/a.txt", "/home/b.txt", []));
     }
 

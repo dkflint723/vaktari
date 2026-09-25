@@ -73,7 +73,14 @@ public sealed class JsonSearchHistory : ISearchHistory
         // ordinal rule above is the whole reason two spellings of one question
         // stay two questions, and a dictionary that arrived from the file
         // carries whichever comparer the serializer felt like giving it.
-        _searches = new Dictionary<string, DateTimeOffset>(Load().Searches, StringComparer.Ordinal);
+        //
+        // **`"searches": null` stopped the application starting.** The
+        // serializer hands a null key over as null whatever the property's
+        // annotation says, the copy threw, and this constructor runs inside
+        // the first window's. A bad file must never block startup, and a null
+        // list is a bad file.
+        _searches = new Dictionary<string, DateTimeOffset>(
+            Load().Searches ?? new Dictionary<string, DateTimeOffset>(), StringComparer.Ordinal);
 
         // The high-water mark comes from the FILE as well as from this run, or
         // a stamp written ahead of the clock would outrank every search made
@@ -235,7 +242,8 @@ public sealed class JsonSearchHistory : ISearchHistory
                         new SearchHistoryFile { Searches = _searches },
                         SearchHistoryJsonContext.Default.SearchHistoryFile);
 
-                    stream.Flush();
+                    // To the disk — see JsonSettingsStore.Save.
+                    stream.Flush(flushToDisk: true);
                 }
 
                 File.Move(_tempPath, _path, overwrite: true);

@@ -24,11 +24,9 @@ public sealed class RemoteRootTests : IDisposable
     /// "Z:\" did not match a path spelled "z:\" — out of step with every other
     /// comparison in the application.
     /// </summary>
-    [Fact]
+    [WindowsFact]
     public void Case_does_not_decide_whether_a_path_is_remote_on_windows()
     {
-        if (!OperatingSystem.IsWindows()) return;
-
         ThumbnailLoader.RemoteRoots = [@"Z:\"];
 
         Assert.True(ThumbnailLoader.IsRemote(@"Z:\photos\a.jpg"));
@@ -58,11 +56,9 @@ public sealed class RemoteRootTests : IDisposable
 
     /// <summary>Case still matters on Linux, where two paths differing in case
     /// are two different files.</summary>
-    [Fact]
+    [PosixFact]
     public void Case_still_matters_on_linux()
     {
-        if (OperatingSystem.IsWindows()) return;
-
         ThumbnailLoader.RemoteRoots = ["/run/user/1000/gvfs/smb-share"];
 
         Assert.True(ThumbnailLoader.IsRemote("/run/user/1000/gvfs/smb-share/a.txt"));

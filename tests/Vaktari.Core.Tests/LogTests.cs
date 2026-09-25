@@ -69,6 +69,18 @@ public sealed class LogTests : IDisposable
     [InlineData(@"C:\Users\somebody\Documents\tax-2025.xlsx", "tax-2025.xlsx", @"C:\Users\somebody\Documents")]
     [InlineData("/home/somebody/Pictures/wedding.jpg", "wedding.jpg", "/home/somebody/Pictures")]
     [InlineData(@"\\nas\share\Photos\family.png", "family.png", @"\\nas\share\Photos")]
+    // **A folder with a space in it was cut at the space**, and everything
+    // after it was written out whole — so these name the part that leaked
+    // rather than the whole directory, which was never there to find.
+    [InlineData(@"C:\Users\John Smith\Documents\tax.xlsx", "tax.xlsx", "John Smith")]
+    [InlineData(@"C:\Users\John Smith\Documents\tax.xlsx", "tax.xlsx", "Documents")]
+    [InlineData("/home/jo/Tax Returns 2025/bank.pdf", "bank.pdf", "Tax Returns")]
+    [InlineData(@"C:\Users\John Smith\OneDrive - Contoso\Documents\x.json", "x.json", "Contoso")]
+    // **And at an apostrophe**, which Windows allows in an account name.
+    [InlineData(@"C:\Users\O'Brien\Documents\x.txt", "x.txt", "Brien")]
+    [InlineData(@"C:\Users\O'Brien\Documents\x.txt", "x.txt", "Documents")]
+    [InlineData("/home/jo/Rock 'n' Roll/song.mp3", "song.mp3", "Roll")]
+    [InlineData("/home/jo/Rock 'n' Roll/song.mp3", "song.mp3", "'n'")]
     public void A_path_keeps_its_leaf_and_loses_its_directory(string path, string leaf, string directory)
     {
         var redacted = Log.Redact("could not read " + path + " at all");
@@ -90,6 +102,46 @@ public sealed class LogTests : IDisposable
         Assert.DoesNotContain(@"D:\b", redacted, StringComparison.Ordinal);
         Assert.Contains("one.txt", redacted, StringComparison.Ordinal);
         Assert.Contains("two.txt", redacted, StringComparison.Ordinal);
+    }
+
+    /// <summary>Folders with spaces on both sides of the "to": each path keeps
+    /// its own leaf, and neither folder survives.</summary>
+    [Fact]
+    public void Two_spaced_paths_on_one_line_are_both_hidden()
+    {
+        var redacted = Log.Redact(@"moving C:\My Files\one.txt to D:\Old Stuff\two.txt");
+
+        Assert.DoesNotContain("My Files", redacted, StringComparison.Ordinal);
+        Assert.DoesNotContain("Old Stuff", redacted, StringComparison.Ordinal);
+        Assert.Contains(@"\one.txt to <", redacted, StringComparison.Ordinal);
+        Assert.EndsWith(@"\two.txt", redacted, StringComparison.Ordinal);
+    }
+
+    /// <summary>
+    /// **A quoted path must not run into the next one**, now that a folder may
+    /// hold an apostrophe: .NET quotes the paths in its own messages, and
+    /// "one.txt' to 'D:" would otherwise read as a folder of the second path,
+    /// hashing the first path's leaf and the words between them away.
+    /// </summary>
+    [Fact]
+    public void Two_quoted_paths_on_one_line_each_keep_their_leaf()
+    {
+        var redacted = Log.Redact(@"cannot move 'C:\a\one.txt' to 'D:\b\two.txt'");
+
+        Assert.DoesNotContain(@"C:\a", redacted, StringComparison.Ordinal);
+        Assert.DoesNotContain(@"D:\b", redacted, StringComparison.Ordinal);
+        Assert.Contains(@"\one.txt' to '<", redacted, StringComparison.Ordinal);
+        Assert.EndsWith(@"\two.txt'", redacted, StringComparison.Ordinal);
+    }
+    /// <summary>A slash with a space after it is arithmetic, not a root: the
+    /// pattern that lets a folder hold a space must not start matching at
+    /// one.</summary>
+    [Fact]
+    public void A_slash_between_spaces_is_not_a_path()
+    {
+        const string line = "copied 3 / 5 files";
+
+        Assert.Equal(line, Log.Redact(line));
     }
 
     [Fact]

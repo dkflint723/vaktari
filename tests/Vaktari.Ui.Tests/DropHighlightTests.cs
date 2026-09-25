@@ -104,11 +104,9 @@ public sealed class DropHighlightTests
 
     /// <summary>Paths are compared the way the rest of the application compares
     /// them, so a drive letter in the other case still rings its own row.</summary>
-    [AvaloniaFact]
+    [AvaloniaFact(Skip = OnlyOn.Windows, SkipUnless = nameof(OnlyOn.IsWindows), SkipType = typeof(OnlyOn))]
     public void Case_does_not_decide_which_row_is_ringed()
     {
-        if (!OperatingSystem.IsWindows()) return;
-
         var window = Themed();
 
         try

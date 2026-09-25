@@ -15,9 +15,13 @@ public sealed class LinuxPlatform : IPlatform
 {
     private readonly LinuxPropertiesProvider _properties = new();
 
-    public LinuxPlatform(string stateDirectory)
+    /// <param name="stateDirectory">Where Vaktari's own state lives.</param>
+    /// <param name="portableRoot">The portable folder, for a copy that has
+    /// one: the scripts folder goes there too. Null for an installed copy.</param>
+    public LinuxPlatform(string stateDirectory, string? portableRoot = null)
     {
         FileManagerService = new FreedesktopFileManager(_defaults);
+        Scripts = new LinuxScriptRunner(portableRoot);
 
         // Started here rather than in its constructor, for the reason given on
         // the Windows twin.
@@ -72,7 +76,7 @@ public sealed class LinuxPlatform : IPlatform
     // mode-bit mapping, and splitting them would duplicate it.
     public IAccessEditor? AccessEditor => _properties;
 
-    public IScriptRunner Scripts { get; } = new LinuxScriptRunner();
+    public IScriptRunner Scripts { get; }
 
     public ITemplateProvider Templates { get; } = new XdgTemplates();
 

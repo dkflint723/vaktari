@@ -29,6 +29,29 @@ public sealed class WindowsFactAttribute : FactAttribute
 }
 
 /// <summary>
+/// A fact that only runs on Linux: the counterpart of
+/// <see cref="WindowsFactAttribute"/>, for assertions about what a Linux path
+/// means.
+///
+/// **A guard in the body reported a pass where nothing ran.** The tests that
+/// needed one platform opened with <c>if (OperatingSystem.IsWindows()) return;</c>,
+/// so the Windows run counted them as passed without asserting anything, and a
+/// revert-check made there came back green for a reason that had nothing to do
+/// with the code. An attribute says the test was skipped, which is the truth.
+/// </summary>
+public sealed class PosixFactAttribute : FactAttribute
+{
+    public PosixFactAttribute(
+        [CallerFilePath] string? sourceFilePath = null,
+        [CallerLineNumber] int sourceLineNumber = -1)
+        : base(sourceFilePath, sourceLineNumber)
+    {
+        if (!OperatingSystem.IsLinux())
+            Skip = "Asserts Linux path shapes; runs on Linux only.";
+    }
+}
+
+/// <summary>
 /// The condition behind an Avalonia fact that only runs on Windows: a headless
 /// window driven on the dispatcher, asserting something only the Windows
 /// platform offers — the hosted shell menu, the case-insensitive filesystem.

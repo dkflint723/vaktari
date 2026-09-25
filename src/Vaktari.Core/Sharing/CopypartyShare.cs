@@ -42,6 +42,8 @@ public sealed class CopypartyShare : IFileSharing
     {
         _backend = backend;
         (_command, _prefixArgs) = _backend.Locate();
+
+        SweepLeftovers();
     }
 
     /// <summary>Re-runs discovery, so an install takes effect without a restart.</summary>
@@ -273,8 +275,15 @@ public sealed class CopypartyShare : IFileSharing
         var directory = ConfigDirectory;
         Directory.CreateDirectory(directory);
 
-        var file = Path.Combine(directory, $"vaktari-share-{Guid.NewGuid():N}.conf");
+        var file = Path.Combine(directory, $"{FilePrefix}{Guid.NewGuid():N}{ConfigExtension}");
 
+        WritePrivate(file, config);
+
+        return file;
+    }
+
+    private static void WritePrivate(string file, string text)
+    {
         var create = new FileStreamOptions
         {
             Mode = FileMode.CreateNew,
@@ -285,9 +294,228 @@ public sealed class CopypartyShare : IFileSharing
         if (!OperatingSystem.IsWindows()) create.UnixCreateMode = UnixFileMode.UserRead | UnixFileMode.UserWrite;
 
         using var writer = new StreamWriter(new FileStream(file, create));
-        writer.Write(config);
+        writer.Write(text);
+    }
 
-        return file;
+    private const string FilePrefix = "vaktari-share-";
+    private const string ConfigExtension = ".conf";
+    private const string RecordExtension = ".pid";
+
+    /// <summary>The record that names a share's server and the Vaktari that
+    /// started it, beside the config it was started with.</summary>
+    internal static string RecordPathFor(string configPath) => Path.ChangeExtension(configPath, RecordExtension);
+
+    /// <summary>
+    /// The Vaktari a share's record names as its owner: this process, as a
+    /// process id and its <see cref="StartMark"/>. Tests name one that is not
+    /// running, which is what a crashed Vaktari looks like to the next one.
+    /// </summary>
+    internal (int Pid, long Started) Owner { get; init; } = (Environment.ProcessId, StartMark(Environment.ProcessId) ?? 0);
+
+    /// <summary>
+    /// When a process started, in a form another process can compare exactly:
+    /// on Linux the kernel's own count of clock ticks since boot, and
+    /// elsewhere the start time's UTC ticks. Null when the process is not
+    /// there to ask.
+    ///
+    /// **On Linux the start time moved between processes.** .NET builds
+    /// Process.StartTime as a boot time plus the kernel's count, and works the
+    /// boot time out once per process from the wall clock — so a record
+    /// written by one Vaktari and read by the next differed by every step the
+    /// clock had taken in between. Past the two seconds of slack, a sweep after
+    /// a resume that NTP corrected by five missed the orphan it was looking
+    /// at, and then deleted the only record of it. The kernel's count is the
+    /// number both processes read from; it does not move and needs no slack.
+    /// Field 22 of /proc/[pid]/stat, counted after the last ')', because the
+    /// name before it may hold spaces and parentheses of its own.
+    /// </summary>
+    internal static long? StartMark(int pid)
+    {
+        try
+        {
+            if (OperatingSystem.IsLinux())
+            {
+                var stat = File.ReadAllText($"/proc/{pid}/stat");
+                var fields = stat[(stat.LastIndexOf(')') + 2)..].Split(' ');
+
+                // Field 3 (state) is the first after the name, so 22 is 19 on.
+                return long.Parse(fields[19], System.Globalization.CultureInfo.InvariantCulture);
+            }
+
+            using var process = Process.GetProcessById(pid);
+            return process.StartTime.ToUniversalTime().Ticks;
+        }
+        catch
+        {
+            // Not running, or another account's — either way nothing to name.
+            return null;
+        }
+    }
+
+    /// <summary>
+    /// Whether two <see cref="StartMark"/>s name the same start. Exact on
+    /// Linux, where both are the kernel's count; two seconds of slack
+    /// elsewhere, for a start time that passes through local time and back.
+    /// </summary>
+    private static bool SameStart(long recorded, long now)
+        => OperatingSystem.IsLinux()
+            ? recorded == now
+            : Math.Abs(recorded - now) < TimeSpan.TicksPerSecond * 2;
+
+    /// <summary>
+    /// Writes down which process serves this config and which Vaktari started
+    /// it, so a later start can tell an orphan from somebody's live share.
+    ///
+    /// **The config named no process,** so after a crash there was nothing to
+    /// look for: the next start could not list the share, stop it or even say
+    /// it was there. A process id alone is not enough either — ids come round
+    /// again, and killing whatever holds one now is worse than the orphan —
+    /// so each id goes down with the moment its process started, and only a
+    /// process that matches both is taken to be the one meant.
+    ///
+    /// Written under another name and renamed into place, so a sweep in
+    /// another copy of Vaktari never reads half a record and takes a live
+    /// share for a broken one.
+    /// </summary>
+    private void Remember(string configPath, Process process)
+    {
+        try
+        {
+            var record = RecordPathFor(configPath);
+            var staging = record + ".new";
+
+            WritePrivate(staging,
+                $"{process.Id}\n{StartMark(process.Id)}\n{Owner.Pid}\n{Owner.Started}\n");
+
+            File.Move(staging, record, overwrite: true);
+        }
+        catch (Exception ex)
+        {
+            // Without a record the share still works; only a crash would
+            // leave it for the next start to miss.
+            Quiet.Swallowed("sharing", ex);
+        }
+    }
+
+    /// <summary>
+    /// Stops what a Vaktari that is no longer running left serving, and
+    /// clears its files. Runs once, as the provider is built.
+    ///
+    /// **A share kept serving after Vaktari crashed or was killed,** and the
+    /// next start had no way to find it: which servers were running lived
+    /// only in memory. On Windows the job object in the backend ends the
+    /// server with the process; on Linux nothing does, because the
+    /// parent-death signal fires when the *thread* that forked exits, and
+    /// the fork happens on a pool thread that retires while the share is
+    /// still wanted. So every platform also looks here.
+    ///
+    /// **Another copy's live share is left alone.** A portable copy and an
+    /// installed one each hold a lock of their own and can run at once, and
+    /// the private folder is per user rather than per copy; a record whose
+    /// owner is still running is somebody's share in use. A config with no
+    /// record is either one being started this instant or one left from
+    /// before records existed, so only an old one is cleared — it carries a
+    /// password, and nothing will ever read it again.
+    /// </summary>
+    internal static void SweepLeftovers()
+    {
+        try
+        {
+            var directory = ConfigDirectory;
+
+            if (!Directory.Exists(directory)) return;
+
+            // **One file that could not be read stopped the whole sweep.** The
+            // only catch was around the loop, and a record another copy
+            // deleted between the listing and the read — its share stopped,
+            // as they are — threw out of it and skipped every file after,
+            // orphans and old passwords included, until the next start. Each
+            // file now fails alone.
+            foreach (var file in Directory.EnumerateFiles(directory, FilePrefix + "*").ToList())
+            {
+                try
+                {
+                    SweepFile(file);
+                }
+                catch (Exception ex)
+                {
+                    Quiet.Swallowed("sharing", ex);
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            Quiet.Swallowed("sharing", ex);
+        }
+    }
+
+    private static void SweepFile(string file)
+    {
+        var extension = Path.GetExtension(file);
+
+        if (extension == RecordExtension)
+            SweepRecord(file);
+        else if (extension == ConfigExtension
+                 && !File.Exists(RecordPathFor(file))
+                 && DateTime.UtcNow - File.GetLastWriteTimeUtc(file) > TimeSpan.FromMinutes(1))
+            Forget(file);
+    }
+
+    private static void SweepRecord(string record)
+    {
+        var lines = File.ReadAllLines(record);
+
+        if (lines.Length >= 4
+            && int.TryParse(lines[0], out var childPid)
+            && long.TryParse(lines[1], out var childStarted)
+            && int.TryParse(lines[2], out var ownerPid)
+            && long.TryParse(lines[3], out var ownerStarted))
+        {
+            if (Find(ownerPid, ownerStarted) is { } owner)
+            {
+                owner.Dispose();
+                return;
+            }
+
+            if (Find(childPid, childStarted) is { } orphan)
+            {
+                Diagnostics.Log.Warn("sharing", "stopped a share left serving by a Vaktari that is no longer running");
+                Kill(orphan);
+            }
+
+            // **Forgotten only once nothing holds the id.** A server that
+            // survived its kill, or a live process whose start did not match
+            // the record's, is not one this can prove is gone — and when the
+            // match was what went wrong, deleting the record lost the only
+            // way anything would ever find a server still serving with its
+            // password. A leftover record costs one small private file; the
+            // next start looks again.
+            if (StartMark(childPid) is not null) return;
+        }
+
+        // An unreadable record was never renamed into place by this code, so
+        // no running copy is about to finish it.
+        Forget(Path.ChangeExtension(record, ConfigExtension));
+    }
+
+    /// <summary>
+    /// The running process with this id, if it is the one that started at
+    /// the moment its <see cref="StartMark"/> says; an id that has come round
+    /// to another process since is not the one meant.
+    /// </summary>
+    private static Process? Find(int pid, long started)
+    {
+        if (StartMark(pid) is not { } now || !SameStart(started, now)) return null;
+
+        try
+        {
+            return Process.GetProcessById(pid);
+        }
+        catch
+        {
+            // Gone between the two questions.
+            return null;
+        }
     }
 
     /// <summary>Stands in for <see cref="Process.Start(ProcessStartInfo)"/>
@@ -345,6 +573,12 @@ public sealed class CopypartyShare : IFileSharing
         var process = launch(info)
                       ?? throw new InvalidOperationException("could not start copyparty");
 
+        // Before anything else can go wrong: from here on the server is one
+        // that dies with this process where the platform allows it, and one
+        // the next start can find where it does not.
+        _backend.Contain(process);
+        Remember(configPath, process);
+
         var session = new ShareSession
         {
             Path = path,
@@ -372,10 +606,14 @@ public sealed class CopypartyShare : IFileSharing
         return session;
     }
 
+    /// <summary>Deletes a share's config and the record beside it.</summary>
     private static void Forget(string configPath)
     {
-        try { if (File.Exists(configPath)) File.Delete(configPath); }
-        catch { /* a leftover temp file is not worth surfacing */ }
+        foreach (var file in new[] { configPath, RecordPathFor(configPath) })
+        {
+            try { if (File.Exists(file)) File.Delete(file); }
+            catch { /* a leftover temp file is not worth surfacing */ }
+        }
     }
 
     public Task StopAsync(ShareSession session)

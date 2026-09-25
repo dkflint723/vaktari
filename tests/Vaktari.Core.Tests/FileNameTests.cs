@@ -119,11 +119,9 @@ public class FileNameTests
         }
     }
 
-    [Fact]
+    [WindowsFact]
     public void A_reserved_device_name_is_refused_on_windows()
     {
-        if (!OperatingSystem.IsWindows()) return;
-
         Assert.NotNull(FileNames.Refuse("CON"));
         Assert.NotNull(FileNames.Refuse("con.txt"));
         Assert.NotNull(FileNames.Refuse("LPT1.log"));

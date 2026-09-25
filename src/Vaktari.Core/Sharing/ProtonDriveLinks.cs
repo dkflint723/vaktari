@@ -80,9 +80,22 @@ public sealed class ProtonDriveLinks : ILinkSharing
     /// tests write into a temp folder instead of the real one.</summary>
     internal string? ToolsDirOverride { get; init; }
 
-    private string ToolsDir => ToolsDirOverride ?? Path.Combine(
-        Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
-        "vaktari", "tools");
+    /// <summary>
+    /// The portable folder when this copy is a portable one, and null for an
+    /// installed copy; the application says which, because Core cannot ask.
+    ///
+    /// **A portable copy installed the CLI into the machine's own tools
+    /// folder**, 120 MB left behind on every machine the stick visited and
+    /// fetched again on the next. In the portable folder it travels with the
+    /// copy that asked for it — and is found there, since discovery looks in
+    /// the same folder the install writes to.
+    /// </summary>
+    public string? PortableRoot { get; init; }
+
+    internal string ToolsDir => ToolsDirOverride ?? Path.Combine(
+        PortableRoot ?? Path.Combine(
+            Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "vaktari"),
+        "tools");
 
     /// <summary>
     /// PATH first — a deliberate install outranks a guess — then the places a

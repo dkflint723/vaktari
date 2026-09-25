@@ -15,7 +15,8 @@ namespace Vaktari.Ui.Settings;
 /// every navigation and needs one. Settings change when a person clicks
 /// something in a dialog, which is rare enough that a write per change is both
 /// affordable and what they expect — closing the dialog and having the file
-/// already be right.
+/// right a moment later, on the pool rather than in the dialog's handler (see
+/// <see cref="SaveAsync"/>), and always before Vaktari closes.
 /// </summary>
 public sealed class JsonSettingsStore : ISettingsStore
 {
@@ -143,23 +144,58 @@ public sealed class JsonSettingsStore : ISettingsStore
         catch (Exception ex) { Vaktari.Core.Quiet.Swallowed("settings", ex); }
     }
 
-    public void Save(SettingsState settings)
+    /// <summary>
+    /// Saves and waits for the disk. For the first run's write at startup,
+    /// which has to be on the disk before anything asks whether it is; a
+    /// window's handlers use <see cref="SaveAsync"/>.
+    /// </summary>
+    public void Save(SettingsState settings) => SaveAsync(settings).GetAwaiter().GetResult();
+
+    /// <summary>
+    /// Saves on the pool, behind any save still in flight; the task completes
+    /// when the file is on the disk. The state is serialised here, on the
+    /// caller's thread, so what is written is what was asked for even if the
+    /// caller changes it the moment this returns. See
+    /// <see cref="Vaktari.Core.WriteBehind"/> for why the rest is not.
+    /// </summary>
+    public Task SaveAsync(SettingsState settings)
     {
         if (ReadOnlyReason is { } reason)
         {
             Vaktari.Core.Diagnostics.Log.Warn("settings", "not written: " + reason);
-            return;
+            return Task.CompletedTask;
         }
 
+        var bytes = JsonSerializer.SerializeToUtf8Bytes(settings, SettingsJsonContext.Default.SettingsState);
+
+        return Writes.Enqueue(() => Write(bytes));
+    }
+
+    /// <summary>This store's writes, in order and off the caller's thread;
+    /// the way out awaits their <see cref="Vaktari.Core.WriteBehind.Idle"/>.</summary>
+    internal Vaktari.Core.WriteBehind Writes { get; } = new();
+
+    private void Write(byte[] bytes)
+    {
         lock (_writeLock)
         {
             try
             {
                 using (var stream = File.Create(_tempPath))
                 {
-                    JsonSerializer.Serialize(
-                        stream, settings, SettingsJsonContext.Default.SettingsState);
-                    stream.Flush();
+                    stream.Write(bytes);
+
+                    // **Flushed out of the process was not flushed to the
+                    // disk.** The rename below is journaled and the bytes
+                    // were not: after a power cut or an OS crash, NTFS can
+                    // come back with the rename done and the data never
+                    // written — a file of the right length full of zeros,
+                    // which parses as nothing and reads as amnesia. ext4 and
+                    // btrfs force the data out on a rename over an existing
+                    // file; nothing here was relying on the filesystem being
+                    // one of those. Every store's temp-and-rename flushes this
+                    // way, and a test reads them all to hold it.
+                    stream.Flush(flushToDisk: true);
                 }
 
                 if (File.Exists(_path))

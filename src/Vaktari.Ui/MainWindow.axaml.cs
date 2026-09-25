@@ -234,9 +234,15 @@ public partial class MainWindow : Window
         // constructor before _shell is assigned, and the compiler will not
         // take "it only runs later" for an answer — measured, as a null
         // reference on the first test that built a window after a crash.
+        //
+        // **The log line said when, and not what.** The marker is the time on
+        // its first line and the exception on its second, and this wrote only
+        // the first. Both lines now, joined, so the startup line can be read
+        // without hunting back for the FATAL line it follows — which a rolled
+        // log may no longer hold.
         if (Vaktari.Core.Diagnostics.Log.TakeCrashMarker() is { } crashed)
         {
-            Vaktari.Core.Diagnostics.Log.Warn("startup", "previous run ended unexpectedly: " + crashed.Split('\n')[0]);
+            Vaktari.Core.Diagnostics.Log.Warn("startup", "previous run ended unexpectedly: " + string.Join(" | ", crashed.Split('\n', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)));
 
             Dispatcher.UIThread.Post(() => Shell.OperationStatus =
                 "Vaktari closed unexpectedly last time — Settings ▸ Settings file ▸ Copy diagnostics");
@@ -302,11 +308,11 @@ public partial class MainWindow : Window
         // emptied the per-folder store; the file is the half only the window can
         // write. Through the same store the settings dialog saves with, so the
         // two routes cannot disagree about where preferences live.
-        _shell.DefaultViewChanged += (_, settings) => _services.SettingsStore.Save(settings);
+        _shell.DefaultViewChanged += (_, settings) => _ = _services.SettingsStore.SaveAsync(settings);
 
         // A dragged column width, once the drag has ended: the same route for
         // the same reason.
-        _shell.ColumnWidthsChanged += (_, settings) => _services.SettingsStore.Save(settings);
+        _shell.ColumnWidthsChanged += (_, settings) => _ = _services.SettingsStore.SaveAsync(settings);
         _shell.EmptyTrashRequested += (_, _) => AskConfirmEmptyTrash();
         _shell.CopyAcrossRequested += (_, plan) => AskConfirmCopyAcross(plan);
 
@@ -326,7 +332,7 @@ public partial class MainWindow : Window
 
         _shell.UseDriveLinks(
             _services.DriveLinks, _services.DriveLinkStore.Load(),
-            links => _services.DriveLinkStore.Save(links),
+            links => _ = _services.DriveLinkStore.SaveAsync(links),
             url => _launcher?.Open(url));
         _shell.UseDiscovery(platform.Discovery);
         _shell.UseProperties(platform.Properties);
@@ -525,8 +531,9 @@ public partial class MainWindow : Window
             // A window opened by an instance that LOST the lock is a temporary
             // second copy, and a second copy claiming a desktop-wide role would
             // take "show in folder" with it and hold it for as long as it
-            // lived.
-            if (Program.Instance is not null && platform.FileManagerService is { } fileManager)
+            // lived. Nor does a portable copy: see AnswersForTheDesktop.
+            if (AnswersForTheDesktop(ownsLock: Program.Instance is not null)
+                && platform.FileManagerService is { } fileManager)
             {
                 services.FileManager = fileManager;
 

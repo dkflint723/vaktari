@@ -41,11 +41,9 @@ public sealed class RefusedRenameTests
     /// platform-conditional: ext4 accepts a colon, and asserting otherwise on
     /// Linux would be asserting a bug.
     /// </summary>
-    [Fact]
+    [WindowsFact]
     public void A_windows_refusal_is_still_a_refusal()
     {
-        if (!OperatingSystem.IsWindows()) return;
-
         Assert.Equal(RenameVerdict.Refused, RenamePrompt.Decide("notes:stream", "notes.txt").Verdict);
         Assert.Equal(RenameVerdict.Refused, RenamePrompt.Decide("CON", "notes.txt").Verdict);
         Assert.Equal(RenameVerdict.Refused, RenamePrompt.Decide("a?b.txt", "notes.txt").Verdict);
