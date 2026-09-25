@@ -75,6 +75,10 @@ public sealed partial class PaneViewModel
         //
         // PathText rather than value on the posted route: by the time it runs,
         // the newest write is the one that should be on screen.
+        //
+        // LoadAsync now moves a load begun on the pool to the dispatcher before
+        // its prologue runs, so undo and redo no longer come this way; the
+        // route stays for any other writer that is not on the UI thread.
         if (!Dispatcher.UIThread.CheckAccess())
         {
             Dispatcher.UIThread.Post(() => RebuildPathSuggestions(PathText));

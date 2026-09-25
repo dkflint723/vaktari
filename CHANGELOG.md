@@ -288,6 +288,91 @@ should not be trusted for compatibility yet.
 
 ### Fixed
 
+- **Middle-clicking a tab in the other half of a split closes that tab.**
+  It used to shut the tab down without removing it, so it stayed on screen
+  and did nothing, and it was added to the other half's list of closed
+  tabs; with one tab in the active half the click did nothing at all. Now
+  the tab closes from its own half, or the split collapses if it was that
+  half's last tab, and the half you clicked becomes the active one, as it
+  does when you click the ×.
+
+- **A copy or move that finishes after you close its tab no longer brings
+  that tab back to life behind the scenes.** Its closing refresh reloaded
+  the closed tab and started a folder watcher and a repository watch that
+  nothing cleaned up — on Linux, an inotify instance each — and a folder
+  still loading when its tab closed did the same. A closed tab now loads
+  and watches nothing, and *Retry* after its tab has closed runs in the
+  tab you are looking at.
+
+- **The folder tree keeps up, and costs nothing while it is off.** It read
+  every folder down to wherever you went even with *Show a folder tree in
+  the sidebar* unticked, which is the default. Folded, it did not catch up
+  when unfolded; it never showed hidden folders, so it could not reveal
+  ~/.config or AppData; switching sides of a split did not move it; and
+  the setting itself did nothing until a restart. It now follows the pane
+  only while it is shown and unfolded, catches up when unfolded, shows
+  hidden folders when the pane does, follows the side you switch to, and
+  appears or goes the moment the setting is saved.
+
+- **Saving settings no longer loads every tab restored from the last
+  session.** Each save listed every tab again, including background tabs
+  never opened since startup — a full listing, a watcher and a
+  version-control pass each — and ran background searches, space listings
+  and duplicate scans all over again. Now only tabs already listed are
+  refreshed, a background search or scan is re-sorted rather than walked
+  again, and a tab still checking whether its folder is reachable is left
+  to finish.
+
+- **Changes made while a folder is loading show up.** Vaktari started
+  following a folder only once the listing had finished, and changes
+  reported during a load were thrown away: a file created mid-load could
+  be missing, and one deleted mid-load could stay as a row, until the next
+  refresh. The folder is now followed from before it is read, and a
+  change the system could not describe while it loaded reads the folder
+  again. Folders opened in place stay current when two refreshes overlap,
+  where the second used to be dropped.
+
+- **The status bar keeps what it just said.** After a refresh of a
+  filtered folder, "filtered to N of M" was cleared straight after it was
+  written; and in a folder checked on a timer, the first change found
+  cleared the notice explaining why. Both now stay.
+
+- **Menus and lists follow what is on screen.** *Save this search to
+  places* showed or hid according to wherever the first menu was opened,
+  so a folder's menu could offer it and pin the folder. The *Open with*
+  list could hold the previous file's applications when that file's
+  answer came in last, so the image viewer offered for photo.png opened
+  notes.txt. And switching a tab's layout or grouping reached the saved
+  session only when something else changed later.
+
+- **One click no longer opens a row again after Enter or the menu opened
+  it.** The window paired a click with an earlier click on the same row,
+  and only a mouse open made it forget — so after Enter or *Open*, then
+  Back, one click on that folder went straight in, and on a program
+  launched a second copy. Opening with Enter, or opening the menu, now
+  clears it.
+
+- **The keyboard reaches the last buttons that needed a mouse.** On the
+  Keyboard settings page, Tab toward *Take it* or *Keep it there* was taken
+  as a new key and withdrew the offer, so *Take it* could not be reached;
+  it now has focus when the offer appears, Tab moves between the two, and
+  when the offer ends the keyboard goes back to the row. In the Share
+  dialog, Enter on a folder in the list now goes into it, as a
+  double-click does.
+
+- **Settings reach everything they are about.** *Restore defaults* now
+  resets the preferred terminal with the rest, where Save wrote the old
+  choice back. *Show full path in title bar* now retitles every open
+  window, not only the one Settings was opened from.
+
+- **A folder's Size column updates when the folder changes.** It kept its
+  first answer — a count, a total, or the dash — until Vaktari restarted:
+  adding or deleting files, F5, or a copy into the folder left it as it
+  was. A folder whose contents changed is now counted again, and F5 and
+  every finished operation forget the answers for the folders involved and
+  the totals above them. And a folder that cannot be read shows the dash
+  rather than "0 B".
+
 - **On Windows, files dragged out of a zip opened in Explorer land in
   Vaktari.** Explorer hands such files over as contents rather than as
   files on disk, and reading them never worked: the drop always ended with

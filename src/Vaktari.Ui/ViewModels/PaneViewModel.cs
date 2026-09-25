@@ -175,6 +175,14 @@ public sealed partial class PaneViewModel : ObservableObject, IDisposable
     /// about to add again.
     /// </summary>
     private int _generation;
+
+    /// <summary>
+    /// Set by <see cref="Dispose"/>, and never cleared. Read and written only
+    /// on the dispatcher: LoadAsync moves a load begun on the pool there before
+    /// it looks, which is what makes looking worth anything — see LoadAsync.
+    /// </summary>
+    private bool _disposed;
+
     private readonly Stack<string> _back = new();
     private readonly Stack<string> _forward = new();
     private CancellationTokenSource? _cts;
@@ -1901,6 +1909,24 @@ public sealed partial class PaneViewModel : ObservableObject, IDisposable
         _ = handle.Completion.ContinueWith(
             _ => Dispatcher.UIThread.Post(() =>
             {
+                // **The sizes it changed are forgotten wherever they were
+                // counted**, and not only here: a Copy to lands in a folder
+                // this pane is not showing, and the refresh below forgets only
+                // the one it is. Paths is the sources and the destination, so
+                // this reaches both ends, and the totals above each of them.
+                // Before the closed-tab return, because the cache is every
+                // pane's and not this one's. All of them in one pass, however
+                // many there are — see Forget.
+                Thumbnails.RowMetadata.Forget(handle.Paths);
+
+                // **An operation outlives the tab that started it.** Close the
+                // tab while a copy runs and the copy carries on, finishes, and
+                // lands here — and the refresh below used to reload the closed
+                // pane, which starts a new watcher and a new repository watch
+                // that nothing would ever dispose, and which keep the pane
+                // alive. On Linux each one is an inotify instance.
+                if (_disposed) return;
+
                 RefreshUndoState();
 
                 // **And whatever it just put here comes back selected.**
@@ -1975,6 +2001,18 @@ public sealed partial class PaneViewModel : ObservableObject, IDisposable
 
             Dispatcher.UIThread.Post(() =>
             {
+                // **The list could be the previous file's.** One lookup runs per
+                // selection and nothing orders their answers, so a slow one for
+                // photo.png landing after notes.txt's filled the submenu with
+                // image viewers — and OpenWithApp reads the live selection, so
+                // choosing one opened notes.txt in it. A folder selected after
+                // a file was refilled the same way. By path rather than by
+                // record, because a refresh replaces the record with one
+                // carrying a new length and time for the same file, and the
+                // applications for that file are still the right answer.
+                if (SelectedEntry is not { } now
+                    || !string.Equals(now.FullPath, path, StringComparison.Ordinal)) return;
+
                 var wanted = new List<LaunchOption>(options);
 
                 // Last, and only where there is a chooser to show. The
@@ -2230,9 +2268,11 @@ public sealed partial class PaneViewModel : ObservableObject, IDisposable
 
     partial void OnCurrentPathChanged(string value)
     {
-        // CurrentPath is assigned from LoadListingAsync after a ConfigureAwait,
-        // so this runs on a pool thread. Breadcrumbs is bound to the UI, and
-        // mutating it from here is a crash waiting for a slow directory.
+        // CurrentPath was assigned from LoadListingAsync after a ConfigureAwait,
+        // so this ran on a pool thread. LoadAsync now starts every load on the
+        // dispatcher, but Breadcrumbs is bound to the UI and mutating it from
+        // anywhere else is a crash waiting for a slow directory, so it stays
+        // posted.
         // The column flags depend on the path too — a recent listing shows the
         // parent-path column and hides the metadata one — and they are bound,
         // so they are raised on the same hop rather than from here.
@@ -2519,6 +2559,42 @@ public sealed partial class PaneViewModel : ObservableObject, IDisposable
     private const string Unreachable = "that folder could not be reached";
 
     /// <summary>
+    /// Whether this is a restored tab still asking whether its folder answers,
+    /// before it has listed anything — IsLoading is set through that wait too,
+    /// so that the two doors into LoadRestoredAsync do not both start one.
+    ///
+    /// **A settings save during the probe went round it.** The shell re-lists
+    /// every pane that is loading, and a probing pane is loading; the refresh
+    /// was a load with no probe, it moved the generation on, and the probe's
+    /// quick "could not be reached" was thrown away while the pane sat in a
+    /// listing of the dead share until the server's own timeout. The shell
+    /// leaves such a pane alone — see ShellViewModel.RelistLoadedPanes — which
+    /// loses nothing: if the probe passes, the load it starts reads the new
+    /// settings anyway.
+    /// </summary>
+    internal bool IsProbing { get; private set; }
+
+    /// <summary>
+    /// A listing made by walking a tree — a search, a space listing or a
+    /// duplicates scan — which costs a walk, and for duplicates a hash of every
+    /// candidate, to make again.
+    /// </summary>
+    internal bool IsWalkListing
+        => VirtualPaths.IsSearch(CurrentPath)
+           || VirtualPaths.IsUsage(CurrentPath)
+           || VirtualPaths.IsDuplicates(CurrentPath);
+
+    /// <summary>
+    /// Puts the rows already listed back in order under settings that have just
+    /// changed, without reading anything again. A listing still arriving needs
+    /// nothing: its own ending sorts it under whatever the settings are then.
+    /// </summary>
+    internal void ApplySettingsChange()
+    {
+        if (IsLoaded) ResortInPlace();
+    }
+
+    /// <summary>
     /// The first load of a tab that session restore left standing, which asks
     /// whether the path answers at all before enumerating it.
     ///
@@ -2569,9 +2645,21 @@ public sealed partial class PaneViewModel : ObservableObject, IDisposable
         // never probes — which is a worse bug for being half-hidden.
         if (!VirtualPaths.IsVirtual(path))
         {
-            var reachable = await _fs
-                .IsReachableAsync(path, ReachabilityProbe, CancellationToken.None)
-                .ConfigureAwait(true);
+            bool reachable;
+
+            // Only for the probe itself: once it has answered, what follows is
+            // either the sentence or an ordinary load.
+            IsProbing = true;
+            try
+            {
+                reachable = await _fs
+                    .IsReachableAsync(path, ReachabilityProbe, CancellationToken.None)
+                    .ConfigureAwait(true);
+            }
+            finally
+            {
+                IsProbing = false;
+            }
 
             if (generation != _generation) return;
 
@@ -2980,12 +3068,47 @@ public sealed partial class PaneViewModel : ObservableObject, IDisposable
     {
         if (string.IsNullOrEmpty(path)) return;
 
+        // **A load begun on the pool could slip past a closed tab, and could
+        // lose a watch.** Undo, redo and a failed step await their refresh
+        // with ConfigureAwait(false), so LoadListingAsync's prologue ran on
+        // whichever pool thread carried the operation — beside Dispose and
+        // beside every other load's completion block on the dispatcher, and
+        // sharing four fields with them unguarded. It could pass the closed-tab
+        // check a moment before Dispose ran, then take a fresh generation that
+        // the completion block would match, and install a watcher and a
+        // repository watch on a pane nothing would dispose again. And it could
+        // let go of the watch while a completion block on the dispatcher was
+        // between its generation check and installing its own, so the stale
+        // watch was installed after the teardown and overwritten by the next
+        // load, still running.
+        //
+        // Moved to the dispatcher rather than each field made safe on its own:
+        // the prologue also writes CurrentPath, PathText and Entries, which are
+        // bound, so it belonged there anyway. From then on the generation, the
+        // token source, the watch and the closed-tab flag are only ever touched
+        // on one thread, and Dispose is serialised with all of them.
+        if (!Dispatcher.UIThread.CheckAccess())
+        {
+            await Dispatcher.UIThread.InvokeAsync(() => LoadListingAsync(path));
+            return;
+        }
+
         await LoadListingAsync(path).ConfigureAwait(false);
     }
 
     private async Task LoadListingAsync(string path)
     {
         if (string.IsNullOrEmpty(path)) return;
+
+        // **A closed tab has nothing left to load into.** Dispose nulls the
+        // token source, but that never stopped a load: the next line makes a
+        // new one, and the completion block then starts a watcher and a
+        // repository watch that nothing will dispose. An undo, a retry or an
+        // operation that finishes after the tab has gone all end in a refresh,
+        // and every one of them arrives here — on the dispatcher, as Dispose
+        // does, so nothing can close the tab between this and the generation
+        // taken below. See LoadAsync.
+        if (_disposed) return;
 
         // **Normalised HERE, once, because everything downstream compares
         // against it as a string.** A path with a trailing separator is the same
@@ -3002,7 +3125,7 @@ public sealed partial class PaneViewModel : ObservableObject, IDisposable
         // started working on Windows paths in this same change.
         //
         // Normalising the argument rather than the property, because the same
-        // string is handed to StartWatching and to the version-control refresh
+        // string is handed to OpenWatch and to the version-control refresh
         // further down — fixing only CurrentPath would leave those two comparing
         // a normalised value against a raw one, which is the same bug moved.
         path = VirtualPaths.IsVirtual(path)
@@ -3028,11 +3151,20 @@ public sealed partial class PaneViewModel : ObservableObject, IDisposable
         // the machine — so a path carried into either of those would match and
         // light up a row nobody picked.
         //
-        // Undo and redo reach this from a pool thread (they await the refresh
-        // with ConfigureAwait(false)), so this read is off the UI thread there.
-        // It only reads, and the clear a few lines down has always run in the
-        // same place, so it is no worse than what shipped before.
+        // On the dispatcher, like the rest of this prologue, even when undo or
+        // redo began the refresh on the pool — LoadAsync moves it there first.
         List<string> carry = VirtualPaths.SamePlace(CurrentPath, path) ? SelectedPaths() : [];
+
+        // **F5 read the folder again and left every folder's size as it was.**
+        // The Size column keeps its answers for the session, and a reload is
+        // the moment something here is known, or at least suspected, to have
+        // changed — so what it holds about this folder goes before the rows
+        // come back and ask. Only a reload: arriving somewhere is not news
+        // about it, and scrolling back to a folder you left is what the cache
+        // is for. A virtual listing's rows come from anywhere, so there is no
+        // one folder to forget.
+        if (!VirtualPaths.IsVirtual(path) && VirtualPaths.SamePlace(CurrentPath, path))
+            Thumbnails.RowMetadata.Forget(path);
 
         // Whatever an operation has asked for by name joins them: the row it
         // means does not exist yet, and the one it replaces is already stale.
@@ -3181,6 +3313,12 @@ public sealed partial class PaneViewModel : ObservableObject, IDisposable
         var copies = new Copies();
         IReadOnlyList<string> spare = [];
 
+        // Asked once, for the listing and for the watch below: neither can
+        // follow a name Windows would rewrite.
+        var refusal = VirtualPaths.IsVirtual(path)
+            ? null
+            : Vaktari.Core.FileSystem.ReachablePath.Refuse(path);
+
         var source =
             VirtualPaths.IsRecent(path) ? RecentListing.EnumerateAsync(Recents, path, ct)
             : path == VirtualPaths.Trash ? RecentListing.EnumerateTrashAsync(Trash, ct)
@@ -3205,9 +3343,38 @@ public sealed partial class PaneViewModel : ObservableObject, IDisposable
             // delete there emptied the wrong folder. Such a name cannot be
             // opened by name at all, so it is refused the way a folder that
             // will not list is, with the reason ReachablePath gives.
-            : Vaktari.Core.FileSystem.ReachablePath.Refuse(path) is { } unreachable
+            : refusal is { } unreachable
                 ? RefusedListing(unreachable)
             : _fs.EnumerateAsync(path, options, ct);
+
+        // **Changes made while a folder was loading were dropped.** The watch
+        // was started by the completion block below, after the last row had
+        // arrived, so for the whole of the load nothing was following the
+        // folder being read: a file created behind the enumerator's position
+        // was never listed, and one deleted after it had been read stayed on
+        // screen with nothing behind it, both until the next refresh. A refresh
+        // was no better — the old watch still ran, but under the old
+        // generation, and Drain threw its news away.
+        //
+        // Opened on the pool, and waited for — but only for a moment — before
+        // the enumeration reads anything; see WatchHeadStart for both halves.
+        // Whatever the watch reports while the rows arrive is kept by Drain
+        // until the listing is done. On the pool rather than on this thread,
+        // because PollingWatch reads the whole folder before it answers, and
+        // the completion block used to make it do that on the UI thread.
+        //
+        // The previous folder's watch goes now rather than when this one is
+        // installed: from here on it can only report on a listing that is
+        // being replaced.
+        ReplaceWatch(null);
+
+        var watching = refusal is null && !VirtualPaths.IsVirtual(path)
+            ? Task.Run(() => OpenWatch(path, generation))
+            : Task.FromResult<(IDisposable? Watch, bool Polled)>((null, false));
+
+        // Whether the completion block took the watch. Any other ending — a
+        // load superseded, cancelled or failed — lets it go once it has opened.
+        var installed = false;
 
         var sw = Stopwatch.StartNew();
         var sinceFlush = Stopwatch.StartNew();
@@ -3216,6 +3383,10 @@ public sealed partial class PaneViewModel : ObservableObject, IDisposable
 
         try
         {
+            // Before the first read, so the watch is already following the
+            // folder when the enumerator starts past its first names.
+            await Task.WhenAny(watching, Task.Delay(WatchHeadStart, ct)).ConfigureAwait(false);
+
             await foreach (var batch in source.ConfigureAwait(false))
             {
                 pending.AddRange(batch);
@@ -3256,6 +3427,11 @@ public sealed partial class PaneViewModel : ObservableObject, IDisposable
             }
 
             var enumerateMs = sw.ElapsedMilliseconds;
+
+            // Opened beside the listing, above, and almost always long since
+            // answered; awaited here, on the pool, so a watch still opening on
+            // a slow share holds up nothing but this load's last step.
+            var (watch, polled) = await watching.ConfigureAwait(false);
 
             // Sorting happens once, after enumeration, rather than per batch.
             // Entries appear in readdir order while loading and settle when the
@@ -3307,11 +3483,12 @@ public sealed partial class PaneViewModel : ObservableObject, IDisposable
                 // nothing is open, which is the ordinary case.
                 _ = ReloadExpandedAsync(generation);
 
-                // Nothing to watch: there is no directory behind a recent
-                // listing. Skipped explicitly rather than left to fail inside
-                // StartWatching's catch, because a silently swallowed failure
-                // is exactly the kind of thing that reads as working.
-                var polled = !VirtualPaths.IsVirtual(path) && StartWatching(path);
+                // The watch opened for this listing — none for a virtual one,
+                // which has no directory behind it. Only here, past the
+                // generation guard: a superseded load's watch is let go by the
+                // finally below instead.
+                ReplaceWatch(watch, polled);
+                installed = true;
                 sw.Stop();
 
                 // Cleared, NOT set to the count. Summary already shows
@@ -3324,9 +3501,30 @@ public sealed partial class PaneViewModel : ObservableObject, IDisposable
                 // reason given reads as a slow application. Said here rather
                 // than where the watch fell back, because this line would
                 // clear it.
-                Status = polled ? ReadOnATimer : "";
+                //
+                // **And only when the filter has not already spoken.** A
+                // refresh keeps the filter, and ResortInPlace above has just
+                // written "filtered to N of M" — the one number Summary cannot
+                // give, since it counts only what is on screen. This line used
+                // to wipe it a moment after it was written, leaving the box
+                // full and the listing short with nothing saying by how much.
+                if (Entries.Count == _all.Count) Status = polled ? ReadOnATimer : "";
                 IsLoading = false;
                 IsLoaded = true;
+
+                // Whatever the watch reported while the rows were arriving,
+                // which Drain has been keeping for exactly this moment — unless
+                // it also said it had lost track, in which case what it kept is
+                // not all that happened and the folder is read again. See
+                // Queue. Posted like Drain, so the reload does not begin
+                // inside the block that is still finishing this one; and only
+                // if nothing has replaced this listing by then.
+                if (TakeLost(generation) is { } lost)
+                    Dispatcher.UIThread.Post(() =>
+                    {
+                        if (generation == _generation) LostTrack(lost);
+                    });
+                else Dispatcher.UIThread.Post(Drain);
 
                 // **This is the sentence the walk never said.** Set here rather
                 // than where the truncation was noticed: it is noticed on the
@@ -3413,6 +3611,21 @@ public sealed partial class PaneViewModel : ObservableObject, IDisposable
                 IsLoading = false;
             });
         }
+        finally
+        {
+            // Not awaited: on a share that has gone, the watch may still be
+            // waiting on its timeout long after the listing gave up, and the
+            // load has nothing left to wait for it about.
+            if (!installed)
+                _ = watching.ContinueWith(
+                    static opened =>
+                    {
+                        if (opened.IsCompletedSuccessfully) opened.Result.Watch?.Dispose();
+                    },
+                    CancellationToken.None,
+                    TaskContinuationOptions.None,
+                    TaskScheduler.Default);
+        }
     }
 
 
@@ -3479,10 +3692,16 @@ public sealed partial class PaneViewModel : ObservableObject, IDisposable
     /// is the part Summary cannot express — Summary counts what is on screen
     /// and has no way to say "out of how many". With no filter there is nothing
     /// to add, so it says nothing rather than repeating the count.
+    ///
+    /// **Nothing to add is not the same as nothing to say.** This runs on the
+    /// settle tick after every change the watch reports, and for a folder read
+    /// on a timer the first change the poll found wiped the one message the
+    /// load had of its own — the lag stayed, and the reason for it went. So an
+    /// unfiltered folder that is polled says so again here.
     /// </summary>
     private void UpdateCountStatus()
         => Status = Entries.Count == _all.Count
-            ? ""
+            ? (_polled ? ReadOnATimer : "")
             : $"{Entries.Count:N0} of {_all.Count:N0} items";
 
     /// <summary>
@@ -3695,6 +3914,17 @@ public sealed partial class PaneViewModel : ObservableObject, IDisposable
 
     public void Dispose()
     {
+        // Read by the two doors a finished operation comes back through — see
+        // Track and LoadListingAsync.
+        _disposed = true;
+
+        // **And a load already past its enumeration is stopped too.** Its
+        // completion block is queued on the dispatcher with the generation it
+        // started under, and cancelling the token does not unqueue it — so it
+        // went on to start watching the folder of a tab that no longer exists.
+        // Moving the generation on is what every one of those blocks checks.
+        _generation++;
+
         // **Both static, and both outlive every pane.** A tab closed while the
         // window stays open would otherwise keep answering settings saves and
         // store writes forever, and answering them by posting to a dispatcher
@@ -3723,7 +3953,6 @@ public sealed partial class PaneViewModel : ObservableObject, IDisposable
         _cts?.Dispose();
         _cts = null;
 
-        _watcher?.Dispose();
-        _watcher = null;
+        ReplaceWatch(null);
     }
 }

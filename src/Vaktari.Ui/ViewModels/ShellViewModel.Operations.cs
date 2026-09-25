@@ -495,6 +495,22 @@ public sealed partial class ShellViewModel
     /// the original did.</summary>
     private PaneViewModel? _retryPane;
 
+    /// <summary>
+    /// Where a retry reports: the pane the failed operation finished in, while
+    /// that tab is still open, and the active one once it is not.
+    ///
+    /// **The offer outlives the tab it was made in.** It stays on the bar
+    /// until it is pressed or dismissed, and closing the tab touches neither
+    /// — so pressing Retry afterwards handed the new operation to a disposed
+    /// pane, whose progress nobody could see and whose refresh at the end
+    /// reloaded a tab that no longer exists.
+    /// </summary>
+    private PaneViewModel? RetryPane()
+        => _retryPane is { } pane
+           && (Left.Tabs.Contains(pane) || Right?.Tabs.Contains(pane) == true)
+            ? pane
+            : ActiveTab;
+
     public bool CanRetryOperation => Retryable is not null;
 
     /// <summary>
@@ -577,7 +593,7 @@ public sealed partial class ShellViewModel
         // writes its own, including its own list if it leaves anything behind.
         OperationProblems = [];
 
-        (_retryPane ?? ActiveTab)?.Adopt(offer.Again());
+        RetryPane()?.Adopt(offer.Again());
     }
 
     /// <summary>
@@ -609,7 +625,7 @@ public sealed partial class ShellViewModel
 
         OperationStatus = "waiting for administrator…";
 
-        (_retryPane ?? ActiveTab)?.Adopt(
+        RetryPane()?.Adopt(
             Core.FileSystem.ElevatedRun.Start(launcher, request));
     }
 

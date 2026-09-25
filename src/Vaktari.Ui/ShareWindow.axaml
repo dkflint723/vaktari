@@ -43,10 +43,17 @@
             <Setter Property="Padding" Value="8,3"/>
           </Style>
         </ListBox.Styles>
+        <!-- **Enter on a folder did nothing, and swallowed the key.** This
+             read $parent[ListBox].SelectedItem, and a KeyBinding is not in the
+             logical tree: the binding anchors on the ListBox itself, the walk
+             for a parent starts ABOVE it, and the parameter was always null.
+             The command accepted the null, so the binding marked Enter handled
+             and EnterCommand returned on the empty name. By name instead,
+             which the window's name scope answers without a tree walk. -->
         <ListBox.KeyBindings>
           <KeyBinding Gesture="Enter"
                       Command="{Binding EnterCommand}"
-                      CommandParameter="{Binding $parent[ListBox].SelectedItem}"/>
+                      CommandParameter="{Binding #FolderList.SelectedItem}"/>
         </ListBox.KeyBindings>
       </ListBox>
     </Border>

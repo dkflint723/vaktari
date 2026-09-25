@@ -844,6 +844,16 @@ public partial class MainWindow : Window
         {
             if (TabAt(e.Source) is { } tab)
             {
+                // **The half it was pressed in first, as the × does.** This
+                // branch returns before the ActivateGroupAt at the end of the
+                // handler, so a middle click in the inactive half of a split
+                // reached the shell with the OTHER half active — which is how
+                // it came to close the tab through the wrong group — and left
+                // the keyboard over there afterwards. A left press on the ×
+                // reaches that call before the button sees it; this one has
+                // to make it for itself.
+                ActivateGroupAt(e.Source);
+
                 _shell.CloseTabCommand.Execute(tab);
                 e.Handled = true;
                 return;

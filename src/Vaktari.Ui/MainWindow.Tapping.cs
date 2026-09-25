@@ -16,12 +16,13 @@ namespace Vaktari.Ui;
 /// The memory is three fields, and every read and write of all three is in
 /// this file. <c>_lastTapPath</c> is the row clicked once and not yet paired;
 /// <c>_lastOpenPath</c> and <c>_lastOpenAt</c> are what TryOpen drops a
-/// duplicate against. Nothing outside asks any of them.
+/// duplicate against. Nothing outside asks any of them; the two other ways a
+/// row opens only tell this file to forget, through ForgetTheClick.
 ///
 /// **It is not the only way a file opens**, and the window's own name for the
 /// preference is not the one the rows bind to. Enter opens through
-/// pane.OpenSelectedAsync (MainWindow.Keyboard.cs:493) and the listing menu's
-/// Open through ActiveTab.OpenSelectedCommand (MainWindow.axaml:1797); both
+/// pane.OpenSelectedAsync (OnWindowKeyDown) and the listing menu's Open
+/// through ActiveTab.OpenSelectedCommand (the listing's ContextMenu); both
 /// reach the view model without passing here. TryOpen is the single place the
 /// POINTER opens, which is the claim its own summary should make and does not
 /// — left as it stands, because this is a pure move. The three listing styles
@@ -103,6 +104,25 @@ public partial class MainWindow
 
         _ = _shell.ActiveTab?.OpenAsync(entry);
     }
+
+    /// <summary>
+    /// **A row opened with Enter or the menu stayed remembered as "clicked
+    /// once".** Click a row, press Enter to open it, go Back, and one click on
+    /// that row opened it again — re-launching a program, not just re-entering
+    /// a folder — because TryOpen's own forgetting is the only one there was,
+    /// and neither of those routes passes through TryOpen. The same complaint
+    /// TryOpen's comment fixed for the pointer, reached by the other two roads.
+    ///
+    /// A method rather than a bare assignment at each caller, so every write of
+    /// the pair's memory stays in this file, as the summary above promises.
+    /// Called from OnWindowKeyDown's Enter, and wherever the listing's menu
+    /// opens — the menu opening at all, not its Open row, because a menu
+    /// between two clicks is no more a double-click than a Ctrl+click is. That
+    /// is two callers, not one: a right-click raises the menu's Opening and
+    /// reaches OnListingMenuOpening, but the Menu key opens it through
+    /// ContextMenu.Open in OpenListingMenu, which raises no Opening at all.
+    /// </summary>
+    private void ForgetTheClick() => _lastTapPath = null;
 
     /// <summary>
     /// **Avalonia raises Tapped for the FIRST click and DoubleTapped for the

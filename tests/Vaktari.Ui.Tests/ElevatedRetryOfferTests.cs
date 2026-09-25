@@ -172,6 +172,9 @@ public sealed class ElevatedRetryOfferTests : OwnedViewModels
     /// another before pressing — and the identical expression in the plain
     /// retry beside it has no such test either. What this can see is the two
     /// staying the same as each other, which is the way the pair rots.
+    ///
+    /// Both go through RetryPane now, which also falls back to the active tab
+    /// once the remembered one has closed — ClosedTabStaysClosedTests runs that.
     /// </summary>
     [Fact]
     public void The_administrator_retry_reports_on_the_pane_that_ran_it()
@@ -180,7 +183,7 @@ public sealed class ElevatedRetryOfferTests : OwnedViewModels
 
         Assert.Equal(
             2,
-            source.Split("(_retryPane ?? ActiveTab)?.Adopt(").Length - 1);
+            source.Split("RetryPane()?.Adopt(").Length - 1);
     }
 
     /// <summary>

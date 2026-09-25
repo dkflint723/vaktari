@@ -175,6 +175,14 @@ public sealed partial class ShellViewModel
         OnPropertyChanged(nameof(ShowOpenInNewWindowInMenu));
         OnPropertyChanged(nameof(ShowAddSelectionToPlaces));
         OnPropertyChanged(nameof(ShowAddCurrentToPlaces));
+
+        // **"Save this search to places" kept the visibility of the first menu
+        // it was drawn in.** It shares the slot with the row above and is
+        // computed from the same things, but nothing announced it — and the
+        // menu stays in the tree between openings, so a folder's menu went on
+        // offering to save a search (pinning the folder), and a search's
+        // offered neither row.
+        OnPropertyChanged(nameof(ShowSaveSearchToPlaces));
         OnPropertyChanged(nameof(CanTransferToOtherPane));
     }
 

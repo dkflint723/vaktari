@@ -204,7 +204,9 @@ public sealed partial class FolderTreeViewModel : ObservableObject
     /// <summary>
     /// Whether folders the platform conceals are shown, which the pane decides
     /// and this follows — a tree hiding what the listing beside it shows would
-    /// be two answers about one folder.
+    /// be two answers about one folder. Written by
+    /// <see cref="SidebarViewModel.FollowHidden"/>, which also re-reads what
+    /// is open when it changes — see <see cref="RereadAsync"/>.
     /// </summary>
     [ObservableProperty] private bool _showHidden;
 
@@ -296,9 +298,25 @@ public sealed partial class FolderTreeViewModel : ObservableObject
         // it does in the pane rather than beside it.
         found.Sort(static (a, b) => Core.NaturalOrder.Compare(a.Label, b.Label));
 
+        // **A re-read keeps the nodes it already had**, by path, so a folder
+        // that was open under this one stays open with its own children —
+        // see RereadAsync, which is the only way an open node is read twice.
+        // On a first open there is nothing to keep and this is a plain fill.
+        var kept = new Dictionary<string, FolderNode>(PathRules.Comparer);
+
+        foreach (var child in node.Children) kept.TryAdd(child.Path, child);
+
+        var children = found
+            .Select(child => kept.Remove(child.Path, out var had) ? had : child)
+            .ToList();
+
+        // What has gone is closed on the way out, for Forget's reason: a read
+        // still pending under it must not land.
+        foreach (var gone in kept.Values) gone.IsExpanded = false;
+
         node.Children.Clear();
 
-        foreach (var child in found) node.Children.Add(child);
+        foreach (var child in children) node.Children.Add(child);
 
         // **The triangle goes when the folder turns out to hold nothing**, and
         // this is the moment it could first be known — see MayHaveChildren.
@@ -306,6 +324,58 @@ public sealed partial class FolderTreeViewModel : ObservableObject
 
         Reflow();
     }
+
+    /// <summary>
+    /// Reads every open folder again, keeping open what is still there, and
+    /// then reveals <paramref name="path"/>.
+    ///
+    /// **Showing hidden folders in the pane left the tree answering the old
+    /// question.** <see cref="EnsureOpenAsync"/> does not re-read a folder that
+    /// is already open — rightly, see Revealing_twice_reads_each_folder_once —
+    /// so a home folder opened without its hidden children went on lacking
+    /// them after the switch, and a reveal into ~/.config stopped at home
+    /// because the step it wanted was not a child. The open folders are the
+    /// ones that were read under the old rule, so they are the ones read
+    /// again; a closed one reads under the new rule when it is next opened.
+    ///
+    /// Top down and one at a time, so a folder is read after its parent has
+    /// decided whether it still exists.
+    ///
+    /// **It revealed where the pane had been when it started.** The pane's
+    /// hidden-files answer can change a moment before the pane's place does —
+    /// switching to a tab that shows them, or a folder whose remembered view
+    /// turns them on, both change the answer first — so the path this was
+    /// given was the folder being left. The newer place's own reveal ran at
+    /// once, through folders still read under the old rule, and stopped short;
+    /// then this finished last and marked the folder the pane had left.
+    /// <paramref name="where"/> is asked when the reading is done, so what is
+    /// revealed is wherever the pane is by then.
+    /// </summary>
+    public async Task RereadAsync(Func<string?> where)
+    {
+        async Task Walk(IEnumerable<FolderNode> nodes)
+        {
+            // Over a copy: the read below replaces the collection being walked.
+            foreach (var node in nodes.ToList())
+            {
+                if (!node.IsExpanded) continue;
+
+                await OpenAsync(node).ConfigureAwait(true);
+
+                await Walk(node.Children).ConfigureAwait(true);
+            }
+        }
+
+        await Walk(Roots).ConfigureAwait(true);
+
+        await RevealAsync(where()).ConfigureAwait(true);
+    }
+
+    /// <summary>
+    /// Counts reveals, so that only the newest one may mark a row. See
+    /// <see cref="RevealAsync"/>.
+    /// </summary>
+    private int _reveals;
 
     /// <summary>
     /// Opens the branch down to <paramref name="path"/>, so that where the pane
@@ -321,9 +391,19 @@ public sealed partial class FolderTreeViewModel : ObservableObject
     /// being roots reveals under the one that says more. Nothing is opened at
     /// all when the path is under none of them, which is the ordinary case for
     /// a virtual listing: the bin is not in any tree.
+    ///
+    /// **An older reveal could finish last and mark the folder already left.**
+    /// A reveal waits on a read at every level it has to open, and the pane
+    /// does not wait for it: go into a branch nobody has opened and then
+    /// straight to a folder whose branch is open, and the second reveal marked
+    /// its row at once while the first was still reading — then the first one
+    /// landed and moved the mark back. Each reveal takes a number on the way in
+    /// and gives up after any wait if a newer one has started since.
     /// </summary>
     public async Task RevealAsync(string? path)
     {
+        var mine = ++_reveals;
+
         if (string.IsNullOrEmpty(path)) return;
 
         var root = Roots
@@ -344,6 +424,8 @@ public sealed partial class FolderTreeViewModel : ObservableObject
             if (!PathRules.Contains(root.Path, step)) continue;
 
             await node.EnsureOpenAsync().ConfigureAwait(true);
+
+            if (mine != _reveals) return;
 
             if (node.Children.FirstOrDefault(c => PathRules.Same(c.Path, step)) is not { } next)
                 return;

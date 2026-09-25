@@ -489,6 +489,15 @@ public sealed partial class PaneGroupViewModel : ObservableObject
         if (Tabs.Count <= 1) return;
 
         var index = Tabs.IndexOf(pane);
+
+        // **A tab this side does not hold is not this side's to close.** Asked
+        // to, it used to go ahead: Remove quietly did nothing, but the tab was
+        // still filed under THIS side's reopen list and disposed — so it stayed
+        // on screen in the other half with nothing behind it, and Ctrl+Shift+T
+        // here put back a tab that had never been here. The shell now names the
+        // right group; this is what stops the next caller that does not.
+        if (index < 0) return;
+
         var wasActive = ActiveTab == pane;
 
         // **Remembered before it is torn down.** Closing a tab threw its whole

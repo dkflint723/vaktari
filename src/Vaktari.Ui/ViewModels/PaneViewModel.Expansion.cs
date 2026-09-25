@@ -76,6 +76,11 @@ public sealed partial class PaneViewModel
     /// <see cref="ReloadExpandedAsync"/>.</summary>
     private bool _reloading;
 
+    /// <summary>The listing whose reload of the open folders arrived while
+    /// another was running, and so still has to be done — see
+    /// <see cref="ReloadExpandedAsync"/>. Null when none is owed.</summary>
+    private int? _reloadWanted;
+
     /// <summary>
     /// How deep each spliced row sits. The depths, not the pixels: the pixels
     /// depend on the pane's zoom and this does not, so a zoom rebuilds
@@ -507,9 +512,21 @@ public sealed partial class PaneViewModel
         // that had not answered left three un-cancellable enumerations in
         // flight, because ReadChildrenAsync takes CancellationToken.None and a
         // refresh is what a rename, a paste, a delete and an undo all end in.
-        // A refresh that arrives while one is running is dropped: the one
-        // running is reading the same folders from the same disk.
-        if (_reloading) return;
+        //
+        // **Dropped, but not forgotten.** A refresh that arrives while one is
+        // running used to be dropped outright, on the reasoning that the one
+        // running was reading the same folders — but the one running belongs
+        // to the listing before, and the generation check below throws its
+        // rows away the moment it sees the newer one. Neither reload
+        // published anything, and the open folders went on showing what they
+        // held before both refreshes until a third. So the newer listing is
+        // written down here and read again when the running one ends, which
+        // still keeps one reload in flight at a time.
+        if (_reloading)
+        {
+            _reloadWanted = generation;
+            return;
+        }
 
         _reloading = true;
 
@@ -531,6 +548,17 @@ public sealed partial class PaneViewModel
 
             Republish();
         }
-        finally { _reloading = false; }
+        finally
+        {
+            _reloading = false;
+
+            // Only for the listing on screen: a reload asked for by one that
+            // has since been left behind is as stale as the one that ended.
+            if (_reloadWanted == _generation)
+            {
+                _reloadWanted = null;
+                _ = ReloadExpandedAsync(_generation);
+            }
+        }
     }
 }

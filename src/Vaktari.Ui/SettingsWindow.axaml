@@ -1365,10 +1365,14 @@
                  while a key is on offer, the two answers to it. Polite, so a
                  screen reader says a refusal without anybody going to find it. -->
             <DockPanel IsVisible="{Binding Keyboard.HasStatus}">
-              <StackPanel DockPanel.Dock="Right" Orientation="Horizontal" Spacing="8" Margin="8,0,0,0"
+              <!-- Named for the code-behind, which lets Tab, Enter and Space
+                   reach these two while a row listens, and gives Take it the
+                   keyboard when an offer appears. -->
+              <StackPanel x:Name="OfferAnswers"
+                          DockPanel.Dock="Right" Orientation="Horizontal" Spacing="8" Margin="8,0,0,0"
                           IsVisible="{Binding Keyboard.IsOffering}">
-                <Button Content="Take it" Padding="10,2" Command="{Binding Keyboard.TakeItCommand}"/>
-                <Button Content="Keep it there" Padding="10,2" Command="{Binding Keyboard.KeepItCommand}"/>
+                <Button x:Name="TakeItButton" Content="Take it" Padding="10,2" Command="{Binding Keyboard.TakeItCommand}"/>
+                <Button x:Name="KeepItButton" Content="Keep it there" Padding="10,2" Command="{Binding Keyboard.KeepItCommand}"/>
               </StackPanel>
               <TextBlock Text="{Binding Keyboard.Status}"
                          AutomationProperties.LiveSetting="Polite"

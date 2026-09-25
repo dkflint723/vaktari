@@ -1,6 +1,11 @@
 using System.Reflection;
 using Avalonia.Headless.XUnit;
+using Avalonia.Threading;
 using Vaktari.Core.FileSystem;
+using Vaktari.Core.Session;
+using Vaktari.Core.Settings;
+using Vaktari.Ui.Session;
+using Vaktari.Ui.Settings;
 using Vaktari.Ui.ViewModels;
 using Xunit;
 
@@ -109,4 +114,102 @@ public sealed class WindowTitleTests : OwnedViewModels
                         RepoSource.Body(RepoSource.UiClass("", "MainWindow"), site));
     }
 
+    // ---- and every open WINDOW ---------------------------------------------
+
+    // A static the windows below read, so it goes back however the test ends.
+    private readonly SettingsState _settingsBefore = AppSettings.Current;
+
+    public override void Dispose()
+    {
+        AppSettings.Apply(_settingsBefore);
+
+        base.Dispose();
+        GC.SuppressFinalize(this);
+    }
+
+    private static void ShowFullPath(bool on)
+        => AppSettings.Apply(AppSettings.Current with
+        {
+            Startup = AppSettings.Current.Startup with { ShowFullPathInTitleBar = on },
+        });
+
+    /// <summary>
+    /// **"Show full path in title bar" reached only the window the dialog was
+    /// opened from.** Each window keeps its own copy of the flag, and the save
+    /// set it on that one window alone — so a second window went on naming
+    /// itself the old way, on every navigation, until a restart.
+    ///
+    /// Two real windows, because the fault is in which windows a save visits:
+    /// a title worked out by hand for a second pane would be a peer this code
+    /// path has no way of finding.
+    /// </summary>
+    [AvaloniaFact]
+    public async Task A_save_retitles_every_open_window()
+    {
+        await EmptySessionAsync();
+        UseSearch(null);
+
+        var founder = new MainWindow();
+
+        try
+        {
+            founder.Show();
+            Dispatcher.UIThread.RunJobs();
+
+            founder.Shell.NewWindowCommand.Execute(null);
+            Dispatcher.UIThread.RunJobs();
+
+            var peer = founder.Services.Windows.First(w => !ReferenceEquals(w, founder));
+            var pane = peer.Shell.ActiveTab;
+
+            // After the windows exist, because a window's constructor applies
+            // the settings file it finds and would overwrite anything set
+            // before it.
+            ShowFullPath(false);
+            founder.SettingsChangedEverywhere();
+
+            // The premise: the peer is somewhere whose leaf and whole path read
+            // differently, and it is showing the leaf.
+            Assert.NotEqual(TitleFor(pane, fullPath: false), TitleFor(pane, fullPath: true));
+            Assert.Equal(TitleFor(pane, fullPath: false), peer.Title);
+
+            ShowFullPath(true);
+            founder.SettingsChangedEverywhere();
+
+            Assert.Equal(TitleFor(pane, fullPath: true), peer.Title);
+        }
+        finally
+        {
+            foreach (var window in founder.Services.Windows.ToList().AsEnumerable().Reverse())
+            {
+                try { window.Close(); }
+                catch (Exception ex) { Vaktari.Core.Quiet.Swallowed("test-teardown", ex); }
+            }
+
+            Dispatcher.UIThread.RunJobs();
+        }
+    }
+
+    /// <summary>
+    /// The session this test's window starts from, so it does not restore
+    /// whatever an earlier test in this class left behind — the state directory
+    /// is per test class and a closing window writes its own session into it.
+    /// </summary>
+    private static async Task EmptySessionAsync()
+    {
+        var directory = TestState.Current();
+
+        Directory.CreateDirectory(directory);
+
+        var store = new JsonSessionStore(directory);
+
+        store.NotifyChanged(new SessionState
+        {
+            Version = SessionState.CurrentVersion,
+            Windows = [],
+        });
+
+        await store.FlushAsync(CancellationToken.None);
+        await store.DisposeAsync();
+    }
 }

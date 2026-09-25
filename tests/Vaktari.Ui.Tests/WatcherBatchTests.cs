@@ -308,6 +308,122 @@ public sealed class WatcherBatchTests : OwnedViewModels
         Assert.Equal(["a.txt", "z.txt"], Names(pane));
     }
 
+    // ---- news that arrives while the folder is still loading ---------------
+
+    /// <summary>
+    /// **Changes made while a folder was loading were dropped.** The watch
+    /// started only once the last row had arrived, and Drain emptied the queue
+    /// and threw the batch away whenever IsLoading was set — so a file created
+    /// behind the enumerator never appeared, and one deleted after it was read
+    /// stayed on screen, both until the next refresh.
+    ///
+    /// Two halves, both needed: the watch has to be following the folder while
+    /// the listing is held (the wait below times out otherwise), and what it
+    /// says then has to be kept until the listing is done rather than dropped.
+    /// b.txt is in the listing the enumeration hands back, so its removal
+    /// only shows if the news outlived the load.
+    /// </summary>
+    [AvaloniaFact]
+    public async Task News_that_arrives_while_the_folder_is_loading_is_applied_once_it_has()
+    {
+        var fs = new Folder(["a.txt", "b.txt"]);
+        var pane = Own(new PaneViewModel(fs, null, null) { ViewportWidth = 1400 });
+
+        fs.Hold();
+
+        var loading = pane.NavigateAsync(Path.GetTempPath());
+
+        await Until(() => fs.Watches > 0 && fs.Enumerations > 0, "nothing was following the folder while it loaded");
+
+        fs.Describe("new.txt");
+
+        fs.Raise(new FileSystemChange(ChangeKind.Added, Child(pane, "new.txt")));
+        fs.Raise(new FileSystemChange(ChangeKind.Removed, Child(pane, "b.txt")));
+
+        // The pass the first event posts runs here, mid-load, which is where
+        // it used to take the batch and drop it.
+        await Settle();
+
+        Assert.True(pane.IsLoading, "the load finished before the news arrived, so this proves nothing");
+
+        fs.Release();
+        await loading;
+
+        await Until(() => Names(pane).Contains("new.txt"), "a file created mid-load never appeared");
+
+        Assert.Equal(["a.txt", "new.txt"], Names(pane));
+    }
+
+    /// <summary>
+    /// **An overflow while the folder loaded was thrown away.** The watch runs
+    /// during the load now, so its buffer can overrun there too — a big folder
+    /// read while an archive is extracted into it — and the post that answers
+    /// Lost by reading the folder again returned without a word while
+    /// IsLoading was set. The load then replayed the news that had got through
+    /// as though it were all of it, and nothing said the listing was short.
+    ///
+    /// A second read of the folder is the answer only a reload can give.
+    /// </summary>
+    [AvaloniaFact]
+    public async Task Losing_track_while_the_folder_loads_reads_it_again()
+    {
+        var fs = new Folder(["a.txt"]);
+        var pane = Own(new PaneViewModel(fs, null, null) { ViewportWidth = 1400 });
+
+        fs.Hold();
+
+        var loading = pane.NavigateAsync(Path.GetTempPath());
+
+        await Until(() => fs.Watches > 0 && fs.Enumerations > 0, "the load never got as far as reading");
+
+        fs.Raise(new FileSystemChange(ChangeKind.Lost, pane.CurrentPath));
+
+        // The post the overflow makes runs here, mid-load, which is where it
+        // used to drop it.
+        await Settle();
+
+        Assert.True(pane.IsLoading, "GUARD: the load finished before the overflow, so this proves nothing");
+
+        fs.Release();
+        await loading;
+
+        await Until(() => fs.Enumerations > 1 && pane.IsLoaded,
+            "the watch lost track mid-load and the folder was never read again");
+    }
+
+    /// <summary>
+    /// **The watch opened beside the listing, and the listing went first.**
+    /// A file created after the enumerator had passed its place, but before
+    /// the watcher was running, was neither listed nor reported — and no
+    /// watcher can report something from before it existed, so the only cure
+    /// is for it to exist before the first read.
+    /// </summary>
+    [AvaloniaFact]
+    public async Task The_watch_is_open_before_the_folder_is_read()
+    {
+        // Well inside the bound the load waits for a watch, and long enough
+        // that a read which did not wait is certain to go first.
+        var fs = new Folder(["a.txt"]) { WatchTakes = TimeSpan.FromMilliseconds(60) };
+        var pane = Own(new PaneViewModel(fs, null, null) { ViewportWidth = 1400 });
+
+        await pane.NavigateAsync(Path.GetTempPath());
+
+        Assert.Equal(["watch", "read"], fs.Asked);
+    }
+
+    private static async Task Until(Func<bool> condition, string because)
+    {
+        var deadline = DateTime.UtcNow + TimeSpan.FromSeconds(5);
+
+        while (!condition() && DateTime.UtcNow < deadline)
+        {
+            Dispatcher.UIThread.RunJobs();
+            await Task.Delay(5);
+        }
+
+        Assert.True(condition(), because);
+    }
+
     // ---- the shape the cost depends on --------------------------------------
 
     /// <summary>
@@ -356,11 +472,42 @@ public sealed class WatcherBatchTests : OwnedViewModels
         /// the watcher that folder was given rather than the current one.</summary>
         public void RaiseOn(int watcher, FileSystemChange change) => _watchers[watcher](change);
 
+        private TaskCompletionSource? _gate;
+        private int _watches;
+
+        /// <summary>Holds the next listing open until <see cref="Release"/>,
+        /// after it has said which folder it is reading.</summary>
+        public void Hold() => _gate = new TaskCompletionSource();
+
+        public void Release() => _gate?.SetResult();
+
+        /// <summary>How many watches have been opened. Read on the test's
+        /// thread and counted on the pool, where the pane opens them.</summary>
+        public int Watches => Volatile.Read(ref _watches);
+
+        private int _enumerations;
+        private readonly List<string> _order = [];
+
+        /// <summary>How many listings have started reading.</summary>
+        public int Enumerations => Volatile.Read(ref _enumerations);
+
+        /// <summary>"watch" and "read" in the order the pane asked for them:
+        /// a watch opened, and a listing's first read.</summary>
+        public IReadOnlyList<string> Asked
+        {
+            get { lock (_order) return [.. _order]; }
+        }
+
         public async IAsyncEnumerable<IReadOnlyList<FileEntry>> EnumerateAsync(
             string path, ListingOptions options,
             [System.Runtime.CompilerServices.EnumeratorCancellation] CancellationToken ct)
         {
             _root = path;
+
+            lock (_order) _order.Add("read");
+            Interlocked.Increment(ref _enumerations);
+
+            if (_gate is { } gate) await gate.Task.ConfigureAwait(false);
 
             await Task.CompletedTask;
 
@@ -374,9 +521,19 @@ public sealed class WatcherBatchTests : OwnedViewModels
                     ? entry
                     : (FileEntry?)null);
 
+        /// <summary>How long opening a watch takes. A watcher on a busy pool
+        /// or a slow mount is not instant, and the order below is only a
+        /// question once it is not.</summary>
+        public TimeSpan WatchTakes { get; set; }
+
         public IDisposable Watch(string path, Action<FileSystemChange> onChange)
         {
-            _watchers.Add(onChange);
+            if (WatchTakes > TimeSpan.Zero) Thread.Sleep(WatchTakes);
+
+            lock (_watchers) _watchers.Add(onChange);
+            lock (_order) _order.Add("watch");
+
+            Interlocked.Increment(ref _watches);
             return new Nothing();
         }
 

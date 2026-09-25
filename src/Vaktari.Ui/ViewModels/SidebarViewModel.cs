@@ -156,6 +156,12 @@ public sealed partial class SidebarViewModel : ObservableObject, IDisposable
             SidebarSections.Folders => nameof(IsFoldersCollapsed),
             _ => nameof(CollapsedSections),
         });
+
+        // **Unfolding the tree showed wherever it had been when it was
+        // folded.** A folded tree does not follow the pane — see FollowInTree
+        // — and nothing else brought it up to date, so the branch and the mark
+        // were one navigation stale until the next one.
+        if (key == SidebarSections.Folders && !collapsed) FollowInTree();
     }
 
     /// <summary>
@@ -207,6 +213,81 @@ public sealed partial class SidebarViewModel : ObservableObject, IDisposable
     /// </summary>
     public bool ShowFolderTree =>
         Tree is not null && Settings.AppSettings.Current.Views.ShowFolderTree;
+
+    /// <summary>
+    /// Re-raises <see cref="ShowFolderTree"/> after a settings save, and brings
+    /// the tree up to where the pane is if that just made it visible.
+    ///
+    /// **Ticking the box did nothing until a restart.** The property is read
+    /// from the live settings and nothing ever said it had changed, so the
+    /// section's IsVisible binding kept the answer it got when the window
+    /// opened. The catch-up is the other half: a tree that was switched off
+    /// has not been following the pane, and would appear showing only its
+    /// roots.
+    /// </summary>
+    public void RefreshFolderTreeVisibility()
+    {
+        OnPropertyChanged(nameof(ShowFolderTree));
+
+        FollowInTree();
+    }
+
+    /// <summary>
+    /// Set when the tree's idea of hidden folders changed while nobody could
+    /// see it, so the next time it is shown it re-reads rather than only
+    /// revealing — see <see cref="FollowHidden"/>.
+    /// </summary>
+    private bool _treeStale;
+
+    /// <summary>
+    /// Takes whether hidden folders are shown from the active pane.
+    ///
+    /// **The tree never showed a hidden folder.** Its ShowHidden had no writer
+    /// outside the tests, so every read left them out and a reveal into
+    /// ~/.config or AppData stopped one level short. Changing it also has to
+    /// re-read what is open, because those folders were read under the old
+    /// rule — and while the tree is hidden that waits for it to be shown, for
+    /// the same reason a hidden tree does not follow the pane.
+    /// </summary>
+    public void FollowHidden(bool show)
+    {
+        if (Tree is null || Tree.ShowHidden == show) return;
+
+        Tree.ShowHidden = show;
+
+        _treeStale = true;
+
+        FollowInTree();
+    }
+
+    /// <summary>
+    /// Brings the tree to <see cref="CurrentPath"/>, if anybody can see it.
+    ///
+    /// **Only while the section is shown and open.** Revealing opens a branch
+    /// and reads a folder per level. It used to ask only whether the section
+    /// was folded, and the setting is off by default while the tree is always
+    /// built — so every navigation into a branch not yet open read the root
+    /// and each folder down to it, for a tree that was not on screen. Every
+    /// moment it can fall behind or come back into view — the pane moving, the
+    /// pane showing hidden files, unfolding the section and switching it on —
+    /// comes through here, so it catches up at each of them.
+    /// </summary>
+    private void FollowInTree()
+    {
+        if (Tree is null || !ShowFolderTree || IsFoldersCollapsed) return;
+
+        if (_treeStale)
+        {
+            _treeStale = false;
+
+            // Asked when the reading is done, not now — see RereadAsync.
+            _ = Tree.RereadAsync(() => CurrentPath);
+        }
+        else
+        {
+            _ = Tree.RevealAsync(CurrentPath);
+        }
+    }
 
     public bool IsSharingCollapsed
     {
@@ -305,12 +386,7 @@ public sealed partial class SidebarViewModel : ObservableObject, IDisposable
 
         CurrentPath = wanted;
 
-        // **Only while the section is open.** Revealing opens a branch and
-        // reads a folder per level, and doing that for a tree nobody can see —
-        // folded away, or switched off entirely — is work for no one. The tree
-        // catches up the moment it is unfolded, because unfolding goes through
-        // the same call.
-        if (Tree is not null && !IsFoldersCollapsed) _ = Tree.RevealAsync(path);
+        FollowInTree();
 
         OnPropertyChanged(nameof(IsRecentFilesCurrent));
         OnPropertyChanged(nameof(IsRecentLocationsCurrent));

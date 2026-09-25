@@ -490,6 +490,11 @@ public partial class MainWindow : ICommandHost
         {
             case Key.Enter:
                 e.Handled = true;
+
+                // The row just opened is no longer "clicked once": left
+                // remembered, one later click on it opened it again. See
+                // ForgetTheClick.
+                ForgetTheClick();
                 _ = pane.OpenSelectedAsync();
                 break;
 

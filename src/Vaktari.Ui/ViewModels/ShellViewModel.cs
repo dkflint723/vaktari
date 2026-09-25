@@ -680,13 +680,62 @@ public sealed partial class ShellViewModel : ObservableObject, IDisposable
     /// alone cannot express: dropping them leaves whatever is already drawn
     /// exactly as it is.
     /// </summary>
-    public void RefreshPaneListings()
+    public void RefreshPaneListings() => RelistLoadedPanes(spareWalks: false);
+
+    /// <summary>
+    /// Lists again every pane that has a listing to redo, and leaves alone the
+    /// ones that have none.
+    ///
+    /// **Every settings save loaded each restored tab nobody had opened.** Both
+    /// callers ran RefreshCommand over every tab, and a refresh asks neither
+    /// IsLoaded nor IsActive: it is LoadAsync of CurrentPath, which RestoreFrom
+    /// has already set. So a session of twenty tabs paid twenty listings,
+    /// twenty watchers and twenty version-control passes for a settings save —
+    /// the startup cost lazy restore exists to avoid — and went round the
+    /// reachability probe LoadRestoredAsync puts in front of a restored tab's
+    /// first load.
+    ///
+    /// A tab that has never loaded has no rows ordered under the old rule and
+    /// no icons drawn from the old source, so it has nothing to redo: its first
+    /// activation reads it under the new settings anyway. IsLoading as well as
+    /// IsLoaded, because a listing still arriving was sorted under the old rule
+    /// too, and a refresh is what makes it finish under the new one.
+    ///
+    /// **But not a restored tab still in its reachability probe**, which is
+    /// loading and has listed nothing: refreshing it went round the probe after
+    /// all, and threw its quick answer away — see PaneViewModel.IsProbing.
+    ///
+    /// **And, on a settings save, not a walk left in the background.** The
+    /// first version of this skipped only the tabs that had never loaded, so a
+    /// duplicates scan left finished in another tab re-walked its tree and
+    /// re-hashed its candidates on every save, and a search or a space listing
+    /// walked again. Such a tab is put back in order under the new rule instead
+    /// — ApplySettingsChange — without reading anything. The tab each group is
+    /// showing is still listed again, walk or not: it is the one being looked
+    /// at, and whatever the save changed has to show there in full. A change
+    /// of icon source (<paramref name="spareWalks"/> false)
+    /// still lists every loaded tab, because every tab's rows stay alive behind
+    /// the one on screen and RowIcon draws a row's icon once. A save that only
+    /// switches the desktop's icons on or off therefore leaves a walk in the
+    /// background with the icons it was drawn with until it is refreshed.
+    /// </summary>
+    private void RelistLoadedPanes(bool spareWalks)
     {
         // Left and Right, not a Groups collection — see RefreshPaneScales.
         foreach (var group in new[] { Left, Right })
-            if (group is not null)
-                foreach (var tab in group.Tabs)
+        {
+            if (group is null) continue;
+
+            foreach (var tab in group.Tabs)
+            {
+                if (tab.IsProbing || !(tab.IsLoaded || tab.IsLoading)) continue;
+
+                if (spareWalks && tab.IsWalkListing && !ReferenceEquals(tab, group.ActiveTab))
+                    tab.ApplySettingsChange();
+                else
                     tab.RefreshCommand.Execute(null);
+            }
+        }
     }
 
     public Func<WindowSession>? GeometryProvider { get; set; }
@@ -787,6 +836,16 @@ public sealed partial class ShellViewModel : ObservableObject, IDisposable
         newValue.IsActiveGroup = true;
 
         OnPropertyChanged(nameof(ActiveTab));
+
+        // **The sidebar went on following the side just left.** It is told
+        // where the active pane is — and whether that pane shows hidden
+        // folders — by a group's LocationChanged, and a group becoming the
+        // active one raises none. So clicking into the other half of a split
+        // left the folder tree without the dot folders that half's listing
+        // showed, and the highlight on the other side's place, until that half
+        // next moved.
+        SyncSidebarLocation();
+
         OnPropertyChanged(nameof(ActiveStatus));
         OnPropertyChanged(nameof(OtherGroup));
         OnPropertyChanged(nameof(CompareSummary));

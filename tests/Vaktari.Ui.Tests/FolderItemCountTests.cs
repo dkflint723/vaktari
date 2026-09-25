@@ -1,4 +1,6 @@
+using Avalonia.Controls;
 using Avalonia.Headless.XUnit;
+using Avalonia.Threading;
 using Vaktari.Core.FileSystem;
 using Vaktari.Core.Settings;
 using Vaktari.Ui.Thumbnails;
@@ -125,16 +127,90 @@ public sealed class FolderItemCountTests
     [Fact]
     public void A_measured_folder_and_a_counted_one_are_kept_apart()
         => Assert.NotEqual(
-            RowMetadata.CacheKey(@"C:\things", RowMetadata.SizeFill.Count),
-            RowMetadata.CacheKey(@"C:\things", RowMetadata.SizeFill.Measure));
+            RowMetadata.CacheKey(Folder("things"), RowMetadata.SizeFill.Count),
+            RowMetadata.CacheKey(Folder("things"), RowMetadata.SizeFill.Measure));
+
+    /// <summary>Counts every question and answers with the count.</summary>
+    private sealed class Asked : IFileMetadataProvider
+    {
+        private int _count;
+
+        public int Count => Volatile.Read(ref _count);
+
+        public bool CanDescribe(string path, bool isDirectory) => true;
+
+        public ValueTask<string?> DescribeAsync(string path, bool isDirectory, CancellationToken ct)
+            => ValueTask.FromResult<string?>($"asked {Interlocked.Increment(ref _count)}");
+
+        public ValueTask<string?> DescribeAccessAsync(string path, bool isDirectory, CancellationToken ct)
+            => ValueTask.FromResult<string?>(null);
+    }
 
     /// <summary>
-    /// And the count keeps the key the details line already uses, because it is
-    /// the same call on the same path — sharing that one is the point.
+    /// And the count keeps the key the details line uses, because it is the
+    /// same call on the same path — sharing that key is the point.
+    ///
+    /// **This used to check only the shape of CacheKey's answer**, which the
+    /// details line never has to use: it builds its key for itself, and had it
+    /// gone back to a key of its own spelling the two would have stopped
+    /// sharing a slot — one question per folder become two, and the details
+    /// line's answer no longer tied to the folder's modified time — with this
+    /// still passing. So both fills are driven: the details line first, and
+    /// then the Size cell must find its answer waiting rather than ask.
     /// </summary>
-    [Fact]
-    public void A_counted_folder_shares_the_key_the_details_line_uses()
-        => Assert.Equal("m:" + @"C:\things", RowMetadata.CacheKey(@"C:\things", RowMetadata.SizeFill.Count));
+    [AvaloniaFact]
+    public async Task A_counted_folder_shares_the_key_the_details_line_uses()
+    {
+        var providerBefore = RowMetadata.Provider;
+        var settingsBefore = Vaktari.Ui.Settings.AppSettings.Current;
+
+        var asked = new Asked();
+
+        // A path of its own, so no answer another test left in the cache can
+        // stand in for this one.
+        var row = new FileEntry(
+            "things",
+            Path.Combine(Path.GetTempPath(), "vaktari-shared-" + Guid.NewGuid().ToString("N")),
+            0, DateTimeOffset.UnixEpoch, EntryFlags.Directory);
+
+        try
+        {
+            RowMetadata.Provider = asked;
+
+            Vaktari.Ui.Settings.AppSettings.Apply(settingsBefore with
+            {
+                Views = settingsBefore.Views with
+                {
+                    Details = settingsBefore.Views.Details with { FolderSize = FolderSizeMode.ItemCount },
+                },
+            });
+
+            var key = RowMetadata.CacheKey(row, RowMetadata.SizeFill.Count);
+
+            RowMetadata.SetEntry(new TextBlock(), row);
+
+            for (var i = 0; i < 400 && !RowMetadata.Holds(key); i++)
+            {
+                await Task.Delay(5);
+                Dispatcher.UIThread.RunJobs();
+            }
+
+            Assert.True(RowMetadata.Holds(key), "the details line did not keep its answer under the count's key");
+            Assert.Equal(1, asked.Count);
+
+            var size = new TextBlock();
+
+            RowMetadata.SetSize(size, row);
+
+            Assert.Equal("asked 1", size.Text);
+            Assert.Equal(1, asked.Count);
+        }
+        finally
+        {
+            RowMetadata.Provider = providerBefore;
+            Vaktari.Ui.Settings.AppSettings.Apply(settingsBefore);
+        }
+    }
 
     // ---- and the cell is actually wired to it -------------------------------
 

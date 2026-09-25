@@ -110,6 +110,37 @@ public sealed class UnwatchableFolderTests : OwnedViewModels
     }
 
     /// <summary>
+    /// **And it went on being told only until the poll found something.** Every
+    /// change the watch reports ends in the settle tick, which rewrites the
+    /// status with the count — and for an unfiltered folder that was nothing at
+    /// all, so the first file to arrive took the notice with it while the lag
+    /// it explains stayed.
+    ///
+    /// The settle tick raises ListingSettled on the line after it writes the
+    /// status, so a settle counted after the file arrived is that write done.
+    /// </summary>
+    [AvaloniaFact]
+    public async Task The_notice_outlives_the_first_change_the_poll_finds()
+    {
+        var pane = await Opened(watchable: false);
+
+        await Until(
+            () => (pane.Status ?? "").Contains(Notice, StringComparison.Ordinal),
+            "GUARD: the load never gave the notice in the first place");
+
+        var settled = 0;
+        pane.ListingSettled += (_, _) => settled++;
+
+        File.WriteAllText(Path.Combine(_root, "arrived.txt"), "new");
+
+        await Until(
+            () => pane.Entries.Any(e => e.Name == "arrived.txt") && settled > 0,
+            "the poll never reported the file, or the listing never settled after it");
+
+        Assert.Contains(Notice, pane.Status ?? "", StringComparison.Ordinal);
+    }
+
+    /// <summary>
     /// GUARD, not a test of the change, and it says so: a folder whose watcher
     /// starts is not given the notice. It passes before the change as well —
     /// it is here so the notice cannot become something every folder says.

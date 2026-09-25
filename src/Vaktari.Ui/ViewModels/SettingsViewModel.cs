@@ -276,6 +276,14 @@ public sealed partial class SettingsViewModel : ObservableObject
         LocationBarEditable = startup.LocationBarEditable;
         ShowFullPathInTitleBar = startup.ShowFullPathInTitleBar;
 
+        // **Restore defaults left the terminal on whatever was chosen before.**
+        // Only UseTerminals picked a row, and it runs once, when the dialog
+        // opens — so a restore reset every control but this one, and Save
+        // wrote the old terminal straight back. Picked from the list as it
+        // stands: at construction that is the one "whichever is found first"
+        // row, and UseTerminals picks again once the real list arrives.
+        SelectPreferredTerminal();
+
         Keyboard.Load(current.Keyboard);
     }
 
@@ -977,10 +985,17 @@ public sealed partial class SettingsViewModel : ObservableObject
 
         OnPropertyChanged(nameof(AvailableTerminals));
 
-        SelectedTerminal =
+        SelectPreferredTerminal();
+    }
+
+    /// <summary>The row the seeded state names, or "whichever is found first"
+    /// when it names nothing on the list. Shared by <see cref="Seed"/> and
+    /// <see cref="UseTerminals"/>, so a restore and a fresh list pick the same
+    /// way.</summary>
+    private void SelectPreferredTerminal()
+        => SelectedTerminal =
             AvailableTerminals.FirstOrDefault(t => t.Id == _original.General.PreferredTerminal)
             ?? AvailableTerminals[0];
-    }
 
     /// <summary>
     /// The running build, shown in the dialog's footer.

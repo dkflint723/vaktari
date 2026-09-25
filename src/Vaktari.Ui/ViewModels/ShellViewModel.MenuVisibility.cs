@@ -192,8 +192,16 @@ public sealed partial class ShellViewModel
     /// Keeps the sidebar's highlight on the place the active pane is showing.
     /// The shell is the only thing that knows which pane that is, which is the
     /// same reason it owns the navigation callback.
+    ///
+    /// Whether hidden folders show goes first, and for the same reason: the
+    /// folder tree follows the ACTIVE pane's answer, and a reveal into a dot
+    /// folder made under the other answer stops one level short.
     /// </summary>
-    public void SyncSidebarLocation() => Sidebar.SetCurrentPath(ActiveTab?.CurrentPath);
+    public void SyncSidebarLocation()
+    {
+        Sidebar.FollowHidden(ActiveTab?.ShowHidden ?? false);
+        Sidebar.SetCurrentPath(ActiveTab?.CurrentPath);
+    }
 
     /// <summary>
     /// Re-writes every pane's metrics, for a change that came from outside the

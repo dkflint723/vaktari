@@ -61,7 +61,7 @@ public sealed partial class PaneViewModel
         catch (Exception refused)
         {
             // **The marks stopped following commits when this could not start,
-            // as the listing stopped following its folder** — StartWatching has
+            // as the listing stopped following its folder** — OpenWatch has
             // the measurement. Read on the same timer, and without a word on the
             // status line: a mark a few seconds late is not worth a message of
             // its own.
@@ -97,28 +97,82 @@ public sealed partial class PaneViewModel
     /// Read on a timer instead, by the watch a network mount already gets,
     /// which asks nothing of inotify. A real watcher is tried again on the next
     /// load, because every load comes through here.
+    ///
+    /// **Opened, not installed**, and on whatever thread asks: LoadListingAsync
+    /// starts this on the pool just ahead of the enumeration and installs what
+    /// it answers once the listing has finished — see the comment where it does.
+    /// The watch reports under <paramref name="generation"/>, the listing it
+    /// was opened for.
     /// </summary>
-    private bool StartWatching(string path)
+    private (IDisposable? Watch, bool Polled) OpenWatch(string path, int generation)
     {
-        _watcher?.Dispose();
-        _watcher = null;
-
-        var generation = _generation;
-
         void Changed(FileSystemChange change) => Queue(path, generation, change);
 
         try
         {
-            _watcher = _fs.Watch(path, Changed);
-            return false;
+            return (_fs.Watch(path, Changed), false);
         }
         catch (Exception refused)
         {
             NotWatching(path, refused);
-            _watcher = Polled(path, Changed);
-            return _watcher is not null;
+
+            var polled = Polled(path, Changed);
+
+            return (polled, polled is not null);
         }
     }
+
+    /// <summary>
+    /// Whether the folder on screen is read on a timer, so a line that clears
+    /// the status can put <see cref="ReadOnATimer"/> back rather than wipe it —
+    /// see <c>UpdateCountStatus</c>. Set where the load installs its watch.
+    /// </summary>
+    private bool _polled;
+
+    /// <summary>
+    /// The one way <c>_watcher</c> changes: whatever it held is disposed as it
+    /// is replaced.
+    ///
+    /// **A watch could be overwritten and left running.** The load's prologue
+    /// let go of the old watch and its completion block assigned the new one
+    /// bare, and with the prologue able to run on the pool a stale watch could
+    /// be installed after the teardown and then assigned over — an inotify
+    /// instance, or a timer re-reading the folder, for the rest of the session,
+    /// and a closure keeping the pane alive after its tab had closed. The
+    /// prologue is on the dispatcher now (see LoadAsync), so nothing should be
+    /// held here when a load installs; this is what makes that not matter.
+    /// On the dispatcher only, like every caller.
+    /// </summary>
+    private void ReplaceWatch(IDisposable? next, bool polled = false)
+    {
+        var old = _watcher;
+
+        _watcher = next;
+        _polled = polled;
+
+        old?.Dispose();
+    }
+
+    /// <summary>
+    /// How long a load waits for its watch to open before it starts reading
+    /// the folder anyway.
+    ///
+    /// **A file created while the folder loaded could be missed for good.**
+    /// The watch was opened beside the enumeration, and the enumeration's first
+    /// read went first: a file created after the enumerator had passed its
+    /// place, but before the watcher was running, was neither listed nor
+    /// reported. A watcher cannot report what happened before it existed, so
+    /// the only cure is for it to exist first.
+    ///
+    /// Bounded, not awaited outright, because on a share whose server has gone
+    /// the watch waits on that server's timeout — and so does the first read
+    /// PollingWatch makes when the watcher refuses. Awaited outright, the pane
+    /// would sit through both before the listing even began to fail. A local
+    /// watcher starts in well under this, so there the gap is closed; on a dead
+    /// share the listing starts a quarter of a second late and says what is
+    /// wrong in the usual way.
+    /// </summary>
+    private static readonly TimeSpan WatchHeadStart = TimeSpan.FromMilliseconds(250);
 
     /// <summary>
     /// A watch that reads <paramref name="path"/> on a timer — or null when the
@@ -171,11 +225,24 @@ public sealed partial class PaneViewModel
         // and this may not be the UI thread.
         if (change.Kind is ChangeKind.Lost or ChangeKind.Gone)
         {
+            // **Kept, because the listing it is about may still be arriving.**
+            // The watch runs during the load, so an overflow can happen there —
+            // a folder being read while an archive is extracted into it is the
+            // likeliest place for one — and the post below drops anything that
+            // lands while IsLoading is set. The load's own ending takes it from
+            // here instead, and reloads rather than replaying the part of the
+            // news that got through as though it were all of it.
+            lock (_pendingGate)
+            {
+                if (generation > _lostGeneration) (_lostGeneration, _lostKind) = (generation, change.Kind);
+                else if (generation == _lostGeneration && change.Kind == ChangeKind.Gone) _lostKind = change.Kind;
+            }
+
             Dispatcher.UIThread.Post(() =>
             {
                 if (IsLoading || generation != _generation || CurrentPath != watchedPath) return;
 
-                LostTrack(change.Kind);
+                if (TakeLost(generation) is { } kind) LostTrack(kind);
             });
 
             return;
@@ -205,6 +272,14 @@ public sealed partial class PaneViewModel
             // closure so that it always judges the batch it is holding.
             if (_pendingGeneration != generation)
             {
+                // **Only forward.** A load now opens its watch while the one
+                // before is still being let go — see LoadListingAsync — so a
+                // late event from the old watch can arrive after the new one
+                // has started filling the queue, and emptying it for that
+                // would throw away news about the listing on screen for news
+                // about one that is not.
+                if (generation < _pendingGeneration) return;
+
                 _pendingGone.Clear();
                 _pendingHere.Clear();
                 _pendingGeneration = generation;
@@ -257,6 +332,18 @@ public sealed partial class PaneViewModel
 
     private void QueueVcsRefresh()
     {
+        // **A closed tab went on following its repository.** The .git watcher
+        // posts here from its own thread, so a post already on its way when
+        // the tab closed — a checkout or a pull writes HEAD and the index over
+        // and over — arrived after Dispose and started the timer Dispose had
+        // just stopped. The tick read the generation Dispose had moved on to,
+        // so the status it asked for matched, and its answer started a new
+        // repository watch on the dead pane: a `git status` for a tab nobody
+        // could see, a watcher nothing would dispose, and every later write to
+        // .git doing it again. The one gate: nothing else restarts the timer,
+        // and Dispose stops it on this same thread.
+        if (_disposed) return;
+
         if (Vcs is null || VirtualPaths.IsVirtual(CurrentPath)) return;
 
         if (_vcsRefresh is null)
@@ -384,6 +471,34 @@ public sealed partial class PaneViewModel
 
     private readonly Lock _pendingGate = new();
 
+    /// <summary>
+    /// The newest listing whose watch said it had lost track — overflowed, or
+    /// found its folder gone — and which of the two, Gone winning because it is
+    /// the worse news. -1 is none. Under <see cref="_pendingGate"/>, beside the
+    /// queue it makes incomplete.
+    /// </summary>
+    private int _lostGeneration = -1;
+
+    /// <inheritdoc cref="_lostGeneration"/>
+    private ChangeKind _lostKind;
+
+    /// <summary>
+    /// What the watch for <paramref name="generation"/> lost track with, if it
+    /// did, taken so that only one of the two doors that can act on it does:
+    /// the post Queue makes, or the ending of a load it arrived during.
+    /// </summary>
+    private ChangeKind? TakeLost(int generation)
+    {
+        lock (_pendingGate)
+        {
+            if (_lostGeneration != generation) return null;
+
+            _lostGeneration = -1;
+
+            return _lostKind;
+        }
+    }
+
     private void Arriving(string path) => _pendingHere.Add(path);
 
     private void Departing(string path)
@@ -420,6 +535,20 @@ public sealed partial class PaneViewModel
 
             if (_pendingGone.Count == 0 && _pendingHere.Count == 0) return;
 
+            // **Kept, not taken, while the listing they are about is still
+            // arriving.** The watch starts ahead of the enumeration, so a change
+            // made mid-load reaches here while IsLoading is set — and this used
+            // to empty the queue and then drop the batch at the check below. A
+            // file created behind the enumerator's position was never listed,
+            // and one deleted after it had been read stayed as a row with
+            // nothing behind it, until the next refresh. The load posts a pass
+            // of its own once it has finished, and that one applies them:
+            // replaying an arrival the listing already holds is safe, because
+            // StatAndApplyAsync takes the old row out before it puts the new
+            // one in.
+            if (IsLoading && _pendingGeneration == _generation && CurrentPath == _pendingPath)
+                return;
+
             departures = new HashSet<string>(_pendingGone, StringComparer.Ordinal);
             arriving = [.. _pendingHere];
             generation = _pendingGeneration;
@@ -429,7 +558,8 @@ public sealed partial class PaneViewModel
             _pendingHere.Clear();
         }
 
-        // Events can arrive after the user has navigated away, or mid-load.
+        // Events can arrive after the user has navigated away, or mid-load for
+        // a listing that a newer one has already replaced.
         if (IsLoading || generation != _generation || CurrentPath != watchedPath) return;
 
         // The rows' sizes and timestamps are updated below, but their version

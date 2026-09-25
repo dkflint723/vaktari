@@ -100,6 +100,11 @@ public partial class MainWindow
     /// </summary>
     private void OnListingMenuOpening(object? sender, System.ComponentModel.CancelEventArgs e)
     {
+        // First, above every return in here: the menu's Open does not pass
+        // through TryOpen, so the row it opens would otherwise stay "clicked
+        // once" and open again on a single later click. See ForgetTheClick.
+        ForgetTheClick();
+
         if (sender is not ContextMenu menu) return;
 
         // **Re-read on every menu open, which is what their own comments always

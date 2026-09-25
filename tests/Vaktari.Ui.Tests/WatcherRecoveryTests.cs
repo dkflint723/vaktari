@@ -39,7 +39,8 @@ public sealed class WatcherRecoveryTests : OwnedViewModels
         var listings = fs.Listings;
 
         fs.Raise(new FileSystemChange(ChangeKind.Lost, pane.CurrentPath));
-        Dispatcher.UIThread.RunJobs();
+
+        await Reread(fs, listings);
 
         Assert.True(fs.Listings > listings, "the listing was never re-read");
     }
@@ -60,7 +61,8 @@ public sealed class WatcherRecoveryTests : OwnedViewModels
         var listings = fs.Listings;
 
         fs.Raise(new FileSystemChange(ChangeKind.Gone, pane.CurrentPath));
-        Dispatcher.UIThread.RunJobs();
+
+        await Reread(fs, listings);
 
         Assert.True(fs.Listings > listings, "the pane kept its phantom rows");
     }
@@ -87,6 +89,24 @@ public sealed class WatcherRecoveryTests : OwnedViewModels
         Dispatcher.UIThread.RunJobs();
 
         Assert.Equal(listings, fs.Listings);
+    }
+
+    /// <summary>
+    /// Pumps until the folder has been read again, or a bound runs out.
+    ///
+    /// **Not one turn any more.** The reload used to begin its read in the very
+    /// job that asked for it; it now waits, briefly, for its watch to open
+    /// first — see PaneViewModel.WatchHeadStart — so the read lands a pool hop
+    /// later. Waited for rather than counted in turns, the rule every
+    /// load-dependent wait in this suite has had to learn.
+    /// </summary>
+    private static async Task Reread(Watched fs, int listings)
+    {
+        for (var i = 0; i < 400 && fs.Listings <= listings; i++)
+        {
+            Dispatcher.UIThread.RunJobs();
+            await Task.Delay(5);
+        }
     }
 
     private sealed class Watched : IFileSystemProvider

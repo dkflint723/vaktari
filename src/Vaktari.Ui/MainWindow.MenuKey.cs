@@ -91,6 +91,12 @@ public partial class MainWindow
             // MainWindow, with the fourth row focused, the popup's own
             // PlacementTarget came back as that ListBoxItem, bounds 0,90 by
             // 1185x30 — the fourth 30px row.
+            //
+            // **And Open() does not raise Opening**, so OnListingMenuOpening
+            // never hears about this route — measured, a headless ContextMenu
+            // opened this way raised it zero times. The click memory it clears
+            // is cleared here for the keyboard's menu. See ForgetTheClick.
+            ForgetTheClick();
             menu.Open(host);
             return;
         }

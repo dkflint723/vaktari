@@ -71,14 +71,28 @@ public partial class MainWindow
     /// Every window, not every SHELL: the pane dictionaries hang off controls,
     /// and it is <see cref="ShellViewModel.OnSettingsChanged"/> that makes each
     /// pane rewrite its own.
+    ///
+    /// **"Show full path in title bar" reached only the window the dialog was
+    /// opened from.** Each window keeps its own copy of the flag, and the save
+    /// handler set that copy on <c>this</c> alone — so every peer window went
+    /// on titling itself the old way, on every navigation, until a restart.
+    /// Set here, from the settings just applied, because this loop is the one
+    /// place that already visits every window in the family.
     /// </summary>
     internal void SettingsChangedEverywhere()
     {
+        var fullPath = AppSettings.Current.Startup.ShowFullPathInTitleBar;
+
         // Over a copy: OnSettingsChanged reaches most of a window, and the
         // family list is the one every window adds itself to and removes itself
         // from — iterating it live would be trusting that none of that runs.
         foreach (var window in _services.Windows.ToList())
+        {
             window.Shell.OnSettingsChanged();
+
+            window._fullPathInTitle = fullPath;
+            window.RefreshTitle();
+        }
     }
     /// <summary>
     /// Saving swaps AppSettings.Current and writes the file. Most of what the
@@ -335,11 +349,9 @@ public partial class MainWindow
 
             // Most settings are read at the moment they matter. Sorting and the
             // status bar are not — a listing already on screen was ordered under
-            // the old rule, and a visibility binding needs telling.
+            // the old rule, and a visibility binding needs telling. The title
+            // bar's full-path choice goes with it, to every window.
             SettingsChangedEverywhere();
-
-            _fullPathInTitle = model.Result.Startup.ShowFullPathInTitleBar;
-            RefreshTitle();
         };
 
         window.ShowDialog(this);

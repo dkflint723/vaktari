@@ -153,6 +153,40 @@ public sealed class StatusCountTests : OwnedViewModels
         Assert.DoesNotContain("(", pane.Summary);
     }
 
+    // ---- and what the filter hides ---------------------------------------------
+
+    /// <summary>
+    /// **A refresh behind a filter wiped the line saying how much it hid.** A
+    /// refresh keeps the filter, the end of the load filters the new rows and
+    /// writes "filtered to N of M" — and the line after it cleared the status
+    /// for the load's own message. The box still held its words and the
+    /// listing was still short, with nothing left saying out of how many.
+    ///
+    /// Waited for before the refresh, so the filter's own debounced pass has
+    /// already run and cannot write the line back afterwards.
+    /// </summary>
+    [AvaloniaFact]
+    public async Task A_refresh_behind_a_filter_still_says_how_much_it_hides()
+    {
+        var pane = await Listing(Row("a.txt"), Row("b.txt"), Row("c.txt"));
+
+        pane.FilterText = "a.";
+
+        var deadline = DateTime.UtcNow + TimeSpan.FromSeconds(5);
+
+        while (pane.Status != "filtered to 1 of 3" && DateTime.UtcNow < deadline)
+        {
+            Avalonia.Threading.Dispatcher.UIThread.RunJobs();
+            await Task.Delay(10);
+        }
+
+        Assert.Equal("filtered to 1 of 3", pane.Status);
+
+        await pane.RefreshAsync();
+
+        Assert.Equal("filtered to 1 of 3", pane.Status);
+    }
+
     private sealed class Canned(IReadOnlyList<FileEntry> rows) : IFileSystemProvider
     {
         public async IAsyncEnumerable<IReadOnlyList<FileEntry>> EnumerateAsync(

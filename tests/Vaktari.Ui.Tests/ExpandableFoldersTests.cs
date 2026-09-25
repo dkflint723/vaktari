@@ -1517,6 +1517,54 @@ public sealed class ExpandableFoldersTests : OwnedViewModels
     }
 
     /// <summary>
+    /// **A refresh that arrived while the open folders were being re-read left
+    /// them stale.** The second refresh's reload was dropped because one was
+    /// already running, and the running one then threw its rows away on
+    /// seeing the newer listing — so neither published, and a file added to
+    /// an open folder stayed invisible until a third refresh. The dropped one
+    /// is now owed and run once the running one ends.
+    ///
+    /// Waited for rather than settled: the held read answers on a thread pool
+    /// continuation, which no count of dispatcher pumps is sure to outlast —
+    /// see Drain.
+    /// </summary>
+    [AvaloniaFact]
+    public async Task A_refresh_while_the_open_folders_are_being_re_read_still_re_reads_them()
+    {
+        var (pane, fs) = await Pane();
+
+        await Open(pane, In("docs"));
+
+        // The first refresh's re-read of docs is parked, and the second
+        // refresh arrives while it is.
+        fs.Hold(In("docs"));
+
+        await pane.RefreshAsync();
+        await Settle();
+
+        await pane.RefreshAsync();
+        await Settle();
+
+        fs.Put(In("docs"),
+               Tree.Dir("inner"), Tree.File("kid-a.txt"), Tree.File("kid-b.txt"),
+               Tree.File("kid-c.txt"));
+
+        fs.Release(In("docs"));
+
+        var deadline = DateTime.UtcNow + TimeSpan.FromSeconds(5);
+
+        while (!Names(pane).Contains("kid-c.txt") && DateTime.UtcNow < deadline)
+        {
+            Dispatcher.UIThread.RunJobs();
+            await Task.Delay(5);
+        }
+
+        Assert.Equal(
+            ["docs", "inner", "kid-a.txt", "kid-b.txt", "kid-c.txt", "a.txt", "z.txt"],
+            Names(pane));
+    }
+
+    /// <summary>
     /// **Closing a folder closes what was opened inside it**, and the listing
     /// goes back to being Entries itself — the identity rule the whole design
     /// rests on.

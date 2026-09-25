@@ -298,6 +298,37 @@ public class SettingsFileTests : IDisposable
     }
 
     /// <summary>
+    /// **And the terminal, which it used to leave alone.** The chooser's row
+    /// was picked once, when the dialog handed it the detected list, and the
+    /// restore never picked again — so a restore followed by Save wrote the
+    /// old terminal straight back while every other control said "default".
+    /// </summary>
+    [AvaloniaFact]
+    public void Restoring_defaults_puts_the_terminal_back()
+    {
+        var vm = Model(new SettingsState
+        {
+            General = new GeneralSettings { PreferredTerminal = "konsole" },
+        });
+
+        vm.UseTerminals(
+        [
+            new Vaktari.Core.FileSystem.TerminalOption("konsole", "Konsole", "/usr/bin/konsole", []),
+            new Vaktari.Core.FileSystem.TerminalOption("xterm", "XTerm", "/usr/bin/xterm", []),
+        ]);
+
+        // The premise, or the assertion below would pass on a dialog that
+        // never selected anything at all.
+        Assert.Equal("konsole", vm.SelectedTerminal?.Id);
+
+        vm.RestoreDefaultsCommand.Execute(null);
+        vm.SaveCommand.Execute(null);
+
+        Assert.Equal(new SettingsState().General.PreferredTerminal, vm.Result.General.PreferredTerminal);
+        Assert.Equal("", vm.SelectedTerminal?.Id);
+    }
+
+    /// <summary>
     /// **Nothing reaches disk until Save**, which is why there is no
     /// confirmation: Cancel discards a restore exactly as it discards any other
     /// change, so the defaults are on screen to be looked at first.

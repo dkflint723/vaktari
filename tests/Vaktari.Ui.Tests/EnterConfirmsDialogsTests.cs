@@ -208,6 +208,58 @@ public sealed class EnterConfirmsDialogsTests
     }
 
     /// <summary>
+    /// **Share: Enter on a folder in the list goes into it**, as a double-click
+    /// does — and shares nothing.
+    ///
+    /// It did nothing, and took the key with it: the list's Enter binding read
+    /// its folder through <c>$parent[ListBox]</c>, which a KeyBinding cannot
+    /// reach, so the command was handed null, returned, and still counted as
+    /// having answered. Pressed at the real window with the list focused,
+    /// because the fault was the binding resolving, which only a key can show.
+    /// </summary>
+    [AvaloniaFact]
+    public void Enter_on_a_folder_in_the_share_list_goes_into_it()
+    {
+        var root = Path.Combine(Path.GetTempPath(), "vaktari-enter-" + Guid.NewGuid().ToString("N")[..8]);
+
+        Directory.CreateDirectory(Path.Combine(root, "inner"));
+
+        try
+        {
+            var shared = new List<string>();
+
+            var model = new ShareRequestViewModel(
+                root, (path, _) => { shared.Add(path); return Task.CompletedTask; });
+
+            var window = new ShareWindow(model);
+
+            window.Show();
+            window.UpdateLayout();
+
+            var list = window.FindControl<ListBox>("FolderList")!;
+
+            list.SelectedItem = "inner";
+            window.UpdateLayout();
+
+            var row = Assert.IsType<ListBoxItem>(list.ContainerFromIndex(0));
+
+            row.Focus();
+            Assert.Same(row, window.FocusManager?.GetFocusedElement());
+
+            Enter(window);
+
+            Assert.Equal(Path.Combine(root, "inner"), model.Path);
+            Assert.Empty(shared);
+
+            window.Close();
+        }
+        finally
+        {
+            try { Directory.Delete(root, recursive: true); } catch { /* temp */ }
+        }
+    }
+
+    /// <summary>
     /// Not vacuous, and the other half of the rule the Escape tests state.
     ///
     /// **The main window must have no default button**, for the same reason it

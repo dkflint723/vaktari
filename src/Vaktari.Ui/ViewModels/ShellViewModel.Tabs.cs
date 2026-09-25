@@ -294,15 +294,31 @@ public sealed partial class ShellViewModel
         if (first is not null) ActiveGroup.ActiveTab = first;
     }
 
+    /// <summary>
+    /// Closes a tab, or the side it was the last of, or the window.
+    ///
+    /// **A middle click closed tabs on the wrong side of a split.** The press
+    /// names its tab without activating the half it sits in, and every branch
+    /// here asked the ACTIVE group — so a tab in the other half fell through to
+    /// the active group's CloseTab, which disposed it, filed it under its own
+    /// reopen list, and left it standing in the other half: drawn, clickable,
+    /// and with no watcher, no settings subscription and no timers behind it.
+    /// The group that owns the pane is what every branch has to ask, and it is
+    /// only the active one when no pane is named.
+    /// </summary>
     [RelayCommand]
     private void CloseTab(PaneViewModel? pane)
     {
+        var group = pane is null ? ActiveGroup
+            : Right is { } right && right.Tabs.Contains(pane) ? right
+            : Left;
+
         // Closing the last tab of the right side collapses the split rather
         // than refusing, which is what the user actually means.
-        if (Right is not null && ActiveGroup.Tabs.Count <= 1 &&
-            (pane is null || ActiveGroup.Tabs.Contains(pane)))
+        if (Right is not null && group.Tabs.Count <= 1 &&
+            (pane is null || group.Tabs.Contains(pane)))
         {
-            if (ReferenceEquals(ActiveGroup, Right)) { ToggleSplit(); return; }
+            if (ReferenceEquals(group, Right)) { ToggleSplit(); return; }
 
             // Closing the last left tab: promote the right side to be the only one.
             var survivor = Right;
@@ -320,14 +336,14 @@ public sealed partial class ShellViewModel
         // split both Ctrl+W and the tab's × were drawn, clickable, tooltipped
         // and inert — and there was no Ctrl+Q either, so the keyboard could not
         // close the window at all.
-        if (Right is null && ActiveGroup.Tabs.Count <= 1
-            && (pane is null || ActiveGroup.Tabs.Contains(pane)))
+        if (Right is null && group.Tabs.Count <= 1
+            && (pane is null || group.Tabs.Contains(pane)))
         {
             CloseRequested?.Invoke(this, EventArgs.Empty);
             return;
         }
 
-        ActiveGroup.CloseTab(pane);
+        group.CloseTab(pane);
     }
 
     /// <summary>

@@ -688,6 +688,188 @@ public sealed class KeyboardPageTests
         }
     }
 
+    private static Button Answer(Window window, string label)
+        => window.GetVisualDescendants().OfType<Button>().Single(b => b.Content as string == label);
+
+    /// <summary>A key pressed for Pin current folder that Show sidebar has,
+    /// from a keyboard sitting on Pin's own Add key — the way somebody who
+    /// never touches the mouse gets an offer.</summary>
+    private static (KeyRow Pin, KeyRow Sidebar) OfferCtrlB(SettingsViewModel vm, Window window)
+    {
+        var pin = Row(vm.Keyboard, "PinCurrent");
+        var add = window.GetVisualDescendants().OfType<Button>()
+            .First(b => ReferenceEquals(b.DataContext, pin) && ReferenceEquals(b.Command, pin.AddCommand));
+
+        add.Focus();
+        Pump();
+
+        window.KeyPress(Key.Enter, RawInputModifiers.None, PhysicalKey.Enter, null);
+        Pump();
+
+        Assert.Same(pin, vm.Keyboard.Listening);
+
+        window.KeyPress(Key.B, RawInputModifiers.Control, PhysicalKey.B, null);
+        Pump();
+
+        Assert.True(vm.Keyboard.IsOffering, "Ctrl+B was not offered, so there is nothing to answer");
+
+        return (pin, Row(vm.Keyboard, "Sidebar"));
+    }
+
+    /// <summary>
+    /// **Take it had no keyboard route.** Every key goes to the listening row,
+    /// and an offer leaves the row listening, so the keyboard stayed on Add
+    /// key and Enter was refused as a key for the row. Now the offer's first
+    /// answer takes the keyboard as it appears, and Enter on it takes the key
+    /// — and saves nothing, as Enter on any focused button.
+    /// </summary>
+    [AvaloniaFact]
+    public void The_offer_takes_the_keyboard_and_enter_takes_the_key()
+    {
+        var vm = new SettingsViewModel(new SettingsState());
+        var window = new SettingsWindow(vm);
+
+        window.Show();
+        Pump();
+
+        try
+        {
+            OpenKeyboardPage(window);
+
+            var (pin, sidebar) = OfferCtrlB(vm, window);
+
+            Assert.Same(Answer(window, "Take it"), window.FocusManager?.GetFocusedElement());
+
+            window.KeyPress(Key.Enter, RawInputModifiers.None, PhysicalKey.Enter, null);
+            Pump();
+
+            Assert.Equal([G("Ctrl+D"), G("Ctrl+B")], pin.Gestures);
+            Assert.Equal([G("F9")], sidebar.Gestures);
+            Assert.False(vm.Keyboard.IsOffering);
+            Assert.False(vm.Saved, "Enter on Take it saved the dialog");
+        }
+        finally
+        {
+            window.Close();
+        }
+    }
+
+    /// <summary>
+    /// **Tab toward the answers withdrew them.** It was a key pressed instead
+    /// of an answer, so the offer went and the buttons hid before focus could
+    /// land. While a key is on offer Tab and Shift+Tab walk between the two,
+    /// and Space presses the one the keyboard is on.
+    /// </summary>
+    [AvaloniaFact]
+    public void Tab_walks_the_answers_and_space_presses_one()
+    {
+        var vm = new SettingsViewModel(new SettingsState());
+        var window = new SettingsWindow(vm);
+
+        window.Show();
+        Pump();
+
+        try
+        {
+            OpenKeyboardPage(window);
+
+            var (pin, sidebar) = OfferCtrlB(vm, window);
+            var take = Answer(window, "Take it");
+            var keep = Answer(window, "Keep it there");
+
+            take.Focus();
+            Pump();
+
+            window.KeyPress(Key.Tab, RawInputModifiers.None, PhysicalKey.Tab, null);
+            Pump();
+
+            Assert.True(vm.Keyboard.IsOffering, "Tab withdrew the offer");
+            Assert.Same(keep, window.FocusManager?.GetFocusedElement());
+
+            window.KeyPress(Key.Tab, RawInputModifiers.Shift, PhysicalKey.Tab, null);
+            Pump();
+
+            Assert.True(vm.Keyboard.IsOffering, "Shift+Tab withdrew the offer");
+            Assert.Same(take, window.FocusManager?.GetFocusedElement());
+
+            window.KeyPress(Key.Tab, RawInputModifiers.None, PhysicalKey.Tab, null);
+            Pump();
+
+            window.KeyPress(Key.Space, RawInputModifiers.None, PhysicalKey.Space, " ");
+            window.KeyRelease(Key.Space, RawInputModifiers.None, PhysicalKey.Space, " ");
+            Pump();
+
+            Assert.False(vm.Keyboard.IsOffering);
+            Assert.Null(vm.Keyboard.Listening);
+            Assert.Equal([G("Ctrl+D")], pin.Gestures);
+            Assert.Equal([G("Ctrl+B"), G("F9")], sidebar.Gestures);
+            Assert.Contains("stays with", vm.Keyboard.Status, StringComparison.Ordinal);
+        }
+        finally
+        {
+            window.Close();
+        }
+    }
+
+    /// <summary>The Add key button on <paramref name="row"/>'s line.</summary>
+    private static Button AddKey(Window window, KeyRow row)
+        => window.GetVisualDescendants().OfType<Button>()
+            .First(b => ReferenceEquals(b.DataContext, row) && ReferenceEquals(b.Command, row.AddCommand));
+
+    /// <summary>
+    /// **Answering the offer from the keyboard left the keyboard nowhere.** The
+    /// answers take focus when the offer appears, and every way it ends hides
+    /// them with focus still on one — Enter on Take it, Escape, or any other
+    /// key pressed, which withdraws the offer. Nothing gave focus back, so the
+    /// next Tab started from the top of the dialog instead of from the row
+    /// being edited. It goes back to that row's Add key, where it was.
+    /// </summary>
+    [AvaloniaTheory]
+    [InlineData("take it")]
+    [InlineData("escape")]
+    [InlineData("another key")]
+    public void Ending_the_offer_gives_the_keyboard_back_to_the_row(string how)
+    {
+        var vm = new SettingsViewModel(new SettingsState());
+        var window = new SettingsWindow(vm);
+
+        window.Show();
+        Pump();
+
+        try
+        {
+            OpenKeyboardPage(window);
+
+            var (pin, _) = OfferCtrlB(vm, window);
+
+            Assert.Same(Answer(window, "Take it"), window.FocusManager?.GetFocusedElement());
+
+            switch (how)
+            {
+                case "take it":
+                    window.KeyPress(Key.Enter, RawInputModifiers.None, PhysicalKey.Enter, null);
+                    break;
+
+                case "escape":
+                    window.KeyPress(Key.Escape, RawInputModifiers.None, PhysicalKey.Escape, null);
+                    break;
+
+                default:
+                    window.KeyPress(Key.F12, RawInputModifiers.Control, PhysicalKey.F12, null);
+                    break;
+            }
+
+            Pump();
+
+            Assert.False(vm.Keyboard.IsOffering, "GUARD: the offer is still standing, so nothing ended it");
+            Assert.Same(AddKey(window, pin), window.FocusManager?.GetFocusedElement());
+        }
+        finally
+        {
+            window.Close();
+        }
+    }
+
     /// <summary>
     /// **At the dialog's floor every command's name stays clear of its
     /// buttons.** The page is about 300px wide there, and a name that ran on

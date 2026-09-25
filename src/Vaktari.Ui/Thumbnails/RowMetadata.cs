@@ -16,9 +16,38 @@ public static class RowMetadata
 {
     private const int MaxCached = 2000;
 
-    private static readonly Dictionary<string, string?> Cache = new(StringComparer.Ordinal);
+    /// <summary>The key prefix of a measured total, which is the one answer a
+    /// change far below its folder can make wrong.</summary>
+    private const string TotalPrefix = "b:";
+
+    /// <summary>
+    /// What a key holds, and which path it is an answer about.
+    ///
+    /// The path is carried beside the text rather than read back out of the
+    /// key, because <see cref="Forget(IEnumerable{string})"/> has to match it at a separator and a
+    /// key now carries a timestamp as well — a key parsed apart would be a
+    /// second spelling of <see cref="CacheKey"/> to keep in step with it.
+    /// </summary>
+    private readonly record struct Remembered(string Path, string? Text);
+
+    private static readonly Dictionary<string, Remembered> Cache = new(StringComparer.Ordinal);
     private static readonly Queue<string> Order = new();
     private static readonly object Gate = new();
+
+    /// <summary>
+    /// How many times anything has been forgotten, under <see cref="Gate"/>. A
+    /// fetch reads it before it goes to the disk and keeps its answer only if
+    /// it has not moved — see <see cref="Remember"/>.
+    /// </summary>
+    private static long _forgets;
+
+    /// <summary>
+    /// How many passes <see cref="Forget(IEnumerable{string})"/> has made over
+    /// the cache. For tests: the answers come out the same whether an
+    /// operation's paths are forgotten in one pass or one pass each, and the
+    /// difference is the whole of the cost.
+    /// </summary>
+    internal static int Passes { get; private set; }
 
     public static IFileMetadataProvider? Provider { get; set; }
 
@@ -195,15 +224,20 @@ public static class RowMetadata
             if (Provider is null) return;
             if (!Provider.CanDescribe(value.FullPath, isDirectory: true)) return;
 
-            var key = CacheKey(value.FullPath, fill);
+            var key = CacheKey(value, fill);
+
+            long epoch;
 
             lock (Gate)
             {
                 if (Cache.TryGetValue(key, out var cached))
                 {
-                    if (cached is { Length: > 0 }) target.Text = cached;
+                    if (cached.Text is { Length: > 0 }) target.Text = cached.Text;
                     return;
                 }
+
+                // Read with the miss, before the walk — see Remember.
+                epoch = _forgets;
             }
 
             var counted = fill == SizeFill.Measure
@@ -212,7 +246,7 @@ public static class RowMetadata
                     .DescribeAsync(value.FullPath, isDirectory: true, token)
                     .ConfigureAwait(true);
 
-            Remember(key, counted);
+            Remember(key, value.FullPath, counted, epoch);
 
             await Dispatcher.UIThread.InvokeAsync(() =>
             {
@@ -246,9 +280,131 @@ public static class RowMetadata
     /// Pulled out of the fetch so it can be said in a test: nothing here can
     /// drive the async fill, so a key computed inline would be a claim with
     /// nothing holding it.
+    ///
+    /// **The key was the path alone, so an answer was kept for the whole
+    /// session.** Nothing but the count eviction ever removed one, and the
+    /// default setting is the item count — so a folder that gained or lost
+    /// files went on reading its first "12 items" through F5, through the
+    /// watcher, through everything short of a restart. Adding or removing
+    /// something moves the folder's own modified time, and the row carries
+    /// that time already, so it goes into the key: a folder that has changed
+    /// since it was counted is a key nobody has asked about yet. What that
+    /// cannot see — a total whose change is several folders down — is
+    /// <see cref="Forget(IEnumerable{string})"/>'s.
     /// </summary>
-    internal static string CacheKey(string path, SizeFill fill)
-        => (fill == SizeFill.Measure ? "b:" : "m:") + path;
+    internal static string CacheKey(FileEntry entry, SizeFill fill)
+        => (fill == SizeFill.Measure ? TotalPrefix : "m:")
+           + entry.LastWriteTime.UtcTicks.ToString(System.Globalization.CultureInfo.InvariantCulture)
+           + ":" + entry.FullPath;
+
+    /// <summary>
+    /// Drops every answer the cache holds about <paramref name="path"/> or
+    /// anything under it, and every measured total that includes it.
+    ///
+    /// **A total several folders up is the one answer a changed time cannot
+    /// reach.** Copying a file into a/b/c moves c's modified time and nothing
+    /// above it, so the content size shown for "a" kept its old figure however
+    /// often the listing was refreshed. Called when a pane reads its folder
+    /// again and when an operation finishes, which are the two moments
+    /// something is known to have changed; the totals ABOVE the path go too,
+    /// because every one of them counted what was there. Counts above it do
+    /// not: a count is of the folder's own entries, and the one folder whose
+    /// entries changed has a new time and so a new key.
+    ///
+    /// Matched at a separator, the platform's way, so forgetting "/a" leaves
+    /// "/ab" alone.
+    /// </summary>
+    public static void Forget(string path) => Forget([path]);
+
+    /// <summary>
+    /// <see cref="Forget(string)"/> for every path an operation touched, in
+    /// one pass over the cache.
+    ///
+    /// **A finished operation froze the window once per file.** Its paths are
+    /// every source and the destination, and each one was forgotten on its
+    /// own: a pass over up to two thousand answers per path, each answer tested
+    /// against it with two normalising comparisons, and the order rebuilt
+    /// whenever one went — so select-all and delete in a folder of twenty
+    /// thousand files cost tens of millions of comparisons on the UI thread
+    /// before the listing could come back.
+    ///
+    /// Now the paths are normalised once, into a set, with every folder that
+    /// holds one of them in a second set; and each answer asks only about its
+    /// own path and the folders above it, which is a handful of lookups however
+    /// many paths there are. The order is rebuilt once, if anything went.
+    ///
+    /// **And an answer still being fetched is not kept once it lands** — see
+    /// <see cref="Remember"/>, which this moves the epoch on for.
+    /// </summary>
+    public static void Forget(IEnumerable<string> paths)
+    {
+        // The paths, and every folder that holds one of them: a total there
+        // counted what was there. Walked upwards only as far as a folder some
+        // earlier path already put in, which for siblings is one step.
+        var named = new HashSet<string>(PathRules.Comparer);
+        var holding = new HashSet<string>(PathRules.Comparer);
+
+        foreach (var path in paths)
+        {
+            if (string.IsNullOrEmpty(path)) continue;
+
+            var normal = PathRules.Normalise(path);
+
+            named.Add(normal);
+
+            var level = normal;
+
+            while (level is not null && holding.Add(level)) level = PathRules.Parent(level);
+        }
+
+        lock (Gate)
+        {
+            // Moved on even when nothing is held: the answer this is about may
+            // be the one still being fetched.
+            _forgets++;
+
+            Passes++;
+
+            if (named.Count == 0) return;
+
+            var stale = new List<string>();
+
+            foreach (var (key, remembered) in Cache)
+            {
+                var at = PathRules.Normalise(remembered.Path);
+
+                if (key.StartsWith(TotalPrefix, StringComparison.Ordinal) && holding.Contains(at))
+                {
+                    stale.Add(key);
+                    continue;
+                }
+
+                for (var level = at; level is not null; level = PathRules.Parent(level))
+                {
+                    if (!named.Contains(level)) continue;
+
+                    stale.Add(key);
+                    break;
+                }
+            }
+
+            if (stale.Count == 0) return;
+
+            foreach (var key in stale) Cache.Remove(key);
+
+            // The order goes with them. A key left queued behind its entry
+            // would be queued twice once it was remembered again, and the
+            // older copy reaching the front would evict the fresh answer.
+            //
+            // GUARD, not a tested rule: what it prevents shows only past
+            // MaxCached answers, and no test fills two thousand cells.
+            var kept = Order.Where(Cache.ContainsKey).ToList();
+
+            Order.Clear();
+
+            foreach (var key in kept) Order.Enqueue(key);
+        }
+    }
 
     /// <summary>
     /// Everything under a folder, totalled, as the Size column wants it.
@@ -322,16 +478,22 @@ public static class RowMetadata
 
             if (!access && !Provider.CanDescribe(value.FullPath, value.IsDirectory)) return;
 
-            // Prefixed so the two facts about one path do not share a slot.
-            var key = (access ? "a:" : "m:") + value.FullPath;
+            // Prefixed so the two facts about one path do not share a slot. The
+            // description is the count's own call on the same path, so it
+            // shares the count's key — modified time and all.
+            var key = access ? "a:" + value.FullPath : CacheKey(value, SizeFill.Count);
+
+            long epoch;
 
             lock (Gate)
             {
                 if (Cache.TryGetValue(key, out var cached))
                 {
-                    target.Text = cached ?? "";
+                    target.Text = cached.Text ?? "";
                     return;
                 }
+
+                epoch = _forgets;
             }
 
             var described = await (access
@@ -339,7 +501,7 @@ public static class RowMetadata
                     : Provider.DescribeAsync(value.FullPath, value.IsDirectory, token))
                 .ConfigureAwait(true);
 
-            Remember(key, described);
+            Remember(key, value.FullPath, described, epoch);
 
             // The container may have been recycled onto another file while we
             // were reading; only paint if it still wants this one.
@@ -359,11 +521,43 @@ public static class RowMetadata
         }
     }
 
-    private static void Remember(string key, string? value)
+    /// <summary>
+    /// Whether an answer is kept under this key.
+    ///
+    /// For tests: a fill whose answer is to leave the em dash standing changes
+    /// nothing on screen, so without this a test could not tell "finished and
+    /// left it" from "not finished yet".
+    /// </summary>
+    internal static bool Holds(string key)
+    {
+        lock (Gate) return Cache.ContainsKey(key);
+    }
+
+    /// <summary>
+    /// Keeps an answer, unless something was forgotten while it was being
+    /// fetched.
+    ///
+    /// **A measure still walking when its tree changed put the old total
+    /// back.** Forget drops what the cache holds, and an answer still being
+    /// fetched is not held yet — so a copy into a/b/c that finished while the
+    /// Size column was walking "a" forgot nothing, and the walk then kept its
+    /// total, taken before the copy, under a key nothing would move: a's own
+    /// modified time does not change for a file three levels down. Every later
+    /// fill of that row, in either pane, served it until the next F5.
+    ///
+    /// <paramref name="epoch"/> is <see cref="_forgets"/> as it was when the
+    /// fetch missed the cache. Any Forget since, not only one that matches this
+    /// path: telling the two apart would mean keeping every forgotten path,
+    /// and a fetch lost to an unrelated one costs only the fetch — the answer
+    /// is still painted, and the next fill asks again.
+    /// </summary>
+    private static void Remember(string key, string path, string? value, long epoch)
     {
         lock (Gate)
         {
-            if (!Cache.TryAdd(key, value)) return;
+            if (_forgets != epoch) return;
+
+            if (!Cache.TryAdd(key, new Remembered(path, value))) return;
 
             Order.Enqueue(key);
             while (Order.Count > MaxCached) Cache.Remove(Order.Dequeue());

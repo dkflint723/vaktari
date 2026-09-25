@@ -1,5 +1,6 @@
 using System.Xml.Linq;
 using Avalonia.Headless.XUnit;
+using Avalonia.Threading;
 using Vaktari.Core.FileSystem;
 using Vaktari.Core.Places;
 using Vaktari.Ui;
@@ -269,10 +270,30 @@ public sealed class SavedSearchTests : OwnedViewModels
             Assert.True(shell.ShowAddCurrentToPlaces);
             Assert.False(shell.ShowSaveSearchToPlaces);
 
+            // **The getter was right and nobody was told.** The menu stays in
+            // the tree between openings, so a row whose visibility is never
+            // announced keeps the one it was first drawn with — which is what
+            // this row did. Asking the getter could not see that; only a
+            // listener can.
+            var raised = new List<string?>();
+            shell.PropertyChanged += (_, e) => raised.Add(e.PropertyName);
+
             shell.ActiveTab!.CurrentPath = VirtualPaths.Search("report", dir, scoped: true);
+
+            // The pane announces the listing's kind from its own hop to the UI
+            // thread, so the shell hears of it only after a dispatcher turn.
+            Dispatcher.UIThread.RunJobs();
 
             Assert.False(shell.ShowAddCurrentToPlaces);
             Assert.True(shell.ShowSaveSearchToPlaces);
+            Assert.Contains(nameof(ShellViewModel.ShowSaveSearchToPlaces), raised);
+
+            // And a save of the preferences, which moves the gate both rows of
+            // the slot hang from.
+            raised.Clear();
+            shell.OnSettingsChanged();
+
+            Assert.Contains(nameof(ShellViewModel.ShowSaveSearchToPlaces), raised);
 
             var doc = XDocument.Parse(RepoSource.Ui("MainWindow.axaml"));
 

@@ -65,6 +65,11 @@ public sealed partial class ShellViewModel
         OnPropertyChanged(nameof(ShowStatusBar));
         OnPropertyChanged(nameof(ShowFreeSpace));
 
+        // The folder tree's section is shown by a computed property that reads
+        // the live settings, so it is the same shape as the two above — and it
+        // lives on the sidebar, where raising it here would not reach.
+        Sidebar.RefreshFolderTreeVisibility();
+
         // Free space now prints on the drive rows rather than in the status bar,
         // and those rows are separate objects — raising it here does not reach
         // them, so each one is told directly.
@@ -82,17 +87,14 @@ public sealed partial class ShellViewModel
         OnPropertyChanged(nameof(ShowAddToPlacesInMenu));
         OnPropertyChanged(nameof(ShowAddSelectionToPlaces));
         OnPropertyChanged(nameof(ShowAddCurrentToPlaces));
+
+        // Its twin in the slot, which hangs off the same preference.
+        OnPropertyChanged(nameof(ShowSaveSearchToPlaces));
         OnPropertyChanged(nameof(ShowCopyLocationInMenu));
 
-        // Left and Right, not a Groups collection — this view model has no such
-        // thing, and inventing one for a loop would be the tail wagging the dog.
-        foreach (var group in new[] { Left, Right })
-        {
-            if (group is null) continue;
-
-            foreach (var tab in group.Tabs)
-                tab.RefreshCommand.Execute(null);
-        }
+        // Only the panes that have been listed — see RelistLoadedPanes for what
+        // refreshing every restored tab on each save cost.
+        RelistLoadedPanes(spareWalks: true);
     }
 
     /// <summary>

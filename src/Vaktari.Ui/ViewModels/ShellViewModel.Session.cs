@@ -181,6 +181,14 @@ public sealed partial class ShellViewModel
 
     private void OnPaneChanged(object? sender, PropertyChangedEventArgs e)
     {
+        // Beside the switch rather than in it, because ShowHidden is also one
+        // of the session's own and a case label can be listed only once. The
+        // folder tree follows the active pane's answer — see FollowHidden —
+        // and a background tab's toggle is not that.
+        if (e.PropertyName == nameof(PaneViewModel.ShowHidden)
+            && sender is PaneViewModel pane && ReferenceEquals(pane, ActiveTab))
+            Sidebar.FollowHidden(pane.ShowHidden);
+
         switch (e.PropertyName)
         {
             case nameof(PaneViewModel.CurrentPath):
@@ -227,6 +235,16 @@ public sealed partial class ShellViewModel
             case nameof(PaneViewModel.HideModifiedColumn):
             case nameof(PaneViewModel.ShowTypeColumn):
             case nameof(PaneViewModel.ShowCreatedColumn):
+
+            // **Switching a tab to tiles, or grouping it, was saved only by
+            // luck.** Both are written by ToTabState and neither was listed, so
+            // the change reached the store only when something else marked the
+            // session first — a crash or a kill before that came back with the
+            // old layout. Listed here rather than trusted to ride on the scale:
+            // the scale that changes with the view is equal by default, and an
+            // equal assignment raises nothing.
+            case nameof(PaneViewModel.View):
+            case nameof(PaneViewModel.GroupBy):
                 MarkDirty();
                 break;
 

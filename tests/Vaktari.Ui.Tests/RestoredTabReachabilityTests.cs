@@ -214,6 +214,223 @@ public sealed class RestoredTabReachabilityTests : OwnedViewModels
         Assert.False(pane.IsLoading);
     }
 
+    // ---- a settings save is not a first load --------------------------------
+
+    /// <summary>
+    /// A window restored with three tabs, the first one showing. Paths that
+    /// are not there, because nothing here reads the disk: the Share answers
+    /// for all of them.
+    /// </summary>
+    private ShellViewModel ThreeRestoredTabs(Share fs)
+    {
+        var shell = Own(new ShellViewModel(fs));
+
+        TabState Tab(string name) => new() { Path = Path.Combine(Path.GetTempPath(), name) };
+
+        shell.Start(new SessionState
+        {
+            Windows =
+            [
+                new WindowSession
+                {
+                    Panes =
+                    [
+                        new PaneState
+                        {
+                            Tabs = [Tab("vaktari-lazy-a"), Tab("vaktari-lazy-b"), Tab("vaktari-lazy-c")],
+                            ActiveTabIndex = 0,
+                        },
+                    ],
+                },
+            ],
+        });
+
+        return shell;
+    }
+
+    /// <summary>
+    /// **Every settings save loaded each restored tab nobody had opened.** The
+    /// save ends by refreshing the panes so a new sort rule reaches rows
+    /// already on screen, and it refreshed every tab — and a refresh is a load
+    /// of CurrentPath, which RestoreFrom sets. A tab that has never been listed
+    /// has no rows sorted under the old rule, so the tab on screen is listed
+    /// again and the two behind it are left for their first activation.
+    /// </summary>
+    [AvaloniaFact]
+    public async Task A_settings_save_relists_the_tab_on_screen_and_not_the_ones_never_opened()
+    {
+        var fs = new Share(answer: true);
+        var shell = ThreeRestoredTabs(fs);
+        await Drain();
+
+        // GUARD: the start listed the tab on screen and nothing else, so the
+        // count below is the save's own.
+        Assert.Equal(1, fs.Listings);
+
+        shell.OnSettingsChanged();
+        await Drain();
+
+        Assert.Equal(2, fs.Listings);
+        Assert.All(shell.Left.Tabs.Skip(1), tab => Assert.False(tab.IsLoaded));
+    }
+
+    /// <summary>
+    /// The other caller of the same loop: the icons changing source re-lists
+    /// panes so their rows are drawn again, and a tab that has drawn no rows
+    /// has nothing to draw again.
+    /// </summary>
+    [AvaloniaFact]
+    public async Task A_change_of_icons_relists_the_tab_on_screen_and_not_the_ones_never_opened()
+    {
+        var fs = new Share(answer: true);
+        var shell = ThreeRestoredTabs(fs);
+        await Drain();
+
+        Assert.Equal(1, fs.Listings);
+
+        shell.RefreshPaneListings();
+        await Drain();
+
+        Assert.Equal(2, fs.Listings);
+        Assert.All(shell.Left.Tabs.Skip(1), tab => Assert.False(tab.IsLoaded));
+    }
+
+    // ---- nor a way round the probe --------------------------------------------
+
+    /// <summary>
+    /// A window restored with one tab, on a share that has gone, whose probe
+    /// is still waiting for an answer.
+    /// </summary>
+    private ShellViewModel ProbingShell(Share fs)
+    {
+        var shell = Own(new ShellViewModel(fs));
+
+        shell.Start(new SessionState
+        {
+            Windows =
+            [
+                new WindowSession
+                {
+                    Panes = [new PaneState { Tabs = [new TabState { Path = Gone }], ActiveTabIndex = 0 }],
+                },
+            ],
+        });
+
+        Assert.Equal(1, fs.Probes);
+        Assert.True(shell.ActiveTab!.IsLoading, "GUARD: the restored tab is not in its probe");
+
+        return shell;
+    }
+
+    /// <summary>
+    /// **A settings save during the probe went round it.** The save re-lists
+    /// every pane that is loading, a probing pane is loading, and the refresh
+    /// was a listing with no probe in front of it — it moved the generation
+    /// on, so when the probe said no, nobody was listening, and the pane sat
+    /// in a listing of the dead share until the server's own timeout. The
+    /// probe's own load reads the new settings anyway, so leaving it alone
+    /// costs nothing.
+    /// </summary>
+    [AvaloniaFact]
+    public async Task A_settings_save_during_the_probe_leaves_it_to_answer()
+    {
+        var fs = new Share(answer: false, hold: true);
+        var shell = ProbingShell(fs);
+
+        shell.OnSettingsChanged();
+
+        fs.Answer();
+        await Drain();
+
+        Assert.Equal(0, fs.Listings);
+        Assert.Equal("that folder could not be reached", shell.ActiveTab!.LoadError);
+    }
+
+    /// <summary>
+    /// The same through the other caller: a change of icon source, which can
+    /// arrive at startup unasked — a theme read in the background lands — at
+    /// just the moment a restored tab is probing.
+    /// </summary>
+    [AvaloniaFact]
+    public async Task A_change_of_icons_during_the_probe_leaves_it_to_answer()
+    {
+        var fs = new Share(answer: false, hold: true);
+        var shell = ProbingShell(fs);
+
+        shell.RefreshPaneListings();
+
+        fs.Answer();
+        await Drain();
+
+        Assert.Equal(0, fs.Listings);
+        Assert.Equal("that folder could not be reached", shell.ActiveTab!.LoadError);
+    }
+
+    /// <summary>Answers every search with the rows it was given, counting how
+    /// many times it has been asked to walk.</summary>
+    private sealed class Searches(params FileEntry[] found) : Vaktari.Core.Search.ISearchProvider
+    {
+        private int _walks;
+
+        public int Walks => Volatile.Read(ref _walks);
+
+        public string BackendName => "counting";
+
+        public bool SupportsContentSearch => false;
+
+        public async IAsyncEnumerable<FileEntry> SearchAsync(
+            Vaktari.Core.Search.SearchQuery query, [EnumeratorCancellation] CancellationToken ct)
+        {
+            Interlocked.Increment(ref _walks);
+
+            await Task.CompletedTask;
+
+            foreach (var entry in found) yield return entry;
+        }
+    }
+
+    /// <summary>
+    /// **A walk left in the background walked again on every save.** The
+    /// relist skipped only the tabs that had never loaded, so a search, a space
+    /// listing or a duplicates scan finished in another tab was run again from
+    /// nothing — and a duplicates scan hashed its candidates again — for a save
+    /// that at most changed how its rows sort. Its rows are kept, and put in
+    /// the new order where they stand.
+    /// </summary>
+    [AvaloniaFact]
+    public async Task A_settings_save_does_not_walk_a_search_in_the_background_again()
+    {
+        var searches = new Searches(
+            new FileEntry("found.txt", Path.Combine(Path.GetTempPath(), "found.txt"), 1,
+                          DateTimeOffset.UnixEpoch, EntryFlags.None));
+
+        UseSearch(searches);
+        UseSearchHistory(null);
+
+        var fs = new Share(answer: true);
+        var shell = Own(new ShellViewModel(fs));
+
+        shell.Start(null, Path.GetTempPath());
+
+        var folder = shell.ActiveTab!;
+        var search = shell.Left.AddTab(VirtualPaths.Search("found", null, scoped: false));
+
+        for (var i = 0; i < 40 && !(search.IsLoaded && folder.IsLoaded); i++) await Drain();
+
+        Assert.True(search.IsLoaded, "GUARD: the search never finished");
+        Assert.Equal(1, searches.Walks);
+
+        shell.Left.ActiveTab = folder;
+        await Drain();
+
+        shell.OnSettingsChanged();
+        await Drain();
+
+        Assert.Equal(1, searches.Walks);
+        Assert.True(search.IsLoaded);
+        Assert.Equal(["found.txt"], search.Entries.Select(e => e.Name));
+    }
+
     /// <summary>
     /// A provider that answers whether a path is there, counts what it was
     /// asked, and can be made to take its time about it.
