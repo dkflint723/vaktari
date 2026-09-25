@@ -25,8 +25,10 @@ namespace Vaktari.Ui;
 /// put there.
 ///
 /// **Not because the menu has no DataContext.** It has one — OnListingMenuOpening
-/// reads <c>menu.DataContext</c> as a PaneGroupViewModel and the whole Proton
-/// block depends on that being there, PaneFromMenuItem says so in as many
+/// reads <c>menu.DataContext</c> as a PaneGroupViewModel and hands it to
+/// PrepareListingMenu, where the whole Proton block depends on that being
+/// there (the Menu key hands in its host's instead, because before Open the
+/// menu's own is still null), PaneFromMenuItem says so in as many
 /// words, and the markup declares the menu with an x:DataType and compiled
 /// bindings against it. The claim is true of the PLACE row's menu, which is
 /// declared inside a DataTemplate and now has its own file,
@@ -91,24 +93,53 @@ public partial class MainWindow
     }
 
     /// <summary>
-    /// Shows whichever Proton entries apply to the item under the menu.
+    /// The right-click route into <see cref="PrepareListingMenu"/>.
     ///
-    /// Decided here rather than bound, because the questions are per-item and
-    /// per-machine at once: is the CLI installed, is the path inside the drive
-    /// folder, and did Vaktari already make a link for it. Three hidden items
-    /// cost nothing when the answer is no.
+    /// **Only the right-click route.** Avalonia raises Opening on the way to a
+    /// menu it opens itself, for a ContextRequested; ContextMenu.Open(control)
+    /// does not raise it at all — measured on 12.1.2 in a headless probe, zero
+    /// times. So the Menu key, which opens the menu with Open in
+    /// OpenListingMenu, never came through here, and the keyboard's menu
+    /// showed the scripts, templates, Undo label, Paste row and Proton rows as
+    /// the previous right-click had left them: with no right-click yet, no
+    /// Proton row at all.
+    /// OpenListingMenu now calls PrepareListingMenu itself.
     /// </summary>
     private void OnListingMenuOpening(object? sender, System.ComponentModel.CancelEventArgs e)
     {
-        if (sender is not ContextMenu menu) return;
+        if (sender is ContextMenu menu)
+            PrepareListingMenu(menu, menu.DataContext as PaneGroupViewModel);
+    }
 
+    /// <summary>
+    /// What every opening of the listing's menu asks before it is shown,
+    /// whichever route opened it.
+    ///
+    /// The rows a binding keeps current are not the question. The ones here
+    /// are read afresh because nothing tells the menu they changed: the
+    /// scripts and templates folders, the engine's undo history and the
+    /// clipboard. And the Proton entries, which are shown per item, decided
+    /// here rather than bound, because the questions are per-item and
+    /// per-machine at once: is the CLI installed, is the path inside the drive
+    /// folder, and did Vaktari already make a link for it. Three hidden items
+    /// cost nothing when the answer is no.
+    ///
+    /// **The group is handed in rather than read off the menu**, because on
+    /// the keyboard route there is nothing on the menu to read yet. Measured
+    /// in a headless MainWindow: before Open(host), menu.DataContext is null.
+    /// The menu inherits the group from its host only once it opens, so a body
+    /// that asked the menu for it did nothing at all when OpenListingMenu
+    /// called it first, without a word said.
+    /// </summary>
+    private void PrepareListingMenu(ContextMenu menu, PaneGroupViewModel? group)
+    {
         // **Re-read on every menu open, which is what their own comments always
         // claimed.** Both were called once, from the pane's constructor, so
         // adding a script or a template needed a restart to appear — while the
         // menu itself invites you to go and add one ("Add your own scripts"
         // opens the folder) and then never notices what you put there. Reading
         // two small directories is cheap next to building this menu at all.
-        if (menu.DataContext is ViewModels.PaneGroupViewModel { ActiveTab: { } tab })
+        if (group is { ActiveTab: { } tab })
         {
             tab.RefreshScripts();
             tab.RefreshTemplates();
@@ -150,7 +181,7 @@ public partial class MainWindow
             || Find<MenuItem>(menu.Items, "ProtonInstallingItem") is not { } installing
             || Find<Separator>(menu.Items, "ShareMethodSeparator") is not { } separatorHost) return;
 
-        var entry = (menu.DataContext as ViewModels.PaneGroupViewModel)?.ActiveTab?.SelectedEntry;
+        var entry = group?.ActiveTab?.SelectedEntry;
         var path = entry?.FullPath;
 
         // Linkable is about WHERE the item is, not whether the tool exists —

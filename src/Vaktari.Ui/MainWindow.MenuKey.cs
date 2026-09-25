@@ -84,6 +84,18 @@ public partial class MainWindow
 
             menu.PlacementTarget = row ?? list;
 
+            // **Open() does not raise Opening**, so OnListingMenuOpening never
+            // ran for this route, and everything that handler re-reads (the
+            // scripts, templates, Undo label, Paste row and the Proton rows)
+            // was whatever the last right-click had left. Measured: with this
+            // call removed, a script added after the window was built never
+            // reached the keyboard's menu.
+            //
+            // The group comes from the HOST, not the menu: until it opens, the
+            // menu's own DataContext is null — measured — and asking it made
+            // this call a silent no-op.
+            PrepareListingMenu(menu, host.DataContext as ViewModels.PaneGroupViewModel);
+
             // **Open() takes the control the menu is ATTACHED to and refuses
             // any other**, so the row cannot be handed to it — the host is.
             // The anchor is PlacementTarget, set above, and it does reach the
