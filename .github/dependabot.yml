@@ -17,6 +17,15 @@ updates:
         patterns:
           - "xunit*"
           - "Microsoft.NET.Test.Sdk"
+    # The Ui tests are held on xunit.v3 3.x and its runner 3.x: Avalonia's
+    # headless test package is built against xunit.v3 3.2.2 and breaks under
+    # 4 (see tests/Vaktari.Ui.Tests/Vaktari.Ui.Tests.csproj). Offered whole,
+    # the group could never merge; lift these when Avalonia moves.
+    ignore:
+      - dependency-name: "xunit.v3"
+        update-types: ["version-update:semver-major"]
+      - dependency-name: "xunit.runner.visualstudio"
+        update-types: ["version-update:semver-major"]
     open-pull-requests-limit: 5
 
   - package-ecosystem: github-actions
