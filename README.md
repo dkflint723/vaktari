@@ -675,7 +675,7 @@ Release builds, other distributions and packaging are in
 ## Known limits
 
 Vaktari is used daily by its author, but **there has been no stable release** —
-the current version is 0.10.2 and version numbers are not a compatibility
+the current version is 0.11.0 and version numbers are not a compatibility
 promise yet. Worth knowing before you decide:
 
 **Platform**

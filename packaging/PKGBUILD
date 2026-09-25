@@ -19,7 +19,7 @@ _projname=vaktari
 replaces=('heimdall-fm')
 conflicts=('heimdall-fm')
 
-pkgver=0.1.0
+pkgver=0.11.0
 pkgrel=1
 pkgdesc="A file manager for KDE that consumes the desktop instead of reimplementing it"
 arch=('x86_64')

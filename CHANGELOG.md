@@ -11,6 +11,10 @@ should not be trusted for compatibility yet.
 
 ## [Unreleased]
 
+Nothing yet.
+
+## [0.11.0] — 2026-09-25
+
 ### Added
 
 - **A search can look inside files.** A *Search contents* box on the band
@@ -35,32 +39,43 @@ should not be trusted for compatibility yet.
   a *FOLDERS* section under your places, rooted at each of them, and it
   follows the pane: going somewhere opens the branch that leads there. It
   is a tree of folders rather than a second listing — no files, one level
-  read each time you open a folder, and a branch forgotten when you close
-  it, so it cannot show you folders that have since gone. Clicking a row
-  goes there; the triangle beside it opens the row without going anywhere.
-  Off unless you ask for it, since expandable folders in the List layout
-  already do the same job inside the listing.
+  read each time you open a folder, and a branch is forgotten when you
+  close it, so opening it again reads it afresh; a branch left open is not
+  updated as folders come and go. Clicking a row goes there; the triangle
+  beside it opens the row without going anywhere.
+  It follows the pane only while it is shown and unfolded, and catches up
+  when unfolded; it follows the side of a split you switch to, shows
+  hidden folders when the pane does, and appears or goes the moment the
+  setting is saved. Off unless you ask for it, since expandable folders in
+  the List layout already do the same job inside the listing.
 
 - **A folder's Size column can show how big it is.** Settings ▸ View modes now
   offers three answers for a folder — how many things are in it, how big
   its contents are, or nothing — where it offered a tick box that could
   say only the first and the last. The middle one existed in the settings
-  file all along and no control could write it, so the only way to it was
-  to edit settings.json by hand, and the dialog then quietly turned it
-  back into item counts. It reads every folder underneath, so it is worked
-  out for the rows on screen and abandoned when you scroll past them.
+  file all along, but no control could set it, and even written into
+  settings.json by hand it showed item counts; it now shows how big the
+  folder's contents are. It reads every folder underneath, so it is worked
+  out for the rows on screen and abandoned when you scroll past them. A
+  folder that cannot be read shows the dash.
 
 - **The files that are copies of each other can be seen.** *Show duplicate
   files* — in the listing's menu or the command box — replaces the listing
-  with every file below this folder that another file holds the same bytes
-  as, whatever it has been renamed to. The bar above says how many sets
-  there are and what deleting all but one of each would give back. Every
+  with every file below this folder, empty ones aside, that another file
+  holds the same bytes as, whatever it has been renamed to. The bar above
+  says how many sets there are, what deleting all but one of each would
+  give back, and how many things could not be read on the way — a folder
+  that cannot be opened is counted there and the scan carries on past it,
+  and on Windows so is a file a cloud sync client keeps online only, which
+  is not downloaded to be compared. Every
   copy is shown, with the date it was written, because which one to keep
   depends on where it lives and when it was written; *Select every copy but
   one* then picks the spare ones, and always leaves one of each set behind,
   so selecting what it offers and pressing Delete cannot take the last copy
-  of anything. It reads what it must and no more: a file whose size nothing
-  else shares is never opened.
+  of anything. Two names for one file — a hard link, or a folder reached
+  twice through a bind mount — are one file, not a copy and its original.
+  It reads what it must and no more: a file whose size nothing else shares
+  is never opened.
 
 - **What is using the space in a folder can be seen.** *Show space usage* —
   in the listing's menu or the command box — replaces the listing with one
@@ -68,14 +83,12 @@ should not be trusted for compatibility yet.
   the biggest thing in a folder is one click of the *Size* heading away. A
   folder's row shows what it holds rather than a count, and sorts and
   groups by that size instead of being banded above the files. The bar
-  above says what the whole folder came to. It measures when asked and
-  never on its own, because walking a tree costs what it costs.
-
-- **A folder that could not be read is counted and said.** The bar reads
-  "…and two folders could not be read" rather than showing a figure that
-  is short by whatever was behind them and looks exact. Links are counted
-  where they stand and never followed, so a folder of shortcuts to a media
-  library is its own size rather than the library's.
+  above says what the whole folder came to, and what could not be read —
+  "…and 2 folders could not be read" — rather than a figure that is short
+  by whatever was behind them and looks exact. Links are counted where they
+  stand and never followed, so a folder of shortcuts to a media library is
+  its own size rather than the library's. It measures when asked and never
+  on its own, because walking a tree costs what it costs.
 
 - **The two sides of a split can be compared.** *Compare the two sides* —
   in the view-options menu while the window is split, in the listing's
@@ -96,16 +109,19 @@ should not be trusted for compatibility yet.
   into the other side's folder, after a prompt that says how many it
   copies, to which folder, and how many older files it replaces for good.
   Rows marked *Older* or *Different* stay where they are, and so does a
-  folder on both sides: it copies one level. Each clash is decided when
-  the copy reaches it, so a file that has turned up on the other side by
-  then, or become the newer one there, is left alone, and the operation
-  bar names it. It is one step on the Undo row, which takes the copies
-  back but cannot bring back what they replaced.
+  folder on both sides, which is not looked inside; a folder only on this
+  side is copied with everything in it. Each clash is decided when the
+  copy reaches it, so a file that has turned up on the other side by then,
+  or become the newer one there, is left alone, and the operation bar says
+  so, naming it when there is only one. It is one step on the Undo row,
+  which takes the copies back but cannot bring back what they replaced.
 
 - **Keys can be changed.** Settings ▸ Keyboard lists every command with
   the keys that run it. *Add key* listens for the next key you press; a key
   another command already has is offered to you — take it, or leave it
-  where it is — rather than moved without asking, and a key that types, or
+  where it is — rather than moved without asking; the offer has the
+  keyboard's focus, Tab moves between *Take it* and *Keep it there*, and
+  when it ends the keyboard goes back to the row. A key that types, or
   that every list and box needs, is refused with the reason. The F1 sheet,
   the command box, the tour, the menus and the tooltips all print the keys
   in force. Only what differs from the shipped keys is written to
@@ -120,9 +136,9 @@ should not be trusted for compatibility yet.
   *Save this search to places* on the listing's menu. It sits in the sidebar
   with a magnifier, named for its question and where it looks, and clicking
   it asks the question again — the whole search, folder and capitals
-  included. Rename or remove it like any pinned place. Before this the
-  gesture that keeps a folder refused a search, and the magnifier's history
-  kept twelve and forgot the rest.
+  included. Rename or remove it like any pinned place. Before this, the
+  gesture that keeps a folder refused a search, and the magnifier's
+  history, which shows only the last twelve, was the only way back to one.
 
 - **Portable mode.** A folder named `portable` beside the executable makes
   Vaktari keep its tabs, places, folder views, settings, recents and log in
@@ -144,10 +160,10 @@ should not be trusted for compatibility yet.
 - **Any command, by name.** Ctrl+Shift+P — or *View options (≡) ▸
   Commands…* — opens a box: type a few letters of what you want, and Enter
   runs the highlighted match. Seventy-odd commands are in it, from *New tab*
-  to *Empty the bin*, each printed with the key that also runs it, so the
-  key gets learnt from the box. What needs a file under the pointer or a
-  choice of its own — *Open with*, *Copy to* — stays on the right-click
-  menu.
+  to *Empty the bin*, each printed with the key that also runs it, where it
+  has one, so the key gets learnt from the box. What needs a file under the
+  pointer or a choice of its own — *Open with*, *Copy to* — stays on the
+  right-click menu.
 
 - **A short tour of the window, and a first run that says where it is.** The
   first time Vaktari runs it writes its settings file and, until now, said
@@ -167,9 +183,10 @@ should not be trusted for compatibility yet.
 
 - **Vaktari can tell you when a newer release exists — if you ask it to.**
   Settings ▸ General ▸ Updates has a box, off by default. With it on,
-  Vaktari asks github.com once a day whether a newer release exists, sending
-  nothing but the request — no version, no identifier — and never downloads
-  anything: a newer release is a line on the status bar and on the settings
+  Vaktari asks github.com at most once a day, when it starts or when
+  settings are saved, whether a newer release exists, sending nothing but
+  the request — no version, no identifier — and never downloads anything: a
+  newer release is a line on the operation bar and on the settings
   footer's version line, whose "What is new" opens the release notes. A file
   manager stays installed for years, and the fixes in this changelog are
   worth a line to somebody who never reads a changelog. A development build
@@ -187,11 +204,12 @@ should not be trusted for compatibility yet.
 
 ### Changed
 
-- **Undo reaches a hundred steps back, rather than every step since the
-  window opened.** Each operation keeps a note of what it landed so it can be
-  taken back, and nothing ever let one go — a long day of renaming and moving
-  carried all of it in memory until Vaktari closed, for an undo nobody was
-  going to press a thousand steps back. The bin is what covers anything older.
+- **Undo reaches a hundred steps back, rather than every step since
+  Vaktari started.** Each operation keeps a note of what it landed so it can
+  be taken back, and nothing ever let one go — a long day of renaming and
+  moving carried all of it in memory until Vaktari closed, for an undo
+  nobody was going to press a thousand steps back. Anything you deleted to
+  the bin more than a hundred steps back is still there.
 
 ### Security
 
@@ -272,8 +290,9 @@ should not be trusted for compatibility yet.
   user could hold the lock's name so that every start of Vaktari was told a
   copy was already running and handed its folders to nobody, or take the
   socket's name and be handed them instead. Those sessions now use
-  `~/.cache/vaktari/run`, created for this user alone (and tightened if it
-  is found otherwise); a link planted where the lock should be is no longer
+  `~/.cache/vaktari/run` (under `XDG_CACHE_HOME` when that is set), created
+  for this user alone (and tightened if it is found otherwise); a link
+  planted where the lock should be is no longer
   followed; and a lock file that cannot be opened at all makes Vaktari open
   a window rather than crash before one appears. Sessions with
   `XDG_RUNTIME_DIR` — nearly all desktop logins — were never affected, and
@@ -285,15 +304,15 @@ should not be trusted for compatibility yet.
   listened on every address the machine had, a VPN's or a public one's
   included; it announced itself over mDNS and SSDP, so a folder handed to
   one person by its address appeared by name in every file manager and
-  Windows Explorer on the network; and its config went to /tmp. Every share
-  now gets a sixteen-character password of its own, carried in the address
-  you hand out (opening it logs the browser in, and the login box takes the
-  same password); the server listens only on the address shown, which is now
-  the adapter with a route out rather than whichever the system lists first;
-  the share dialog has a box for announcing, off by default; the config is
-  written to the session's private folder, readable by this user alone; and
-  on Windows, a share started on a network marked public says so on the
-  status line.
+  Windows Explorer on the network; and on Linux its config went to /tmp.
+  Every share now gets a sixteen-character password of its own, carried in
+  the address you hand out (opening it logs the browser in, and the login
+  box takes the same password); the server listens only on the address
+  shown, which is now the adapter with a route out rather than whichever the
+  system lists first; the share dialog has a box for announcing, off by
+  default; on Linux the config is written to the session's private folder,
+  readable by this user alone; and on Windows, a share started on a network
+  marked public says so on the status line.
 
 - **A share left serving by a Vaktari that crashed or was killed is
   stopped.** A share's server stopped only when you stopped it or the last
@@ -317,6 +336,15 @@ should not be trusted for compatibility yet.
 
 ### Fixed
 
+- **On Windows, a picture's thumbnail and its "640 × 480" no longer
+  download a file a cloud sync client keeps online only, and neither does
+  the preview pane.** Each read the file itself, and for a file kept online
+  by OneDrive or a similar client that fetched the whole file over the
+  network just to draw its row or preview it. Such a file now keeps its icon
+  and shows no picture size, and the preview pane shows "kept online — not
+  downloaded to preview" instead of its picture or text, until it is on this
+  machine; once it is, it is read as before.
+
 - **Middle-clicking a tab in the other half of a split closes that tab.**
   It used to shut the tab down without removing it, so it stayed on screen
   and did nothing, and it was added to the other half's list of closed
@@ -333,24 +361,13 @@ should not be trusted for compatibility yet.
   and watches nothing, and *Retry* after its tab has closed runs in the
   tab you are looking at.
 
-- **The folder tree keeps up, and costs nothing while it is off.** It read
-  every folder down to wherever you went even with *Show a folder tree in
-  the sidebar* unticked, which is the default. Folded, it did not catch up
-  when unfolded; it never showed hidden folders, so it could not reveal
-  ~/.config or AppData; switching sides of a split did not move it; and
-  the setting itself did nothing until a restart. It now follows the pane
-  only while it is shown and unfolded, catches up when unfolded, shows
-  hidden folders when the pane does, follows the side you switch to, and
-  appears or goes the moment the setting is saved.
-
 - **Saving settings no longer loads every tab restored from the last
   session.** Each save listed every tab again, including background tabs
   never opened since startup — a full listing, a watcher and a
-  version-control pass each — and ran background searches, space listings
-  and duplicate scans all over again. Now only tabs already listed are
-  refreshed, a background search or scan is re-sorted rather than walked
-  again, and a tab still checking whether its folder is reachable is left
-  to finish.
+  version-control pass each — and ran background searches all over again.
+  Now only tabs already listed are refreshed, a background search or scan
+  is re-sorted rather than walked again, and a tab still checking whether
+  its folder is reachable is left to finish.
 
 - **Changes made while a folder is loading show up.** Vaktari started
   following a folder only once the listing had finished, and changes
@@ -363,31 +380,27 @@ should not be trusted for compatibility yet.
 
 - **The status bar keeps what it just said.** After a refresh of a
   filtered folder, "filtered to N of M" was cleared straight after it was
-  written; and in a folder checked on a timer, the first change found
-  cleared the notice explaining why. Both now stay.
+  written. It now stays.
 
-- **Menus and lists follow what is on screen.** *Save this search to
-  places* showed or hid according to wherever the first menu was opened,
-  so a folder's menu could offer it and pin the folder. The *Open with*
-  list could hold the previous file's applications when that file's
-  answer came in last, so the image viewer offered for photo.png opened
-  notes.txt. And switching a tab's layout or grouping reached the saved
-  session only when something else changed later.
+- **Menus and lists follow what is on screen.** The *Open with* list could
+  hold the previous file's applications when that file's answer came in
+  last, so the image viewer offered for photo.png opened notes.txt. And
+  switching a tab's layout or grouping was saved only when something else
+  changed or the window closed, so a crash in between brought back the old
+  layout.
 
-- **One click no longer opens a row again after Enter or the menu opened
-  it.** The window paired a click with an earlier click on the same row,
-  and only a mouse open made it forget — so after Enter or *Open*, then
-  Back, one click on that folder went straight in, and on a program
-  launched a second copy. Opening with Enter, or opening the menu, now
-  clears it.
+- **One click no longer opens a row again after the menu opened it.** The
+  window paired a click with an earlier click on the same row, and only a
+  mouse open made it forget — so after *Open* from the menu, then Back, one
+  click on that folder went straight in, and on a program launched a second
+  copy. Opening the menu, or opening with Enter, now clears it.
 
-- **The keyboard reaches the last buttons that needed a mouse.** On the
-  Keyboard settings page, Tab toward *Take it* or *Keep it there* was taken
-  as a new key and withdrew the offer, so *Take it* could not be reached;
-  it now has focus when the offer appears, Tab moves between the two, and
-  when the offer ends the keyboard goes back to the row. In the Share
-  dialog, Enter on a folder in the list now goes into it, as a
-  double-click does.
+- **Enter on a row you have just clicked opens it, and Space previews it.**
+  A click left the keyboard on the row, which kept both keys to itself, so
+  after a click neither did anything.
+
+- **In the Share dialog, Enter on a folder in the list goes into it, as a
+  double-click does.** It used to do nothing.
 
 - **Settings reach everything they are about.** *Restore defaults* now
   resets the preferred terminal with the rest, where Save wrote the old
@@ -395,12 +408,10 @@ should not be trusted for compatibility yet.
   window, not only the one Settings was opened from.
 
 - **A folder's Size column updates when the folder changes.** It kept its
-  first answer — a count, a total, or the dash — until Vaktari restarted:
-  adding or deleting files, F5, or a copy into the folder left it as it
-  was. A folder whose contents changed is now counted again, and F5 and
-  every finished operation forget the answers for the folders involved and
-  the totals above them. And a folder that cannot be read shows the dash
-  rather than "0 B".
+  first answer until Vaktari restarted: adding or deleting files, F5, or a
+  copy into the folder left it as it was. A folder whose contents changed
+  is now counted again, and F5 and every finished operation forget the
+  answers for the folders involved and the totals above them.
 
 - **The menu the Menu key opens is as up to date as a right-click's.**
   Opened with Menu or Shift+F10, the listing's menu showed what the last
@@ -446,14 +457,19 @@ should not be trusted for compatibility yet.
   `C:\ISO\x.iso` that was mounted — was taken for it: the menu offered
   *Unmount* for a file that was not mounted and hid *Mount*.
 
-- **On Windows, a network drive whose server has gone no longer freezes
-  the window.** Deciding the bin's icon asked every mapped drive whether it
+- **A network drive whose server has gone no longer freezes the window.**
+  On Windows, deciding the bin's icon asked every mapped drive whether it
   was ready, at startup and after every copy or delete; opening *This PC*
   or the menu on the machine's crumb asked every drive how full it was;
-  and listing network connections asked each share whether it answered —
-  all on the window's thread, where a dead server does not answer. The bin
-  no longer asks network drives at all, and the other two ask off the
-  window's thread.
+  and listing network connections asked each share whether it answered. On
+  Linux, deciding the bin's icon looked into every mounted drive's bin, and
+  listing network places read each one. All of it ran on the window's
+  thread, where a dead server does not answer. On Windows the bin no longer
+  asks network drives at all, and the other two ask off the window's
+  thread. On Linux both are asked off it, one at a time, and the bin's icon
+  no longer looks inside an automount point that is not yet mounted, so it
+  never mounts one; folders on sshfs and rclone mounts are now known to be
+  remote, so they are not read row by row for icons or measured unasked.
 
 - **On Linux, ejecting one partition of a drive with two says so when the
   other is in use.** Only the partition clicked was unmounted, so the drive
@@ -478,23 +494,14 @@ should not be trusted for compatibility yet.
   network share is not measured until you ask, as a folder on one already
   was not.
 
-- **On Linux, a network mount whose server has gone no longer freezes the
-  window.** Deciding the bin's icon looked into every mounted drive's bin,
-  and listing network places read each one — both on the window's thread,
-  where a dead server does not answer. Both are asked off it now, one at a
-  time, and the bin's icon no longer looks inside an automount point that
-  is not yet mounted, so it never mounts one.
-  Folders on sshfs and rclone mounts are now known to be remote, so they
-  are not read row by row for icons or measured unasked.
-
 - **On Linux, Vaktari installed in a folder with a space in its name can
   be started when another program asks it to show a file in its folder.**
   The line that tells the session how to start it was split at the space.
 
 - **On Linux, mounting a disc image whose path has `/dev/loop` in it — kept
-  under a folder called `dev`, say — mounts that image.** The name of the device Linux gave
-  the image was read from the first `/dev/loop` in the reply, which could
-  be part of the image's own path.
+  in a folder called `~/dev/loop-tests`, say — mounts that image.** The
+  name of the device Linux gave the image was read from the first
+  `/dev/loop` in the reply, which could be part of the image's own path.
 
 - **A confirmation acts on what it asked about.** The question sits in a
   bar under a listing that stays live, so the selection could change before
@@ -509,14 +516,20 @@ should not be trusted for compatibility yet.
   it cannot act on; it says at once that the items are already there.
 
 - **Moving something into the folder it is already in, by another name, no
-  longer deletes it.** On Windows a mapped drive and its share, a subst
-  drive, or a path written with `\\?\`; on Linux a bind mount. The move
-  took the copy route and asked whether to replace the file with itself;
-  on *Replace* it landed the copy over it — which was itself — and then
-  deleted the source, which was what had landed: gone, from no bin, with
-  nothing to undo. The file system is now asked whether two folders are
-  one before a move copies anything, and whether two files are one before
-  a source is deleted.
+  longer deletes it.** A folder can answer to two names — through a linked
+  folder, and on Windows through a mapped drive and its share, a subst
+  drive, or a path written with `\\?\`; on Linux through a bind mount — and
+  a move into its own folder under the second name looked like a move
+  somewhere else onto a name already taken. A file took the copy route and
+  was asked whether to replace itself; on *Replace* the copy landed over
+  it — which was itself — and then the source was deleted, which was what
+  had landed: gone, from no bin, with nothing to undo. A link was deleted
+  from both names, which were one entry, while the operation reported
+  success and Ctrl+Z said it had undone a move. Whether two paths are the
+  same thing is now decided by following the folders rather than by
+  comparing the text: the file system is asked whether two folders are one
+  before a move copies anything, and whether two files are one before a
+  source is deleted.
 
 - **On Linux, two bins holding one name are two items.** A file deleted
   from your home folder and another of the same name deleted from a stick
@@ -565,26 +578,16 @@ should not be trusted for compatibility yet.
   so opening such a folder listed its neighbour — rows, paths and all, and
   a delete there emptied the wrong folder. The folder itself now refuses
   to open and says why, as does making a new folder in it; the space-usage
-  view and a duplicate scan count it as unreadable rather than showing the
-  other's files, and a folder's size in properties leaves out such folders
-  inside it rather than counting their neighbours twice.
-
-- **A duplicate scan no longer offers one file as a copy of itself.** Two
-  names for one file — a hard link, or a folder reached twice through a
-  bind mount — were listed as copies, with space to give back that deleting
-  them does not; and for a folder reached twice, *Select every copy but one*
-  could pick the only one. And a
-  folder that can be listed but not opened no longer ends the scan, the
-  space-usage view or a folder's size: it is counted as unreadable and the
-  rest carries on.
+  view and a duplicate scan count it as unreadable, and a folder's size in
+  properties leaves out such folders inside it rather than counting their
+  neighbours twice.
 
 - **Invert selection keeps to the folder you are in when folders are
   opened in place.** In the List layout it selected rows from inside the
   opened folders as well.
 
-- **The Share row names what it will share.** It kept the name from the
-  last time the menu opened, so it could name a folder selected earlier —
-  "photos" — and share the folder you were in.
+- **The Share row names what it will share.** It could go on naming a
+  folder selected earlier — "photos" — while sharing the folder you were in.
 
 - **On Linux, asking for the checksums of a named pipe no longer freezes
   the application.** The button is not offered for one, and *Stop* now
@@ -615,9 +618,9 @@ should not be trusted for compatibility yet.
   the bin since, or refused on the way — Ctrl+Z on Linux stopped at it,
   leaving the rest in the bin with the Undo row gone and a message naming
   a trash key; on Windows it went on, said nothing, and reported the undo
-  done. Now every item that can come back does, and the status bar names
-  what could not and why, as it does for a move. What is still in the bin
-  is put back from there.
+  done. Now every item that can come back does, and the status bar says
+  what could not and why — by name where the bin still lists it, as it
+  does for a move. Anything still in the bin can be restored from the bin.
 
 - **A link to a network share is no longer reproduced as something that
   cannot be opened.** Copying or moving a link that points at a share made a
@@ -625,32 +628,6 @@ should not be trusted for compatibility yet.
   without complaint, so what arrived looked like a working link, reported the
   right target, and could not be opened at all. Such a link is now made the
   way that can express it, or the copy says it could not be made.
-
-- **An undo that leaves a folder behind now says which folder.** When
-  everything went back but the emptied folder at the other end could not be
-  taken away, the status bar said "everything went back, but The directory
-  is not empty" — naming neither the folder nor where it was, so there was
-  nothing to act on. It names both now.
-
-- **A folder Windows has marked for something other than a link is no longer
-  replaced by one, and a read-only link being replaced no longer leaves a
-  stray entry behind.** Windows puts reparse points on folders that are not
-  links — app execution aliases and cloud placeholders among them — and
-  moving a link onto such a folder wrote over it instead of refusing, which
-  is what happens for any other folder. Separately, replacing a read-only
-  junction or folder link left the old one sitting in the folder under a
-  working name, because the read-only mark was never taken off it and the
-  removal that failed was not reported.
-
-- **Moving a link into the folder it already lives in, reached by another
-  name, no longer destroys it.** A folder often has two names — a linked
-  folder is the ordinary way to arrange that — and moving a link into its
-  own folder under the second name looked to Vaktari like moving it
-  somewhere else onto a name already taken. It replaced the link with a copy
-  of itself and then deleted the original, which was the same entry: the
-  link was gone from both names, while the operation reported success and
-  Ctrl+Z said it had undone a move. Whether two paths are the same thing is
-  now decided by following the folders rather than by comparing the text.
 
 - **Undoing a move no longer freezes the window, and two undos can no longer
   run at once.** Ctrl+Z did the whole job on the thread that draws the
@@ -665,36 +642,29 @@ should not be trusted for compatibility yet.
 
 - **Undoing the move of a folder no longer writes over what is standing at the
   source, or stops half-done.** Where the folder a move came out of was there
-  again, Ctrl+Z copied the moved tree back over it: a file written there since
-  was replaced without a word, and a read-only file, or a file standing where a
-  moved subfolder belonged, stopped the undo part-way with both Ctrl+Z and
-  Ctrl+Y gone. On Linux it went further — links came back as full copies of
-  what they pointed at, so a linked photo library was duplicated whole into the
-  folder it was linked from, and a link whose target had gone stopped the undo
-  where it stood. Every entry now goes back on its own and only onto a free
-  name, and links go back as links. What cannot go back stays where the move
-  left it, is named on the status bar, and is still offered by Ctrl+Z, so
-  clearing the way and pressing again finishes the job. A folder the move made
-  travels back whole and forward again whole, carrying anything saved into it
-  in between, while one the move merged into gives back only what the move put
-  there.
+  again, Ctrl+Z copied the moved tree back into it. On Windows a file written
+  there since was replaced without a word, and a read-only file, or a file
+  standing where a moved subfolder belonged, stopped the undo part-way with
+  both Ctrl+Z and Ctrl+Y gone. On Linux the undo stopped at the first file
+  already there, leaving copies in both places; links came back as full copies
+  of what they pointed at, so a linked photo library was duplicated whole into
+  the folder it was linked from, and a link whose target had gone stopped the
+  undo where it stood. Every entry now goes back on its own and only onto a
+  free name, and links go back as links, though on Windows a junction or
+  folder link cannot go back to another drive. What cannot go back stays where
+  the move left it and is named on the status bar, and if any of the step did
+  go back, Ctrl+Z still offers the rest. When the undo empties a folder but
+  cannot remove it, the status bar names the folder and where it is. A folder
+  the move made travels back whole and forward again whole, carrying anything
+  saved into it in between.
 
 - **An undo that fails part-way no longer leaves the folder looking
   untouched.** Such an undo has still moved things on disk, but the pane
-  only wrote the reason on the status bar: the list went on showing the
-  folder as it was before the undo began, and Ctrl+Z and Ctrl+Y went on
-  offering the step that had already run. The folder is read again now,
+  only wrote the reason on the status bar: the list could go on showing the
+  folder as it was before the undo began, and the Undo and Redo rows went
+  on naming the step that had already run. The folder is read again now,
   the two entries name what the history holds, and the reason is said
   after that reading rather than cleared by it.
-
-- **A file is no longer taken for a link because it carries a reparse
-  point.** Windows puts reparse points on entries that are not links — the
-  app execution aliases under WindowsApps are among them — and such a file
-  was listed in the space-usage view as a link and counted at no size. It
-  is now listed as the file it is, at its length. Junctions, symbolic
-  links and the links WSL makes are still listed as links and never
-  followed, and the Properties dialog counts a folder link made by WSL as
-  one item of no size like any other link.
 
 - **A folder that cannot be watched keeps up anyway, and says so.** On
   Linux each folder being watched takes one of a limited number of inotify
@@ -705,19 +675,20 @@ should not be trusted for compatibility yet.
   a repository that cannot be watched catch up the same way.
 
 - **Searching no longer fills the list of remembered folder views.** Each
-  search left a record of its view under that one search — a record nothing
-  could ever read back — and the settings page counted every one of them
-  among the folders remembered. All searches now share one remembered view,
-  and the records earlier searches left behind are dropped when Vaktari next
-  starts. A view set for one particular search falls back to the shared
-  search view once.
+  search left a record of its view under that one search, which only the
+  identical search run again would ever read, and the settings page counted
+  every one of them among the folders remembered. All searches now share one
+  remembered view, and the records earlier searches left behind are dropped
+  when Vaktari next starts. A view set for one particular search falls back
+  to the shared search view once.
 
 - **The Properties dialog no longer counts a link as the thing it points
   at.** On Linux a symbolic link to a file was added to a folder's total at
-  the length of its own path — ten bytes of files and one link came to
-  eighty — and on both systems a link to a folder, or a junction on Windows,
-  was counted among the folders. A link now counts as one item of no size,
-  the way the space-usage view already counts one.
+  the length of the path it points to — ten bytes of files and one link
+  came to eighty — and on both systems a link to a folder, or a junction on
+  Windows, was counted among the folders. A link — a folder link made by WSL
+  included — now counts as one item of no size, the way the space-usage
+  view counts one.
 
 - **Undoing the move of a folder that holds a junction no longer fails
   after it has worked.** Where Ctrl+Z cannot simply rename the folder back
@@ -727,8 +698,10 @@ should not be trusted for compatibility yet.
   delete met. The folder came back correctly and then the undo reported
   "The parameter is incorrect", leaving a gutted shell of it where it had
   been moved to; the step had already left the Undo row, and Ctrl+Y could
-  not put it back. The undo now takes the folder away through the same walk
-  the delete uses.
+  not put it back. The undo now puts each entry back on its own, so the
+  junction goes back as a junction. Undoing a move to another drive puts back
+  everything else and says the junction could not go back; it stays with its
+  folder where the move left it.
 
 - **Deleting a folder that holds a junction no longer leaves the folder
   standing with everything inside it gone.** A junction — the link
@@ -743,8 +716,9 @@ should not be trusted for compatibility yet.
   of such a folder did the same thing, and reported removing nothing: the
   entry stayed listed, still advertising its original size, over a payload
   that had already been gutted. Both now walk the tree themselves and take
-  each link out as a link, never touching what is behind it, so the folder
-  goes whole or stays whole.
+  each link out as a link, never touching what is behind it; a delete that
+  meets something it cannot remove stops there and says so, rather than
+  emptying the rest.
 
 - **A link moved onto a name that is already taken is no longer lost.**
   Answering *Overwrite* when a link was moved onto a name in use did not do
@@ -752,7 +726,7 @@ should not be trusted for compatibility yet.
   place, and the move was still counted as done; copying one onto a taken
   name wrote nothing either, while saying it had. On Windows a junction was
   not written over a file of that name, and over an empty folder of that
-  name it was laid down without asking and removed from where it had been. A
+  name it replaced the folder and was removed from where it had been. A
   file or a link at the name is now replaced, as the answer asks, and only
   once the link that replaces it exists, so a drive that cannot hold links
   leaves the name as it was. A folder at the name is left alone, and so is
@@ -761,16 +735,6 @@ should not be trusted for compatibility yet.
   the file is reached — through a folder that answers to a second name, or
   through a link that points at another link — and not only when the two
   paths happen to be written the same way.
-
-- **A file that turns up at the destination during a copy is no longer
-  replaced without a word.** A copy asks about a clash when it reaches
-  each file, and then wrote the finished file under its name at the end,
-  over whatever had arrived there in the meantime; for a large file going
-  to a slow stick, that was minutes in which a save from another program
-  could be lost. A name that turns up while its file is on the way is now
-  asked about like any other clash, and so is one that turns up as a move
-  takes its name. On Linux a sliver of the window remains, between the
-  question and the rename itself.
 
 - **Undoing a copy into an existing folder no longer takes the folder with
   it.** Copying a folder onto one of the same name, choosing to merge, and
@@ -820,12 +784,13 @@ should not be trusted for compatibility yet.
   away — or written over.** Startup kept `settings.json` only when its
   format number was exactly this build's, and answered anything else with
   defaults; so the first release to change the number would have reset
-  every choice on six pages for everyone who upgraded, silently. A file from
+  every choice in Settings for everyone who upgraded, silently. A file from
   an older format is now brought up to the current one step by step, and a
   copy of it as the older version wrote it is kept beside it as
   `settings.v<N>.json` for the day that version is run again. A file from a
-  newer format is still read as defaults — half a newer file is worse than
-  none of it — but it is no longer written over on the next save (which
+  newer format is not read — half a newer file is worse than none of it —
+  so Vaktari uses its backup when that is one it can read, and defaults
+  otherwise; but the file is no longer written over on the next save (which
   also replaced its backup a save later, so trying an older build once
   destroyed what the newer one had kept): Vaktari says so on the status bar
   and in the settings dialog, changes made apply until it closes, and the
@@ -837,7 +802,7 @@ should not be trusted for compatibility yet.
   there from the first byte, and deleted it if anything went wrong. So a copy
   chosen to *Overwrite* that then failed part-way — a memory stick pulled, a
   share that went away, a disk that filled — left neither the old file nor
-  the new one; and a copy interrupted by a crash or a power cut left a file
+  the new one; and a copy interrupted by a crash of Vaktari left a file
   under the real name that looked complete and was not. A copy is now written
   beside its destination under a staging name and renamed into place only
   once every byte is down, which the filesystem does in one step: the
@@ -845,7 +810,8 @@ should not be trusted for compatibility yet.
   never a half. If a copy is cancelled or fails, only the staging file goes.
   A staging file is easy to recognise — it begins with a dot and the name it
   was going to be, and carries `.vaktari-` — so one left behind by a crash is
-  not mistaken for the real thing.
+  not mistaken for the real thing. A name that turns up at the destination
+  while its copy is being written is asked about like any other clash.
 
 - **The licences of what Vaktari is built from now ship with it.** The README
   said the licences of SkiaSharp, HarfBuzzSharp and the Inter typeface travel
@@ -856,11 +822,10 @@ should not be trusted for compatibility yet.
 
 - **A search on Windows now says that files marked as system are not
   searched.** The walk has always skipped anything carrying the System
-  attribute — a framework default rather than a decision — and nothing on
-  screen said so, so a folder a sync client had marked that way was searched
-  past in silence. The line under the search that explains there is no index
-  now says this too. What is skipped is unchanged; that it is skipped is no
-  longer a secret.
+  attribute, and nothing on screen said so, so a folder a sync client had
+  marked that way was searched past in silence. The line under the search
+  that explains there is no index now says this too. What is skipped is
+  unchanged; that it is skipped is no longer a secret.
 
 - **Hovering a banded row no longer wipes out its band.** Every other row in a
   listing is drawn a shade apart from its neighbours, which is what lets the eye
@@ -927,8 +892,8 @@ should not be trusted for compatibility yet.
   background rather than on the window's thread; Vaktari waits for those
   saves before it closes.
 
-- **Vaktari no longer deletes a "show in folder" override it did not
-  write.** A `~/.local/share/dbus-1/services/org.freedesktop.FileManager1.service`
+- **On Linux, Vaktari no longer deletes a "show in folder" override it did
+  not write.** A `~/.local/share/dbus-1/services/org.freedesktop.FileManager1.service`
   written by hand, to send other applications' "show in folder" to a file
   manager of your choice, was deleted every time Vaktari started while it
   was not the default file manager. Only a file that starts Vaktari is
@@ -4010,7 +3975,8 @@ should not be trusted for compatibility yet.
 
 First tagged releases. Linux tarball and RPM.
 
-[Unreleased]: https://github.com/dkflint723/vaktari/compare/v0.10.2...HEAD
+[Unreleased]: https://github.com/dkflint723/vaktari/compare/v0.11.0...HEAD
+[0.11.0]: https://github.com/dkflint723/vaktari/compare/v0.10.2...v0.11.0
 [0.10.2]: https://github.com/dkflint723/vaktari/compare/v0.10.1...v0.10.2
 [0.10.1]: https://github.com/dkflint723/vaktari/compare/v0.10.0...v0.10.1
 [0.10.0]: https://github.com/dkflint723/vaktari/compare/v0.9.16...v0.10.0
