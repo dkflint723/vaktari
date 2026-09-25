@@ -1,6 +1,8 @@
+using System.Buffers.Binary;
 using System.Runtime.Versioning;
 using Vaktari.Core.FileSystem;
 using Vaktari.Windows;
+using Vaktari.Core.Tests;
 using Xunit;
 
 namespace Vaktari.Windows.Tests;
@@ -240,5 +242,78 @@ public sealed class WindowsFileIconsTests : IDisposable
         }
 
         Assert.True(visible, "every pixel was fully transparent");
+    }
+
+    /// <summary>A 16×16 32-bit icon: the directory, one entry, and a DIB
+    /// whose header states twice the height, as an .ico's does.</summary>
+    private static byte[] Ico()
+    {
+        const int side = 16;
+        const int image = 40 + side * side * 4 + side * 4;
+
+        var bytes = new byte[6 + 16 + image];
+        var span = bytes.AsSpan();
+
+        BinaryPrimitives.WriteUInt16LittleEndian(span[2..], 1);
+        BinaryPrimitives.WriteUInt16LittleEndian(span[4..], 1);
+
+        span[6] = side;
+        span[7] = side;
+        BinaryPrimitives.WriteUInt16LittleEndian(span[10..], 1);
+        BinaryPrimitives.WriteUInt16LittleEndian(span[12..], 32);
+        BinaryPrimitives.WriteUInt32LittleEndian(span[14..], image);
+        BinaryPrimitives.WriteUInt32LittleEndian(span[18..], 22);
+
+        var dib = span[22..];
+        BinaryPrimitives.WriteUInt32LittleEndian(dib, 40);
+        BinaryPrimitives.WriteInt32LittleEndian(dib[4..], side);
+        BinaryPrimitives.WriteInt32LittleEndian(dib[8..], side * 2);
+        BinaryPrimitives.WriteUInt16LittleEndian(dib[12..], 1);
+        BinaryPrimitives.WriteUInt16LittleEndian(dib[14..], 32);
+
+        // Opaque red; the AND mask after the pixels stays zero, which is "draw".
+        for (var i = 0; i < side * side; i++)
+        {
+            dib[40 + i * 4 + 2] = 0xFF;
+            dib[40 + i * 4 + 3] = 0xFF;
+        }
+
+        return bytes;
+    }
+
+    /// <summary>
+    /// **A file that is its own icon is not downloaded to draw it** — an .ico
+    /// and an .exe kept online, the two per-file types whose icon is read out
+    /// of the file itself. Measured, not guarded: nothing in Vaktari checks
+    /// before this call, and none is added, because the shell itself declines
+    /// to open them and answers with an icon anyway (both came back 48×48,
+    /// with no fetch from this process or any other). Pinned so a change of
+    /// flags or of route that made it read would show, as the thumbnail's own
+    /// test in OnlineOnlyFilesTests pins the shell's thumbnail.
+    ///
+    /// Here rather than in that class, because the seam this class's other
+    /// tests set is one static, and a fake answering in place of the shell
+    /// would make this assertion about nothing.
+    /// </summary>
+    [WindowsFact]
+    public void A_file_that_is_its_own_icon_is_not_downloaded_to_draw_it()
+    {
+        using var cloud = CloudSyncRoot.Create();
+
+        var ico = cloud.Placeholder("app.ico", Ico());
+        var exe = cloud.Placeholder(
+            "app.exe", File.ReadAllBytes(Path.Combine(Environment.SystemDirectory, "calc.exe")));
+
+        var icons = new WindowsFileIcons();
+
+        Assert.NotNull(icons.IconFor(ico, isDirectory: false, size: 48));
+        Assert.NotNull(icons.IconFor(exe, isDirectory: false, size: 48));
+
+        Assert.True(cloud.FetchCount == 0 && cloud.OtherFetches.Count == 0,
+            $"fetched for this process: [{string.Join(", ", cloud.Fetched)}]; "
+            + $"for others: [{string.Join(", ", cloud.OtherFetches)}]");
+
+        Assert.True(CloudSyncRoot.IsOnlineOnly(ico), "app.ico is no longer online-only");
+        Assert.True(CloudSyncRoot.IsOnlineOnly(exe), "app.exe is no longer online-only");
     }
 }

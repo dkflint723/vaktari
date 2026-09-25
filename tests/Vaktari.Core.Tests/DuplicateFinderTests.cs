@@ -230,6 +230,53 @@ public sealed class DuplicateFinderTests : IDisposable
         Assert.Equal(2, Assert.Single(report.Sets).Paths.Count);
     }
 
+    /// <summary>
+    /// **A file kept online is not opened even to ask which file it is.** The
+    /// identity read that takes out a second name for one file opens the path,
+    /// and a provider that marks a file RECALL_ON_OPEN fetches it for that
+    /// open alone — so the online check has to come first, and the file is
+    /// counted unread without being asked about. Through both seams, because
+    /// no test can make a real file RECALL_ON_OPEN: the fake identity answers
+    /// "unknown" for everything, which is what the finder does without one,
+    /// and only records who was asked. The files on the disk ARE asked, so an
+    /// identity read that never ran cannot pass for one that skipped a file.
+    /// </summary>
+    [Fact]
+    public void A_file_kept_online_is_not_opened_to_ask_which_file_it_is()
+    {
+        var held = Write("held.txt", "the same thing");
+        var first = Write("first.txt", "the same thing");
+        var second = Write("second.txt", "the same thing");
+
+        var identityBefore = DuplicateFinder.Identity;
+        var onlineBefore = OnlineOnly.Test;
+        var asked = new System.Collections.Concurrent.ConcurrentBag<string>();
+
+        DuplicateFinder.Identity = path =>
+        {
+            if (path.StartsWith(_root, StringComparison.Ordinal)) asked.Add(path);
+            return null;
+        };
+        OnlineOnly.Test = path => path == held;
+
+        try
+        {
+            var report = Find();
+
+            Assert.DoesNotContain(held, asked);
+            Assert.Contains(first, asked);
+            Assert.Contains(second, asked);
+
+            Assert.Equal(1, report.Unreadable);
+            Assert.Equal(["first.txt", "second.txt"], Names(Assert.Single(report.Sets)));
+        }
+        finally
+        {
+            DuplicateFinder.Identity = identityBefore;
+            OnlineOnly.Test = onlineBefore;
+        }
+    }
+
     // ---- running it ----------------------------------------------------------
 
     [Fact]

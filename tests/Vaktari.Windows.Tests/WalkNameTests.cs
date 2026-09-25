@@ -21,6 +21,7 @@ namespace Vaktari.Windows.Tests;
 /// prefix, and removed the same way.
 /// </summary>
 [SupportedOSPlatform("windows")]
+[Collection(DuplicateIdentityCollection.Name)]
 public sealed class WalkNameTests : IDisposable
 {
     private readonly TempTree _tree = new();

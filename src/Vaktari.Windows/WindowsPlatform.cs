@@ -66,6 +66,10 @@ public sealed class WindowsPlatform : IPlatform
         // call into the operating system.
         SafeWalk.ReparseTag = ReparseTags.Of;
         DuplicateFinder.Identity = FileIdentity.Of;
+
+        // Which files a sync client holds online, for the readers that would
+        // otherwise download one to read its first bytes. See OnlineOnly.
+        OnlineOnly.Test = Placeholders.IsHeldOnline;
     }
 
     /// <summary>Where this application's own per-user state lives.</summary>

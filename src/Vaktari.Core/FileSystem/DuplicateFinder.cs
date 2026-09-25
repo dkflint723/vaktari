@@ -102,7 +102,7 @@ public static class DuplicateFinder
             // of a disk, and it is why the walk comes first.
             if (paths.Count < 2) continue;
 
-            var files = OneNamePerFile(paths);
+            var files = OneNamePerFile(OnThisDisk(paths, counters));
 
             if (files.Count < 2) continue;
 
@@ -120,6 +120,41 @@ public static class DuplicateFinder
     /// which is what this finder did before.
     /// </summary>
     public static Func<string, (ulong Volume, ulong Low, ulong High)?>? Identity { get; set; }
+
+    /// <summary>
+    /// The candidates of one length whose data is on this disk; the rest are
+    /// counted unreadable and left out.
+    ///
+    /// **A file kept online is not read, because reading its first block
+    /// downloads it** — measured, see <see cref="OnlineOnly"/> — and a scan of
+    /// a synced folder would fetch every file that shares a length with
+    /// another. Counted with the unreadable: it may be a copy this scan cannot
+    /// vouch for, which is what that count says. Not counted as examined,
+    /// since progress counts what is opened.
+    ///
+    /// **Asked before <see cref="OneNamePerFile"/>, not after.** The check
+    /// used to sit in <see cref="Partition"/>, behind the identity read — and
+    /// that read opens the file. It asks for attributes only, which leaves a
+    /// RECALL_ON_DATA_ACCESS file where it is, but a provider may mark a file
+    /// RECALL_ON_OPEN instead, and then the open alone fetches it.
+    /// </summary>
+    private static List<string> OnThisDisk(List<string> paths, Counters counters)
+    {
+        var kept = new List<string>(paths.Count);
+
+        foreach (var path in paths)
+        {
+            if (OnlineOnly.Is(path))
+            {
+                counters.Unreadable++;
+                continue;
+            }
+
+            kept.Add(path);
+        }
+
+        return kept;
+    }
 
     /// <summary>
     /// The candidates of one length with every second name for one file taken

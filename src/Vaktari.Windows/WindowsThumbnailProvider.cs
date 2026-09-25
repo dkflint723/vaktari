@@ -50,6 +50,15 @@ public sealed class WindowsThumbnailProvider : IThumbnailProvider
     {
         if (!Decodable.Contains(Path.GetExtension(path))) return ValueTask.FromResult<string?>(null);
 
+        // **A picture kept online is not handed back to be decoded**, because
+        // the decode reads it and reading it downloads it — measured against a
+        // real placeholder, as was the header read below, which fetched the
+        // file on its own. Null keeps the row's icon; the shell is not asked
+        // instead, by the division the class note describes. Asked directly
+        // rather than through OnlineOnly's seam: this is the platform, and the
+        // answer should not depend on whether the seam was adopted.
+        if (Placeholders.IsHeldOnline(path)) return ValueTask.FromResult<string?>(null);
+
         try
         {
             // A file too small to enlarge cleanly keeps its icon rather than

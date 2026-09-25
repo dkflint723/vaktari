@@ -253,8 +253,9 @@ public sealed class SearchContentTests
 
     /// <summary>
     /// RECALL_ON_OPEN and RECALL_ON_DATA_ACCESS, which only a cloud files
-    /// provider can set, so no test can put them on a file. What can be pinned
-    /// is that the rule reads all three "not on this disk" bits.
+    /// provider can set — OnlineOnlyFilesTests registers one of its own to put
+    /// the second on a real placeholder. What is pinned here is that the rule
+    /// reads all three "not on this disk" bits.
     /// </summary>
     [WindowsTheory]
     [InlineData(0x0000_1000)]
@@ -303,6 +304,42 @@ public sealed class SearchContentTests
         try
         {
             Placeholders.HeldOnlineIn(scope);
+        }
+        finally
+        {
+            Placeholders.WhileExposed = null;
+        }
+
+        Assert.Equal(2, during);
+        Assert.Equal(before, Placeholders.RtlQueryThreadPlaceholderCompatibilityMode());
+    }
+
+    /// <summary>
+    /// **The one-file question is asked exposed too, and puts the mode back.**
+    /// Nothing else can prove it: OnlineOnlyFilesTests found the test host
+    /// seeing a real placeholder's online bits in its own mode, so every
+    /// assertion made there holds with the expose step deleted. Here, beside
+    /// the folder read's own test, because the seam is one static both share.
+    /// </summary>
+    [WindowsFact]
+    public void The_one_file_question_is_asked_with_placeholders_exposed()
+    {
+        using var tree = new TempTree();
+
+        var file = tree.Write("tree/notes.txt", "remember the milk");
+        var before = Placeholders.RtlQueryThreadPlaceholderCompatibilityMode();
+        sbyte during = -1;
+
+        Assert.True(before != 2, "the thread was exposed already, so 2 inside would prove nothing");
+
+        Placeholders.WhileExposed = path =>
+        {
+            if (path == file) during = Placeholders.RtlQueryThreadPlaceholderCompatibilityMode();
+        };
+
+        try
+        {
+            Assert.False(Placeholders.IsHeldOnline(file));
         }
         finally
         {

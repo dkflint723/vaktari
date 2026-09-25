@@ -29,10 +29,15 @@ namespace Vaktari.Windows;
 /// cloud files existed — the read is made in the process's mode, because
 /// there is nothing a placeholder could be hiding.
 ///
-/// Not measured against an online-only file: every file in the one sync root
-/// this was developed beside is kept on the disk. The test for this reads the
-/// mode from inside the exposed read, which is the part that can be proved
-/// here.
+/// **Measured since against real online-only files**, in a cloud files sync
+/// root the Windows tests register in a temp folder of their own
+/// (OnlineOnlyFilesTests): the exposed read names every placeholder whose data
+/// was not fetched. The same run found the test host — whose process mode
+/// reads back as disguised — seeing ReparsePoint, Offline and
+/// RECALL_ON_DATA_ACCESS on those files through its own reads as well, which
+/// is not what 0633df3 measured on the sync root beside it. Which of the two a
+/// given sync client's files get is not settled here, so the question is still
+/// asked exposed: it answers correctly either way.
 /// </summary>
 internal static partial class Placeholders
 {
@@ -57,11 +62,16 @@ internal static partial class Placeholders
     private static bool _available = true;
 
     /// <summary>
-    /// Runs inside the exposed read, before it lists anything, with the folder
-    /// being read. For the tests that prove the mode is really set there and
-    /// that a content walk really asks; null in the application. Handed the
-    /// folder so a test can tell its own reads from another class's running
-    /// beside it.
+    /// Runs inside the exposed read, before it reads anything, with the folder
+    /// being listed or the one file being asked about. For the tests that prove
+    /// the mode is really set there and that a content walk really asks; null
+    /// in the application. Handed the path so a test can tell its own reads
+    /// from another class's running beside it.
+    ///
+    /// **The one-file read needs it as much as the folder read.** The test
+    /// host already sees a placeholder's online bits in its own mode (see the
+    /// class note), so a real placeholder answers correctly with the expose
+    /// step deleted — only the mode read from in here can tell.
     /// </summary>
     internal static Action<string>? WhileExposed { get; set; }
 
@@ -99,6 +109,37 @@ internal static partial class Placeholders
         }
 
         return held;
+    }
+
+    /// <summary>
+    /// Whether one file's data is not on this disk, asked the same way:
+    /// exposed, on this thread only, for the length of one attribute read.
+    /// That read does not open the file's data, so asking fetches nothing.
+    /// False when the attributes cannot be read — the open that would follow
+    /// fails on the same path for the same reason.
+    ///
+    /// For the readers that take one path rather than walk a folder: the image
+    /// header, the thumbnail and the duplicate finder, through
+    /// <see cref="Vaktari.Core.FileSystem.OnlineOnly"/>.
+    /// </summary>
+    internal static bool IsHeldOnline(string path)
+    {
+        var previous = Set(Expose);
+
+        try
+        {
+            WhileExposed?.Invoke(path);
+
+            return (File.GetAttributes(path) & HeldOnline) != 0;
+        }
+        catch (Exception e) when (e is IOException or UnauthorizedAccessException or ArgumentException)
+        {
+            return false;
+        }
+        finally
+        {
+            if (previous >= 0) Set(previous);
+        }
     }
 
     /// <summary>The thread's previous mode, or -1 when it could not be set.</summary>

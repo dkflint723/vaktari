@@ -21,6 +21,12 @@ public static class ImageSize
     {
         try
         {
+            // A picture kept online has its header in the part that is not on
+            // the disk, and reading 32 bytes of it fetches the file —
+            // measured, see OnlineOnly. Unknown, which callers already read
+            // as unknown.
+            if (OnlineOnly.Is(path)) return null;
+
             using var stream = File.OpenRead(path);
 
             Span<byte> head = stackalloc byte[32];

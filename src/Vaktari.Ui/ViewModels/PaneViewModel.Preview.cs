@@ -72,6 +72,23 @@ public sealed partial class PaneViewModel
 
         try
         {
+            // **A file kept online was read to preview it, or shown blank with
+            // no reason.** The text branch opens the file, and reading its head
+            // downloads a sync client's online-only file; a picture came back
+            // from the loader with no image, because the readers under it
+            // decline such a file, and the pane then said nothing about why.
+            // Asked once here, before either branch, and said on the detail
+            // line. Off the UI thread: it is a call to the file system, like
+            // every other read the preview makes.
+            if (await Task.Run(() => Core.FileSystem.OnlineOnly.Is(entry.FullPath), ct).ConfigureAwait(false))
+            {
+                await Dispatcher.UIThread.InvokeAsync(() =>
+                {
+                    if (!ct.IsCancellationRequested) PreviewDetail = KeptOnline;
+                });
+                return;
+            }
+
             var bitmap = await Thumbnails.ThumbnailLoader
                 .LoadAsync(entry.FullPath, 512, ct).ConfigureAwait(false);
 
@@ -122,6 +139,9 @@ public sealed partial class PaneViewModel
             });
         }
     }
+
+    /// <summary>The preview's detail line for a file whose data is not on this disk.</summary>
+    internal const string KeptOnline = "kept online — not downloaded to preview";
 
     private static bool LooksTextual(string name)
     {

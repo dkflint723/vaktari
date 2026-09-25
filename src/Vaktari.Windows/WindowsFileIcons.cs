@@ -65,8 +65,16 @@ public sealed class WindowsFileIcons : IFileIconProvider
     /// </summary>
     internal static Func<string, int, IconPixels?>? ComposeOverride { get; set; }
 
-    /// <summary>Types whose icon belongs to the individual file rather than to
-    /// the file type.</summary>
+    /// <summary>
+    /// Types whose icon belongs to the individual file rather than to the file
+    /// type.
+    ///
+    /// Reading such an icon reads the file, so one a sync client keeps online
+    /// was a candidate for being downloaded to draw its row. Measured against
+    /// a real online-only .ico and .exe (WindowsFileIconsTests): the shell
+    /// fetched neither and still answered with an icon, so nothing here checks
+    /// first. The test pins that, rather than a guard that would never fire.
+    /// </summary>
     private static readonly HashSet<string> PerFile =
         new(StringComparer.OrdinalIgnoreCase) { ".exe", ".lnk", ".ico", ".msi", ".cpl", ".scr", ".url" };
 
