@@ -67,6 +67,14 @@ public sealed partial class ShellViewModel : ObservableObject, IDisposable
 {
     private readonly IFileSystemProvider _fs;
     private readonly IFileOperations? _ops;
+
+    /// <summary>
+    /// Stands in for the platform's file operations in every window built
+    /// while it is set — for a test that drives a real window to the point of
+    /// sending something to the bin, and must not send it to the real one.
+    /// Null in the application.
+    /// </summary>
+    internal static Func<IFileOperations?, IFileOperations?>? OperationsOverride { get; set; }
     private readonly IApplicationLauncher? _launcher;
     private readonly IClipboardService? _clipboard;
     private readonly IScriptRunner? _scripts;
@@ -133,7 +141,7 @@ public sealed partial class ShellViewModel : ObservableObject, IDisposable
         _scripts = scripts;
         _templates = templates;
         _fs = fs;
-        _ops = ops;
+        _ops = OperationsOverride is { } swap ? swap(ops) : ops;
         _store = store;
         _launcher = launcher;
         _clipboard = clipboard;

@@ -41,6 +41,43 @@ namespace Vaktari.Ui;
 /// whether the next class got a fresh one would depend on dispatcher timing.
 /// Lending rather than reaching keeps every existing single-window test
 /// getting its own of everything, byte for byte as before.
+///
+/// ---- roadmap 23, and why it is closed rather than done ----
+///
+/// The roadmap carried an item reading "replace the ~27 statics with an
+/// explicit AppServices (Large)". It was surveyed on 2026-09-22 and the answer
+/// is that the item is mis-specified three ways over, and that the work it
+/// asks for is either already here or actively harmful. Recorded in this file
+/// because this IS the object it asks for, so this is where someone will come
+/// looking.
+///
+/// **There are 49, not ~27, and the compiler already sorts them.** 22 public,
+/// 27 internal. All 27 internal ones have ZERO production writers: they are
+/// the per-test-class isolation seams, and TestState installs them from a
+/// module initializer "because a test must not be able to forget". Removing
+/// them reinstates the failure that had the suite overwriting the developer's
+/// own tabs, geometry and back stack. They are the remedy, not the disease.
+///
+/// **Most of the rest are written once, here.** Of the 22 public, the great
+/// majority are assigned by this class inside Create(). Item 23 asks for an
+/// object that owns them; that object is this one. Moving them onto it as
+/// properties is renaming.
+///
+/// **And no production defect in the history is attributable to any of them.**
+/// The one measured cost was a test failure — a class that set
+/// PaneViewModel.DiskImages and never put it back. The multi-window bugs that
+/// actually shipped came from the OPPOSITE shape: one CopypartyShare instance
+/// shared between windows, so closing one killed the other's server, and a
+/// static EVENT holding a disposed shell. An explicit services object hands
+/// out shared instances — it is what caused the first, and it cannot fix the
+/// second.
+///
+/// **What was genuinely wrong, and is now fixed:** none of the eleven wiring
+/// assignments below was observed by any test, and every reader of them fails
+/// silently, so a forgotten service cost a feature at runtime and nothing in
+/// the suite. CompositionRootTests now asserts each one by reference identity.
+/// If this class ever gains another service, add it there too — the test
+/// counts how many pairings were meaningful, so it will not quietly shrink.
 /// </summary>
 internal sealed class WindowServices
 {

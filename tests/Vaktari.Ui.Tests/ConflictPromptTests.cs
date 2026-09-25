@@ -445,6 +445,43 @@ public sealed class ConflictPromptTests : IDisposable
         Assert.Equal(2, asked);
     }
 
+    /// <summary>
+    /// **A folder's "the rest" is the folders.** Merge and Overwrite are one
+    /// resolution, so ticking "do the same for the rest" on a folder's Merge
+    /// used to overwrite every later file clash without a word — the files
+    /// inside that merge among them.
+    /// </summary>
+    [AvaloniaFact]
+    public async Task Merging_the_rest_of_the_folders_still_asks_about_files()
+    {
+        var asked = new List<FileConflict>();
+
+        PaneViewModel.AskConflict = conflict =>
+        {
+            asked.Add(conflict);
+
+            return ValueTask.FromResult(new ConflictAnswer(ConflictResolution.Overwrite, true));
+        };
+
+        var settle = Conflicts();
+
+        var folders = new FileConflict(Folder("from/photos"), Folder("to/photos"));
+        var otherFolders = new FileConflict(Folder("from/music"), Folder("to/music"));
+        var files = new FileConflict(Write("from/photos/a.jpg", "new"), Write("to/photos/a.jpg", "old"));
+        var otherFiles = new FileConflict(Write("from/photos/b.jpg", "new"), Write("to/photos/b.jpg", "old"));
+
+        await settle(folders);
+        await settle(otherFolders);
+        Assert.Equal([folders], asked);
+
+        await settle(files);
+        Assert.Equal([folders, files], asked);
+
+        // And the file answer is remembered for files in its turn.
+        await settle(otherFiles);
+        Assert.Equal([folders, files], asked);
+    }
+
     /// <summary>With nothing to ask with — a headless run — the behaviour is
     /// what the application did before there was a prompt, which is the answer
     /// that destroys nothing.</summary>

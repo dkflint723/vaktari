@@ -7,19 +7,20 @@ using Vaktari.Core.Search;
 namespace Vaktari.Windows;
 
 /// <summary>
-/// Name search by walking the tree.
+/// Name search by walking the tree, and content search by reading the files
+/// the names do not answer.
 ///
-/// **No index behind it, and it says so.** <see cref="ISearchProvider"/> is
-/// documented as sitting on an index someone else maintains — Everything on
-/// Windows — and this is not that. Everything is third-party, may not be
-/// installed, and talks over an IPC protocol worth its own decision; Windows
-/// Search is COM. A managed walk is honest, has no dependency, and is the same
-/// thing the interface says the UI falls back to.
+/// **No index behind it, and it says so.** This is a managed walk of the
+/// drives. Two indexes were considered and set aside: Everything is
+/// third-party, may not be installed, and talks over an IPC protocol worth its
+/// own decision; Windows Search is COM. A managed walk is honest and has no
+/// dependency.
 ///
 /// The interface used to carry an <c>IsAvailable</c> flag, which this answered
-/// true. It meant "will this return results", not "is it fast", and returning
-/// false would have sent the UI to its own fallback walk — the same work, done
-/// twice as far as the user can tell.
+/// true. It meant "will this return results", not "is it fast", and this
+/// comment used to say that false would send the UI to a fallback walk of its
+/// own. The UI never had one; the flag is gone, and what the band says now
+/// comes from <see cref="AnswersFromIndex"/>.
 /// </summary>
 public sealed class WindowsSearchProvider : ISearchProvider
 {
@@ -51,11 +52,18 @@ public sealed class WindowsSearchProvider : ISearchProvider
     public string BackendName => "directory walk";
 
     /// <summary>
-    /// False. Reading every file to match text is a different order of cost from
-    /// matching names, and doing it without an index would be indistinguishable
-    /// from a hang on any real folder.
+    /// True: the walk reads a file whose name does not match when it is asked
+    /// to, through ContentMatcher.
+    ///
+    /// **This used to be false, on the grounds that reading every file without
+    /// an index "would be indistinguishable from a hang on any real folder".**
+    /// The cost is real and nothing here pretends otherwise — the band says
+    /// every text file is being read — but a hang is a wait that cannot be
+    /// ended, and this can: Stop is honoured before every open and every
+    /// 64 KiB read, and a file over ContentMatcher.MaxBytes is never opened at
+    /// all.
     /// </summary>
-    public bool SupportsContentSearch => false;
+    public bool SupportsContentSearch => true;
 
     /// <summary>
     /// True, and it always was — <see cref="Walk"/> has read
@@ -156,7 +164,11 @@ public sealed class WindowsSearchProvider : ISearchProvider
     public string Everywhere => "every drive on this machine";
 
     /// <summary>
-    /// One directory read per directory, and nothing else.
+    /// One directory read per directory, and nothing else — unless the question
+    /// asks for contents, when a folder holding a file whose name did not
+    /// answer is read a second time with placeholders exposed, and that file
+    /// is opened and read. That is the whole cost of the box, and
+    /// <see cref="Contains"/> is where it is paid.
     ///
     /// **No follow-up stat per entry.** `FileEntry`'s own rule is that nothing
     /// on it may require a second call, and this walk broke it twice: once to
@@ -213,7 +225,11 @@ public sealed class WindowsSearchProvider : ISearchProvider
         // order -- while the same query on Linux listed every C# file. A glob
         // is the one search syntax a person is likely to try without being told
         // it exists, and failing it silently reads as "there are no results".
-        var glob = query.Text.Contains('*') || query.Text.Contains('?');
+        var glob = query.IsPattern;
+
+        // Asked once rather than per file. False for a pattern whatever the
+        // box says: a pattern is a question about names.
+        var contents = query.ReadsContents;
 
         // A null scope means "everywhere indexed", and with no index the honest
         // reading is every drive on the machine — which is the phrase the box
@@ -264,7 +280,8 @@ public sealed class WindowsSearchProvider : ISearchProvider
             var directory = pending.Dequeue();
 
             // Materialised per directory so a mid-enumeration failure costs this
-            // folder rather than everything still on the frontier.
+            // folder rather than everything still on the frontier — and so no
+            // file is read while the directory handle is still open.
             List<FileEntry> entries;
             try
             {
@@ -276,6 +293,12 @@ public sealed class WindowsSearchProvider : ISearchProvider
                 continue;
             }
 
+            // Which of these a sync client holds online, asked of the folder
+            // once and only when a file in it is going to be opened. The rows
+            // above cannot say: this process sees placeholders disguised as
+            // ordinary files. See Placeholders.
+            HashSet<string>? online = null;
+
             foreach (var entry in entries)
             {
                 // A junction is a name in this folder, so it is matched below
@@ -283,7 +306,17 @@ public sealed class WindowsSearchProvider : ISearchProvider
                 // walk terminates now that the attribute no longer hides them.
                 if (entry.IsDirectory && !entry.IsSymlink) pending.Enqueue(entry.FullPath);
 
-                if (!Matches(entry.Name, query.Text, glob, comparison, query.CaseSensitive))
+                // Name first, because it costs nothing: a file whose name
+                // answers is never opened.
+                if (!Matches(entry.Name, query.Text, glob, comparison, query.CaseSensitive)
+                    // A folder is not a file to open, and asking which
+                    // files are online costs a second read of this folder,
+                    // so neither happens for one. GUARD rather than rule:
+                    // opening a folder would only fail, and fail quietly.
+                    && !(contents && !entry.IsDirectory
+                         && Contains(entry,
+                                     (online ??= Placeholders.HeldOnlineIn(directory)).Contains(entry.Name),
+                                     query, ct)))
                     continue;
 
                 yield return entry;
@@ -306,6 +339,74 @@ public sealed class WindowsSearchProvider : ISearchProvider
         => glob
             ? FileSystemName.MatchesSimpleExpression(text, name, ignoreCase: !caseSensitive)
             : name.Contains(text, comparison);
+
+    /// <summary>
+    /// Whether a file's contents answer the question, for an entry whose name
+    /// did not.
+    ///
+    /// **A file held online is not opened, because opening it downloads it.**
+    /// OneDrive, and any other sync client built on the cloud files API,
+    /// leaves a placeholder whose data is not on the disk, and reading one
+    /// fetches the whole file — so a content search over a synced folder would
+    /// download everything in it, silently, to answer one question.
+    /// <paramref name="heldOnline"/> comes from <see cref="Placeholders"/>,
+    /// which asks with placeholders exposed, because this process sees them
+    /// disguised as ordinary files and its own directory read cannot tell.
+    /// The refusal is counted, and the band says how many.
+    ///
+    /// **A link is matched by its name and not read.** What it holds is what
+    /// it points at, which is searched where it lives if it is inside the walk
+    /// at all — and a symbolic link to a share that has gone away blocks in
+    /// the open for the whole SMB timeout, where no Stop can reach it. The same
+    /// flag marks a shortcut, which is binary and so would be refused anyway.
+    /// </summary>
+    internal static bool Contains(
+        FileEntry entry, bool heldOnline, SearchQuery query, CancellationToken ct)
+    {
+        if (entry.IsSymlink) return false;
+
+        // A row the pane is going to drop is not worth opening.
+        if (entry.IsConcealed && !query.ReadsConcealed) return false;
+
+        if (heldOnline)
+        {
+            query.Skipped?.CountOnline();
+            return false;
+        }
+
+        // **A length of zero is not believed here.** NTFS writes a file's size
+        // into its directory entry when a handle closes, so a log a running
+        // program still holds open lists at 0 bytes however much is in it —
+        // measured: 7,200 bytes written and flushed, and the directory read
+        // said 0 until the writer let go. The zero-length refusal exists for
+        // Linux, where it keeps a FIFO from being opened; Windows has no FIFO
+        // in a folder to protect against, and trusting the 0 skipped exactly
+        // the file somebody searching a logs folder is looking for. A truly
+        // empty file costs one open. The read is still bounded: past MaxBytes
+        // it stops and says TooLarge whatever the directory said.
+        return ContentMatcher.Answers(query, Extended(entry.FullPath), Math.Max(entry.Length, 1), ct);
+    }
+
+    /// <summary>
+    /// The path with the extended prefix, so Windows opens the entry the walk
+    /// listed and not a name it would rewrite first.
+    ///
+    /// **Without it, three kinds of legal name are read from somewhere else.**
+    /// The Win32 path rules strip a trailing dot or space, so "report." and
+    /// "report " open their neighbour "report" (ReachablePath records the same,
+    /// measured); and "nul" opens the NUL device and reads nothing. Every check
+    /// above — online, link, length — was made against the entry, so reading
+    /// a different file answered for the wrong one, and could have opened a
+    /// placeholder the checks never saw. ReachablePath refuses these names
+    /// because acting on the wrong one can destroy it; a read can simply reach
+    /// the right one.
+    /// </summary>
+    internal static string Extended(string path)
+        => path.StartsWith(@"\\?\", StringComparison.Ordinal) || path.StartsWith(@"\\.\", StringComparison.Ordinal)
+            ? path
+            : path.StartsWith(@"\\", StringComparison.Ordinal)
+                ? @"\\?\UNC\" + path[2..]
+                : @"\\?\" + path;
 
     private static FileEntry Transform(ref FileSystemEntry entry)
     {

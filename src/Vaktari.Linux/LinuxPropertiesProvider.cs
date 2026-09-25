@@ -45,6 +45,7 @@ public sealed partial class LinuxPropertiesProvider : IPropertiesProvider, IAcce
             // change time or the epoch, so it is only shown when believable.
             Created = info.Exists && info.CreationTime.Year > 1971 ? info.CreationTime : null,
             SymlinkTarget = info.LinkTarget,
+            IsSpecial = !isDirectory && FileIdentity.IsSpecial(path) == true,
             Groups = groups,
         };
     }
@@ -440,7 +441,22 @@ public sealed partial class LinuxPropertiesProvider : IPropertiesProvider, IAcce
         return await Task.Run(() =>
         {
             var isDirectory = Directory.Exists(path);
-            File.SetUnixFileMode(path, (isDirectory ? directoryMode : mode) | Special(path));
+
+            void ChangeTop() => File.SetUnixFileMode(path, (isDirectory ? directoryMode : mode) | Special(path));
+
+            if (recursive && isDirectory && AccessWalk.Available)
+            {
+                // What each entry keeps is read from the entry itself, through
+                // the descriptor the walk holds — never by a path.
+                const UnixFileMode kept = UnixFileMode.SetUser | UnixFileMode.SetGroup | UnixFileMode.StickyBit;
+
+                return AccessWalk.Apply(
+                    path, ChangeTop,
+                    (folder, now) => (folder ? directoryMode : mode) | (now & kept),
+                    progress, ct);
+            }
+
+            ChangeTop();
 
             if (!recursive || !isDirectory) return AccessOutcome.Complete;
 
@@ -529,8 +545,11 @@ public sealed partial class LinuxPropertiesProvider : IPropertiesProvider, IAcce
                 // the home directory would otherwise report the size of the
                 // home directory, and one pointing at an ancestor would never
                 // finish being measured.
+                // Nor into the kernel's own filesystems: properties on "/"
+                // measured /proc/kcore, 128 TiB of it. See SafeWalk.DoNotEnter.
                 ShouldRecursePredicate = (ref FileSystemEntry entry)
-                    => !entry.Attributes.HasFlag(FileAttributes.ReparsePoint),
+                    => !entry.Attributes.HasFlag(FileAttributes.ReparsePoint)
+                       && !KernelMounts.Contains(entry.ToFullPath()),
             };
 
             var sinceReport = 0;

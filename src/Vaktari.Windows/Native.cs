@@ -198,6 +198,47 @@ internal static partial class Native
     internal static partial bool GetFileInformationByHandleEx(
         nint file, int infoClass, out FILE_ATTRIBUTE_TAG_INFO info, uint size);
 
+    // ---- File identity -----------------------------------------------------
+
+    internal const int FileIdInfo = 18;
+
+    /// <summary>FILE_ID_INFO: the volume's 64-bit serial and a 128-bit id,
+    /// held here as two halves.</summary>
+    [StructLayout(LayoutKind.Sequential)]
+    internal struct FILE_ID_INFO
+    {
+        internal ulong VolumeSerialNumber;
+        internal ulong FileIdLow;
+        internal ulong FileIdHigh;
+    }
+
+    [LibraryImport("kernel32.dll", EntryPoint = "GetFileInformationByHandleEx", SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    internal static partial bool GetFileIdInfo(
+        nint file, int infoClass, out FILE_ID_INFO info, uint size);
+
+    /// <summary>
+    /// BY_HANDLE_FILE_INFORMATION, every field a DWORD — the three FILETIMEs
+    /// are two each — so the layout is 52 bytes with nothing to pad.
+    /// </summary>
+    [StructLayout(LayoutKind.Sequential)]
+    internal struct BY_HANDLE_FILE_INFORMATION
+    {
+        internal uint FileAttributes;
+        internal uint CreationLow, CreationHigh;
+        internal uint AccessLow, AccessHigh;
+        internal uint WriteLow, WriteHigh;
+        internal uint VolumeSerialNumber;
+        internal uint FileSizeHigh, FileSizeLow;
+        internal uint NumberOfLinks;
+        internal uint FileIndexHigh, FileIndexLow;
+    }
+
+    [LibraryImport("kernel32.dll", EntryPoint = "GetFileInformationByHandle", SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    internal static partial bool GetFileInformationByHandle(
+        nint file, out BY_HANDLE_FILE_INFORMATION info);
+
     /// <summary>
     /// Points an existing, empty directory at <paramref name="target"/>, making
     /// it a junction.
@@ -498,6 +539,16 @@ internal static partial class Native
     }
 
     internal const uint STORAGE_DEPENDENCY_INFO_VERSION_2 = 2;
+
+    [LibraryImport("kernel32.dll", EntryPoint = "GetVolumePathNameW",
+        StringMarshalling = StringMarshalling.Utf16, SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    internal static partial bool GetVolumePathName(string fileName, [Out] char[] volumePath, uint length);
+
+    [LibraryImport("kernel32.dll", EntryPoint = "GetVolumeNameForVolumeMountPointW",
+        StringMarshalling = StringMarshalling.Utf16, SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    internal static partial bool GetVolumeNameForVolumeMountPoint(string mountPoint, [Out] char[] volumeName, uint length);
 
     [LibraryImport("virtdisk.dll", EntryPoint = "GetStorageDependencyInformation")]
     internal static partial int GetStorageDependencyInformation(

@@ -33,8 +33,7 @@ public sealed class SearchIndexClaimTests : IDisposable
         new LinuxSearchProvider().AnswersFromIndex(new SearchQuery { Text = text });
 
     /// <summary>
-    /// baloosearch on the machine is the index, and the same answer
-    /// SupportsContentSearch has always given: it is the only thing on this
+    /// baloosearch on the machine is the index: it is the only thing on this
     /// platform that is not a walk.
     /// </summary>
     [Fact]

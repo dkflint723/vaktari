@@ -264,7 +264,15 @@ public sealed class WindowsRemoteMounts : IRemoteMounts
 
         // What is connected before, so the new arrival can be told apart from
         // it afterwards. See the end of this method for why that is necessary.
-        var before = Discover().Select(m => m.Path).ToHashSet(StringComparer.OrdinalIgnoreCase);
+        //
+        // The names only, not Discover(): that asks each connection whether it
+        // answers, one directory read per share, and this line runs on the
+        // caller's thread before anything here is awaited — a share whose
+        // server had gone held the window until the read gave up.
+        var before = Connections()
+            .Where(c => string.IsNullOrEmpty(c.Local) && !string.IsNullOrEmpty(c.Remote))
+            .Select(c => c.Remote)
+            .ToHashSet(StringComparer.OrdinalIgnoreCase);
 
         var status = await Task.Run(() => Connect(unc, prompt: false), ct).ConfigureAwait(false);
 

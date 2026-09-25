@@ -1,3 +1,4 @@
+using System.Diagnostics.CodeAnalysis;
 using System.Runtime.InteropServices;
 using System.Runtime.Versioning;
 using Vaktari.Core;
@@ -69,6 +70,8 @@ internal sealed class WindowsDiskImages : IDiskImages
     public MountedImage? MountOf(string imagePath)
     {
         var full = Full(imagePath);
+        (string Path, string? Name)? volume = null;
+        var asked = false;
 
         foreach (var drive in DriveInfo.GetDrives())
         {
@@ -78,11 +81,15 @@ internal sealed class WindowsDiskImages : IDiskImages
 
             var letter = drive.Name.TrimEnd(Path.DirectorySeparatorChar);
 
-            if (BackingImageOf($@"\\.\{letter}") is not { } backing) continue;
+            if (BackingOf($@"\\.\{letter}") is not { } backing) continue;
 
-            // The dependency names the file WITHOUT its drive, so the tail is
-            // what can be compared. Rooted at the volume the image lives on.
-            if (full.EndsWith(backing, StringComparison.OrdinalIgnoreCase))
+            if (!asked)
+            {
+                volume = VolumeOf(full);
+                asked = true;
+            }
+
+            if (Matches(full, volume?.Path, volume?.Name, backing.Host, backing.Relative))
                 return new MountedImage(full, drive.Name);
         }
 
@@ -90,11 +97,76 @@ internal sealed class WindowsDiskImages : IDiskImages
     }
 
     /// <summary>
+    /// Whether a mounted image is this file.
+    ///
+    /// **By the tail alone, any file ending the same way matched.** Windows
+    /// names the image without its drive — "\ISO\x.iso" — so D:\ISO\x.iso
+    /// read as mounted when it was C:\ISO\x.iso that was, and so did
+    /// C:\Downloads\ubuntu.iso for a mounted \ubuntu.iso: the menu offered
+    /// Unmount for a file that was not, and hid Mount. Now the whole path after
+    /// the drive must be the one named, and the volume the file is on must be
+    /// the one Windows says holds it, where both can be told.
+    /// </summary>
+    internal static bool Matches(
+        string full, string? volumePath, string? imageVolume, string? hostVolume, string relative)
+    {
+        // **After the volume's own mount point, not the drive's root.** A
+        // volume mounted at C:\mnt\data names its image \x.iso, and a share's
+        // root is \\server\share with no separator after it. Only when the
+        // volume cannot be asked is the path's lexical root the next best.
+        var prefix = (volumePath ?? Path.GetPathRoot(full) ?? "").TrimEnd('\\');
+
+        if (prefix.Length == 0 || !full.StartsWith(prefix, StringComparison.OrdinalIgnoreCase)) return false;
+
+        var tail = full[prefix.Length..];
+
+        if (!string.Equals(tail, relative, StringComparison.OrdinalIgnoreCase)) return false;
+
+        // Compared only when both are volume GUID names. Any other form is
+        // not something this knows how to compare, and a wrong "not this one"
+        // is the costly answer: it offers Mount, and a second attach gives one
+        // file a second drive letter.
+        static bool Guid([NotNullWhen(true)] string? name)
+            => name?.StartsWith(@"\\?\Volume{", StringComparison.OrdinalIgnoreCase) == true;
+
+        return !Guid(imageVolume)
+               || !Guid(hostVolume)
+               || string.Equals(
+                   imageVolume.TrimEnd('\\'), hostVolume.TrimEnd('\\'), StringComparison.OrdinalIgnoreCase);
+    }
+
+    /// <summary>
+    /// Where the volume a file is on is mounted, and its \\?\Volume{…}\ name
+    /// where it has one — or null when the volume cannot be asked.
+    /// </summary>
+    private static (string Path, string? Name)? VolumeOf(string full)
+    {
+        try
+        {
+            var root = new char[1024];
+            if (!Native.GetVolumePathName(full, root, (uint)root.Length)) return null;
+
+            var mounted = new string(root).TrimEnd('\0');
+            var name = new char[64];
+
+            return (mounted,
+                    Native.GetVolumeNameForVolumeMountPoint(mounted, name, (uint)name.Length)
+                        ? new string(name).TrimEnd('\0')
+                        : null);
+        }
+        catch (Exception ex)
+        {
+            Quiet.Swallowed("places", ex);
+            return null;
+        }
+    }
+
+    /// <summary>
     /// The image file behind a mounted volume, as Windows reports it —
     /// "\Program Files (x86)\...\windows-x86.iso", drive letter absent.
     /// Null when the volume is not a mounted image at all.
     /// </summary>
-    private static string? BackingImageOf(string devicePath)
+    private static (string Relative, string? Host)? BackingOf(string devicePath)
     {
         var handle = Native.CreateFile(
             devicePath, 0,
@@ -125,9 +197,12 @@ internal sealed class WindowsDiskImages : IDiskImages
 
                 if (info.NumberEntries == 0) return null;
 
-                return info.FirstEntry.DependentVolumeRelativePath == 0
-                    ? null
-                    : Marshal.PtrToStringUni(info.FirstEntry.DependentVolumeRelativePath);
+                if (info.FirstEntry.DependentVolumeRelativePath == 0) return null;
+
+                return (Marshal.PtrToStringUni(info.FirstEntry.DependentVolumeRelativePath)!,
+                        info.FirstEntry.HostVolumeName == 0
+                            ? null
+                            : Marshal.PtrToStringUni(info.FirstEntry.HostVolumeName));
             }
             finally
             {

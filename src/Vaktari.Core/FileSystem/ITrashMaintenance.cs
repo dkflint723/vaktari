@@ -96,6 +96,17 @@ public interface ITrashMaintenance
     IEnumerable<string> Keys() => List().Select(item => item.TrashName);
 
     /// <summary>
+    /// Where one item came from, by its key, or null when the key names
+    /// nothing that can be read.
+    ///
+    /// For a caller that wants a few items rather than the listing: the undo
+    /// after a delete asks it of the handful of keys that arrived, to keep only
+    /// those the delete itself sent. Defaulted to the listing, which is right
+    /// and slow; a bin that can read one item on its own says so.
+    /// </summary>
+    string? OriginalPathOf(string key) => List().FirstOrDefault(item => item.TrashName == key)?.OriginalPath;
+
+    /// <summary>
     /// Puts one item back where it came from, returning the path it landed at —
     /// which is NOT always the original: if something has since taken that name
     /// it restores alongside rather than clobbering.

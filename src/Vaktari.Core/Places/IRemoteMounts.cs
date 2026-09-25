@@ -66,6 +66,14 @@ public interface IRemoteMounts
     Task<bool> UnmountAsync(RemoteMount mount, CancellationToken ct);
 
     /// <summary>
+    /// Every place a network filesystem is mounted, lettered or not, by any
+    /// means — for telling a remote path from a local one, not for listing.
+    /// Read from the mount table, without asking any of them anything.
+    /// Defaulted to none: Windows marks its mapped drives another way.
+    /// </summary>
+    IReadOnlyList<string> NetworkRoots() => [];
+
+    /// <summary>
     /// Gives back a connection named by the path it appears at.
     ///
     /// **A mapped drive is not one of the mounts this reports.** Discover names

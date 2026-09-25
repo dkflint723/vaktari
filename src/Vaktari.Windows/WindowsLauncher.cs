@@ -211,13 +211,7 @@ public sealed class WindowsLauncher : IApplicationLauncher
             return;
         }
 
-        foreach (var (program, arguments) in new (string, string[])[]
-        {
-            ("wt.exe", ["-d", directory]),
-            ("pwsh.exe", []),
-            ("powershell.exe", []),
-            ("cmd.exe", []),
-        })
+        foreach (var (program, arguments) in Fallbacks(directory))
         {
             if (Start(program, arguments, directory)) return;
         }
@@ -294,11 +288,7 @@ public sealed class WindowsLauncher : IApplicationLauncher
             return;
         }
 
-        var arguments = chosen.Arguments
-            .Select(a => a.Replace("{dir}", directory, StringComparison.Ordinal))
-            .ToArray();
-
-        Elevate(chosen.Command, arguments, directory);
+        Elevate(chosen.Command, ArgumentsFor(chosen, directory), directory);
     }
 
     private static void Elevate(string program, IReadOnlyList<string> arguments, string directory)
@@ -397,12 +387,49 @@ public sealed class WindowsLauncher : IApplicationLauncher
         }
     }
 
+    /// <summary>
+    /// The chain that needs no detection, one list for both callers so the
+    /// two cannot drift apart — and so the escape Windows Terminal needs is
+    /// pinned here as well as for a detected terminal.
+    /// </summary>
+    internal static (string Program, string[] Arguments)[] Fallbacks(string directory) =>
+    [
+        ("wt.exe", ["-d", ForWindowsTerminal(directory)]),
+        ("pwsh.exe", []),
+        ("powershell.exe", []),
+        ("cmd.exe", []),
+    ];
+
+    /// <summary>A terminal's arguments with the folder put in.</summary>
+    internal static string[] ArgumentsFor(TerminalOption terminal, string directory)
+    {
+        var folder = string.Equals(Path.GetFileName(terminal.Command), "wt.exe", StringComparison.OrdinalIgnoreCase)
+            ? ForWindowsTerminal(directory)
+            : directory;
+
+        return terminal.Arguments
+            .Select(a => a.Replace("{dir}", folder, StringComparison.Ordinal))
+            .ToArray();
+    }
+
+    /// <summary>
+    /// A folder as Windows Terminal must be given it.
+    ///
+    /// **A ; in a folder's name started a second command.** Windows Terminal
+    /// splits its own arguments at every ; not preceded by a backslash — after
+    /// the quotes are gone, so quoting does not protect one — and runs what
+    /// follows as a new tab's command line. "Open terminal here" in "a;calc"
+    /// opened a tab in "a" and ran calc; through "as administrator", elevated,
+    /// behind a consent prompt that named only the terminal. Escaped, it is
+    /// part of the name, and Windows Terminal takes the escape back off.
+    /// </summary>
+    internal static string ForWindowsTerminal(string directory)
+        => directory.Replace(";", @"\;", StringComparison.Ordinal);
+
     /// <summary>One named terminal, from the menu.</summary>
     public void OpenTerminal(string directory, TerminalOption terminal)
     {
-        var arguments = terminal.Arguments
-            .Select(a => a.Replace("{dir}", directory, StringComparison.Ordinal))
-            .ToArray();
+        var arguments = ArgumentsFor(terminal, directory);
 
         // The folder reaches it one way or the other: as an argument where the
         // terminal takes one, and as the working directory where it does not.
@@ -421,20 +448,12 @@ public sealed class WindowsLauncher : IApplicationLauncher
         {
             if (other.Id == terminal.Id) continue;
 
-            var theirs = other.Arguments
-                .Select(a => a.Replace("{dir}", directory, StringComparison.Ordinal))
-                .ToArray();
+            var theirs = ArgumentsFor(other, directory);
 
             if (Start(other.Command, theirs, directory)) return;
         }
 
-        foreach (var (program, fallback) in new (string, string[])[]
-        {
-            ("wt.exe", ["-d", directory]),
-            ("pwsh.exe", []),
-            ("powershell.exe", []),
-            ("cmd.exe", []),
-        })
+        foreach (var (program, fallback) in Fallbacks(directory))
         {
             if (Start(program, fallback, directory)) return;
         }

@@ -72,7 +72,7 @@ public sealed partial class PaneViewModel
     /// when it was confined to one, and whether the capitals were part of it.
     ///
     /// **Every field the search reads is in the row, and the case one was
-    /// left out.** A search path carries four fields and the backend is handed
+    /// left out.** A search path carried four fields and the backend was handed
     /// three of them, so "report" here and "report" there and "report" minding
     /// its capitals are three entries — and the case box is an ORDINARY way to
     /// reach the pair: its setter navigates to a new search path, which is
@@ -86,18 +86,26 @@ public sealed partial class PaneViewModel
     /// asides when a search has both. "Matching case" rather than any other
     /// phrasing because "Match case" is what the box that sets it says, and a
     /// history row naming a control differently is a second name to learn.
+    ///
+    /// "Searching contents" after it, for the "Search contents" box and by the
+    /// same rule — and for the same reason it is in the row at all: ticking
+    /// the box navigates, so one question asked both ways leaves two rows, and
+    /// they must not read alike. It is also what a saved search is named in
+    /// places, where the two would otherwise sit side by side under one name.
     /// </summary>
     public static string SearchStepName(string path)
     {
-        var scope = VirtualPaths.ScopeOf(path);
+        var asides = new List<string>(3);
+
+        if (VirtualPaths.ScopeOf(path) is { } scope) asides.Add($"in {PathRules.LeafName(scope)}");
+
+        if (VirtualPaths.MatchesCase(path)) asides.Add("matching case");
+
+        if (VirtualPaths.MatchesContent(path)) asides.Add("searching contents");
+
         var name = VirtualPaths.QueryOf(path);
 
-        if (scope is not null) name += $"  in {PathRules.LeafName(scope)}";
-
-        if (VirtualPaths.MatchesCase(path))
-            name += scope is null ? "  matching case" : ", matching case";
-
-        return name;
+        return asides.Count == 0 ? name : $"{name}  {string.Join(", ", asides)}";
     }
 
     /// <summary>

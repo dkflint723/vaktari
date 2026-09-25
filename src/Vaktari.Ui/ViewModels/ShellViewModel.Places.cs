@@ -195,7 +195,7 @@ public sealed partial class ShellViewModel
         // path is the scheme's own punctuation, not a name.
         var name = search ? PaneViewModel.SearchStepName(path) : PathRules.LeafName(path);
 
-        if (Sidebar.Groups.SelectMany(g => g.Places).Any(p => PathRules.Same(p.Path, path)))
+        if (Sidebar.Groups.SelectMany(g => g.Places).Any(p => VirtualPaths.SamePin(p.Path, path)))
         {
             pane.Status = $"{name} is already in places";
             return;

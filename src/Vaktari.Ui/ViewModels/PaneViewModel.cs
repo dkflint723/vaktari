@@ -1513,7 +1513,23 @@ public sealed partial class PaneViewModel : ObservableObject, IDisposable
     /// never offering, and both references delete just the items you picked.
     /// </summary>
     [RelayCommand]
-    public async Task PurgeFromTrashAsync()
+    public Task PurgeFromTrashAsync()
+        // Outside the bin the selection is folder rows, and a folder row whose
+        // path and time happened to match a binned item must not destroy it.
+        => IsTrashListing || Trash is null ? PurgeFromTrashAsync(Selection.ToList()) : Task.CompletedTask;
+
+    /// <summary>
+    /// The bin's own destroy, for BIN rows named by the caller — a confirmation
+    /// that asked about these rows destroys these, whatever is selected by the
+    /// time it is answered.
+    ///
+    /// **Not gated on the pane still showing the bin.** The rows say which
+    /// items they are — the path each used to occupy and when it was binned —
+    /// and the bin is asked for exactly those. A yes given after the pane had
+    /// moved on used to find the pane elsewhere and do nothing at all, which is
+    /// the answered-and-ignored shape this method was written to end.
+    /// </summary>
+    public async Task PurgeFromTrashAsync(IReadOnlyList<FileEntry> rows)
     {
         // Said out loud rather than returned from in silence. Restore gets away
         // with a quiet return because it is an inert button; this arrives from
@@ -1524,8 +1540,6 @@ public sealed partial class PaneViewModel : ObservableObject, IDisposable
             Status = $"{Core.Naming.TheBin} is not available";
             return;
         }
-
-        if (!IsTrashListing) return;
 
         // **The row that was clicked, not the newest sharing its path.** Two
         // bin rows can carry the same original path — trash a file, restore it,
@@ -1539,7 +1553,7 @@ public sealed partial class PaneViewModel : ObservableObject, IDisposable
         // item's deletion time straight into LastWriteTime, so the pair
         // identifies exactly one item — and N selected rows destroy N items
         // rather than one.
-        var wanted = Selection
+        var wanted = rows
             .Select(e => (e.FullPath, e.LastWriteTime))
             .ToHashSet();
 
@@ -1927,6 +1941,13 @@ public sealed partial class PaneViewModel : ObservableObject, IDisposable
         OnPropertyChanged(nameof(CanCompressSelection));
         OnPropertyChanged(nameof(CanExtractSelection));
 
+        // **The Share rows named the folder they would share from the last
+        // time the menu opened.** It stays in the tree between openings, so
+        // nothing re-reads a label that is not announced — and the row kept
+        // saying "public" after a file was right-clicked, while the command
+        // shared the whole folder around it. With "allow uploads", writable.
+        OnPropertyChanged(nameof(ShareTargetLabel));
+
         if (IsPreviewVisible) _ = RefreshPreviewAsync();
 
         OpenWithOptions.Clear();
@@ -2264,6 +2285,15 @@ public sealed partial class PaneViewModel : ObservableObject, IDisposable
             OnPropertyChanged(nameof(SearchScopedHere));
             OnPropertyChanged(nameof(SearchScopeLabel));
             OnPropertyChanged(nameof(SearchMatchesCase));
+            OnPropertyChanged(nameof(SearchesContents));
+
+            // Half of it is about the question, which is on the path: a
+            // pattern is offered no contents box.
+            OnPropertyChanged(nameof(CanSearchContents));
+
+            // The box's tooltip asks the backend about this question, the way
+            // the warning below does, and for the same reason.
+            OnPropertyChanged(nameof(SearchContentsHint));
 
             // Both read the PATH now — the warning asks the backend about this
             // particular question, and the sentence names the folder the scope
@@ -3083,6 +3113,22 @@ public sealed partial class PaneViewModel : ObservableObject, IDisposable
         // without going through one.
         SearchHitLimit = false;
 
+        // Same reason, and a fresh tally for the same one: the next question's
+        // count starts at nothing whether or not this one finished.
+        SearchSkippedLine = "";
+        var skips = _searchSkips = new Core.Search.ContentSkips();
+
+        // And the backend's word that it is walking rather than asking its
+        // index, which belongs to the load that heard it. Announced when it
+        // was set, since a reload of the same search moves no path to say so.
+        if (_walkingInstead)
+        {
+            _walkingInstead = false;
+            OnPropertyChanged(nameof(SearchUnindexed));
+            OnPropertyChanged(nameof(SearchBackendLine));
+            OnPropertyChanged(nameof(SearchContentsHint));
+        }
+
         // Same reason: the band would otherwise carry the last folder's total
         // while the next one is still being walked.
         //
@@ -3141,7 +3187,8 @@ public sealed partial class PaneViewModel : ObservableObject, IDisposable
             : path == VirtualPaths.Computer ? ComputerListing.EnumerateAsync(Places, ct)
             : VirtualPaths.IsSearch(path)
                 ? SearchListing.EnumerateAsync(
-                    Search, path, options, ct, SearchLimit, () => capped = true)
+                    Search, path, options, ct, SearchLimit, () => capped = true, skips,
+                    () => OnWalkingInstead(generation))
             : VirtualPaths.IsUsage(path)
                 ? SpaceListing.EnumerateAsync(
                     VirtualPaths.FolderOf(path), ShowHidden, progress: null, ct,
@@ -3151,6 +3198,15 @@ public sealed partial class PaneViewModel : ObservableObject, IDisposable
                     VirtualPaths.FolderOf(path), ShowHidden, ct,
                     summary => copies = summary,
                     extras => spare = extras)
+            // **A folder whose name ends in a space or a dot showed its
+            // neighbour.** Windows' path rules strip the character before the
+            // call, so "data " was listed as "data": the crumbs said one folder
+            // and the rows, and every path on them, were the other's — and a
+            // delete there emptied the wrong folder. Such a name cannot be
+            // opened by name at all, so it is refused the way a folder that
+            // will not list is, with the reason ReachablePath gives.
+            : Vaktari.Core.FileSystem.ReachablePath.Refuse(path) is { } unreachable
+                ? RefusedListing(unreachable)
             : _fs.EnumerateAsync(path, options, ct);
 
         var sw = Stopwatch.StartNew();
@@ -3277,6 +3333,9 @@ public sealed partial class PaneViewModel : ObservableObject, IDisposable
                 // pool, and the band binds to this.
                 SearchHitLimit = capped;
 
+                // Beside it: counted on the pool by the walk, said here.
+                SearchSkippedLine = SkippedLine(skips);
+
                 // Beside it, and for the same reason: the total is worked out
                 // on the pool, and the band binds to this.
                 UsageTotal = measured;
@@ -3364,6 +3423,17 @@ public sealed partial class PaneViewModel : ObservableObject, IDisposable
 
 
 
+
+    /// <summary>A listing that fails at once with <paramref name="why"/>, so a
+    /// refusal takes the same road to the pane as any folder that will not list.</summary>
+    private static async IAsyncEnumerable<IReadOnlyList<FileEntry>> RefusedListing(string why)
+    {
+        await Task.CompletedTask;
+
+        if (why.Length >= 0) throw new IOException(why);
+
+        yield break;
+    }
 
     /// <summary>
     /// Whether a row survives the filter.

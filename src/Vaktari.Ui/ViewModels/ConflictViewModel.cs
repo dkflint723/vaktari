@@ -37,9 +37,7 @@ public sealed partial class ConflictViewModel : ObservableObject
         // descends into whatever root it is handed — so calling that a merge
         // would both name a behaviour the path does not have and count a tree
         // that is not being copied.
-        Merges = IsDirectory
-                 && Directory.Exists(conflict.Source)
-                 && (File.GetAttributes(conflict.Source) & FileAttributes.ReparsePoint) == 0;
+        Merges = IsDirectory && IsMerge(conflict);
 
         Existing = Describe(conflict.Target);
         Arriving = Describe(conflict.Source);
@@ -70,6 +68,25 @@ public sealed partial class ConflictViewModel : ObservableObject
     /// replacing one thing with another.
     /// </summary>
     public bool Merges { get; }
+
+    /// <summary>
+    /// Whether a clash is a real folder arriving onto a real folder — the one
+    /// shape the engine merges. Shared with the pane, which keeps a remembered
+    /// answer for these apart from one for files.
+    /// </summary>
+    internal static bool IsMerge(FileConflict conflict)
+    {
+        try
+        {
+            return Directory.Exists(conflict.Target)
+                   && Directory.Exists(conflict.Source)
+                   && (File.GetAttributes(conflict.Source) & FileAttributes.ReparsePoint) == 0;
+        }
+        catch (Exception e) when (e is IOException or UnauthorizedAccessException)
+        {
+            return false;
+        }
+    }
 
     /// <summary>
     /// **The button said "Overwrite" and the engine merged.** Its Overwrite arm

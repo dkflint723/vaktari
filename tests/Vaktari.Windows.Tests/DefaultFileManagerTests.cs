@@ -138,6 +138,22 @@ public sealed class DefaultFileManagerTests : IDisposable
     }
 
     /// <summary>
+    /// **A drive's is not quoted.** Its "%1" is a root, and a quoted C:\ ends
+    /// the command line in \" — read as an escaped quote, so the argument
+    /// arrived as C:" and double-clicking a drive opened nothing.
+    /// </summary>
+    [Fact]
+    public void The_drive_command_leaves_the_root_unquoted()
+    {
+        Subject().MakeDefault();
+
+        using var key = Registry.CurrentUser.OpenSubKey(
+            $@"{Scratch}\Drive\shell\OpenInVaktari\command");
+
+        Assert.Equal($"\"{Exe}\" %1", key?.GetValue(null));
+    }
+
+    /// <summary>
     /// The one that matters. The machine this was written on had another file
     /// manager registered; taking the role without being able to give it back
     /// would be taking something that cannot be returned.

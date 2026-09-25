@@ -17,6 +17,17 @@ namespace Vaktari.Core.FileSystem;
 /// </summary>
 public static class SafeWalk
 {
+
+    /// <summary>
+    /// Folders a walk lists but does not go into, as the platform says — on
+    /// Linux, where the kernel's own filesystems are mounted.
+    ///
+    /// **A walk of "/" went through /proc**, where kcore alone reads as 128
+    /// TiB, and through /sys, whose files are not files. The folder is still
+    /// found, as a folder; what is under it is not walked. The folder a walk
+    /// starts at is always entered: that one was asked for. Null elsewhere.
+    /// </summary>
+    public static Func<string, bool>? DoNotEnter { get; set; }
     /// <summary>One entry found underneath a root.</summary>
     /// <param name="Path">Where it is.</param>
     /// <param name="IsDirectory">A real directory — never a link to one.</param>
@@ -108,6 +119,20 @@ public static class SafeWalk
 
             var folder = pending.Pop();
 
+            // **A folder whose name ends in a dot or a space was walked as its
+            // neighbour.** Windows' path rules strip the character before the
+            // call, so "dir." and "dir " were listed as "dir" — its files
+            // yielded again under paths that are really dir's. A duplicate
+            // scan then paired a file with itself and offered the only copy as
+            // its own spare, and a size counted dir three times. Such a folder
+            // cannot be read by name at all (ReachablePath), so it is what
+            // every other folder that will not list is: unreadable, and said.
+            if (!ReachablePath.IsReachable(folder))
+            {
+                unreadable?.Invoke(folder);
+                continue;
+            }
+
             IEnumerable<FileSystemInfo> children;
 
             try
@@ -120,8 +145,33 @@ public static class SafeWalk
                 continue;
             }
 
-            foreach (var child in children)
+            // **The enumeration can fail after it has started**, which the try
+            // above cannot see: creating it opens nothing, and the first
+            // MoveNext is where a folder that lists but cannot be searched
+            // (mode 644 on Linux, /proc/<pid>/map_files) or one whose entries
+            // Windows cannot name throws. That threw straight out of the walk,
+            // so one such folder anywhere failed a whole space-usage or
+            // duplicates scan. Driven by hand, so a failure part-way through a
+            // folder is that folder's alone — counted, and the walk goes on
+            // with everything it had already found.
+            using var entries = children.GetEnumerator();
+
+            while (true)
             {
+                FileSystemInfo child;
+
+                try
+                {
+                    if (!entries.MoveNext()) break;
+
+                    child = entries.Current;
+                }
+                catch (Exception e) when (e is IOException or UnauthorizedAccessException)
+                {
+                    unreadable?.Invoke(folder);
+                    break;
+                }
+
                 ct.ThrowIfCancellationRequested();
 
                 // **Reported, never entered.** Following one is how a recursive
@@ -145,7 +195,8 @@ public static class SafeWalk
                 if (child is DirectoryInfo)
                 {
                     yield return new Found(child.FullName, IsDirectory: true, IsLink: false);
-                    pending.Push(child.FullName);
+
+                    if (DoNotEnter?.Invoke(child.FullName) != true) pending.Push(child.FullName);
                 }
                 else
                 {

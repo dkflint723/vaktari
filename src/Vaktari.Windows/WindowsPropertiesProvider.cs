@@ -271,7 +271,14 @@ public sealed class WindowsPropertiesProvider : IPropertiesProvider
                             // filter's tag, and this dialog has never walked into
                             // one — with no filter behind the tag it cannot even
                             // be opened, measured.
-                            if ((entry.Attributes & FileAttributes.ReparsePoint) == 0)
+                            //
+                            // **And only by a name that reaches it.** A folder
+                            // "x." or "x " is listed under its own name and then
+                            // opened as "x", because Windows rewrites the path
+                            // on the way in — so its neighbour was counted in
+                            // its place, twice over. SafeWalk refuses the same.
+                            if ((entry.Attributes & FileAttributes.ReparsePoint) == 0
+                                && ReachablePath.IsReachable(entry.FullName))
                                 pending.Push(entry.FullName);
                         }
                         else

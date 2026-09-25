@@ -66,6 +66,10 @@ public static class SearchListing
         // they name.
         CaseSensitive = VirtualPaths.MatchesCase(path),
 
+        // Off the path for the same reason, so a saved search asks about
+        // contents again when it is clicked.
+        MatchContent = VirtualPaths.MatchesContent(path),
+
         MaxResults = limit + 1,
     };
 
@@ -88,8 +92,17 @@ public static class SearchListing
     ///
     /// The count is of what the BACKEND handed over, hidden rows included,
     /// because the cap is applied there. That is also why the break is here
-    /// rather than left to the backend: Everything and Baloo are other people's
-    /// programs, and MaxResults is a request rather than a guarantee.
+    /// rather than left to the backend: Baloo is somebody else's program, and
+    /// MaxResults is a request rather than a guarantee.
+    ///
+    /// <paramref name="skipped"/> is where the backend counts the files a
+    /// content search would not read. Handed in rather than handed back
+    /// because a stopped search never reaches the end of this method, and
+    /// what it skipped before the Stop is still worth saying.
+    ///
+    /// <paramref name="onWalkingInstead"/> is the backend saying that the index
+    /// it was expected to answer from had nothing, and that it is walking the
+    /// folders instead. It arrives on the pool, mid-search.
     /// </summary>
     public static async IAsyncEnumerable<IReadOnlyList<FileEntry>> EnumerateAsync(
         ISearchProvider? search,
@@ -97,7 +110,9 @@ public static class SearchListing
         ListingOptions options,
         [System.Runtime.CompilerServices.EnumeratorCancellation] CancellationToken ct,
         int limit = Limit,
-        Action? onCapped = null)
+        Action? onCapped = null,
+        ContentSkips? skipped = null,
+        Action? onWalkingInstead = null)
     {
         // An absent backend is an EMPTY listing, not a crash. The pane's empty
         // state is what says which of the two it is.
@@ -107,7 +122,14 @@ public static class SearchListing
 
         if (text.Length == 0) { yield return []; yield break; }
 
-        var query = QueryFor(path, limit);
+        // The hidden-files setting reaches the backend for one purpose only:
+        // not opening files whose rows the check below will drop anyway.
+        var query = QueryFor(path, limit) with
+        {
+            Skipped = skipped,
+            ReadsConcealed = options.IncludeHidden,
+            WalkingInstead = onWalkingInstead,
+        };
 
         var batch = new List<FileEntry>(Batch);
 
@@ -120,11 +142,11 @@ public static class SearchListing
         // **Every step of the backend BEGINS on the pool, and that is what the
         // pump is for.** An async iterator runs on the CALLER's thread until it
         // reaches a genuine suspension, and both backends do real work before
-        // theirs — Baloo starts a process, the fallback reads a directory,
-        // Everything opens an IPC connection. A ConfigureAwait(false) at the
-        // consuming end does not help: it governs continuations AFTER a
-        // suspension, not the prologue. This is reached from a navigation, so
-        // that work would otherwise land on the dispatcher.
+        // theirs — Baloo starts a process, the walk reads a directory. A
+        // ConfigureAwait(false) at the consuming end does not help: it governs
+        // continuations AFTER a suspension, not the prologue. This is reached
+        // from a navigation, so that work would otherwise land on the
+        // dispatcher.
         //
         // A bare Task.Yield does not fix it either — it posts straight back to
         // the context it came from, and YieldAwaitable has no ConfigureAwait to

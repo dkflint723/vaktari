@@ -1,3 +1,4 @@
+using System.Runtime.InteropServices;
 using System.Text;
 
 namespace Vaktari.Windows;
@@ -122,7 +123,22 @@ internal static class ShellLink
         var end = Array.IndexOf<byte>(bytes, 0, offset);
         if (end < 0) end = bytes.Length;
 
-        return Encoding.Default.GetString(bytes, offset, end - offset);
+        // **In the machine's code page, which is what wrote it.**
+        // Encoding.Default is UTF-8 on .NET, so "Música", stored as 0xFA for
+        // the ú, came back as "M�sica" — a folder that does not exist, so
+        // double-clicking the shortcut opened Explorer instead of the folder.
+        // The ANSI conversion the system itself uses is the one that reverses
+        // what it did.
+        var handle = GCHandle.Alloc(bytes, GCHandleType.Pinned);
+
+        try
+        {
+            return Marshal.PtrToStringAnsi(handle.AddrOfPinnedObject() + offset, end - offset);
+        }
+        finally
+        {
+            handle.Free();
+        }
     }
 
     private static string? ReadUnicode(byte[] bytes, int offset)

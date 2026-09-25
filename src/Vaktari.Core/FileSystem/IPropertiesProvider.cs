@@ -27,6 +27,13 @@ public sealed record FileDetails
 
     public string? SymlinkTarget { get; init; }
 
+    /// <summary>
+    /// A FIFO, a socket or a device rather than a file: a name with nothing in
+    /// it to read, where opening it to read can wait for ever. Nothing offers to
+    /// read one.
+    /// </summary>
+    public bool IsSpecial { get; init; }
+
     public IReadOnlyList<PropertyGroup> Groups { get; init; } = [];
 }
 

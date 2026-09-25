@@ -121,14 +121,16 @@ public sealed class SearchPathTests
     /// one must give an empty search, not stop the window opening.
     ///
     /// The upper boundary moved from four fields to five when the case field
-    /// was added: four is now a whole path and three is one written by an older
-    /// build, which <see cref="SearchCaseTests"/> pins from the other side.
+    /// was added, and from five to six when the contents field was: five is
+    /// now a whole path, and three or four is one written by an older build,
+    /// which <see cref="SearchCaseTests"/> and <see cref="SearchContentsTests"/>
+    /// pin from the other side.
     /// </summary>
     [Theory]
     [InlineData("vaktari:search:")]
     [InlineData("vaktari:search:only-one-field")]
     [InlineData("vaktari:search:a:b")]
-    [InlineData("vaktari:search:a:b:c:d:e")]
+    [InlineData("vaktari:search:a:b:c:d:e:f")]
     public void A_broken_one_is_an_empty_search_rather_than_a_crash(string path)
     {
         Assert.Equal("", VirtualPaths.QueryOf(path));

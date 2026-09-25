@@ -546,6 +546,56 @@ public sealed class ExpandableFoldersTests : OwnedViewModels
     }
 
     /// <summary>
+    /// **Invert takes the folder too.** With docs opened in place and only docs
+    /// selected, inverting took every row on screen — docs' children with the
+    /// siblings — so "everything but docs" put docs' contents in the selection.
+    /// </summary>
+    [AvaloniaFact]
+    public async Task Inverting_takes_the_folder_and_not_the_screen()
+    {
+        var (pane, _) = await Pane();
+
+        var list = new ListBox
+        {
+            Width = 400,
+            SelectionMode = SelectionMode.Multiple,
+            DataContext = pane,
+        };
+
+        list.Bind(ItemsControl.ItemsSourceProperty,
+                  new Avalonia.Data.Binding(nameof(PaneViewModel.DetailsEntries)));
+
+        list.SelectedItems = pane.DetailsSelection;
+
+        var window = new Window { Content = list, Width = 400, Height = 300 };
+
+        window.Show();
+        window.Measure(new Size(400, 300));
+        window.Arrange(new Rect(0, 0, 400, 300));
+
+        try
+        {
+            await Open(pane, In("docs"));
+
+            Assert.Equal(6, pane.DetailsEntries.Count());
+
+            list.SelectedItems!.Clear();
+            list.SelectedItems.Add(pane.Entries.Single(e => e.Name == "docs"));
+
+            MainWindow.InvertWithinFolder(list, pane);
+
+            Assert.Equal(
+                ["a.txt", "z.txt"],
+                pane.DetailsSelection.Select(e => e.Name).OrderBy(n => n, StringComparer.Ordinal)
+                    .ToList());
+        }
+        finally
+        {
+            window.Close();
+        }
+    }
+
+    /// <summary>
     /// A GUARD, and it is labelled one because it cannot fail for the capture
     /// it looks like it is testing.
     ///

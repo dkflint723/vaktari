@@ -172,7 +172,7 @@ public sealed class WindowsFileOperations : IFileOperations
     private void RememberArrivals(
         ITrashMaintenance? bin, HashSet<string>? before, IReadOnlyList<string> asked)
     {
-        var landed = Arrivals(bin, before);
+        var landed = Arrivals(bin, before, asked);
 
         // The names the person used, carried alongside the trash keys. A key
         // here is a $I metadata path, which is not something to put in a menu
@@ -200,7 +200,21 @@ public sealed class WindowsFileOperations : IFileOperations
     /// be agreed to. Removing it turns this method into <see cref="Delete"/>
     /// without saying so.
     /// </summary>
-    public IOperationHandle Trash(IReadOnlyList<string> paths)
+    public IOperationHandle Trash(IReadOnlyList<string> paths) => Trash(paths, remember: true);
+
+    /// <summary>
+    /// The bin, for an undo taking back what it put somewhere: nothing is
+    /// recorded, because this is not a delete the person asked for.
+    ///
+    /// **Undoing a copy put a "delete" on the history.** The undo walks sent
+    /// what they took back through <see cref="Trash(IReadOnlyList{string})"/>,
+    /// which records its own undo — so after Ctrl+Z on a copy, the next entry
+    /// read "Undo delete of notes.txt" instead of the step before, the next
+    /// Ctrl+Z put the copy straight back, and the redo history was cleared.
+    /// </summary>
+    private IOperationHandle TrashQuietly(IReadOnlyList<string> paths) => Trash(paths, remember: false);
+
+    private IOperationHandle Trash(IReadOnlyList<string> paths, bool remember)
     {
         // **Neither, and the recycle below is why.** The whole batch goes
         // through ONE SHFileOperation, which blocks until the shell is done
@@ -261,7 +275,7 @@ public sealed class WindowsFileOperations : IFileOperations
                     // already hold everything but the one file the warning was
                     // about, and returning here left all of them with no way
                     // back.
-                    RememberArrivals(bin, before, paths);
+                    if (remember) RememberArrivals(bin, before, paths);
                     handle.Cancelled();
                     return;
                 }
@@ -306,7 +320,7 @@ public sealed class WindowsFileOperations : IFileOperations
                     }
                 }
 
-                RememberArrivals(bin, before, paths);
+                if (remember) RememberArrivals(bin, before, paths);
 
                 // Completed with Problems rather than Failed: the ones that went
                 // really did go, and the status line reports what was left
@@ -361,13 +375,69 @@ public sealed class WindowsFileOperations : IFileOperations
     /// somebody reaches for undo. A trash name is unique and new ones can only
     /// be what just arrived.
     /// </summary>
-    private static List<string> Arrivals(ITrashMaintenance? bin, HashSet<string>? before)
+    private static List<string> Arrivals(
+        ITrashMaintenance? bin, HashSet<string>? before, IReadOnlyList<string> asked)
     {
         if (bin is null || before is null) return [];
 
         try
         {
-            return bin.Keys().Where(name => !before.Contains(name)).ToList();
+            // **And only what THIS call asked for.** The bin is every
+            // program's, and nothing serialises Vaktari's own deletions either:
+            // another pane's delete, or Explorer's, landing in the same few
+            // seconds joined this undo — which then restored it with the rest,
+            // and its own undo reported "not in the bin any more". The
+            // difference finds the new entries; their original paths say which
+            // of them were asked for here. Both together, because either alone
+            // is wrong: by path alone, an older entry from the same place
+            // matches too.
+            var wanted = asked
+                .Select(p => Path.TrimEndingDirectorySeparator(Path.GetFullPath(p)))
+                .ToList();
+
+            var byText = new HashSet<string>(wanted, StringComparer.OrdinalIgnoreCase);
+
+            // **By the folder it left, when the text differs.** The shell
+            // records the path in its own spelling, and a delete asked through
+            // another — \\?\, a short 8.3 name, a mapped drive — matched
+            // nothing, so the delete recorded no undo at all. The folder is
+            // still there to be asked, and its identity does not depend on how
+            // it was written. Asked for lazily: most deletes match by text.
+            Dictionary<string, List<(ulong, ulong, ulong)>>? byFolder = null;
+
+            bool Asked(string from)
+            {
+                if (byText.Contains(Path.TrimEndingDirectorySeparator(from))) return true;
+
+                byFolder ??= wanted
+                    .Where(p => PathRules.Parent(p) is not null)
+                    .GroupBy(p => PathRules.LeafName(p), StringComparer.OrdinalIgnoreCase)
+                    .ToDictionary(
+                        g => g.Key,
+                        g => g.Select(p => FileIdentity.Of(PathRules.Parent(p)!))
+                              .OfType<(ulong, ulong, ulong)>()
+                              .ToList(),
+                        StringComparer.OrdinalIgnoreCase);
+
+                return byFolder.TryGetValue(PathRules.LeafName(from), out var folders)
+                       && PathRules.Parent(from) is { } parent
+                       && FileIdentity.Of(parent) is { } id
+                       && folders.Contains(id);
+            }
+
+            // Keys, not the listing, on both ends — see TrashKeyWalkTests for
+            // what the listing costs — and only the new ones read, one each.
+            var arrived = bin.Keys().Where(key => !before.Contains(key)).ToList();
+
+            var mine = arrived
+                .Where(key => bin.OriginalPathOf(key) is { } from && Asked(from))
+                .ToList();
+
+            // **Never nothing when something came.** A spelling neither test
+            // sees through would otherwise leave a delete with no way back,
+            // which is worse than the rare undo that also restores another
+            // program's item from the same seconds.
+            return mine.Count > 0 ? mine : arrived;
         }
         catch (Exception ex)
         {
@@ -796,7 +866,7 @@ public sealed class WindowsFileOperations : IFileOperations
     /// </summary>
     public void RecordCreation(string path)
     {
-        if (path.Length > 0) Remember(new UndoCreate(Trash, path));
+        if (path.Length > 0) Remember(new UndoCreate(TrashForUndo ?? TrashQuietly, path));
     }
 
     /// <summary>
@@ -1132,6 +1202,14 @@ public sealed class WindowsFileOperations : IFileOperations
                 // Targets left as they were because a name turned up at the
                 // last moment and was answered Skip. See the removal below.
                 var keptBack = new List<string>();
+
+                // SameEntry's answer for each pair of folders, asked of the
+                // file system once per pair for this operation rather than
+                // once per file: a hundred thousand files copied between two
+                // shares were two hundred thousand extra opens across the
+                // network. Dropped with the operation, so a folder that
+                // changes later is asked again.
+                var sameFolders = new Dictionary<(string, string), bool>();
                 var mergedInto = new HashSet<string>(PathRules.Comparer);
 
                 // Targets of folders the user chose to skip. Everything planned
@@ -1171,7 +1249,7 @@ public sealed class WindowsFileOperations : IFileOperations
                     // took away what had just landed. 3c9a45c closed the same
                     // fault for a link moved into a DIFFERENT folder reached by
                     // another name; this is the case its tests did not cover.
-                    if (SameEntry(item.Source, target))
+                    if (SameEntry(item.Source, target, sameFolders))
                     {
                         if (move)
                         {
@@ -1334,7 +1412,15 @@ public sealed class WindowsFileOperations : IFileOperations
 
                                 target = landed;
 
-                                if (move)
+                                // **Never delete the only copy.** The same
+                                // question SameEntry asked of the folders,
+                                // asked again of the files, because this is
+                                // the one step that cannot be taken back: a
+                                // source that is now the landed file is not
+                                // a source to delete. It adds nothing when
+                                // SameEntry answered, and is here for when
+                                // it did not.
+                                if (move && !FileIdentity.Same(item.Source, landed))
                                 {
                                     ClearReadOnly(item.Source);
                                     File.Delete(item.Source);
@@ -1433,7 +1519,7 @@ public sealed class WindowsFileOperations : IFileOperations
                     // deleting files. True, and the bin is the answer: nothing
                     // is destroyed, and pasting into the wrong folder stops
                     // being a mistake you have to clean up by hand.
-                    Remember(new UndoCopy(TrashForUndo ?? Trash, undoable.Select(l => l.Target).ToList()));
+                    Remember(new UndoCopy(TrashForUndo ?? TrashQuietly, undoable.Select(l => l.Target).ToList()));
                 }
 
 
@@ -1828,14 +1914,34 @@ public sealed class WindowsFileOperations : IFileOperations
     /// asymmetry <see cref="LinkNames"/> uses, which is where this fault was
     /// first found and fixed for a different folder.
     /// </summary>
-    private static bool SameEntry(string a, string b)
+    private static bool SameEntry(string a, string b, Dictionary<(string, string), bool>? folders = null)
     {
         if (PathRules.Same(a, b)) return true;
 
         if (PathRules.Parent(a) is not { } here || PathRules.Parent(b) is not { } there) return false;
 
-        return string.Equals(PathRules.LeafName(a), PathRules.LeafName(b), PathRules.Comparison)
-            && string.Equals(Resolved(here), Resolved(there), PathRules.Comparison);
+        if (!string.Equals(PathRules.LeafName(a), PathRules.LeafName(b), PathRules.Comparison))
+            return false;
+
+        if (string.Equals(Resolved(here), Resolved(there), PathRules.Comparison)) return true;
+
+        // **And then the file system, for the spellings that are not links.**
+        // A mapped drive and its share, a subst drive, a \?\ prefix: resolving
+        // links leaves each a different string, so a move into the same folder
+        // by its second name took the copy route — landed the copy over the
+        // file, which was itself, and then deleted the source, which was what
+        // had just landed. The FOLDERS are compared, not the files, for the
+        // reason the text comparison above gives: a hard link is a second name
+        // for a file and a second entry in the folder, and must not be taken
+        // for the entry itself.
+        if (folders is null) return FileIdentity.Same(here, there);
+
+        var pair = (here.ToUpperInvariant(), there.ToUpperInvariant());
+
+        if (!folders.TryGetValue(pair, out var same))
+            folders[pair] = same = FileIdentity.Same(here, there);
+
+        return same;
     }
 
     /// <summary>

@@ -216,10 +216,14 @@ internal sealed class LinuxDiskImages : IDiskImages
     /// <summary>
     /// The loop device out of "Mapped file … as /dev/loop3." — the CLI's own
     /// sentence, which is the only place it reports the device it chose.
+    ///
+    /// **The last one**, because the file's own path comes first: an image
+    /// under ~/dev/loop0-tests/ read as /dev/loop0, and the mount and the
+    /// clean-up then went to a device that was not this image's.
     /// </summary>
     internal static string? LoopDeviceIn(string output)
     {
-        var at = output.IndexOf("/dev/loop", StringComparison.Ordinal);
+        var at = output.LastIndexOf("/dev/loop", StringComparison.Ordinal);
         if (at < 0) return null;
 
         var end = at;

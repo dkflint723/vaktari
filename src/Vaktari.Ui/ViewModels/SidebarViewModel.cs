@@ -283,7 +283,9 @@ public sealed partial class SidebarViewModel : ObservableObject, IDisposable
 
         foreach (var item in rows)
         {
-            item.IsCurrent = PathRules.Same(item.Path, path);
+            // A saved search lights up for the question it asks, however an
+            // older build spelled it; a folder, as ever, by the platform rule.
+            item.IsCurrent = VirtualPaths.SamePin(item.Path, path);
             item.HoldsCurrent = false;
 
             if (!PathRules.Contains(item.Path, path)) continue;
@@ -355,21 +357,89 @@ public sealed partial class SidebarViewModel : ObservableObject, IDisposable
         RefreshRemotes();
     }
 
-        public void RefreshRemotes()
+    public void RefreshRemotes() => _ = RefreshRemotesAsync();
+
+    /// <summary>
+    /// One ask in flight at a time, and another wanted when one arrives
+    /// meanwhile — so a mount that never answers holds one pool thread, not
+    /// one per connect, copy and rebuild. The same shape as the reloads.
+    /// </summary>
+    private Task? _remotesAsking;
+    private bool _remotesWanted;
+
+    /// <summary>
+    /// **Which answer is newest across every window**, because the roots it
+    /// publishes are shared by all of them: a slow discovery in one window,
+    /// begun before a share was connected in another, finished last and put
+    /// back a list without it.
+    /// </summary>
+    private static int s_remotesGeneration;
+
+    /// <summary>
+    /// The network connections, asked for on the pool and shown here.
+    ///
+    /// **Asking was done on the window's thread**, at startup and after every
+    /// connect or disconnect — and asking includes whether each share answers,
+    /// a directory read per share. Vaktari's own connections last the logon
+    /// session, so one whose server had gone froze the next launch before the
+    /// window drew.
+    /// </summary>
+    public Task RefreshRemotesAsync()
     {
-        Remotes.Clear();
+        _remotesWanted = true;
 
-        foreach (var mount in _mounts?.Discover() ?? []) Remotes.Add(mount);
+        // Joined while one is running; started otherwise. Not ??=: an ask that
+        // finishes before its first await has already cleared the field when
+        // the assignment lands, and a finished task stored there would answer
+        // every later call without asking.
+        return _remotesAsking is { IsCompleted: false } running ? running : _remotesAsking = AskRemotesAsync();
+    }
 
-        // Published here because this is the one place that knows what is
-        // mounted; thumbnails need it to tell a network file from a local one
-        // without re-reading the mount table per row.
-        // **Mapped network drives count too.** This was fed only from
-        // IRemoteMounts.Discover(), which deliberately skips lettered
-        // connections — so Z: was never remote, and RowIcon's folder-contents
-        // probe ran a directory read per visible row over SMB: exactly the
-        // round-trip storm its own comment exists to prevent.
-        var roots = Remotes.Select(m => m.Path).ToList();
+    private async Task AskRemotesAsync()
+    {
+        try
+        {
+            while (_remotesWanted)
+            {
+                _remotesWanted = false;
+
+                var generation = Interlocked.Increment(ref s_remotesGeneration);
+                var mounts = _mounts;
+
+                var (found, roots) = await Task.Run(() =>
+                        (mounts?.Discover() ?? [], (IReadOnlyList<string>)[.. NetworkDriveRoots(), .. mounts?.NetworkRoots() ?? []]))
+                    .ConfigureAwait(true);
+
+                Remotes.Clear();
+
+                foreach (var mount in found) Remotes.Add(mount);
+
+                // Published here because this is the one place that knows what
+                // is mounted; thumbnails need it to tell a network file from a
+                // local one without re-reading the mount table per row. Only
+                // the newest answer anywhere is written.
+                if (generation == Volatile.Read(ref s_remotesGeneration))
+                    Thumbnails.ThumbnailLoader.RemoteRoots = [.. Remotes.Select(m => m.Path), .. roots];
+
+                OnPropertyChanged(nameof(HasRemotes));
+            }
+        }
+        finally
+        {
+            _remotesAsking = null;
+        }
+    }
+
+    /// <summary>
+    /// **Mapped network drives count too.** Remotes was fed only from
+    /// IRemoteMounts.Discover(), which deliberately skips lettered
+    /// connections — so Z: was never remote, and RowIcon's folder-contents
+    /// probe ran a directory read per visible row over SMB: exactly the
+    /// round-trip storm its own comment exists to prevent.
+    /// </summary>
+    private static List<string> NetworkDriveRoots()
+    {
+        var roots = new List<string>();
 
         try
         {
@@ -384,9 +454,7 @@ public sealed partial class SidebarViewModel : ObservableObject, IDisposable
             Quiet.Swallowed("places", ex);
         }
 
-        Thumbnails.ThumbnailLoader.RemoteRoots = roots;
-
-        OnPropertyChanged(nameof(HasRemotes));
+        return roots;
     }
 
 
@@ -546,15 +614,63 @@ public sealed partial class SidebarViewModel : ObservableObject, IDisposable
     /// exactly as they were, so a full reload would be both wasteful and, on
     /// its own, not something any of those three currently ask for.
     /// </summary>
-    public void RefreshBinState()
+    public void RefreshBinState() => _ = RefreshBinStateAsync();
+
+    /// <summary>One ask in flight, and another wanted — see the remotes.</summary>
+    private Task? _binAsking;
+    private bool _binWanted;
+
+    /// <summary>
+    /// The last answer, which a rebuilt bin row starts from: new rows begin
+    /// empty, and waiting for the pool drew a full bin empty on every
+    /// rebuild — for good behind a mount that does not answer.
+    /// </summary>
+    private bool _binHolding;
+
+    /// <summary>
+    /// The same, asked on the pool.
+    ///
+    /// **The asking was done on the window's thread**, at startup, on every
+    /// rebuild and after every copy or delete — and on Linux it visits every
+    /// mounted volume's bin, a lookup that a hard NFS mount whose server has
+    /// gone never answers and an automount answers only after its timeout. On
+    /// Windows it asked every mapped drive whether it was ready. The answer is
+    /// a glyph; nothing waits for it.
+    /// </summary>
+    public Task RefreshBinStateAsync()
     {
-        if (_trash?.Invoke() is not { } trash) return;
+        _binWanted = true;
 
-        var holding = Holding(trash);
+        // See RefreshRemotesAsync for why this is not ??=.
+        return _binAsking is { IsCompleted: false } running ? running : _binAsking = AskBinAsync();
+    }
 
+    private async Task AskBinAsync()
+    {
+        try
+        {
+            while (_binWanted)
+            {
+                _binWanted = false;
+
+                if (_trash?.Invoke() is not { } trash) return;
+
+                _binHolding = await Task.Run(() => Holding(trash)).ConfigureAwait(true);
+
+                MarkBinRows();
+            }
+        }
+        finally
+        {
+            _binAsking = null;
+        }
+    }
+
+    private void MarkBinRows()
+    {
         foreach (var group in Groups)
             foreach (var place in group.Places)
-                if (place.IsBin) place.BinHasItems = holding;
+                if (place.IsBin) place.BinHasItems = _binHolding;
     }
 
     /// <summary>
@@ -717,7 +833,9 @@ public sealed partial class SidebarViewModel : ObservableObject, IDisposable
                 // **The bin drew the same glyph full or empty.** Asked once per
             // rebuild rather than per row, and asked with HasAny rather than
             // List — the answer is one directory entry instead of a walk of
-            // every volume's bin with a sidecar read per item.
+            // every volume's bin with a sidecar read per item. The new rows
+            // start from the last answer while the new one is asked.
+            MarkBinRows();
             RefreshBinState();
 
         // This PC is drawn directly under the Home row, so that row has to

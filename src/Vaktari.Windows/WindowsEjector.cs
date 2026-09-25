@@ -223,30 +223,50 @@ internal sealed class WindowsEjector : IEjector
 
         try
         {
-            var locked = false;
-
-            for (var attempt = 0; attempt < LockAttempts && !locked; attempt++)
-            {
-                ct.ThrowIfCancellationRequested();
-
-                locked = Native.DeviceIoControl(
-                    handle, Native.FSCTL_LOCK_VOLUME, 0, 0, 0, 0, out _, 0);
-
-                if (!locked && attempt < LockAttempts - 1) Thread.Sleep(LockPauseMs);
-            }
-
-            // Dismount even when the lock never came: the dismount is what
-            // flushes, and a failed lock only means someone else has a handle.
-            var dismounted = Native.DeviceIoControl(
-                handle, Native.FSCTL_DISMOUNT_VOLUME, 0, 0, 0, 0, out _, 0);
-
-            return locked && dismounted;
+            return LockThenDismount(
+                () => Native.DeviceIoControl(handle, Native.FSCTL_LOCK_VOLUME, 0, 0, 0, 0, out _, 0),
+                () => Native.DeviceIoControl(handle, Native.FSCTL_DISMOUNT_VOLUME, 0, 0, 0, 0, out _, 0),
+                () => Thread.Sleep(LockPauseMs),
+                ct);
         }
         finally
         {
             Native.CloseHandle(handle);
         }
     }
+
+    /// <summary>
+    /// The lock, tried a few times, and the dismount only once it is held.
+    ///
+    /// **A dismount without the lock is a forced one.** Every handle open on
+    /// the volume goes bad at once — a program saving to the stick is cut off
+    /// mid-write — and this dismounted whether the lock came or not, on the
+    /// reasoning that the dismount is what flushes. The removal that follows
+    /// flushes and dismounts too, and it refuses while a handle is open,
+    /// naming the program; so a volume someone is using is left alone, and the
+    /// refusal is what the person is told.
+    /// </summary>
+    internal static bool LockThenDismount(Func<bool> lockOnce, Func<bool> dismount, Action pause, CancellationToken ct)
+    {
+        var locked = false;
+
+        for (var attempt = 0; attempt < LockAttempts && !locked; attempt++)
+        {
+            ct.ThrowIfCancellationRequested();
+
+            locked = lockOnce();
+
+            if (!locked && attempt < LockAttempts - 1) pause();
+        }
+
+        return locked && dismount();
+    }
+
+    /// <summary>
+    /// Whether a refused lock means something has a file open — access denied
+    /// or a sharing violation — rather than a tray with nothing to lock.
+    /// </summary>
+    internal static bool HeldOpen(int lockError) => lockError is 5 or 32;
 
     /// <summary>
     /// The optical path: there is no device to remove, only a tray to open.
@@ -263,17 +283,28 @@ internal sealed class WindowsEjector : IEjector
 
         try
         {
-            for (var attempt = 0; attempt < LockAttempts; attempt++)
-            {
-                ct.ThrowIfCancellationRequested();
+            // The same rule as a stick's: no forced dismount under a program
+            // that has a file open on the disc — and no tray either, because
+            // the drive opens its tray whatever is open on the disc, and the
+            // program's handles go bad all the same. Only a lock refused for
+            // an open file stops it: a tray with no disc, or one nothing is
+            // mounted from, has nothing to lock and still opens.
+            var lockError = 0;
 
-                if (Native.DeviceIoControl(handle, Native.FSCTL_LOCK_VOLUME, 0, 0, 0, 0, out _, 0))
-                    break;
+            var released = LockThenDismount(
+                () =>
+                {
+                    if (Native.DeviceIoControl(handle, Native.FSCTL_LOCK_VOLUME, 0, 0, 0, 0, out _, 0)) return true;
 
-                Thread.Sleep(LockPauseMs);
-            }
+                    lockError = Marshal.GetLastPInvokeError();
+                    return false;
+                },
+                () => Native.DeviceIoControl(handle, Native.FSCTL_DISMOUNT_VOLUME, 0, 0, 0, 0, out _, 0),
+                () => Thread.Sleep(LockPauseMs),
+                ct);
 
-            Native.DeviceIoControl(handle, Native.FSCTL_DISMOUNT_VOLUME, 0, 0, 0, 0, out _, 0);
+            if (!released && HeldOpen(lockError))
+                return EjectResult.InUse($"something still has a file open on {letter} — close it and try again");
 
             // Unlock the tray. A one-byte BOOLEAN, not a four-byte BOOL, and
             // ERROR_INVALID_FUNCTION here is ordinary — plenty of drives have

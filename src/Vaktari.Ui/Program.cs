@@ -289,9 +289,23 @@ internal sealed class Program
     /// <summary>The live channel, so the window can listen for later launches.</summary>
     public static SingleInstance? Instance { get; private set; }
 
+    /// <summary>
+    /// A path as it was meant, where a command line has mangled it.
+    ///
+    /// **"C:\" arrives as C:".** The backslash before the closing quote reads
+    /// as escaping it, so a drive root registered with a quoted "%1" — as
+    /// Vaktari registered itself for drives until it stopped — came through
+    /// with a quote where the backslash was. A Windows path cannot hold a
+    /// quote, so a trailing one can only be that.
+    /// </summary>
+    internal static string Repaired(string argument)
+        => OperatingSystem.IsWindows() && argument.EndsWith('"')
+            ? argument.TrimEnd('"') + "\\"
+            : argument;
+
     private static void Run(string[] args)
     {
-        var paths = args.Where(a => !a.StartsWith('-')).ToArray();
+        var paths = args.Where(a => !a.StartsWith('-')).Select(Repaired).ToArray();
 
         var instance = new SingleInstance();
 

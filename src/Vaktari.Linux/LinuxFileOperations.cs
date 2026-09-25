@@ -80,7 +80,17 @@ public sealed class LinuxFileOperations : IFileOperations
         Func<FileConflict, ValueTask<ConflictResolution>> onConflict)
         => Run(sources, destination, onConflict, move: true);
 
-    public IOperationHandle Trash(IReadOnlyList<string> paths)
+    public IOperationHandle Trash(IReadOnlyList<string> paths) => Trash(paths, remember: true);
+
+    /// <summary>
+    /// The bin, for an undo taking back what it put somewhere: nothing is
+    /// recorded, because this is not a delete the person asked for. See the
+    /// Windows engine's twin — an undone copy left "Undo delete" on top of the
+    /// history, and the next Ctrl+Z put the copy back.
+    /// </summary>
+    private IOperationHandle TrashQuietly(IReadOnlyList<string> paths) => Trash(paths, remember: false);
+
+    private IOperationHandle Trash(IReadOnlyList<string> paths, bool remember)
     {
         var handle = new OperationHandle { Paths = paths, Kind = OperationKind.Trash };
 
@@ -110,6 +120,14 @@ public sealed class LinuxFileOperations : IFileOperations
                         restored.Add((name, path));
                         handle.ItemFinished();
                     }
+                    catch (XdgTrash.PartlyTrashedException partly)
+                    {
+                        // In the bin whole and listed there, so it can be
+                        // undone like the rest; what stayed behind is the
+                        // failure this item reports.
+                        restored.Add((partly.Key, path));
+                        handle.ItemFailed(path, partly);
+                    }
                     catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
                     {
                         handle.ItemFailed(path, ex);
@@ -121,7 +139,7 @@ public sealed class LinuxFileOperations : IFileOperations
                 // unconditionally on what succeeded: the old code only got here
                 // if every single item went, so one failure lost the undo for
                 // all the rest as well.
-                if (restored.Count > 0)
+                if (remember && restored.Count > 0)
                     Remember(new UndoTrash(restored));
 
                 handle.Complete();
@@ -235,7 +253,7 @@ public sealed class LinuxFileOperations : IFileOperations
     /// Windows implementation for why.</summary>
     public void RecordCreation(string path)
     {
-        if (path.Length > 0) Remember(new UndoCreate(Trash, path));
+        if (path.Length > 0) Remember(new UndoCreate(TrashQuietly, path));
     }
 
     /// <summary>Bumped by every operation that records itself. A walk reads it
@@ -708,7 +726,10 @@ public sealed class LinuxFileOperations : IFileOperations
 
                         target = landed;
 
-                        if (move) File.Delete(item.Source);
+                        // **Never delete the only copy.** A source that is
+                        // now the landed file, by whatever name SameEntry
+                        // could not see through, was the file.
+                        if (move && !FileIdentity.Same(item.Source, landed)) File.Delete(item.Source);
                     }
 
                     // Only the items the user named, and the place they really
@@ -807,7 +828,7 @@ public sealed class LinuxFileOperations : IFileOperations
                     // deleting files. True, and the bin is the answer: nothing
                     // is destroyed, and pasting into the wrong folder stops
                     // being a mistake you have to clean up by hand.
-                    Remember(new UndoCopy(Trash, undoable.Select(l => l.Target).ToList()));
+                    Remember(new UndoCopy(TrashQuietly, undoable.Select(l => l.Target).ToList()));
                 }
 
 
@@ -1059,8 +1080,18 @@ public sealed class LinuxFileOperations : IFileOperations
 
         // Byte-exact on the leaf: a Linux name is a byte string, and two
         // spellings of it are two different names.
-        return string.Equals(Path.GetFileName(a), Path.GetFileName(b), StringComparison.Ordinal)
-            && string.Equals(Resolved(here), Resolved(there), StringComparison.Ordinal);
+        if (!string.Equals(Path.GetFileName(a), Path.GetFileName(b), StringComparison.Ordinal))
+            return false;
+
+        if (string.Equals(Resolved(here), Resolved(there), StringComparison.Ordinal)) return true;
+
+        // **And then the file system, for a second name that is not a link.**
+        // A bind mount, or one export mounted twice, reaches the same folder by
+        // a path no link-following joins up — and a move into it took the copy
+        // route, landed over itself and deleted what had landed. The FOLDERS
+        // are compared, not the files: a hard link is a second entry for one
+        // file, and is not the entry itself.
+        return FileIdentity.Same(here, there);
     }
 
     /// <summary>
@@ -1413,22 +1444,37 @@ public sealed class LinuxFileOperations : IFileOperations
     /// Whether every source is on the same filesystem as the destination, in
     /// which case a move is a rename and costs no space.
     ///
-    /// By mount point rather than by device: DriveInfo.Name on Linux is the
-    /// mount point, which is exactly the boundary a rename cannot cross.
+    /// **This compared DriveInfo names, and on Linux a DriveInfo's name is the
+    /// path it was given** — not its mount point. So the question was whether
+    /// "/home/u/Videos/big" equals "/home/u/Archive", never true, and every
+    /// move within one volume was held to the free-space check: 80 GB moved
+    /// across a /home with 30 GB free failed with "not enough room", though a
+    /// rename needs none.
+    ///
+    /// **Both answers, through links.** A mount point alone is text, and
+    /// ~/Videos linking to /mnt/data reads as /home by text — which skipped the
+    /// space check for 80 GB about to be copied onto /home. A device alone
+    /// calls two mounts of one filesystem one volume, and a rename between them
+    /// is refused all the same. So the source's FOLDER and the destination are
+    /// taken at their real paths — the source itself is moved as whatever it
+    /// is, a link included — and must agree on both. Anything unknown answers
+    /// "different", which runs the check: the answer that costs a look, not a
+    /// full disk.
     /// </summary>
-    private static bool SameVolume(IReadOnlyList<string> sources, string destination)
+    internal static bool SameVolume(IReadOnlyList<string> sources, string destination)
     {
-        try
-        {
-            var target = new DriveInfo(Path.GetFullPath(destination)).Name;
+        var mounts = Volumes.MountPoints();
 
-            return sources.All(s =>
-                string.Equals(new DriveInfo(Path.GetFullPath(s)).Name, target, StringComparison.Ordinal));
-        }
-        catch (Exception ex) when (ex is IOException or ArgumentException or NotSupportedException)
-        {
+        if (FileIdentity.RealPath(destination) is not { } into
+            || FileIdentity.Of(into) is not { } there)
             return false;
-        }
+
+        return sources.All(source =>
+            Path.GetDirectoryName(Path.GetFullPath(source)) is { } folder
+            && FileIdentity.RealPath(folder) is { } from
+            && FileIdentity.Of(from) is { } here
+            && here.Device == there.Device
+            && Volumes.Same(from, into, mounts));
     }
 
     /// <summary>

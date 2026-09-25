@@ -70,6 +70,16 @@ public static class DuplicateFinder
             // by somebody deleting an original.
             if (found.IsLink || found.Length == 0) continue;
 
+            // **A file whose name Windows would rewrite is read as another
+            // file.** "report " and "report." open as "report", so the two would
+            // be compared as one file read twice — identical, by construction —
+            // and one offered as the other's spare. Left out, and counted.
+            if (!ReachablePath.IsReachable(found.Path))
+            {
+                counters.Unreadable++;
+                continue;
+            }
+
             if (!byLength.TryGetValue(found.Length, out var paths))
                 byLength[found.Length] = paths = [];
 
@@ -92,10 +102,54 @@ public static class DuplicateFinder
             // of a disk, and it is why the walk comes first.
             if (paths.Count < 2) continue;
 
-            Partition(length, paths, sets, counters, progress, ct);
+            var files = OneNamePerFile(paths);
+
+            if (files.Count < 2) continue;
+
+            Partition(length, files, sets, counters, progress, ct);
         }
 
         return new DuplicateReport(sets, counters.Unreadable);
+    }
+
+    /// <summary>
+    /// How this platform says which file a path reaches — its volume and id —
+    /// or null when it cannot. Adopted by each platform, since asking is a call
+    /// into the operating system and this assembly makes none. Null in tests
+    /// that do not set it, and then every path is taken for a file of its own,
+    /// which is what this finder did before.
+    /// </summary>
+    public static Func<string, (ulong Volume, ulong Low, ulong High)?>? Identity { get; set; }
+
+    /// <summary>
+    /// The candidates of one length with every second name for one file taken
+    /// out.
+    ///
+    /// **Two names for one file were offered as a copy and its original.** A
+    /// hard link is two names in two folders for one file, and a bind mount
+    /// makes a whole folder reachable twice; either way the byte comparison
+    /// below reads one file twice and calls it identical. For a hard link the
+    /// set promises space that deleting frees none of; for a bind mount the
+    /// "spare" IS the original, under another path, and deleting it deletes
+    /// the only copy there is. The first name met is kept. A path whose
+    /// identity cannot be read is kept as a file of its own — the rule this
+    /// finder had before it asked.
+    /// </summary>
+    private static List<string> OneNamePerFile(List<string> paths)
+    {
+        if (Identity is not { } read) return paths;
+
+        var seen = new HashSet<(ulong, ulong, ulong)>();
+        var kept = new List<string>(paths.Count);
+
+        foreach (var path in paths)
+        {
+            if (read(path) is { } id && !seen.Add(id)) continue;
+
+            kept.Add(path);
+        }
+
+        return kept;
     }
 
     /// <summary>

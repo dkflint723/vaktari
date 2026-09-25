@@ -33,6 +33,60 @@ public sealed class ComputerListingTests : OwnedViewModels
             CapacityBytes = capacity == 0 ? null : capacity,
         };
 
+    /// <summary>A provider whose answer does not come until it is let go —
+    /// a drive that is not answering, held still.</summary>
+    private sealed class Stuck : IPlacesProvider, IDisposable
+    {
+        public ManualResetEventSlim Release { get; } = new();
+
+        public event EventHandler? PlacesChanged { add { } remove { } }
+
+        public ValueTask<IReadOnlyList<PlaceGroup>> GetPlacesAsync(CancellationToken ct)
+        {
+            Release.Wait(TimeSpan.FromSeconds(10));
+            return ValueTask.FromResult<IReadOnlyList<PlaceGroup>>([]);
+        }
+
+        public ValueTask PinAsync(string path, string? label, CancellationToken ct) => ValueTask.CompletedTask;
+        public ValueTask UnpinAsync(string id, CancellationToken ct) => ValueTask.CompletedTask;
+        public ValueTask RenameAsync(string id, string label, CancellationToken ct) => ValueTask.CompletedTask;
+        public ValueTask ReorderAsync(IReadOnlyList<string> ids, CancellationToken ct) => ValueTask.CompletedTask;
+        public ValueTask MountAsync(string id, CancellationToken ct) => ValueTask.CompletedTask;
+        public ValueTask<EjectResult> EjectAsync(string id, CancellationToken ct)
+            => ValueTask.FromResult(EjectResult.InUse("nothing to eject"));
+        public ValueTask<int> ImportExistingAsync(CancellationToken ct) => ValueTask.FromResult(0);
+
+        public void Dispose() => Release.Dispose();
+    }
+
+    /// <summary>
+    /// **Asking for the drives does not hold the caller.** The provider asks
+    /// every drive how full it is, synchronously, and the listing asked it on
+    /// the window's thread — so a dead mapped drive froze This PC.
+    /// </summary>
+    [AvaloniaFact]
+    public async Task The_drives_are_asked_for_off_the_callers_thread()
+    {
+        using var stuck = new Stuck();
+
+        var rows = ComputerListing.EnumerateAsync(stuck, CancellationToken.None).GetAsyncEnumerator();
+
+        try
+        {
+            var first = rows.MoveNextAsync();
+
+            Assert.False(first.IsCompleted, "the listing waited for the drives on the caller's thread");
+
+            stuck.Release.Set();
+            Assert.True(await first);
+        }
+        finally
+        {
+            stuck.Release.Set();
+            await rows.DisposeAsync();
+        }
+    }
+
     private static string P(string name)
         => OperatingSystem.IsWindows() ? $@"{name}:\" : $"/mnt/{name}";
 

@@ -6,9 +6,9 @@ does not — but the colour scheme and icon theme come from `kdeglobals`, so on 
 non-KDE desktop it will use its built-in defaults.
 
 **Windows runs.** What it does is in the [README](README.md); what it does
-not — content search among them — is under *Known limits* there. The plan the
-port was built from is kept at [docs/history/WINDOWS.md](docs/history/WINDOWS.md),
-because comments in the source cite its sections; it is not a status document.
+not is under *Known limits* there. The plan the port was built from is kept
+at [docs/history/WINDOWS.md](docs/history/WINDOWS.md), because comments in the
+source cite its sections; it is not a status document.
 `Vaktari.Ui` picks its platform assembly from the build machine's OS.
 
 Publishing on Windows needs the **MSVC C++ build tools**, and `vswhere.exe` on

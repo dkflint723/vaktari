@@ -55,5 +55,25 @@ public sealed class AvaloniaDropShapeTests
             + "query — see the note on VirtualFileDrop.Retype.");
 
         Assert.Contains("IDataObject", field.FieldType.Name, StringComparison.Ordinal);
+
+        // **And the pointer is read out of the proxy, not asked for.** What
+        // the field holds for a drag from another program is a MicroCom proxy
+        // — a plain managed object, so neither ComWrappers nor
+        // Marshal.GetIUnknownForObject leads back to the native object. Its
+        // NativePointer does, and that is the second name VirtualFileDrop
+        // depends on.
+        var proxyBase = Type.GetType("MicroCom.Runtime.MicroComProxyBase, MicroCom.Runtime");
+
+        Assert.True(proxyBase is not null,
+            "MicroCom.Runtime.MicroComProxyBase is gone — Avalonia's COM layer changed, and "
+            + "VirtualFileDrop.Retype no longer finds the pointer behind a drag.");
+
+        Assert.True(field.FieldType.GetInterfaces().Any(i => i.FullName == "MicroCom.Runtime.IUnknown"),
+            "the data object is no longer a MicroCom interface — see VirtualFileDrop.Retype.");
+
+        var pointer = proxyBase!.GetProperty("NativePointer", BindingFlags.Instance | BindingFlags.Public);
+
+        Assert.True(pointer?.PropertyType == typeof(IntPtr),
+            "MicroComProxyBase no longer has a public IntPtr NativePointer — see VirtualFileDrop.Retype.");
     }
 }

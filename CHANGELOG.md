@@ -13,6 +13,24 @@ should not be trusted for compatibility yet.
 
 ### Added
 
+- **A search can look inside files.** A *Search contents* box on the band
+  above the results finds a file by what is in it as well as by its name.
+  With no index to ask — always on Windows, and on Linux where Baloo is not
+  indexing — every file is opened in turn and the plain-text ones read,
+  which is slower, and the band says so — on Linux also when Baloo is
+  installed but had nothing to say; *Stop* still works, between one 64 KiB
+  read and the next. Files over 64 MiB are not opened, and nor is a file
+  kept online — a sync client's online-only file on Windows, a network or
+  cloud mount the search walked into on Linux — because opening it would
+  download it; the band says how many of each were left unread. Hidden
+  files are opened only when hidden files are shown, and a pattern such as
+  `*.pdf` is not offered the box at all. Off by default, and part of the
+  search, so Back, the history and a saved search all ask it the same way
+  again. On a KDE desktop the box works in both directions: cleared,
+  Baloo's answers are narrowed to the files named for the words, where
+  before they took in files matched on their contents whether you wanted
+  those or not.
+
 - **There can be a folder tree in the sidebar.** Settings ▸ Views turns on
   a *FOLDERS* section under your places, rooted at each of them, and it
   follows the pane: going somewhere opens the branch that leads there. It
@@ -168,6 +186,51 @@ should not be trusted for compatibility yet.
 
 ### Security
 
+- **On Windows, a script of yours is given file names, never commands.** A
+  .bat or .cmd in the scripts folder is run by cmd.exe, which reads the
+  whole command line again by its own rules, and a selected name with no
+  space in it went through unquoted: a file called `report&ver` ran `ver`,
+  a comma split one name into two paths, and a file called `x&payload` in
+  a downloaded folder ran the `payload.bat` beside it. Every name is now
+  quoted for cmd.exe. A name with `%` in it is refused with a message,
+  since cmd.exe expands `%NAME%` even inside quotes and the script would be
+  handed another file.
+
+- **"Open terminal here" in a folder whose name has a `;` in it opens that
+  folder.** Windows Terminal splits its arguments at every `;`, quotes or
+  no quotes, and runs what follows as a second command — through *as
+  administrator*, elevated, behind a consent prompt that named only the
+  terminal. The `;` is now escaped for Windows Terminal.
+
+- **On Linux, a bin on a shared drive is yours alone.** The bin made at
+  the top of a drive for your deletions was readable by every other user
+  of the machine, so a file deleted from a private folder could be read
+  back out of it; it is now made readable by you only, and an existing one
+  is closed up the next time you delete something on that drive. And one
+  that is not your own folder — made there first by someone else — is no
+  longer used, as GNOME refuses it too: your deletions go to your home bin
+  instead. A network share or a Windows-formatted drive that shows every
+  file as one owner's keeps its bin as before.
+
+- **On Linux, the last-resort terminal no longer reads a folder's name as
+  a command.** With no terminal detected that would start, *Open terminal
+  here* fell back to xterm with `cd <folder> && $SHELL`, so a `;` in the
+  folder's name ran what followed it. xterm is now started in the folder.
+
+- **On Linux, a permission change applied to a folder and everything in it
+  stays inside that folder.** It listed a folder, then visited each folder
+  inside it and changed each mode by name later on — and a name can be
+  swapped for a link in between. Someone else able to write into a shared
+  folder could replace a subfolder not yet reached with a link to your
+  home, and "others can read" went on into it, ~/.ssh included. Each entry
+  is now opened relative to the folder already open above it, never
+  following a link, and changed through what was opened — on 64-bit Intel
+  and ARM machines with /proc, which is every desktop Vaktari is built for;
+  anywhere else the old walk remains. Taking away your own read permission,
+  while keeping your own search (execute) permission, now reaches everything
+  inside as well, where it used to stop at the first folder it had just
+  closed to itself.
+
 - **A folder name can no longer smuggle options to git.** The status call
   that draws the M, A, D, ? and ! marks handed git its arguments as one quoted
   string, and a folder whose name held a double quote — legal on Linux — could
@@ -224,6 +287,184 @@ should not be trusted for compatibility yet.
   status line.
 
 ### Fixed
+
+- **On Windows, files dragged out of a zip opened in Explorer land in
+  Vaktari.** Explorer hands such files over as contents rather than as
+  files on disk, and reading them never worked: the drop always ended with
+  the message about archives. They are now written where they were
+  dropped, with the folders that hold them — an empty folder included.
+
+- **On Windows, ejecting a drive a program is still writing to leaves that
+  program's work alone.** When the drive could not be locked because a file
+  on it was open, the eject dismounted it anyway, which cuts every open file
+  off mid-write, and only then asked Windows to remove the device. Now a
+  drive that cannot be locked is not dismounted; Windows' refusal is what
+  you are told, naming the program when Windows says which one. The same for a disc: one with a
+  file open on it keeps its tray shut and says so, where the tray used to
+  open under the program.
+
+- **On Windows, a shortcut to a folder with accented letters in its name
+  opens that folder.** A shortcut that keeps its path only in your
+  language's code page — "Música" — was read back as a folder that does not
+  exist: double-clicking it opened Explorer, and the places import skipped
+  it. The path is now read in the machine's own code page, which is what
+  wrote it.
+
+- **On Windows, double-clicking a drive opens it in Vaktari when Vaktari is
+  the default file manager.** The drive was handed over as `C:"` rather
+  than `C:\`, and Vaktari came up without opening it. Setting Vaktari as
+  the default again writes the corrected command, and a drive handed over
+  the old way is understood as well.
+
+- **On Windows, a mounted disc image is told apart from another file with
+  the same name.** Windows names a mounted image without its drive, and any
+  file whose path ended the same way — `D:\ISO\x.iso` when it was
+  `C:\ISO\x.iso` that was mounted — was taken for it: the menu offered
+  *Unmount* for a file that was not mounted and hid *Mount*.
+
+- **On Windows, a network drive whose server has gone no longer freezes
+  the window.** Deciding the bin's icon asked every mapped drive whether it
+  was ready, at startup and after every copy or delete; opening *This PC*
+  or the menu on the machine's crumb asked every drive how full it was;
+  and listing network connections asked each share whether it answered —
+  all on the window's thread, where a dead server does not answer. The bin
+  no longer asks network drives at all, and the other two ask off the
+  window's thread.
+
+- **On Linux, ejecting one partition of a drive with two says so when the
+  other is in use.** Only the partition clicked was unmounted, so the drive
+  could not be powered off with the other still mounted — and that read as
+  "written out and safe to unplug". Every mounted partition of the drive is
+  now unmounted first, and one in use is what you are told about. A
+  partition of a disk inside the machine — the Windows partition beside
+  Linux, say — is simply unmounted: the system's own partitions on that
+  disk are left alone and nothing is powered off.
+
+- **On Linux, *Open terminal as administrator* opens in the folder, and a
+  file run as administrator runs in its own folder.** Both started in
+  root's home folder, /root, because the step that asks for the password
+  moves there first. Where root cannot enter the folder — a home on a
+  network share, say — the terminal opens in /root and says why, and a
+  file is not run at all rather than run somewhere else.
+
+- **On Linux, properties on "/" no longer count what is not on disk.**
+  The size walked into /proc, where one file alone reads as 128 TiB, and
+  into /sys; the walks behind folder sizes, space usage and duplicates now
+  list those folders without going into them. And a folder holding a
+  network share is not measured until you ask, as a folder on one already
+  was not.
+
+- **On Linux, a network mount whose server has gone no longer freezes the
+  window.** Deciding the bin's icon looked into every mounted drive's bin,
+  and listing network places read each one — both on the window's thread,
+  where a dead server does not answer. Both are asked off it now, one at a
+  time, and the bin's icon no longer looks inside an automount point that
+  is not yet mounted, so it never mounts one.
+  Folders on sshfs and rclone mounts are now known to be remote, so they
+  are not read row by row for icons or measured unasked.
+
+- **On Linux, Vaktari installed in a folder with a space in its name can
+  be started when another program asks it to show a file in its folder.**
+  The line that tells the session how to start it was split at the space.
+
+- **On Linux, mounting a disc image whose path has `/dev/loop` in it — kept
+  under a folder called `dev`, say — mounts that image.** The name of the device Linux gave
+  the image was read from the first `/dev/loop` in the reply, which could
+  be part of the image's own path.
+
+- **A confirmation acts on what it asked about.** The question sits in a
+  bar under a listing that stays live, so the selection could change before
+  the answer — a click on another row, or an operation finishing and
+  selecting what it had put there — and a yes then deleted, for good, files
+  the question never named. The same held for *move to the bin* and for
+  deleting from the bin. A yes now means the files the question showed,
+  whatever is selected by then, and wherever the pane has gone: asked in a
+  folder and answered in the bin, it deletes the file it named, where it
+  used to destroy whatever was selected in the bin. And with "ask before
+  moving to the bin" turned on, Delete in the bin no longer asks a question
+  it cannot act on; it says at once that the items are already there.
+
+- **Moving something into the folder it is already in, by another name, no
+  longer deletes it.** On Windows a mapped drive and its share, a subst
+  drive, or a path written with `\\?\`; on Linux a bind mount. The move
+  took the copy route and asked whether to replace the file with itself;
+  on *Replace* it landed the copy over it — which was itself — and then
+  deleted the source, which was what had landed: gone, from no bin, with
+  nothing to undo. The file system is now asked whether two folders are
+  one before a move copies anything, and whether two files are one before
+  a source is deleted.
+
+- **On Linux, two bins holding one name are two items.** A file deleted
+  from your home folder and another of the same name deleted from a stick
+  sat in two bins under one name, and every action took the first it found:
+  *Restore* on the stick's row brought back the home one, *Delete
+  permanently* destroyed whichever the bin listed first, and Ctrl+Z after
+  deleting from the stick restored the other file.
+
+- **On Linux, a delete to the bin that cannot be a rename no longer loses
+  anything.** A folder whose parent you cannot write was copied into the
+  bin, emptied, and then left in place empty, the copy hidden; a folder
+  whose copy arrived whole but could not be fully removed had its bin entry
+  thrown away, so the whole of it sat in the bin where nothing could list
+  or restore it. Now only a move across drives is copied, a copy that fails
+  is taken back, and an item that reached the bin stays listed, and you are
+  told part of it could not be removed from where it was, and why. A
+  mounted drive is refused — its bin is inside it, and the copy walked into
+  itself until the path ran out — also when it is reached through a linked
+  folder. And a leftover in the bin with no record of its own no longer
+  blocks the next delete of that name, which failed with "already exists"
+  or, for a folder, was poured into the leftover.
+
+- **On Linux, a move within one drive is not refused for lack of space.**
+  Every move was held to the room a copy would need, so 80 GB moved within
+  a /home with 30 GB free failed with "not enough room" though a rename
+  needs none. A move out of a folder that is a link to another drive is
+  still checked, since it is really a copy.
+
+- **"Do the same for the rest" on a folder's Merge no longer answers the
+  file clashes too.** Merge keeps what is there; ticked on a folder, it
+  went on to overwrite every file that clashed afterwards without asking,
+  the files inside the merge among them. Folders and files now remember
+  their own answers.
+
+- **Undoing a copy or a new item leaves the step before it on top.** The
+  undo sent what it took back to the bin through the Delete key's own road,
+  which records a step of its own — so the next Ctrl+Z read "Undo delete",
+  put the copy straight back, and cleared what could be redone.
+
+- **On Windows, undoing a delete puts back what that delete removed, and
+  no longer what another program or pane deleted in the same few
+  seconds.** Those were restored along with it.
+
+- **On Windows, a folder named "data " or "data." is no longer shown as
+  "data".** Windows drops a trailing space or dot before it opens a path,
+  so opening such a folder listed its neighbour — rows, paths and all, and
+  a delete there emptied the wrong folder. The folder itself now refuses
+  to open and says why, as does making a new folder in it; the space-usage
+  view and a duplicate scan count it as unreadable rather than showing the
+  other's files, and a folder's size in properties leaves out such folders
+  inside it rather than counting their neighbours twice.
+
+- **A duplicate scan no longer offers one file as a copy of itself.** Two
+  names for one file — a hard link, or a folder reached twice through a
+  bind mount — were listed as copies, with space to give back that deleting
+  them does not; and for a folder reached twice, *Select every copy but one*
+  could pick the only one. And a
+  folder that can be listed but not opened no longer ends the scan, the
+  space-usage view or a folder's size: it is counted as unreadable and the
+  rest carries on.
+
+- **Invert selection keeps to the folder you are in when folders are
+  opened in place.** In the List layout it selected rows from inside the
+  opened folders as well.
+
+- **The Share row names what it will share.** It kept the name from the
+  last time the menu opened, so it could name a folder selected earlier —
+  "photos" — and share the folder you were in.
+
+- **On Linux, asking for the checksums of a named pipe no longer freezes
+  the application.** The button is not offered for one, and *Stop* now
+  stops waiting on a file that will not open.
 
 - **On Windows, a file marked for something other than a link is no
   longer shown as one.** Windows puts the mark a link carries on other

@@ -41,13 +41,28 @@ public partial class MainWindow
     /// </summary>
     private void InvertSelection()
     {
-        if (ActiveListing() is not { } list) return;
+        if (ActiveListing() is { } list && _shell.ActiveTab is { } pane) InvertWithinFolder(list, pane);
+    }
+
+    /// <summary>
+    /// Inverts the FOLDER's rows, not the screen's — the rule
+    /// <see cref="SelectWholeFolder"/> keeps, for the same reason.
+    ///
+    /// **Invert took every row on screen, children of an opened folder
+    /// included.** Opened "docs" in place and selected just it, then inverted:
+    /// every sibling came in, and so did every child of docs — so a Delete that
+    /// meant "everything but docs" sent docs' contents to the bin, and a copy of
+    /// a folder together with a file inside it asks for that file twice at the
+    /// destination. The children, and any of them that were selected, are left
+    /// out; what is inverted is the folder.
+    /// </summary>
+    internal static void InvertWithinFolder(ListBox list, ViewModels.PaneViewModel pane)
+    {
         if (list.SelectedItems is not { } selected) return;
 
-        var wanted = list.Items
-            .OfType<object>()
-            .Where(item => !selected.Contains(item))
-            .ToList();
+        var rows = pane.RowsAreSpliced ? pane.Entries.Cast<object>() : list.Items.OfType<object>();
+
+        var wanted = rows.Where(item => !selected.Contains(item)).ToList();
 
         selected.Clear();
 

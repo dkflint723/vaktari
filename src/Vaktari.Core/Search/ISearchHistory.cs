@@ -11,8 +11,9 @@ namespace Vaktari.Core.Search;
 /// rebuilt from memory one control at a time.
 ///
 /// **An entry is a search PATH, not the words that were typed.** A search is
-/// four fields — query, origin, scope, case — and the path is the one string
-/// that carries all four, so replaying it puts back the question that was
+/// five fields — query, origin, scope, case, contents — and the path is the
+/// one string that carries all five, so replaying it puts back the question
+/// that was
 /// asked rather than a vaguer one that merely shares its words. It is also
 /// what the pane navigates to, so a history row is a place rather than an
 /// instruction to reassemble one.

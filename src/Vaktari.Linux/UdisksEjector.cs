@@ -33,6 +33,9 @@ internal sealed class UdisksEjector : IEjector
     internal Func<string, bool>? HaveToolOverride { get; init; }
     internal Func<IEnumerable<string>>? MountLines { get; init; }
 
+    /// <summary>What sysfs says about a device, for the tests. Null in the application.</summary>
+    internal Func<string, DeviceTraits?>? TraitsOverride { get; init; }
+
     internal readonly record struct CliResult(int ExitCode, string StdOut, string StdErr);
 
     public async Task<EjectResult> EjectAsync(string path, CancellationToken ct)
@@ -90,11 +93,50 @@ internal sealed class UdisksEjector : IEjector
                 : EjectResult.Ejected($"{Name(path)} is unmounted — the tray did not open");
         }
 
+        // **An internal drive is left as it is.** A second partition of the
+        // disk the system runs from — "/", /home, /boot/efi — is not this
+        // eject's to unmount, and a disk inside the machine is not powered
+        // off. The partition asked about is unmounted, and that is all. Only a
+        // disk KNOWN to be internal: one whose details cannot be read — an
+        // encrypted stick seen through its mapper device — is ejected as
+        // before.
+        var traits = TraitsOverride is { } fakeTraits ? fakeTraits(device) : BlockDevices.TraitsFor(device);
+
+        if (traits is { Removable: false, OnUsbBus: false })
+            return EjectResult.Ejected($"{Name(path)} is unmounted");
+
+        // **Every other partition of the drive, before it is powered off.**
+        // Only the one clicked was unmounted, so with a second partition still
+        // mounted udisks refused the power-off — and the refusal fell through
+        // to "written out and safe to unplug", which that partition was not.
+        // Its own busy refusal is the answer when it has one.
+        foreach (var (sibling, at) in SiblingsOf(lines, device))
+        {
+            var other = await RunAsync(
+                ["unmount", "--no-user-interaction", "-b", sibling], ct).ConfigureAwait(false);
+
+            if (other.ExitCode == 0) continue;
+
+            var complaint = Tidy(other.StdErr);
+
+            return complaint.Contains("busy", StringComparison.OrdinalIgnoreCase)
+                ? EjectResult.InUse(
+                    $"something still has a file open on {Name(at)}, on the same drive — close it and try again")
+                : EjectResult.Failed(complaint);
+        }
+
         var off = await RunAsync(
             ["power-off", "--no-user-interaction", "-b", device], ct).ConfigureAwait(false);
 
         if (off.ExitCode == 0)
             return EjectResult.Ejected($"{Name(path)} is safe to unplug");
+
+        // A drive still in use is not written out, whatever else is true —
+        // something mounted it again since, or holds it open.
+        if (off.StdErr.Contains("DeviceBusy", StringComparison.Ordinal)
+            || off.StdErr.Contains("is mounted", StringComparison.OrdinalIgnoreCase))
+            return EjectResult.InUse(
+                $"another part of the drive holding {Name(path)} is still in use — it was not powered off");
 
         // A drive that cannot be powered off — a card reader, an internal bay —
         // is not an error worth showing: udisks knows whether the hardware
@@ -228,6 +270,44 @@ internal sealed class UdisksEjector : IEjector
         }
 
         return false;
+    }
+
+    /// <summary>
+    /// The other mounted partitions of the drive a device belongs to, with
+    /// where each is mounted. Only for the kinds of disk that have partitions
+    /// of their own: every loop device would otherwise read as one "loop"
+    /// drive, and every disc as one "sr".
+    /// </summary>
+    internal static List<(string Device, string MountPoint)> SiblingsOf(IEnumerable<string> lines, string device)
+    {
+        var found = new List<(string, string)>();
+
+        if (BlockDevices.DiskFor(device) is not { } disk
+            || !(disk.StartsWith("sd", StringComparison.Ordinal)
+                 || disk.StartsWith("hd", StringComparison.Ordinal)
+                 || disk.StartsWith("vd", StringComparison.Ordinal)
+                 || disk.StartsWith("xvd", StringComparison.Ordinal)
+                 || disk.StartsWith("nvme", StringComparison.Ordinal)
+                 || disk.StartsWith("mmcblk", StringComparison.Ordinal)))
+            return found;
+
+        foreach (var line in lines)
+        {
+            var parts = line.Split(' ');
+            if (parts.Length < 2) continue;
+
+            var source = MountTable.Unescape(parts[0]);
+
+            if (source == device || BlockDevices.DiskFor(source) != disk) continue;
+
+            // Never the system's own root, whatever disk it is on.
+            if (MountTable.Unescape(parts[1]) == "/") continue;
+            if (found.Any(f => f.Item1 == source)) continue;
+
+            found.Add((source, MountTable.Unescape(parts[1])));
+        }
+
+        return found;
     }
 
     private static IEnumerable<string> ReadMountLines()

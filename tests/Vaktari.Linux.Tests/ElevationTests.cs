@@ -175,6 +175,15 @@ public sealed class ElevationTests
     /// display to open on. Running pkexec inside an ordinary terminal also
     /// leaves the window itself unprivileged.
     /// </summary>
+    /// <summary>
+    /// **Root's side is told the folder.** pkexec moves to root's home before
+    /// it runs anything, so an admin terminal opened in /root and an elevated
+    /// script ran there; a shell that changes folder first, with the folder as
+    /// its argument rather than part of its script, works on every polkit.
+    /// </summary>
+    private static string[] InFolder(string folder, string script = LinuxLauncher.ElsewhereStays)
+        => ["/bin/sh", "-c", script, "sh", folder];
+
     [Fact]
     public void An_admin_terminal_runs_pkexec_inside_the_terminal()
     {
@@ -185,11 +194,11 @@ public sealed class ElevationTests
         var started = Assert.Single(watched.Spawns);
 
         Assert.Equal("/srv/work", started.Directory);
-        Assert.Equal(["/usr/bin/konsole", "-e", "/usr/bin/pkexec"], started.Argv[..3]);
+        Assert.Equal(["/usr/bin/konsole", "-e", "/usr/bin/pkexec", .. InFolder("/srv/work")], started.Argv[..8]);
 
-        // The fourth and last is the shell, whose choice is pinned separately —
-        // it is read from $SHELL, which belongs to whoever ran the suite.
-        Assert.Equal(4, started.Argv.Length);
+        // The last is the shell, whose choice is pinned separately — it is
+        // read from $SHELL, which belongs to whoever ran the suite.
+        Assert.Equal(9, started.Argv.Length);
     }
 
     /// <summary>
@@ -217,7 +226,10 @@ public sealed class ElevationTests
 
         Assert.Equal(["wezterm", "start", "--", "/usr/bin/pkexec"], started.Argv[..4]);
         Assert.Equal("/srv/work", started.Directory);
-        Assert.DoesNotContain("/srv/work", started.Argv);
+
+        // Not among the terminal's own arguments; only root's side is told it.
+        Assert.DoesNotContain("/srv/work", started.Argv[..4]);
+        Assert.Equal(InFolder("/srv/work"), started.Argv[4..9]);
     }
 
     /// <summary>
@@ -331,7 +343,7 @@ public sealed class ElevationTests
         var started = Assert.Single(watched.Spawns);
 
         Assert.Equal(
-            ["/usr/bin/konsole", "-e", "/usr/bin/pkexec", Installer],
+            ["/usr/bin/konsole", "-e", "/usr/bin/pkexec", .. InFolder(Folder, LinuxLauncher.ElsewhereStops), Installer],
             started.Argv);
 
         // Its own folder, so a script that reads a file sitting beside it finds
@@ -375,7 +387,7 @@ public sealed class ElevationTests
         launcher.OpenElevated(Installer);
 
         Assert.Equal(
-            ["/usr/bin/pkexec", Installer],
+            ["/usr/bin/pkexec", .. InFolder(Folder, LinuxLauncher.ElsewhereStops), Installer],
             watched.Spawns[^1].Argv);
     }
 

@@ -9,12 +9,12 @@ namespace Vaktari.Core.Tests;
 ///
 /// **The warning about reading every folder hung on IsAvailable, and both
 /// shipped providers hardcoded that true.** IsAvailable meant "will this return
-/// results at all", and WindowsSearchProvider spelled out why it had to go on
-/// meaning that: it IS the fallback walk, so answering false would have sent
-/// the UI to a second fallback walk of its own. The consequence was that a
-/// machine with no index reported the same flag as a machine with one, and the
-/// sentence explaining the wait was unreachable in the source before anybody
-/// noticed that no markup file bound it either.
+/// results at all", and WindowsSearchProvider argued it had to go on meaning
+/// that: false, its comment said, would send the UI to a fallback walk of its
+/// own — a walk the UI never had. The consequence was that a machine with no
+/// index reported the same flag as a machine with one, and the sentence
+/// explaining the wait was unreachable in the source before anybody noticed
+/// that no markup file bound it either.
 ///
 /// AnswersFromIndex is that question asked on its own, and asked of a QUERY:
 /// a provider can have an index that this particular search will not touch.

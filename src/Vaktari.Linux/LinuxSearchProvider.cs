@@ -59,15 +59,25 @@ public sealed class LinuxSearchProvider : ISearchProvider
     /// and <c>SearchWithBalooThenWalkingAsync</c> exists for exactly that gap.
     /// Nothing here can close it: whether Baloo has anything to say is only
     /// learned by asking it, and the band is drawn before the answer comes
-    /// back. So one case survives — baloosearch installed with an index never
-    /// built — where the fallback walk runs without the warning.
+    /// back. Every empty answer inside the scope falls back to the walk — an
+    /// index never built, one switched off, a folder it does not cover, a word
+    /// nothing holds — and the walk says so as it starts, through
+    /// <see cref="SearchQuery.WalkingInstead"/>, so the band can take back
+    /// what this told it.
     /// </summary>
-    public bool AnswersFromIndex(SearchQuery query) => Baloo is not null && !IsGlob(query.Text);
+    public bool AnswersFromIndex(SearchQuery query) => Baloo is not null && !query.IsPattern;
 
     public string BackendName => Baloo is null ? "walk" : "baloo";
 
-    /// <summary>Only the index can search inside files; the walk matches names.</summary>
-    public bool SupportsContentSearch => Baloo is not null;
+    /// <summary>
+    /// True with or without Baloo. The index searches inside the files it has
+    /// read; the walk reads plain text itself, through ContentMatcher.
+    ///
+    /// **It was true only with Baloo, and that was the walk's limit rather
+    /// than a rule.** The walk could match names and nothing else, so on a box
+    /// with no indexer there was no way to find a file by what was in it.
+    /// </summary>
+    public bool SupportsContentSearch => true;
 
     private static string? Locate(string name)
     {
@@ -80,10 +90,6 @@ public sealed class LinuxSearchProvider : ISearchProvider
 
         return null;
     }
-
-    /// <summary>True if the query is a shell-style pattern rather than a substring.</summary>
-    private static bool IsGlob(string text)
-        => text.Contains('*') || text.Contains('?');
 
     public IAsyncEnumerable<FileEntry> SearchAsync(SearchQuery query, CancellationToken ct)
         // Baloo indexes words, not filename patterns, so a glob has to go
@@ -111,22 +117,32 @@ public sealed class LinuxSearchProvider : ISearchProvider
     /// that was going to happen anyway on any box without Baloo, and only in
     /// the case where the fast path found nothing at all — a search that DOES
     /// hit the index still returns at index speed and never walks.
+    ///
+    /// **"Produced nothing" is counted before the name narrowing, not after.**
+    /// With "Search contents" unticked, Baloo's answers that match only by
+    /// their contents are dropped — and an index that answered with nothing
+    /// BUT those has plainly been built. Counting what survived the narrowing
+    /// would read that as no index, and walk home and every mounted drive to
+    /// give the same empty answer the index already had.
     /// </summary>
     private static async IAsyncEnumerable<FileEntry> SearchWithBalooThenWalkingAsync(
         string binary, SearchQuery query, [EnumeratorCancellation] CancellationToken ct)
     {
-        var found = 0;
+        var heard = false;
 
-        await foreach (var entry in SearchWithBalooAsync(binary, query, ct).ConfigureAwait(false))
+        await foreach (var entry in SearchWithBalooAsync(binary, query, () => heard = true, ct)
+                           .ConfigureAwait(false))
         {
-            found++;
             yield return entry;
         }
 
-        if (found > 0 || ct.IsCancellationRequested) yield break;
+        if (heard || ct.IsCancellationRequested) yield break;
 
         // Said out loud, because the two routes have very different costs and a
-        // search that suddenly takes seconds should be explicable.
+        // search that suddenly takes seconds should be explicable — to the
+        // band, which drew itself before this was known, and to the log.
+        query.WalkingInstead?.Invoke();
+
         Console.Error.WriteLine(
             "[vaktari] search: baloo returned nothing — walking the folder instead "
             + "(an index that is switched off or was never built looks exactly like no matches)");
@@ -135,8 +151,16 @@ public sealed class LinuxSearchProvider : ISearchProvider
             yield return entry;
     }
 
+    /// <summary>
+    /// baloosearch, read line by line.
+    ///
+    /// <paramref name="heard"/> is called for every answer inside the scope,
+    /// before the name narrowing below — which is what the caller's "the index
+    /// said nothing" test has to be about.
+    /// </summary>
     private static async IAsyncEnumerable<FileEntry> SearchWithBalooAsync(
-        string binary, SearchQuery query, [EnumeratorCancellation] CancellationToken ct)
+        string binary, SearchQuery query, Action heard,
+        [EnumeratorCancellation] CancellationToken ct)
     {
         var info = new ProcessStartInfo(binary)
         {
@@ -178,6 +202,14 @@ public sealed class LinuxSearchProvider : ISearchProvider
 
                 if (Describe(path) is { } entry)
                 {
+                    heard();
+
+                    // Baloo answers from names and contents alike, however it
+                    // is asked. With the box unticked the question is about
+                    // names, so the rest are dropped here — the box has to mean
+                    // the same thing on a KDE desktop as on the walk.
+                    if (!query.MatchContent && !NamedFor(entry.Name, query.Text)) continue;
+
                     count++;
                     yield return entry;
                 }
@@ -212,6 +244,19 @@ public sealed class LinuxSearchProvider : ISearchProvider
     /// </summary>
     internal static bool InScope(string? scope, string path)
         => scope is not { Length: > 0 } || PathRules.Contains(scope, path);
+
+    /// <summary>
+    /// Whether one of Baloo's answers is there because of its name.
+    ///
+    /// **Every word, not the whole question.** Baloo reads "report 2024" as
+    /// two terms that must both be present, so it finds report-2024.pdf by its
+    /// name — and a substring test on the whole question would drop that file
+    /// for want of a space the name never had. Ignoring case, because Baloo
+    /// does.
+    /// </summary>
+    internal static bool NamedFor(string name, string text)
+        => text.Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries)
+               .All(word => name.Contains(word, StringComparison.OrdinalIgnoreCase));
 
     public string Everywhere => "your home folder and any mounted drives";
 
@@ -318,8 +363,18 @@ public sealed class LinuxSearchProvider : ISearchProvider
             : StringComparison.OrdinalIgnoreCase;
 
         var text = query.Text;
-        var glob = IsGlob(text);
+        var glob = query.IsPattern;
         var ignoreCase = !query.CaseSensitive;
+
+        // False for a pattern whatever the box says: a pattern is a question
+        // about names.
+        var contents = query.ReadsContents;
+
+        // Where files are not opened, decided from the mount table once for
+        // the walk rather than once per file.
+        var mounts = contents
+            ? new MountRules(MountLines is { } stub ? stub() : MountTable.Lines(), root)
+            : null;
 
         var walk = new FileSystemEnumerable<string>(
             root,
@@ -342,11 +397,16 @@ public sealed class LinuxSearchProvider : ISearchProvider
 
             // A pattern is matched as a pattern; anything else is treated as a
             // substring, which is what people expect when they just type a word.
+            //
+            // Contents only after the name has failed, so a file whose name
+            // answers is never opened. The read happens here, inside the
+            // enumerator, which is already on the pool — see below.
             ShouldIncludePredicate = glob
                 ? (ref FileSystemEntry entry) =>
                     FileSystemName.MatchesSimpleExpression(text, entry.FileName, ignoreCase)
                 : (ref FileSystemEntry entry) =>
-                    entry.FileName.ToString().Contains(text, comparison),
+                    entry.FileName.ToString().Contains(text, comparison)
+                    || (contents && Contains(ref entry, query, mounts!, ct)),
         };
 
         var count = 0;
@@ -378,6 +438,106 @@ public sealed class LinuxSearchProvider : ISearchProvider
                 count++;
                 yield return entry;
             }
+        }
+    }
+
+    /// <summary>
+    /// Whether a file's contents answer the question, for an entry whose name
+    /// did not.
+    ///
+    /// **A link is matched by its name and not read.** What it holds is what
+    /// it points at, which is searched where it lives if it is inside the walk
+    /// at all. And here, reading through one can hang for good: the length a
+    /// directory entry gives for a link is the link's own — the length of the
+    /// path it holds, as SpaceUsage found when it counted links at exactly
+    /// that — so the zero-length rule that keeps ContentMatcher out of a FIFO
+    /// does not stop one reached through a link, and opening a FIFO for
+    /// reading blocks until something writes.
+    ///
+    /// A FIFO, socket or device node that is NOT behind a link reports a
+    /// length of zero, and ContentMatcher never opens those.
+    /// </summary>
+    private static bool Contains(
+        ref FileSystemEntry entry, SearchQuery query, MountRules mounts, CancellationToken ct)
+    {
+        if (entry.IsDirectory || entry.Attributes.HasFlag(FileAttributes.ReparsePoint)) return false;
+
+        // A row the pane is going to drop is not worth opening. The same rule
+        // Describe marks Hidden by.
+        if (!query.ReadsConcealed && entry.FileName.StartsWith('.')) return false;
+
+        var path = entry.ToFullPath();
+
+        if (mounts.IsKernel(path)) return false;
+
+        if (mounts.IsRemote(path))
+        {
+            query.Skipped?.CountOnline();
+            return false;
+        }
+
+        return ContentMatcher.Answers(query, path, entry.Length, ct);
+    }
+
+    /// <summary>
+    /// Which files a content search does not open, by the filesystem each one
+    /// is on — the deepest mount point above it, so a local disk mounted
+    /// inside a share is local.
+    ///
+    /// **A kernel filesystem is never read.** /proc, /sys and their kind are
+    /// windows onto the running system; a search scoped to / walks into them,
+    /// and sysfs reports 4096 bytes for files that hold a line, so the
+    /// zero-length rule that keeps procfs out does not keep sysfs out. Not
+    /// counted: nobody searching for words means those.
+    ///
+    /// **A network or cloud mount the walk only reached by walking down into it
+    /// is not read, and is counted.** An rclone or sshfs mount under the home
+    /// folder is an ordinary folder to the walk, and reading every file in it
+    /// fetches every file from the other end — what the Windows walk refuses
+    /// to do to a sync client's placeholders, for the same reason. A search
+    /// SCOPED to such a mount is read: somebody went there on purpose, the way
+    /// a search of a mapped drive on Windows reads the share.
+    /// </summary>
+    internal sealed class MountRules
+    {
+        private readonly List<(string Point, string Type)> _mounts = [];
+        private readonly bool _rootIsRemote;
+
+        internal MountRules(IEnumerable<string> lines, string root)
+        {
+            foreach (var line in lines)
+            {
+                var parts = line.Split(' ');
+                if (parts.Length < 3) continue;
+
+                var point = MountTable.Unescape(parts[1]).TrimEnd('/');
+
+                _mounts.Add((point.Length == 0 ? "/" : point, parts[2]));
+            }
+
+            // Deepest first, so the first that contains a path is its own.
+            _mounts.Sort((a, b) => b.Point.Length.CompareTo(a.Point.Length));
+
+            _rootIsRemote = TypeOf(root) is { } type && MountTable.IsNetworkFs(type);
+        }
+
+        internal bool IsKernel(string path) => TypeOf(path) is { } type && MountTable.IsKernelFs(type);
+
+        internal bool IsRemote(string path)
+            => !_rootIsRemote && TypeOf(path) is { } type && MountTable.IsNetworkFs(type);
+
+        private string? TypeOf(string path)
+        {
+            foreach (var (point, type) in _mounts)
+            {
+                if (string.Equals(path, point, StringComparison.Ordinal)) return type;
+
+                if (path.StartsWith(point, StringComparison.Ordinal)
+                    && (point == "/" || path[point.Length] is '/' or '\\'))
+                    return type;
+            }
+
+            return null;
         }
     }
 

@@ -351,9 +351,9 @@ public sealed class LinuxLauncher : IApplicationLauncher
             return;
         }
 
-        // Nothing detected. xterm without a working-directory flag still lands
-        // in the right place through the shell.
-        TrySpawn("xterm", "-e", "cd " + directory + " && $SHELL");
+        // Nothing detected. xterm, started IN the folder: its shell opens
+        // there with no command line to build.
+        TrySpawnIn(directory, ["xterm"]);
     }
 
     public void OpenTerminal(string directory, TerminalOption terminal)
@@ -378,9 +378,12 @@ public sealed class LinuxLauncher : IApplicationLauncher
             if (Spawn(directory, other)) return;
         }
 
-        // xterm without a working-directory flag still lands in the right place
-        // through the shell.
-        if (TrySpawn("xterm", "-e", "cd " + directory + " && $SHELL")) return;
+        // **xterm, started IN the folder.** This built "cd <folder> &&
+        // $SHELL" as one -e argument, which xterm hands to a shell to read —
+        // so a ; or a $(…) in the folder's name was run, whether the cd
+        // worked or not. The folder as the working directory needs no
+        // command line at all.
+        if (TrySpawnIn(directory, ["xterm"])) return;
 
         // Said out loud. A terminal that never opens and never explains reads
         // as the key doing nothing at all.
@@ -642,7 +645,7 @@ public sealed class LinuxLauncher : IApplicationLauncher
 
         foreach (var candidate in Candidates(null))
         {
-            if (TrySpawnIn(directory, Elevated(pkexec, candidate, [path]))) return;
+            if (TrySpawnIn(directory, Elevated(pkexec, candidate, directory, [path], ElsewhereStops))) return;
         }
 
         // No terminal on this machine would start, and running it anyway is
@@ -656,7 +659,7 @@ public sealed class LinuxLauncher : IApplicationLauncher
         // Through Elevated with no terminal rather than spelling the two words
         // out here: written inline, the no-terminal branch of that method would
         // be reachable from nowhere and so pinned by nothing.
-        TrySpawnIn(directory, Elevated(pkexec, terminal: null, [path]));
+        TrySpawnIn(directory, Elevated(pkexec, terminal: null, directory, [path], ElsewhereStops));
     }
 
     /// <summary>
@@ -677,7 +680,7 @@ public sealed class LinuxLauncher : IApplicationLauncher
 
         foreach (var candidate in Candidates(terminal))
         {
-            if (TrySpawnIn(directory, Elevated(pkexec, candidate, [shell]))) return;
+            if (TrySpawnIn(directory, Elevated(pkexec, candidate, directory, [shell], ElsewhereStays))) return;
         }
 
         // Said out loud, like the unelevated one: a terminal that never opens
@@ -724,12 +727,39 @@ public sealed class LinuxLauncher : IApplicationLauncher
     /// every one of them honours, and concatenating the two lists produces
     /// nonsense on at least one: WezTerm opens with ["start", "--cwd", dir] and
     /// runs with ["start", "--"], so a joined argv says "start" twice.
+    ///
+    /// **And root's side is told the folder too.** pkexec moves to the
+    /// target user's home before it runs anything, so the folder the terminal
+    /// was started in never reached root: "Open terminal as administrator"
+    /// opened in /root, and an elevated script ran with /root as its working
+    /// folder. --keep-cwd exists only from polkit 121, and an older pkexec
+    /// takes it for the program's name; a shell that changes folder and then
+    /// becomes the command works on every one. The folder is an argument to
+    /// that shell, never part of its script.
+    ///
+    /// Where root cannot go — a home on NFS with root squashed, a user's own
+    /// FUSE mount — the two verbs part: a root SHELL opens in root's home and
+    /// says why, since a terminal that closes at once explains nothing; a
+    /// program RUN as root does not run somewhere else, and says so before
+    /// its window closes.
     /// </summary>
-    private static IReadOnlyList<string> Elevated(
-        string pkexec, TerminalOption? terminal, IReadOnlyList<string> command)
-        => terminal is null
-            ? [pkexec, .. command]
-            : [terminal.Command, .. terminal.RunArguments, pkexec, .. command];
+    internal static IReadOnlyList<string> Elevated(
+        string pkexec, TerminalOption? terminal, string directory, IReadOnlyList<string> command, string script)
+    {
+        IReadOnlyList<string> asRoot = [pkexec, "/bin/sh", "-c", script, "sh", directory, .. command];
+
+        return terminal is null
+            ? asRoot
+            : [terminal.Command, .. terminal.RunArguments, .. asRoot];
+    }
+
+    /// <summary>A root shell: in the folder, or in root's home with the reason.</summary>
+    internal const string ElsewhereStays =
+        "cd -- \"$1\" || echo \"vaktari: root cannot enter $1; staying in $HOME\" >&2; shift; exec \"$@\"";
+
+    /// <summary>A program run as root: in the folder, or not at all.</summary>
+    internal const string ElsewhereStops =
+        "cd -- \"$1\" || { echo \"vaktari: root cannot enter $1, so nothing was run\" >&2; read -r _; exit 1; }; shift; exec \"$@\"";
 
     /// <summary>
     /// The argv for doing a piece of OUR OWN work as root.

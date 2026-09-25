@@ -36,7 +36,9 @@ A few things you would notice in the first ten minutes:
 - **One failure does not end the batch.** The rest goes through, and a *Retry
   3* button goes again on only the three that did not.
 - **It tells you the truth.** When a search has no index behind it, it says so.
-  When a limit is reached, it says that is a limit rather than an answer.
+  When a limit is reached, it says that is a limit rather than an answer. When
+  a search of contents skips a file too big to read, or one kept online, it
+  says how many.
 - **Nothing to install alongside it.** The published builds are self-contained
   — no runtime, no framework, no extra downloads.
 
@@ -243,7 +245,23 @@ box reading *Only in Documents*, on by default for a search started in a
 folder. Clear it and the search leaves that folder. Ticking or clearing it
 counts as a navigation rather than an edit in place, so Back takes you to the
 previous question instead of making you retype it. Nothing is cached between
-searches, so it is asked again. On Windows a *Match case* box sits beside it.
+searches, so it is asked again. On Windows a *Match case* box sits beside it,
+and on both platforms a *Search contents* box, off by default.
+
+**Search contents finds a file by what is in it** as well as by its name: tick
+it, and a file whose name does not match is still an answer when its text does.
+With no index answering — always on Windows, and on Linux without Baloo — that
+means opening every file in turn and reading the plain-text ones, so it is
+slower, and the band says so. Files over 64 MiB are not opened, and nor is a
+file kept online — a sync client's online-only file on Windows, or on Linux a
+file on a network or cloud mount the search only reached by walking into it —
+because opening it would download it; the band says how many of each were
+left unread. Hidden files are opened only when hidden files are shown. *Stop*
+still works, between one 64 KiB read and the next. Where Baloo is indexing, the tick asks Baloo, which has read more
+kinds of file than the walk does — and with the box clear, Baloo's answers are
+narrowed to the files whose names hold every word, so the box means the same
+thing either way. A pattern such as `*.pdf` is a question about names, so the
+box is not offered beside one.
 
 **It names what "everywhere" actually covers** — "searching every drive on this
 machine" on Windows, "searching your home folder and any mounted drives" on
@@ -264,9 +282,9 @@ nothing at all.
 
 **Right-click the magnifier for the searches you have run.** Choosing one asks
 it again exactly as it was asked — the same words, the same folder, the same
-answer about capitals — because what is kept is the whole search rather than
-the words in it. Twelve are offered, fifty are kept, and it can be switched off
-and emptied from Settings.
+answers about capitals and contents — because what is kept is the whole search
+rather than the words in it. Twelve are offered, fifty are kept, and it can be
+switched off and emptied from Settings.
 
 **A search worth keeping can be saved to places.** `Ctrl+D` in a search, the
 *Save search* button on the band above the results, or *Save this search to
@@ -649,18 +667,24 @@ promise yet. Worth knowing before you decide:
 
 **Searching**
 
-- **Nothing in the interface offers to search inside files** — there is no
-  contents box anywhere. On Windows that is the whole story: search matches
-  names. On Linux it is not, because a plain word goes to Baloo, whose index is
-  full-text, so a result there may be a file matched on its contents rather
-  than its name. Patterns are names only: `*` and `?` go past Baloo to a
-  filename walk on both platforms. No regex, and no searching by size, date or
-  type.
+- **Search contents reads plain text only** wherever no index is answering —
+  every search on Windows, and on Linux without Baloo. Text means UTF-8, or
+  UTF-16 and UTF-32 with a byte-order mark. Office documents, PDFs and anything
+  else that looks binary are not searched inside, and nor is UTF-16 written
+  without a mark, which looks binary too. A file in an older code page is still
+  read, but only its plain ASCII can match. Files over 64 MiB are skipped and
+  counted, and a link is matched by its name rather than read through. A file
+  is judged by its first bytes, not its type, so a PDF or document that
+  happens to begin with plain text can be searched inside after all.
+- Patterns are names only: `*` and `?` go past Baloo to a filename walk on both
+  platforms, and never read contents. No regex, and no searching by size, date
+  or type.
 - **Windows has no search index at all.** Every search is a live directory
   walk, capped at 10,000 matches, so an unscoped search over every drive is
   slow and the answer is a shallow slice rather than a complete one. On Linux,
   Baloo answers where KDE is indexing.
-- *Match case* is Windows-only — it is the only backend that honours it.
+- *Match case* is offered on Windows only. On Linux, Baloo cannot honour it,
+  and the box is not offered even when the walk is answering instead.
 - Recent files and locations are Vaktari's own record. Files you opened in
   other applications do not appear.
 

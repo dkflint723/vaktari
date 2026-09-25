@@ -56,6 +56,27 @@ public partial class MainWindow
     /// <summary>What the copy-across prompt asked about, so a yes copies
     /// exactly that rather than the marks as they stand when it comes.</summary>
     private CopyAcrossPlan? _copyAcross;
+
+    /// <summary>
+    /// The pane a delete or bin confirmation was asked in, the rows it named,
+    /// and whether they were bin rows — so a yes acts on exactly those.
+    ///
+    /// **A yes deleted whatever was selected when it was given.** The bar is
+    /// not a dialog: the listing stays live beneath it. A click on another
+    /// row, a click in the other half of a split, or an operation finishing
+    /// and selecting what it had just put in the folder all changed the
+    /// selection under an open question, and Enter then destroyed a set the
+    /// question never named — permanently, for Shift+Delete. The copy-across
+    /// prompt already kept what it asked about; these three now do too.
+    ///
+    /// Whether the rows were BIN rows is kept apart from where the pane is by
+    /// the time of the answer. A bin row carries the path its item used to
+    /// occupy, so a pane that had left the bin would otherwise hand those
+    /// paths to the file operations — and delete whatever lives there now.
+    /// </summary>
+    private PaneViewModel? _confirmPane;
+    private IReadOnlyList<FileEntry> _confirmChosen = [];
+    private bool _confirmInBin;
     private FileEntry _renameTarget;
 
     /// <summary>
@@ -161,6 +182,12 @@ public partial class MainWindow
         var entry = _renameTarget;
         var copyAcross = _copyAcross;
 
+        // Taken before the bar closes, which forgets them.
+        var asked = _confirmPane;
+        var chosen = _confirmChosen;
+        var inBin = _confirmInBin;
+        var chosenPaths = chosen.Select(e => e.FullPath).ToList();
+
         // **A refused name used to close the bar and report afterwards.** By
         // the time "that name is not one Windows will take" reached the status
         // line, the box holding the typed name was gone — so correcting one
@@ -228,16 +255,21 @@ public partial class MainWindow
             // cannot act on — so the prompt was shown, answered, and then
             // declined with "already in the bin". Asked and answered and
             // nothing happened is worse than never having offered.
-            case PromptMode.ConfirmDelete when target is { IsTrashListing: true }:
-                _ = target.PurgeFromTrashAsync();
+            case PromptMode.ConfirmDelete when inBin:
+                if (asked is not null) _ = asked.PurgeFromTrashAsync(chosen);
                 break;
 
             case PromptMode.ConfirmDelete:
-                target?.DeleteSelectedCommand.Execute(null);
+                asked?.DeleteChosen(chosenPaths);
+                break;
+
+            // Never asked there, since the question is refused in the bin;
+            // and if it were, its rows are not paths to act on.
+            case PromptMode.ConfirmTrash when inBin:
                 break;
 
             case PromptMode.ConfirmTrash:
-                target?.TrashSelectedCommand.Execute(null);
+                asked?.TrashChosen(chosenPaths);
                 break;
 
             case PromptMode.ConfirmEmptyTrash:
@@ -359,6 +391,9 @@ public partial class MainWindow
         if (chosen.Count == 0) return;
 
         _prompt = PromptMode.ConfirmDelete;
+        _confirmPane = pane;
+        _confirmChosen = chosen;
+        _confirmInBin = pane.IsTrashListing;
 
         PromptLabel.Text = ViewModels.Confirmations.Delete(chosen);
         PromptInput.IsVisible = false;
@@ -383,11 +418,24 @@ public partial class MainWindow
         if (PromptBar is null) return;
         if (_shell.ActiveTab is not { } pane) return;
 
+        // **Nothing in the bin goes to the bin.** Asked there, the question
+        // named rows whose paths are where the items USED to be — and a yes
+        // given after the pane had left the bin sent whatever lives at those
+        // paths now. Refused before it is asked, with the reason.
+        if (pane.IsTrashListing)
+        {
+            pane.TrashSelectedCommand.Execute(null);
+            return;
+        }
+
         var chosen = Chosen(pane);
 
         if (chosen.Count == 0) return;
 
         _prompt = PromptMode.ConfirmTrash;
+        _confirmPane = pane;
+        _confirmChosen = chosen;
+        _confirmInBin = pane.IsTrashListing;
 
         PromptLabel.Text = ViewModels.Confirmations.MoveToBin(chosen);
         PromptInput.IsVisible = false;
@@ -431,6 +479,10 @@ public partial class MainWindow
     private void ClosePrompt()
     {
         _prompt = PromptMode.None;
+
+        _confirmPane = null;
+        _confirmChosen = [];
+        _confirmInBin = false;
 
         // The row's editor, which has no field here to hide: it is drawn by the
         // listing's item template, so putting it away is done through the pane
