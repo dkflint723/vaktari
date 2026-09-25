@@ -38,7 +38,7 @@ optdepends=('git: version-control decorations'
             'copyparty: file sharing over HTTP')
 
 source=("$pkgname-$pkgver.tar.gz::$url/archive/refs/tags/v$pkgver.tar.gz")
-sha256sums=('SKIP')   # replace with the real digest before publishing to the AUR
+sha256sums=('4919cb3d8d581363cdeb06859e65ff86bcfc3a4251c589cd8b75951f34aa373c')   # of the v$pkgver archive; recompute whenever pkgver changes
 
 build() {
     cd "$srcdir/$_projname-$pkgver"
