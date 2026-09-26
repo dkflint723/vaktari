@@ -179,9 +179,10 @@ public static class Shortcuts
                 Bound("NewFolder", "New folder"),
                 Bound("CopyLocation", "Copy as path"),
                 Bound("Properties", "Properties"),
-                // **The keyboard route to the right-click menu.** A menu that
-                // must open at the focused row needs the row, not a command.
-                new("Menu / Shift+F10", "The right-click menu, where the keyboard is"),
+                // **The keyboard route to the right-click menus.** A menu that
+                // must open at the focused row needs the row, not a command —
+                // and which of the two opens is the selection's to decide.
+                new("Menu / Shift+F10", "The right-click menu: the selection's, or the folder's"),
                 Bound("Preview", "Quick preview"),
                 Bound("OpenTerminalHere", "Open a terminal here"),
             ]),

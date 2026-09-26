@@ -158,8 +158,11 @@ public sealed class VirtualListingActionTests : OwnedViewModels
     {
         var markup = XDocument.Parse(RepoSource.Ui("MainWindow.axaml"));
 
-        var row = markup.Descendants(Avalonia + "MenuItem").Single(
-            m => (string?)m.Attribute("Header") == "Add this folder to places");
+        // Through MenuLabels: the row carries an access key since the split
+        // menus freed a letter for it. It is on the background menu, the
+        // folder's.
+        var row = ListingMenus.MarkupRow(ListingMenus.Markup(ListingMenus.Background),
+                                         "Add this folder to places");
 
         Assert.Contains("ShowAddCurrentToPlaces", (string?)row.Attribute("IsVisible"));
 

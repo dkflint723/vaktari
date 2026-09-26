@@ -18,23 +18,100 @@ public sealed partial class PaneViewModel
 
     public bool HasScripts => Scripts.Count > 0;
 
+    /// <summary>
+    /// The item menu's Scripts, which run on the selection.
+    ///
+    /// **Not in the bin**, where a row's path is where the item used to be: a
+    /// script handed it acts on whatever lives there now, the fault every
+    /// other selection verb in that listing already refuses.
+    /// </summary>
+    public bool CanRunScriptsOnSelection => HasScripts && CanActOnSelection;
+
+    /// <summary>
+    /// The background menu's Scripts, which run in the folder with nothing
+    /// selected — shown whenever there is a folder and somewhere for scripts
+    /// to live, whether or not any are there yet, because its last row is how
+    /// you go and put one there.
+    ///
+    /// **This replaced a row that stood in for an empty submenu** — "Add your
+    /// own scripts", on both a row's menu and the background's. The row said
+    /// what the feature was for and opened the folder; the submenu now does
+    /// both, and a script added there appears in it on the next opening.
+    /// </summary>
+    public bool CanRunScriptsHere => _scripts is not null && IsRealFolder;
+
+    /// <summary>
+    /// The background menu's Scripts submenu: every script, then a rule and
+    /// the row that opens the folder they live in.
+    ///
+    /// **One collection rather than a submenu with a fixed row under a bound
+    /// one**, because Avalonia's MenuItem takes Items or ItemsSource, never
+    /// both. The rule is a real Separator control, which an ItemsSource uses as
+    /// its own container — the shape ShellMenuItems already has. Rebuilt from
+    /// <see cref="Scripts"/> each time the menu opens, so the two cannot
+    /// disagree — see <see cref="RefreshScriptRows"/>.
+    /// </summary>
+    public ObservableCollection<object> ScriptRows { get; } = new();
+
     [RelayCommand]
     public void OpenScriptsFolder()
     {
-        if (_scripts is not null) _launcher?.Open(_scripts.ScriptsDirectory);
+        if (_scripts is null) return;
+
+        // **Made if it is missing.** Both runners create it once, when they are
+        // built; a folder deleted since would have been handed to the launcher
+        // as a path that is not there.
+        // The row is how somebody starts using the feature, so it must always
+        // land somewhere.
+        try
+        {
+            Directory.CreateDirectory(_scripts.ScriptsDirectory);
+        }
+        catch (Exception ex)
+        {
+            Status = Failures.Describe(ex, "make the scripts folder");
+            return;
+        }
+
+        _launcher?.Open(_scripts.ScriptsDirectory);
+    }
+
+    /// <summary>
+    /// A row of the background menu's Scripts submenu: a script, run in the
+    /// folder with NO selection, or the row that opens the scripts folder.
+    ///
+    /// **Not RunScript, which hands the script the selection.** A right-click
+    /// on empty space keeps the selection, so the same command from the
+    /// background menu would have run the script on files the menu is not
+    /// about. One command for both kinds of row because one anchored style
+    /// sets it on every row of the submenu.
+    /// </summary>
+    [RelayCommand]
+    public async Task RunScriptHereAsync(object? row)
+    {
+        if (row is ScriptsFolderRow)
+        {
+            OpenScriptsFolder();
+            return;
+        }
+
+        if (row is ScriptCommand script) await RunAsync(script, []).ConfigureAwait(false);
     }
 
     [RelayCommand]
-    public async Task RunScriptAsync(ScriptCommand? script)
+    public Task RunScriptAsync(ScriptCommand? script)
+        => script is null ? Task.CompletedTask : RunAsync(script, SelectionPaths());
+
+    private async Task RunAsync(ScriptCommand script, IReadOnlyList<string> selection)
     {
-        if (_scripts is null || script is null) return;
+        if (_scripts is null) return;
 
         Status = $"running {script.Name}…";
 
         try
         {
             var output = await _scripts
-                .RunAsync(script, CurrentPath, SelectionPaths(), CancellationToken.None)
+                .RunAsync(script, CurrentPath, selection, CancellationToken.None)
                 .ConfigureAwait(false);
 
             // The watcher picks up whatever the script changed on disk, so the
@@ -54,6 +131,32 @@ public sealed partial class PaneViewModel
 
         foreach (var script in _scripts.Discover()) Scripts.Add(script);
         OnPropertyChanged(nameof(HasScripts));
+        OnPropertyChanged(nameof(CanRunScriptsOnSelection));
+    }
+
+    /// <summary>
+    /// Rebuilds <see cref="ScriptRows"/> from <see cref="Scripts"/>, for the
+    /// background menu that is about to show them.
+    ///
+    /// **Not part of RefreshScripts, which the constructor calls.** The rule
+    /// in this list is a real Separator — an Avalonia control, with the UI
+    /// thread's affinity — and a pane is constructed off that thread by every
+    /// plain [Fact] that makes one, and by nothing that promises otherwise.
+    /// ShellMenuItems makes its rules the same way for the same reason: only
+    /// when the menu asks, which is on the UI thread. So these rows are built
+    /// where the menu is, as it opens — PrepareListingMenu calls this.
+    /// </summary>
+    public void RefreshScriptRows()
+    {
+        ScriptRows.Clear();
+
+        foreach (var script in Scripts) ScriptRows.Add(script);
+
+        // The rule only between two things: with no scripts yet the submenu is
+        // the folder row alone.
+        if (Scripts.Count > 0) ScriptRows.Add(new Avalonia.Controls.Separator());
+
+        ScriptRows.Add(ScriptsFolderRow.Instance);
     }
 
     /// <summary>
@@ -143,4 +246,18 @@ public sealed partial class PaneViewModel
         foreach (var template in _templates.Discover()) Templates.Add(template);
         OnPropertyChanged(nameof(HasTemplates));
     }
+}
+
+/// <summary>
+/// The last row of the background menu's Scripts submenu, which opens the
+/// folder the scripts live in.
+///
+/// **A record of its own rather than a ScriptCommand standing in for one**, so
+/// that <see cref="PaneViewModel.RunScriptHereAsync"/> can tell the two apart
+/// by type and nothing can ever try to execute the folder. One instance: it
+/// carries no state.
+/// </summary>
+public sealed record ScriptsFolderRow(string Label)
+{
+    public static ScriptsFolderRow Instance { get; } = new("Open scripts folder");
 }

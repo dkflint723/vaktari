@@ -1,6 +1,7 @@
 using System.Xml.Linq;
 using Avalonia.Headless.XUnit;
 using Vaktari.Core.FileSystem;
+using Vaktari.Core.Session;
 using Vaktari.Ui.ViewModels;
 using Xunit;
 
@@ -340,6 +341,12 @@ public sealed class GroupingAndGhostingTests : OwnedViewModels
     /// pane ignores a grouping there now rather than applying it invisibly,
     /// which is exactly what makes offering the entry worse than hiding it:
     /// every row would tick and none of them would do anything.
+    ///
+    /// **The gate is a shell property now**, because Group by moved from
+    /// Arrange into View when the two merged, and Arrange's own gate — the Sort
+    /// by preference — came down onto the row with it. ShowDetailsArrangeInMenu
+    /// carries both halves; the Details half is driven here, against the
+    /// property, rather than read out of the markup's text.
     /// </summary>
     [AvaloniaFact]
     public void Group_by_is_offered_only_in_details()
@@ -348,7 +355,33 @@ public sealed class GroupingAndGhostingTests : OwnedViewModels
             .Descendants(Xaml + "MenuItem")
             .Single(m => MenuLabels.Plain((string?)m.Attribute("Header")) == "Group by");
 
-        Assert.Equal("{Binding ActiveTab.IsDetailsView}", (string?)entry.Attribute("IsVisible"));
+        Assert.Equal("{Binding $parent[Window].((vm:ShellViewModel)DataContext).ShowDetailsArrangeInMenu}",
+                     (string?)entry.Attribute("IsVisible"));
+
+        // Setting View ends in RememberFolderView, which writes through the
+        // static store — the user's own, if a real window set it. Taken here
+        // and given back, the way ViewMenuTests takes it.
+        var views = PaneViewModel.FolderViews;
+        PaneViewModel.FolderViews = null;
+
+        try
+        {
+            var shell = Own(new ShellViewModel(new Canned([])));
+            shell.Start(null, Path.GetTempPath());
+
+            shell.ActiveTab!.View = ViewMode.Details;
+            Assert.True(shell.ShowDetailsArrangeInMenu);
+
+            foreach (var tiles in new[] { ViewMode.Grid, ViewMode.Compact })
+            {
+                shell.ActiveTab.View = tiles;
+                Assert.False(shell.ShowDetailsArrangeInMenu, $"Group by was offered in {tiles}");
+            }
+        }
+        finally
+        {
+            PaneViewModel.FolderViews = views;
+        }
     }
 
     private sealed class Canned(IReadOnlyList<FileEntry> entries) : IFileSystemProvider

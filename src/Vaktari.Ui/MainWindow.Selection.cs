@@ -114,7 +114,7 @@ public partial class MainWindow
     /// it has just become — see <see cref="SelectAllFrom"/> for why those are
     /// different questions.
     ///
-    /// Through the ListBox for the same reason the Select ▸ All menu row is:
+    /// Through the ListBox for the same reason the "Select all" menu row is:
     /// filling the bound collection row by row fires a change per file, and
     /// each one refreshes the details panel and recomputes the summary.
     ///
@@ -135,9 +135,4 @@ public partial class MainWindow
 
         pane.RefreshSelectionBoxes();
     }
-
-    private void OnSelectNoneClicked(object? sender, RoutedEventArgs e) => SelectNone();
-
-    private void OnInvertSelectionClicked(object? sender, RoutedEventArgs e)
-        => InvertSelection();
 }

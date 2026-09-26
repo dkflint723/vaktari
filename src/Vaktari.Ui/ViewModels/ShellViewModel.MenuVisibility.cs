@@ -25,18 +25,97 @@ public sealed partial class ShellViewModel
 
     private static Core.Settings.ContextMenuSettings Menu => Settings.AppSettings.Current.ContextMenu;
 
-    // The four that act on a selection carry the preference AND the selection.
-    // One menu serves a row and the empty space below it, so without the second
-    // half they were listed on an empty-space click and did nothing when picked.
-    //
-    // ShowAddToPlaces and ShowCopyLocation are deliberately NOT gated: their
-    // commands retarget the current folder when nothing is selected, which is a
-    // real answer rather than a silent no-op. See AddSelectionToPlaces below.
-    public bool ShowCopyToInMenu => Menu.ShowCopyTo && ActiveTab?.CanActOnSelection == true;
-    public bool ShowMoveToInMenu => Menu.ShowMoveTo && ActiveTab?.CanActOnSelection == true;
+    // The rows that act on a selection carry the preference AND what the rows
+    // are. They live on the ITEM menu only, which opens on a selection, so the
+    // second half is no longer "is anything selected" but "can these rows be
+    // sent anywhere" — not the bin's, and not This PC's volumes. See
+    // PaneViewModel.CanMoveSelection.
+    public bool ShowCopyToInMenu => Menu.ShowCopyTo && ActiveTab?.CanMoveSelection == true;
+    public bool ShowMoveToInMenu => Menu.ShowMoveTo && ActiveTab?.CanMoveSelection == true;
+
+    /// <summary>
+    /// The half of View that used to be Arrange: Sort by, Group by and Columns.
+    ///
+    /// **The preference's reach changed when View and Arrange merged**, and its
+    /// meaning did not: it still hides how the listing is ordered, and leaves
+    /// alone how it is drawn. The layouts and Show hidden files are the other
+    /// half of View and were never something the settings page offered to
+    /// hide — the left half of a split has no other pointer route to them.
+    /// </summary>
     public bool ShowSortByInMenu => Menu.ShowSortBy;
 
-    public bool ShowDuplicateInMenu => Menu.ShowDuplicate && ActiveTab?.CanActOnSelection == true;
+    /// <summary>
+    /// Group by and Columns, which only Details can draw — see the comment on
+    /// Group by in MainWindow.axaml — and which the preference above hides
+    /// along with Sort by.
+    ///
+    /// One property for the pair because they are one rule, and a MultiBinding
+    /// on each would be two places for it to drift.
+    /// </summary>
+    public bool ShowDetailsArrangeInMenu => Menu.ShowSortBy && ActiveTab?.IsDetailsView == true;
+
+    /// <summary>
+    /// Duplicate, where it would duplicate.
+    ///
+    /// **A search, Recent, This PC and the scan listings drew it and the
+    /// command refused**: DuplicateSelected writes the copy into the folder on
+    /// screen, and RefusedVirtualDestination turns away every listing that is
+    /// not one, with "this listing is a view, not a folder". The row asked
+    /// CanActOnSelection, which excludes only the bin.
+    /// </summary>
+    public bool ShowDuplicateInMenu
+        => Menu.ShowDuplicate && ActiveTab is { HasSelection: true, IsRealFolder: true };
+
+    /// <summary>
+    /// The background menu's rarely wanted folder tools — space usage,
+    /// duplicate files, and comparing the two sides — which is somewhere to be
+    /// only where one of them applies: a real folder for the first two, a split
+    /// for the rest.
+    /// </summary>
+    public bool ShowAnalyseInMenu => ActiveTab?.IsRealFolder == true || IsSplit;
+
+    /// <summary>
+    /// "Select what differs" and "Copy what is newer or missing", which act
+    /// on a comparison — so only where one can exist: a split whose two sides
+    /// are both folders.
+    ///
+    /// **Both were offered wherever the window was split**, and in a search,
+    /// the bin, Recent or This PC on either side the copy refused ("cannot
+    /// copy across: one side is a view, not a folder") and the select found
+    /// no marks to select. That is the structural half of WhyNotComparable;
+    /// the other half — a side still loading, or one that could not be read —
+    /// passes, and the command says so, because a row that came and went with
+    /// a listing's progress would move under the pointer. "Compare the two
+    /// sides" stays with the split alone: it is a switch that outlives the
+    /// listing, and hiding it in a view would take away the way to turn it
+    /// off.
+    /// </summary>
+    public bool CanActAcrossSides
+        => IsSplit && ActiveTab?.IsRealFolder == true && OtherGroup?.ActiveTab?.IsRealFolder == true;
+
+    /// <summary>
+    /// Every gate in this file, raised at once. Called by the listing menus as
+    /// they open — see PaneViewModel.NotifyMenuGates for why that is the moment
+    /// that matters — and by <see cref="NotifySelectionMenu"/>.
+    /// </summary>
+    public void NotifyMenuGates()
+    {
+        OnPropertyChanged(nameof(ShowCopyToInMenu));
+        OnPropertyChanged(nameof(ShowMoveToInMenu));
+        OnPropertyChanged(nameof(ShowSortByInMenu));
+        OnPropertyChanged(nameof(ShowDetailsArrangeInMenu));
+        OnPropertyChanged(nameof(ShowDuplicateInMenu));
+        OnPropertyChanged(nameof(ShowAnalyseInMenu));
+        OnPropertyChanged(nameof(CanActAcrossSides));
+        OnPropertyChanged(nameof(ShowOpenInNewTabInMenu));
+        OnPropertyChanged(nameof(ShowOpenInNewWindowInMenu));
+        OnPropertyChanged(nameof(ShowAddSelectionToPlaces));
+        OnPropertyChanged(nameof(ShowAddCurrentToPlaces));
+        OnPropertyChanged(nameof(ShowSaveSearchToPlaces));
+        OnPropertyChanged(nameof(ShowCopyLocationInMenu));
+        OnPropertyChanged(nameof(CanShowProperties));
+        OnPropertyChanged(nameof(TransferTargets));
+    }
     /// <summary>
     /// Only for a FOLDER. OpenInNewTab opens a directory and quietly does
     /// nothing for anything else, so offering it on a text file was a row that
@@ -91,27 +170,28 @@ public sealed partial class ShellViewModel
            && ActiveTab is { HasDirectorySelected: true, IsTrashListing: false };
 
     /// <summary>
-    /// The current-folder row shows only when the selection row does not —
-    /// they are one "Add to places" slot in the menu, and which command fills
-    /// it depends on whether a folder is selected. Both visible at once was
-    /// the old layout's homework: two adjacent rows whose difference the
-    /// reader had to work out.
+    /// "Add this folder to places", on the background menu.
+    ///
+    /// **It used to hide whenever a folder was selected**, because the two
+    /// rows shared one slot in the one menu and the selection decided which
+    /// command filled it. They are in different menus now — the selected
+    /// folder's row on the item menu, this one on the background's — and a
+    /// right-click on empty space keeps the selection, so asking about it here
+    /// would take the row away from a background menu opened beside a selected
+    /// folder, which is exactly when somebody wants the folder they are in.
     /// </summary>
     public bool ShowAddCurrentToPlaces
-        => Menu.ShowAddToPlaces
-           && ActiveTab?.HasDirectorySelected != true
-           && ActiveTab?.IsRealFolder == true;
+        => Menu.ShowAddToPlaces && ActiveTab?.IsRealFolder == true;
 
     /// <summary>
     /// The same slot, in a search listing: the row reads "save this search"
     /// there rather than "add this folder", because a search is not a folder
     /// and a row that called it one would be the reader's homework again.
     /// Same command behind both — PinCurrent knows which it is standing in.
+    /// Not about the selection, for the reason given on the row above.
     /// </summary>
     public bool ShowSaveSearchToPlaces
-        => Menu.ShowAddToPlaces
-           && ActiveTab?.HasDirectorySelected != true
-           && ActiveTab?.IsSearchListing == true;
+        => Menu.ShowAddToPlaces && ActiveTab?.IsSearchListing == true;
     public bool ShowCopyLocationInMenu => Menu.ShowCopyLocation;
 
     /// <summary>

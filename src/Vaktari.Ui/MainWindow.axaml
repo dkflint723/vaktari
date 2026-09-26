@@ -286,6 +286,41 @@
       </Setter>
     </Style>
 
+    <!-- **Menu rows at 24 pixels, down from Fluent's 30.** Every menu in
+         this window — both listing menus, the tab, sidebar and header menus,
+         the flyouts on the toolbar and the right-drag's drop menu — drew
+         Fluent's MenuFlyoutItemThemePaddingNarrow, 11,4,11,7, around a
+         nineteen-pixel line: thirty pixels a row, and a nine-pixel band per
+         rule. The listing menu for one file was 904 pixels tall, which is what
+         "very large and clunky" measured; the split into two menus took the
+         rows out, and this takes the air out of the ones that are left.
+
+         A MinHeight rather than a smaller padding alone, so the row is 24 on
+         any font whose line fits and grows with the interface text size rather
+         than clipping it — the theme's own padding is asymmetric to sit the
+         text on its baseline, and 2 over 3 keeps that lean. Rules go from 4
+         above and below to 3, the same four-fifths.
+
+         **Anchored on the menu, never `MenuItem > MenuItem`.** A style applies
+         to the control it is declared on as well as below it, and an
+         unanchored MenuItem-in-MenuItem selector gave a submenu's host its
+         children's Command and crashed 0.7.0 — MarkupRulesTests refuses that
+         shape. These carry no Command, but the rule is about the selector.
+         ContextMenu reaches every ContextMenu here and every submenu of one
+         (a descendant selector walks the logical tree, which is how a
+         submenu's rows hang off their parent row); MenuFlyoutPresenter
+         reaches every MenuFlyout. There is no Menu bar in this application.
+         SettingsWindow.axaml carries the same two styles for its own two
+         flyouts, and MenuDensityTests measures a row in both windows rather
+         than trusting either copy. -->
+    <Style Selector="ContextMenu MenuItem, MenuFlyoutPresenter MenuItem">
+      <Setter Property="Padding" Value="11,2,11,3"/>
+      <Setter Property="MinHeight" Value="24"/>
+    </Style>
+    <Style Selector="ContextMenu Separator, MenuFlyoutPresenter Separator">
+      <Setter Property="Margin" Value="12,3,12,3"/>
+    </Style>
+
   </Window.Styles>
 
   <Window.Resources>
@@ -1028,7 +1063,13 @@
                        them one at a time was the only route; both references
                        offer these three. The commands are on the shell, so the
                        bindings reach out through the Window the way the rest of
-                       this file's shell-level rows do. -->
+                       this file's shell-level rows do.
+
+                       **Each closing row only where it would close something.**
+                       Both were drawn on every tab, so a lone tab offered to
+                       close the others and the last tab offered to close the
+                       ones to its right; the group tells each tab whether it
+                       has company — PaneGroupViewModel.NotifyTabNeighbours. -->
                   <DockPanel.ContextMenu>
                     <ContextMenu>
                       <MenuItem Header="_Duplicate"
@@ -1040,10 +1081,12 @@
                                 CommandParameter="{Binding}"/>
                       <MenuItem Header="Close _other tabs"
                                 Command="{Binding $parent[Window].((vm:ShellViewModel)DataContext).CloseOtherTabsCommand}"
-                                CommandParameter="{Binding}"/>
+                                CommandParameter="{Binding}"
+                                IsVisible="{Binding HasOtherTabs}"/>
                       <MenuItem Header="Close tabs to the _right"
                                 Command="{Binding $parent[Window].((vm:ShellViewModel)DataContext).CloseTabsToTheRightCommand}"
-                                CommandParameter="{Binding}"/>
+                                CommandParameter="{Binding}"
+                                IsVisible="{Binding HasTabsToTheRight}"/>
                       <Separator/>
                       <MenuItem Header="Reopen closed _tab" in:KeyHint.Command="ReopenClosedTab"
                                 Command="{Binding $parent[Window].((vm:ShellViewModel)DataContext).ReopenClosedTabCommand}"/>
@@ -1800,460 +1843,66 @@
              be visible but quiet. -->
 
 
-        <ItemsControl ItemsSource="{Binding Tabs}" Background="{DynamicResource ViewBackground}">
+        <!-- **Two menus, and which one opens is decided by where the click
+             landed.** One ContextMenu served a row and the empty space below
+             it, so it carried everything either could want: a plain file on
+             Windows drew twenty-eight rows and six rules, 904 pixels, and ten
+             of those rows (New, Refresh, Select, View, Arrange, the space and
+             duplicate scans, the terminal, "Add this folder to places",
+             Compare) were about the FOLDER and sat on every file's menu. They
+             could not be taken off it: a right-click on empty space keeps the
+             selection — deliberately, see FocusListIfEmptySpace — so "nothing
+             is selected" never meant "this click was on nothing".
 
-          <ItemsControl.ContextMenu>
-            <!--
-                 One menu for a file row AND for the empty space below it, which
-                 is why so much of it is gated on HasSelection: everything that
-                 acts on a selection was listed, enabled, on an empty-space
-                 right-click, and did nothing at all when picked.
+             So: the ITEM menu, on the ItemsControl below, for a click on a row
+             or tile; and the BACKGROUND menu, on this Panel, for a click
+             anywhere else in the listing. The routing is Avalonia's own: a
+             ContextRequested bubbles from the row up, the ItemsControl's menu
+             is asked first, and OnItemMenuOpening CANCELS it when the click
+             was off every row — measured on 12.1.2, a cancelled Opening
+             leaves the request unhandled and it carries on up to this Panel,
+             whose menu then opens at the pointer as any right-click's does.
+             MainWindow.ListingMenu.cs has the rest of the reasoning, and the
+             Menu key's half is in MainWindow.MenuKey.cs.
 
-                 Hiding rather than disabling, to match the Show*InMenu
-                 preferences already here. Safe to gate this way because a
-                 right-click selects the row under the pointer first — the
-                 entries are there whenever the click was on something.
-            -->
-            <ContextMenu x:DataType="vm:PaneGroupViewModel" Closed="OnListingMenuClosed"
-                         Opening="OnListingMenuOpening">
-              <!-- **Every row here that has a key binding prints it.** Ten did
-                   and none said so, which left the keyboard route discoverable
-                   only by reading the source — and an entry nobody knows is
-                   reachable by key is the first one argued as redundant.
+             A Panel around the ItemsControl rather than a menu higher up,
+             because everything above it — the tab strip, the path bar — is
+             not the listing, and right-clicking a toolbar has never opened a
+             folder menu. -->
+        <Panel x:Name="BackgroundMenuHost">
+          <Panel.ContextMenu>
+            <!-- **The folder's menu.** Nothing here reads the selection: a
+                 right-click on empty space keeps it, so a row here that acted on
+                 what is selected would act on files this menu is not about.
+                 That is why Share, Properties, Scripts and the Windows menu each
+                 have a command of their own on this menu rather than the item
+                 menu's — every one of those prefers the selection when there is
+                 one.
 
-                   InputGesture rather than the "  (ctrl+x)" suffix this file
-                   puts on tooltips and flyout labels: it is display-only, so it
-                   cannot collide with the Window.KeyBindings below or with the
-                   code-behind switch that actually owns Enter, Alt+Enter and
-                   Delete. MenuItem.HotKey is the property that WOULD register a
-                   second handler — deliberately not used. The theme also
-                   right-aligns the gesture in its own column, which a suffix
-                   baked into the header cannot do.
+                 Hide, don't disable, as in the item menu: a row that would
+                 refuse where the menu opened is not drawn. Paste is the one
+                 exception, and says why on its own row. -->
+            <ContextMenu x:Name="BackgroundMenu" x:DataType="vm:PaneGroupViewModel"
+                         Opening="OnBackgroundMenuOpening"
+                         Opened="OnListingMenuOpened"
+                         Closed="OnListingMenuClosed">
+              <!-- **How the listing is drawn and how it is ordered, in one
+                   place.** They were two submenus side by side — View (the
+                   layouts, hidden files) and Arrange (sort, group, columns) —
+                   which made one question about how the listing reads look
+                   like two, and cost the menu a row it did not need.
 
-                   Only rows with a real binding get one: a printed gesture that
-                   does nothing is worse than none, which is why "Open with",
-                   "Copy to", "Move to", "New", "More", "Scripts" and the share
-                   entry — parents with no command of their own — stay bare. -->
-              <!-- CanActOnSelection, not HasSelection: a bin row names where a
-                   file used to be, and opening that path opens whatever is
-                   there now, if anything. -->
-              <MenuItem Header="_Open"
-                                      Command="{Binding ActiveTab.OpenSelectedCommand}"
-                                      InputGesture="Enter"
-                                      IsVisible="{Binding ActiveTab.CanActOnSelection}"/>
-              <!-- **Named, and the style anchored to that name, because a bare
-                   `MenuItem > MenuItem` selector matches the MenuItem it is
-                   DECLARED ON.** A style applies to its host as well as to the
-                   host's descendants, so as soon as one of these moved inside
-                   another MenuItem — which consolidating the menu did to New
-                   file, New from template and Scripts — the host matched its
-                   own rule and took a Command expecting one of its own items,
-                   with a CommandParameter that is the pane group. Avalonia
-                   calls CanExecute on every child when a submenu opens, so
-                   clicking "New" ended the process on an ArgumentException.
-
-                   Anchoring on the name excludes the host, whose parent is a
-                   different element, and still reaches the generated item
-                   containers. Done to all six rather than the three that were
-                   nested: the others are safe only because of where they
-                   happen to sit today, and where they sit is what changed. -->
-              <MenuItem x:Name="OpenWithMenu" Header="Open _with"
-                                      IsVisible="{Binding ActiveTab.HasOpenWithOptions}"
-                                      ItemsSource="{Binding ActiveTab.OpenWithOptions}">
-                              <MenuItem.ItemTemplate>
-                                <DataTemplate x:DataType="fs:LaunchOption">
-                                  <TextBlock Text="{Binding Name}"/>
-                                </DataTemplate>
-                              </MenuItem.ItemTemplate>
-                              <MenuItem.Styles>
-                                <Style Selector="MenuItem#OpenWithMenu > MenuItem" x:DataType="fs:LaunchOption">
-                                  <Setter Property="Command"
-                                          Value="{Binding $parent[Window].((vm:ShellViewModel)DataContext).ActiveTab.OpenWithAppCommand}"/>
-                                  <Setter Property="CommandParameter" Value="{Binding}"/>
-                                </Style>
-                              </MenuItem.Styles>
-                            </MenuItem>
-              <!-- **The critical verbs live at the top, unburied.** Run as
-                   administrator shows for any executable on a PLAIN
-                   right-click — Explorer never hid it behind Shift, and copying
-                   that gate here meant an ordinary click on an .exe offered no
-                   elevation anywhere visible. Open in new tab earns the same
-                   promotion: it was living in "More" while being one of the
-                   most-used folder actions a file manager has. -->
-              <!-- **The only row in this menu that can start a program without
-                   asking for root.** Windows needs none — its shell runs an
-                   executable that is double-clicked — but the desktop's opener
-                   never runs anything, so on Linux "Run as administrator" was
-                   the whole of it, and a script you had just written could be
-                   elevated or nothing. Above that row for the same reason it
-                   sits above everything else: the unprivileged verb is the one
-                   people want.
-
-                   No question behind this one, unlike the double-click: the
-                   row says the word, so clicking it is the answer. GNOME's
-                   "Run as a program" behaves the same way. -->
-              <MenuItem Header="Run"
-                                      Command="{Binding ActiveTab.RunSelectionCommand}"
-                                      IsVisible="{Binding ActiveTab.CanRunSelection}"/>
-              <MenuItem Header="Run as _administrator"
-                                      Command="{Binding ActiveTab.RunAsAdministratorCommand}"
-                                      IsVisible="{Binding ActiveTab.CanRunSelectionAsAdministrator}"/>
-              <!-- **A verb of its own, and Open is left alone.** Explorer
-                   mounts an .iso on double-click; doing the same here would
-                   change what Open means for a file type, silently, for
-                   everyone who had it opening in an archive tool. Mount says
-                   what it does and is one click away.
-
-                   The two entries are mutually exclusive — an image is either
-                   attached or it is not — so this is one row that changes its
-                   word, not two rows to choose between. -->
-              <MenuItem Header="_Mount"
-                                      Command="{Binding ActiveTab.MountImageCommand}"
-                                      IsVisible="{Binding ActiveTab.CanMountSelection}"/>
-              <MenuItem Header="Unmount"
-                                      Command="{Binding ActiveTab.UnmountImageCommand}"
-                                      IsVisible="{Binding ActiveTab.CanUnmountSelection}"/>
-              <MenuItem Header="Open in new _tab"
-                                      Command="{Binding $parent[Window].((vm:ShellViewModel)DataContext).OpenInNewTabCommand}"
-                                      CommandParameter="{Binding ActiveTab.SelectedEntry}"
-                                      IsVisible="{Binding $parent[Window].((vm:ShellViewModel)DataContext).ShowOpenInNewTabInMenu}"/>
-              <!-- Its own gate, not the row above's: the context-menu settings
-                   page carries one flag per entry, and turning off "Open in new
-                   tab" must not silently take this away too. -->
-              <MenuItem Header="Open in new w_indow"
-                                      Command="{Binding $parent[Window].((vm:ShellViewModel)DataContext).OpenInNewWindowCommand}"
-                                      CommandParameter="{Binding ActiveTab.SelectedEntry}"
-                                      IsVisible="{Binding $parent[Window].((vm:ShellViewModel)DataContext).ShowOpenInNewWindowInMenu}"/>
-              <!-- One home for both ways of sharing, instead of Proton entries
-                   at the top level and copyparty three layers under "More".
-                   Which rows show is decided in OnListingMenuOpening, because
-                   the Proton half is per-item. -->
-              <MenuItem x:Name="ShareMenu" Header="_Share" IsVisible="False">
-                <!-- Proton links. Hidden by default; OnListingMenuOpening shows
-                     the pair that applies — share, or copy-and-stop — because
-                     whether an item CAN be linked (inside the drive folder, CLI
-                     present) and whether it already IS are per-item questions a
-                     static binding cannot ask. -->
-                <MenuItem x:Name="ProtonShareItem" Header="_Share via Proton Drive"
-                          IsVisible="False" Click="OnProtonShareClicked"/>
-                <MenuItem x:Name="ProtonCopyLinkItem" Header="_Copy Proton Drive link"
-                          IsVisible="False" Click="OnProtonCopyLinkClicked"/>
-                <MenuItem x:Name="ProtonUnshareItem" Header="S_top sharing via Proton Drive"
-                          IsVisible="False" Click="OnProtonUnshareClicked"/>
-                <!-- Takes the share row's place while the CLI downloads — the
-                     share click fetches the tool itself when it is missing,
-                     so this is the only install UI there is. -->
-                <MenuItem x:Name="ProtonInstallingItem" Header="Setting up Proton Drive sharing…"
-                          IsEnabled="False" IsVisible="False"/>
-                <Separator x:Name="ShareMethodSeparator" IsVisible="False"/>
-                <!-- **Flat, like the Proton rows above it: one row per thing
-                     that can happen, never a second hover.** Wrapping these in
-                     a "Share x over network" submenu made THREE levels for what
-                     Explorer and Dolphin do in one. Each row carries its own
-                     state gate, and the states cover each other — ready,
-                     missing, installing — so the visible set is never empty
-                     while the platform has a backend at all.
-
-                     The read-only share is the unqualified row because it is
-                     the safe default; the variant says exactly what it adds.
-                     Both name the folder, so which one gets served is visible
-                     before clicking rather than discovered afterwards. -->
-                <MenuItem IsVisible="{Binding $parent[Window].((vm:ShellViewModel)DataContext).CanShare}"
-                          Command="{Binding $parent[Window].((vm:ShellViewModel)DataContext).ShareFolderCommand}">
-                  <MenuItem.Header>
-                    <TextBlock>
-                      <Run Text="Share"/><Run Text=" "/><Run Text="{Binding ActiveTab.ShareTargetLabel}"/><Run Text=" over network"/>
-                    </TextBlock>
-                  </MenuItem.Header>
-                </MenuItem>
-                <MenuItem IsVisible="{Binding $parent[Window].((vm:ShellViewModel)DataContext).CanShare}"
-                          Command="{Binding $parent[Window].((vm:ShellViewModel)DataContext).ShareFolderWritableCommand}">
-                  <MenuItem.Header>
-                    <TextBlock>
-                      <Run Text="Share"/><Run Text=" "/><Run Text="{Binding ActiveTab.ShareTargetLabel}"/><Run Text=" over network, allow uploads"/>
-                    </TextBlock>
-                  </MenuItem.Header>
-                </MenuItem>
-                <!-- No ellipsis, by the rule stated above and on the bin's
-                     Empty button: it promises the entry asks first, and this
-                     one starts the download the moment it is clicked. The
-                     entry already names what it installs, so the label is the
-                     question and the click is the answer. -->
-                <MenuItem Header="_Install copyparty to share folders"
-                          IsVisible="{Binding $parent[Window].((vm:ShellViewModel)DataContext).CanInstallSharing}"
-                          Command="{Binding $parent[Window].((vm:ShellViewModel)DataContext).InstallSharingCommand}"/>
-                <!-- Disabled and present, rather than absent: the download is
-                     the one state where somebody is waiting on an answer, and
-                     it is exactly the state that used to show nothing. -->
-                <MenuItem Header="Installing copyparty…" IsEnabled="False"
-                          IsVisible="{Binding $parent[Window].((vm:ShellViewModel)DataContext).IsInstalling}"/>
-              </MenuItem>
-              <!-- Gated with the block ABOVE it, not the one below. Open and
-                   Open with are the only entries up there and both need a
-                   selection, so without this the menu opened with a rule as its
-                   first item. Avalonia draws every separator it is given and
-                   collapses none of them. -->
-              <Separator IsVisible="{Binding ActiveTab.HasSelection}"/>
-              <MenuItem Header="_Cut"   Command="{Binding ActiveTab.CutSelectionToClipboardCommand}"
-                                      in:KeyHint.Command="Cut"
-                                      IsVisible="{Binding ActiveTab.CanActOnSelection}"/>
-              <MenuItem Header="Cop_y"  Command="{Binding ActiveTab.CopySelectionToClipboardCommand}"
-                                      in:KeyHint.Command="Copy"
-                                      IsVisible="{Binding ActiveTab.HasSelection}"/>
-              <!-- **Back at the top level, where they were before the menu was
-                   consolidated.** Pushing these four behind "More" made the
-                   menu tidy and made the things people reach for a hover
-                   further away, which is the wrong trade for a menu opened
-                   dozens of times an hour. The genuinely rare entries — scripts,
-                   sharing, places — stayed there.
-
-                   "Copy as path" rather than "Copy location": it is the same
-                   action Windows offers under that name, on the same gesture,
-                   and matching the vernacular costs nothing. -->
-              <MenuItem Header="Copy as pat_h"
-                                      Command="{Binding $parent[Window].((vm:ShellViewModel)DataContext).CopyLocationCommand}"
-                                      in:KeyHint.Command="CopyLocation"
-                                      IsVisible="{Binding $parent[Window].((vm:ShellViewModel)DataContext).ShowCopyLocationInMenu}"/>
-              <!-- **Live with an empty clipboard.** Picking it posted
-                   "clipboard has no files", which is an answer the row could
-                   have given by looking grey. Greyed rather than hidden, unlike
-                   its neighbours here: they hide on a rule about the SELECTION,
-                   and a row that came and went with the clipboard would move
-                   the entries under it between two right-clicks in the same
-                   folder. -->
-              <MenuItem Header="_Paste" Command="{Binding ActiveTab.PasteCommand}"
-                                      in:KeyHint.Command="Paste"
-                                      IsEnabled="{Binding ActiveTab.CanPaste}"
-                                      IsVisible="{Binding !ActiveTab.IsTrashListing}"/>
-              <MenuItem x:Name="CopyToMenu" Header="Copy to"
-                                      IsVisible="{Binding $parent[Window].((vm:ShellViewModel)DataContext).ShowCopyToInMenu}"
-                                      ItemsSource="{Binding $parent[Window].((vm:ShellViewModel)DataContext).TransferTargets}">
-                              <MenuItem.ItemTemplate>
-                                <DataTemplate x:DataType="vm:PlaceItemViewModel">
-                                  <TextBlock Text="{Binding Label}"/>
-                                </DataTemplate>
-                              </MenuItem.ItemTemplate>
-                              <MenuItem.Styles>
-                                <Style Selector="MenuItem#CopyToMenu > MenuItem" x:DataType="vm:PlaceItemViewModel">
-                                  <Setter Property="Command"
-                                          Value="{Binding $parent[Window].((vm:ShellViewModel)DataContext).CopySelectionToCommand}"/>
-                                  <Setter Property="CommandParameter" Value="{Binding}"/>
-                                </Style>
-                              </MenuItem.Styles>
-                            </MenuItem>
-              <MenuItem x:Name="MoveToMenu" Header="Mo_ve to"
-                                      IsVisible="{Binding $parent[Window].((vm:ShellViewModel)DataContext).ShowMoveToInMenu}"
-                                      ItemsSource="{Binding $parent[Window].((vm:ShellViewModel)DataContext).TransferTargets}">
-                              <MenuItem.ItemTemplate>
-                                <DataTemplate x:DataType="vm:PlaceItemViewModel">
-                                  <TextBlock Text="{Binding Label}"/>
-                                </DataTemplate>
-                              </MenuItem.ItemTemplate>
-                              <MenuItem.Styles>
-                                <Style Selector="MenuItem#MoveToMenu > MenuItem" x:DataType="vm:PlaceItemViewModel">
-                                  <Setter Property="Command"
-                                          Value="{Binding $parent[Window].((vm:ShellViewModel)DataContext).MoveSelectionToCommand}"/>
-                                  <Setter Property="CommandParameter" Value="{Binding}"/>
-                                </Style>
-                              </MenuItem.Styles>
-                            </MenuItem>
-              <!-- **The two archive verbs, at the top level.** There was no
-                   compress and no extract anywhere in this window or in the
-                   shell view model, and the only ZipArchive in src was the
-                   icon-theme installer's — so every route to a zip went through
-                   the hosted "Windows menu" below, whatever the machine happened
-                   to have registered there.
-
-                   One rule for the pair, gated on the compress row: Extract
-                   needs exactly one archive selected in a real folder, and that
-                   is a subset of "something selected in a real folder", so
-                   wherever Extract shows Compress does too. Gated at all for
-                   the reason written on the Undo row below — Avalonia draws
-                   every separator it is given and collapses none of them, so an
-                   ungated rule here would be a stray line in the bin and in
-                   every folder with nothing selected.
-
-                   No InputGesture on either: neither has a key binding, and a
-                   printed shortcut that does nothing is worse than none — see
-                   Every_shortcut_shown_in_the_menu_is_really_bound. -->
-              <Separator IsVisible="{Binding ActiveTab.CanCompressSelection}"/>
-              <MenuItem Header="Compress to _ZIP"
-                                      Command="{Binding ActiveTab.CompressSelectionCommand}"
-                                      IsVisible="{Binding ActiveTab.CanCompressSelection}"/>
-              <MenuItem Header="E_xtract all"
-                                      Command="{Binding ActiveTab.ExtractSelectionCommand}"
-                                      IsVisible="{Binding ActiveTab.CanExtractSelection}"/>
-              <!-- Rename and the bin are the whole of the block below, and both
-                   need a selection outside the trash — so this rule goes with
-                   them, or it stacks against the one before New. -->
-              <Separator IsVisible="{Binding ActiveTab.CanActOnSelection}"/>
-              <MenuItem Header="D_uplicate"     Command="{Binding ActiveTab.DuplicateSelectedCommand}"
-                                      IsVisible="{Binding $parent[Window].((vm:ShellViewModel)DataContext).ShowDuplicateInMenu}"/>
-              <!-- **The one verb whose only route was a gesture.** Both
-                   platforms implement IShortcutMaker and nothing but a
-                   right-button drag ever called it, so a shortcut could only be
-                   made by dragging an item somewhere else with the other mouse
-                   button held down — and never beside the thing it points at.
-
-                   Beside Duplicate because it is the same shape of action: it
-                   makes one new item in the folder on screen, per selected row.
-
-                   On Windows this JOINS the desktop's own "Create shortcut",
-                   which stays where it is inside "Windows menu" below. The two
-                   are not the same row twice: this one lands the shortcut in
-                   the folder on screen and the shell's lands it beside the
-                   item, this one is undoable with Ctrl+Z and the shell's is
-                   invisible to the undo stack, and this one needs a real
-                   folder while the shell menu is offered in a search listing
-                   and in This PC as well — where it is the only one of the
-                   two. CreateShortcutAsync carries the same three.
-
-                   No settings flag gates it: the context-menu page answers one
-                   question per entry on Dolphin's Services list — eight of
-                   them, counted by NewWindowTests — rather than one per row in
-                   this menu, and Cut, Paste, Rename and New carry no flag
-                   either. -->
-              <MenuItem Header="Create shortcut"
-                                      Command="{Binding ActiveTab.CreateShortcutCommand}"
-                                      IsVisible="{Binding ActiveTab.CanCreateShortcut}"/>
-              <MenuItem Header="_Rename"        Command="{Binding ActiveTab.BeginRenameCommand}"
-                                      in:KeyHint.Command="Rename"
-                                      IsVisible="{Binding ActiveTab.CanActOnSelection}"/>
-              <MenuItem Header="Rename in _bulk…"
-                                      Command="{Binding $parent[Window].((vm:ShellViewModel)DataContext).BatchRenameCommand}"
-                                      in:KeyHint.Command="BatchRename"
-                                      IsVisible="{Binding ActiveTab.CanRenameInBulk}"/>
-              <MenuItem Header="{Binding $parent[Window].((vm:ShellViewModel)DataContext).BinMoveLabel}"
-                                      Command="{Binding $parent[Window].((vm:ShellViewModel)DataContext).TrashSelectionCommand}"
-                                      in:KeyHint.Command="Trash"
-                                      IsVisible="{Binding ActiveTab.CanActOnSelection}"/>
-              <!-- **In the bin there was one way out for one file, and it was
-                   putting it back.** Restore and Empty were the whole menu, so
-                   removing a single item meant emptying the lot — and
-                   Shift+Delete showed the permanent-delete prompt, took the
-                   answer, and then refused. Both references delete just what
-                   you picked.
-
-                   Its own separator, because the rule above it is gated on a
-                   selection OUTSIDE the trash and so is never drawn here: this
-                   row would otherwise butt against whatever precedes it. -->
-              <Separator IsVisible="{Binding ActiveTab.CanPurgeFromBin}"/>
-              <MenuItem Header="_Delete permanently"
-                                      Command="{Binding ActiveTab.PurgeFromTrashCommand}"
-                                      in:KeyHint.Command="DeletePermanently"
-                                      IsVisible="{Binding ActiveTab.CanPurgeFromBin}"/>
-
-              <!-- **Undo was a key and nothing else.** No menu anywhere in the
-                   application offered it, so the whole feature was invisible —
-                   and the key said nothing about what it was going to take
-                   back. The row names it: "Undo copy of 3 items".
-
-                   Immediately above the separator that was already here, and
-                   with none of its own. Every separator in this menu is gated
-                   with the block above it, because Avalonia draws every one it
-                   is given and collapses none of them — an ungated rule here
-                   would be the first item in the menu whenever everything
-                   above it is hidden, which in the bin with nothing selected
-                   is all of it.
-
-                   Always shown, disabled when there is nothing to take back:
-                   a row that disappears is a row nobody learns is there, and
-                   the point of adding it is that people find it. -->
-              <MenuItem Header="{Binding ActiveTab.UndoLabel}"
-                                      Command="{Binding ActiveTab.UndoCommand}"
-                                      IsEnabled="{Binding ActiveTab.CanUndo}"
-                                      in:KeyHint.Command="Undo"/>
-              <MenuItem Header="{Binding ActiveTab.RedoLabel}"
-                                      Command="{Binding ActiveTab.RedoCommand}"
-                                      IsEnabled="{Binding ActiveTab.CanRedo}"
-                                      in:KeyHint.Command="Redo"/>
-              <Separator/>
-              <!--
-                   One "New" rather than three top-level entries that all create
-                   something.
-              -->
-              <MenuItem Header="_New"
-                                      IsVisible="{Binding !ActiveTab.IsTrashListing}">
-                <MenuItem Header="New _folder"          Command="{Binding ActiveTab.NewFolderCommand}"
-                                        in:KeyHint.Command="NewFolder"/>
-                <MenuItem x:Name="NewFileMenu" Header="New f_ile" ItemsSource="{Binding ActiveTab.NewFileKinds}">
-                                <MenuItem.ItemTemplate>
-                                  <DataTemplate x:DataType="fs:NewFileKind">
-                                    <TextBlock Text="{Binding Label}"/>
-                                  </DataTemplate>
-                                </MenuItem.ItemTemplate>
-                                <MenuItem.Styles>
-                                  <Style Selector="MenuItem#NewFileMenu > MenuItem" x:DataType="fs:NewFileKind">
-                                    <Setter Property="Command"
-                                            Value="{Binding $parent[Window].((vm:ShellViewModel)DataContext).ActiveTab.NewFileCommand}"/>
-                                    <Setter Property="CommandParameter" Value="{Binding}"/>
-                                  </Style>
-                                </MenuItem.Styles>
-                              </MenuItem>
-                <MenuItem x:Name="NewTemplateMenu" Header="New from _template"
-                                        ItemsSource="{Binding ActiveTab.Templates}"
-                                        IsVisible="{Binding ActiveTab.HasTemplates}">
-                                <MenuItem.ItemTemplate>
-                                  <DataTemplate x:DataType="fs:FileTemplate">
-                                    <TextBlock Text="{Binding Name}"/>
-                                  </DataTemplate>
-                                </MenuItem.ItemTemplate>
-                                <MenuItem.Styles>
-                                  <Style Selector="MenuItem#NewTemplateMenu > MenuItem" x:DataType="fs:FileTemplate">
-                                    <Setter Property="Command"
-                                            Value="{Binding $parent[Window].((vm:ShellViewModel)DataContext).ActiveTab.NewFromTemplateCommand}"/>
-                                    <Setter Property="CommandParameter" Value="{Binding}"/>
-                                  </Style>
-                                </MenuItem.Styles>
-                              </MenuItem>
-              </MenuItem>
-              <!--
-                   Sorting and grouping are one decision about how the listing reads,
-                   and were two adjacent submenus making it look like two. The
-                   settings checkbox governs the whole submenu for the same reason:
-                   hiding one half and leaving the other stranded was never a state
-                   anyone asked for.
-              -->
-              <!-- Refresh had F5 and nowhere to be found. Mostly covered by the
-                   folder watcher, which is why it is here rather than higher —
-                   but a listing that has gone stale is exactly when somebody
-                   goes looking for it in a menu. -->
-              <MenuItem Header="Re_fresh"
-                                      Command="{Binding ActiveTab.RefreshCommand}"
-                                      in:KeyHint.Command="Refresh"/>
-              <!-- **Selection had exactly one command and no menu home.**
-                   Ctrl+A worked and was findable only by knowing it; there was
-                   no way at all to clear a selection or invert one. Together
-                   because they are one decision about what is chosen. -->
-              <MenuItem Header="Se_lect">
-                <MenuItem Header="_All" in:KeyHint.Command="SelectAll" Click="OnSelectAllClicked"/>
-                <MenuItem Header="_None" Click="OnSelectNoneClicked"/>
-                <MenuItem Header="_Invert" in:KeyHint.Command="InvertSelection" Click="OnInvertSelectionClicked"/>
-              </MenuItem>
-              <!-- **How the listing is drawn had no menu anywhere.** The three
-                   layouts were the chip at the top right and Ctrl+Shift+1..3;
-                   hidden files were Ctrl+H and a checkbox inside the view
-                   options flyout, and nothing else. Its button is gated on
-                   ShowsWindowControls, which SyncWindowControls sets FALSE for
-                   the left half of a split — so on that side the checkbox could
-                   not be reached with a pointer at all, and the only remaining
-                   route to it was a key nobody is told about.
-
-                   This menu belongs to the listing, and every pane group has
-                   its own, so the row reaches both halves. Deliberately
-                   ungated for that reason: a gate here would take back the one
-                   route the left half has.
-
-                   Beside Arrange rather than inside it. Arrange is how the
-                   entries are ORDERED and its whole submenu can be switched
-                   off in settings; this is what they are drawn as, and it is
-                   not something the settings page offers to hide.
-
-                   No access key: every letter of "View" is already spoken for
-                   in this menu — v by "Mo_ve to", i by "Open in new w_indow",
-                   e by "Prop_erties", w by "Open _with" — and only j, k, n and
-                   q are still free. -->
-              <MenuItem Header="View">
+                   It came into being because the layouts and hidden files had
+                   no menu anywhere: they were the chip at the top right, which
+                   SyncWindowControls hides on the left half of a split, and
+                   keys nobody is told about. This menu belongs to the listing
+                   and each half has its own, so the first half of this submenu
+                   is deliberately ungated: a gate would take back the one
+                   pointer route the left half has. The second half is what
+                   Arrange was, and keeps Arrange's gate — the settings page's
+                   "Sort by" preference, ShowSortByInMenu — so hiding it still
+                   hides ordering and never drawing. -->
+              <MenuItem Header="_View">
                 <!-- **A number-row key is spelled D1 in a gesture and drawn as
                      1 by the theme.** Measured on Avalonia 12.1, headless: a
                      MenuItem with InputGesture="Ctrl+Shift+D1" renders
@@ -2262,8 +1911,8 @@
                      Enum.TryParse&lt;Key&gt;, which reads it NUMERICALLY, so
                      "1" became Key.Cancel, "2" Key.Back and "3" Key.Tab. The
                      third drew "Ctrl+Shift+Tab", which is a live binding that
-                     switches tab. These match the KeyBindings below character
-                     for character for that reason.
+                     switches tab. These print through the keymap now, which
+                     spells them for the theme.
 
                      Radios OneWay-bound, the way the Sort by rows are: the
                      header is the current layout's own report, and writing
@@ -2290,30 +1939,33 @@
                           IsChecked="{Binding ActiveTab.ShowHidden, Mode=OneWay}"
                           Command="{Binding ActiveTab.ToggleHiddenCommand}"
                           in:KeyHint.Command="ToggleHidden"/>
-              </MenuItem>
-              <MenuItem Header="Arran_ge"
-                                      IsVisible="{Binding $parent[Window].((vm:ShellViewModel)DataContext).ShowSortByInMenu}">
-                <MenuItem Header="_Sort by">
-                                <MenuItem Header="_Name" ToggleType="Radio"
-                                          IsChecked="{Binding ActiveTab.IsSortedByName, Mode=OneWay}"
-                                          Command="{Binding ActiveTab.SortByNameCommand}"/>
-                                <MenuItem Header="_Size" ToggleType="Radio"
-                                          IsChecked="{Binding ActiveTab.IsSortedBySize, Mode=OneWay}"
-                                          Command="{Binding ActiveTab.SortBySizeCommand}"/>
-                                <MenuItem Header="_Modified" ToggleType="Radio"
-                                          IsChecked="{Binding ActiveTab.IsSortedByModified, Mode=OneWay}"
-                                          Command="{Binding ActiveTab.SortByModifiedCommand}"/>
-                                <MenuItem Header="_Type" ToggleType="Radio"
-                                          IsChecked="{Binding ActiveTab.IsSortedByKind, Mode=OneWay}"
-                                          Command="{Binding ActiveTab.SortByKindCommand}"/>
-                                <MenuItem Header="_Created" ToggleType="Radio"
-                                          IsChecked="{Binding ActiveTab.IsSortedByCreated, Mode=OneWay}"
-                                          Command="{Binding ActiveTab.SortByCreatedCommand}"/>
-                                <Separator/>
-                                <MenuItem Header="_Descending" ToggleType="CheckBox"
-                                          IsChecked="{Binding ActiveTab.SortDescending, Mode=OneWay}"
-                                          Command="{Binding ActiveTab.ToggleSortDirectionCommand}"/>
-                              </MenuItem>
+                <!-- The rule and the three rows under it are what Arrange held.
+                     This rule is left to OnListingMenuOpened like every other
+                     one in the two listing menus: with the preference off it
+                     has nothing under it, and Avalonia collapses no rule. -->
+                <Separator/>
+                <MenuItem Header="S_ort by"
+                          IsVisible="{Binding $parent[Window].((vm:ShellViewModel)DataContext).ShowSortByInMenu}">
+                  <MenuItem Header="_Name" ToggleType="Radio"
+                            IsChecked="{Binding ActiveTab.IsSortedByName, Mode=OneWay}"
+                            Command="{Binding ActiveTab.SortByNameCommand}"/>
+                  <MenuItem Header="_Size" ToggleType="Radio"
+                            IsChecked="{Binding ActiveTab.IsSortedBySize, Mode=OneWay}"
+                            Command="{Binding ActiveTab.SortBySizeCommand}"/>
+                  <MenuItem Header="_Modified" ToggleType="Radio"
+                            IsChecked="{Binding ActiveTab.IsSortedByModified, Mode=OneWay}"
+                            Command="{Binding ActiveTab.SortByModifiedCommand}"/>
+                  <MenuItem Header="_Type" ToggleType="Radio"
+                            IsChecked="{Binding ActiveTab.IsSortedByKind, Mode=OneWay}"
+                            Command="{Binding ActiveTab.SortByKindCommand}"/>
+                  <MenuItem Header="_Created" ToggleType="Radio"
+                            IsChecked="{Binding ActiveTab.IsSortedByCreated, Mode=OneWay}"
+                            Command="{Binding ActiveTab.SortByCreatedCommand}"/>
+                  <Separator/>
+                  <MenuItem Header="_Descending" ToggleType="CheckBox"
+                            IsChecked="{Binding ActiveTab.SortDescending, Mode=OneWay}"
+                            Command="{Binding ActiveTab.ToggleSortDirectionCommand}"/>
+                </MenuItem>
                 <!-- **Only in Details, because that is the only view that can
                      draw the headings.** The RowGroup header is part of the
                      details row template; grid and compact lay out fixed-size
@@ -2325,34 +1977,36 @@
                      Details reordering the tiles into invisible runs with
                      nothing on screen left to clear it. Headings for the other
                      two layouts are a real feature and a different panel, not a
-                     gate. -->
+                     gate.
+
+                     One shell property for this and Columns, carrying the
+                     Sort by preference as well — see ShowDetailsArrangeInMenu. -->
                 <MenuItem Header="_Group by"
-                                      IsVisible="{Binding ActiveTab.IsDetailsView}">
-                                <MenuItem Header="N_one" ToggleType="Radio"
-                                          IsChecked="{Binding ActiveTab.IsUngrouped, Mode=OneWay}"
-                                          Command="{Binding ActiveTab.GroupByNoneCommand}"/>
-                                <Separator/>
-                                <MenuItem Header="_Name" ToggleType="Radio"
-                                          IsChecked="{Binding ActiveTab.IsGroupedByName, Mode=OneWay}"
-                                          Command="{Binding ActiveTab.GroupByNameCommand}"/>
-                                <MenuItem Header="_Size" ToggleType="Radio"
-                                          IsChecked="{Binding ActiveTab.IsGroupedBySize, Mode=OneWay}"
-                                          Command="{Binding ActiveTab.GroupBySizeCommand}"/>
-                                <MenuItem Header="_Modified" ToggleType="Radio"
-                                          IsChecked="{Binding ActiveTab.IsGroupedByModified, Mode=OneWay}"
-                                          Command="{Binding ActiveTab.GroupByModifiedCommand}"/>
-                                <MenuItem Header="_Type" ToggleType="Radio"
-                                          IsChecked="{Binding ActiveTab.IsGroupedByKind, Mode=OneWay}"
-                                          Command="{Binding ActiveTab.GroupByKindCommand}"/>
-                              </MenuItem>
+                          IsVisible="{Binding $parent[Window].((vm:ShellViewModel)DataContext).ShowDetailsArrangeInMenu}">
+                  <MenuItem Header="N_one" ToggleType="Radio"
+                            IsChecked="{Binding ActiveTab.IsUngrouped, Mode=OneWay}"
+                            Command="{Binding ActiveTab.GroupByNoneCommand}"/>
+                  <Separator/>
+                  <MenuItem Header="_Name" ToggleType="Radio"
+                            IsChecked="{Binding ActiveTab.IsGroupedByName, Mode=OneWay}"
+                            Command="{Binding ActiveTab.GroupByNameCommand}"/>
+                  <MenuItem Header="_Size" ToggleType="Radio"
+                            IsChecked="{Binding ActiveTab.IsGroupedBySize, Mode=OneWay}"
+                            Command="{Binding ActiveTab.GroupBySizeCommand}"/>
+                  <MenuItem Header="_Modified" ToggleType="Radio"
+                            IsChecked="{Binding ActiveTab.IsGroupedByModified, Mode=OneWay}"
+                            Command="{Binding ActiveTab.GroupByModifiedCommand}"/>
+                  <MenuItem Header="_Type" ToggleType="Radio"
+                            IsChecked="{Binding ActiveTab.IsGroupedByKind, Mode=OneWay}"
+                            Command="{Binding ActiveTab.GroupByKindCommand}"/>
+                </MenuItem>
                 <!-- **Choosing a column needed a mouse: the chooser was on the
                      header's right-click and nowhere else.** Shift+F10 and the
-                     Menu key run OpenListingMenu, which walks up from the
-                     focused row to the first control carrying a ContextMenu —
-                     that is THIS menu, never the header's — and the header band
-                     is a Border, which takes no focus, so no key press could
-                     ever land on it and reach the one place the four toggles
-                     lived.
+                     Menu key open the listing's menus from the keyboard, and
+                     the header band is a Border, which takes no focus, so no
+                     key press could ever land on it and reach the one place the
+                     four toggles lived. This is the keyboard's route to them:
+                     with nothing selected the Menu key opens this menu.
 
                      Beside Sort by and Group by because it is the third
                      question about how this listing reads, and gated on Details
@@ -2367,225 +2021,787 @@
                      The_two_chooser_menus_offer_the_same_columns keeps the two
                      lists from drifting apart, access keys and all. -->
                 <MenuItem Header="_Columns"
-                                      IsVisible="{Binding ActiveTab.IsDetailsView}">
-                                <MenuItem Header="Name" ToggleType="CheckBox"
-                                          IsChecked="True" IsEnabled="False"/>
-                                <MenuItem Header="_Type" ToggleType="CheckBox"
-                                          IsChecked="{Binding ActiveTab.IsTypeColumnShown, Mode=OneWay}"
-                                          Command="{Binding ActiveTab.ToggleTypeColumnCommand}"/>
-                                <MenuItem Header="_Size" ToggleType="CheckBox"
-                                          IsChecked="{Binding ActiveTab.IsSizeColumnShown, Mode=OneWay}"
-                                          Command="{Binding ActiveTab.ToggleSizeColumnCommand}"/>
-                                <MenuItem Header="_Modified" ToggleType="CheckBox"
-                                          IsChecked="{Binding ActiveTab.IsModifiedColumnShown, Mode=OneWay}"
-                                          Command="{Binding ActiveTab.ToggleModifiedColumnCommand}"/>
-                                <MenuItem Header="_Created" ToggleType="CheckBox"
-                                          IsChecked="{Binding ActiveTab.IsCreatedColumnShown, Mode=OneWay}"
-                                          Command="{Binding ActiveTab.ToggleCreatedColumnCommand}"/>
-                                <Separator/>
-                                <!-- The grips are a pointer's; this row is how
-                                     a keyboard undoes what one did. -->
-                                <MenuItem Header="Reset column _widths"
-                                          Command="{Binding $parent[Window].((vm:ShellViewModel)DataContext).ResetColumnWidthsCommand}"/>
-                                <Separator/>
-                                <MenuItem Header="A narrow pane drops columns to keep the name readable."
-                                          IsEnabled="False"/>
-                              </MenuItem>
+                          IsVisible="{Binding $parent[Window].((vm:ShellViewModel)DataContext).ShowDetailsArrangeInMenu}">
+                  <MenuItem Header="Name" ToggleType="CheckBox"
+                            IsChecked="True" IsEnabled="False"/>
+                  <MenuItem Header="_Type" ToggleType="CheckBox"
+                            IsChecked="{Binding ActiveTab.IsTypeColumnShown, Mode=OneWay}"
+                            Command="{Binding ActiveTab.ToggleTypeColumnCommand}"/>
+                  <MenuItem Header="_Size" ToggleType="CheckBox"
+                            IsChecked="{Binding ActiveTab.IsSizeColumnShown, Mode=OneWay}"
+                            Command="{Binding ActiveTab.ToggleSizeColumnCommand}"/>
+                  <MenuItem Header="_Modified" ToggleType="CheckBox"
+                            IsChecked="{Binding ActiveTab.IsModifiedColumnShown, Mode=OneWay}"
+                            Command="{Binding ActiveTab.ToggleModifiedColumnCommand}"/>
+                  <MenuItem Header="_Created" ToggleType="CheckBox"
+                            IsChecked="{Binding ActiveTab.IsCreatedColumnShown, Mode=OneWay}"
+                            Command="{Binding ActiveTab.ToggleCreatedColumnCommand}"/>
+                  <Separator/>
+                  <!-- The grips are a pointer's; this row is how
+                       a keyboard undoes what one did. -->
+                  <MenuItem Header="Reset column _widths"
+                            Command="{Binding $parent[Window].((vm:ShellViewModel)DataContext).ResetColumnWidthsCommand}"/>
+                  <Separator/>
+                  <MenuItem Header="A narrow pane drops columns to keep the name readable."
+                            IsEnabled="False"/>
+                </MenuItem>
               </MenuItem>
-              <!-- A third way of looking at the folder you are in, beside the
-                   arrangement above and the comparison below. Hidden outside a
-                   real folder: a search, the bin, This PC and Recent hold rows
-                   from anywhere, so there is no one folder to measure.
-
-                   No access key. Every letter of its first word is already
-                   spoken for in this menu, which is the one case the rule
-                   allows a row to go without one. -->
-              <MenuItem Header="Show space usage"
-                        Command="{Binding ActiveTab.ShowSpaceUsageCommand}"
-                        IsVisible="{Binding ActiveTab.IsRealFolder}"
-                        in:KeyHint.Command="ShowSpaceUsage"/>
-              <!-- The other way of looking at the folder you are in, hidden
-                   outside a real one for the same reason.
-
-                   No access key, and for the same reason the row above has
-                   none: every letter of "Show" is already spoken for in this
-                   menu, which is the one case the rule allows. 'd' was tried
-                   and belongs to "Delete permanently"; only j, k and q are
-                   free here and this label holds none of them. -->
-              <MenuItem Header="Show duplicate files"
-                        Command="{Binding ActiveTab.ShowDuplicatesCommand}"
-                        IsVisible="{Binding ActiveTab.IsRealFolder}"
-                        in:KeyHint.Command="ShowDuplicates"/>
+              <!-- **Selection had exactly one command and no menu home.**
+                   Ctrl+A worked and was findable only by knowing it. It had a
+                   submenu of three — All, None, Invert — which is a hover
+                   for the one of them people use; None and Invert keep their
+                   keys and the command palette, and All is the row. Here
+                   rather than on the item menu because selecting everything is
+                   a thing you do to the folder, and the item menu opens on a
+                   selection that already exists. -->
+              <MenuItem Header="Select _all" in:KeyHint.Command="SelectAll" Click="OnSelectAllClicked"/>
               <!-- **The safe way to act on what the scan found, and the only
                    bulk one.** Select-all offers every member of every set, so
                    one Delete would take both copies of everything; this leaves
                    one of each behind by construction. Shown only in the listing
                    it belongs to, which is also the only place it would select
-                   anything.
-
-                   No access key: every letter of "Select" is taken here too.
-                   'c' was tried and belongs to "Cut". -->
-              <MenuItem Header="Select every copy but one"
+                   anything. -->
+              <MenuItem Header="Select every _copy but one"
                         Command="{Binding ActiveTab.SelectExtraCopiesCommand}"
                         IsVisible="{Binding ActiveTab.IsDuplicatesListing}"
                         in:KeyHint.Command="SelectExtraCopies"/>
-              <!-- **Comparing had no pointer route on the left half of a split.**
-                   Its switch and the copy it offers lived in the view-options
-                   flyout, whose button only the right half shows, and pressing
-                   that button makes the right half active: copying across could
-                   only ever go right to left. This menu belongs to the listing,
-                   and each half has its own. -->
-              <MenuItem Header="Compare"
-                        IsVisible="{Binding $parent[Window].((vm:ShellViewModel)DataContext).IsSplit}">
-                <MenuItem Header="_Compare the two sides" ToggleType="CheckBox"
-                          IsChecked="{Binding $parent[Window].((vm:ShellViewModel)DataContext).IsComparing, Mode=OneWay}"
-                          Command="{Binding $parent[Window].((vm:ShellViewModel)DataContext).ToggleCompareCommand}"
-                          in:KeyHint.Command="CompareSides"/>
-                <MenuItem Header="_Select what differs from the other side"
-                          Command="{Binding ActiveTab.SelectDifferencesCommand}"
-                          in:KeyHint.Command="SelectDifferences"/>
-                <MenuItem Header="C_opy what is newer or missing here to the other side"
-                          Command="{Binding $parent[Window].((vm:ShellViewModel)DataContext).RequestCopyAcrossCommand}"
-                          in:KeyHint.Command="CopyAcross"/>
+              <!-- **Every rule in both listing menus is decided when the menu
+                   opens, not in the markup.** Avalonia draws every separator it
+                   is given and collapses none of them, so each rule used to
+                   carry a gate copied from the block it introduced — and with
+                   the rows split between two menus, the gate of a block became
+                   the OR of up to seven row gates on two view models: a list
+                   somebody would have to remember to extend with every row.
+                   OnListingMenuOpened reads what is actually on screen instead
+                   and hides a rule with nothing drawn above it, nothing below
+                   it, or another rule next to it. No rule in either menu binds
+                   IsVisible for that reason; ListingMenusTests walks every
+                   listing kind for a leading, trailing or doubled rule. -->
+              <Separator/>
+              <!-- **Live with an empty clipboard.** Picking it posted
+                   "clipboard has no files", which is an answer the row could
+                   have given by looking grey. Greyed rather than hidden, unlike
+                   every other row here: they hide on a rule about WHERE the
+                   menu is, and a row that came and went with the clipboard
+                   would move the entries under it between two right-clicks in
+                   the same folder.
+
+                   **Hidden where the paste is refused**, which is every listing
+                   that is not a folder: PasteInto answers "this listing is a
+                   view, not a folder" in the bin, Recent, This PC, a search and
+                   both scan listings. It used to be hidden in the bin alone. -->
+              <MenuItem Header="_Paste" Command="{Binding ActiveTab.PasteCommand}"
+                        in:KeyHint.Command="Paste"
+                        IsEnabled="{Binding ActiveTab.CanPaste}"
+                        IsVisible="{Binding ActiveTab.IsRealFolder}"/>
+              <!-- **Undo was a key and nothing else.** No menu anywhere in the
+                   application offered it, so the whole feature was invisible —
+                   and the key said nothing about what it was going to take
+                   back. The row names it: "Undo copy of 3 items".
+
+                   **Shown only when there is something to take back.** It was
+                   always shown and greyed when there was nothing, on the
+                   argument that a row which disappears is a row nobody learns
+                   is there. The maintainer overruled that when the menus were
+                   split: on a background menu opened a dozen times an hour, two
+                   grey rows most of the time were the "large and clunky" the
+                   split was for, and a row that appears with its label — "Undo
+                   rename of notes.txt" — at the moment there is something to
+                   undo is found at exactly the moment it is wanted. Ctrl+Z and
+                   Ctrl+Y are printed on it either way.
+
+                   On the background menu rather than an item's: what it takes
+                   back is the last operation, which is rarely about the row
+                   under the pointer. -->
+              <MenuItem Header="{Binding ActiveTab.UndoLabel}"
+                        Command="{Binding ActiveTab.UndoCommand}"
+                        IsVisible="{Binding ActiveTab.CanUndo}"
+                        in:KeyHint.Command="Undo"/>
+              <MenuItem Header="{Binding ActiveTab.RedoLabel}"
+                        Command="{Binding ActiveTab.RedoCommand}"
+                        IsVisible="{Binding ActiveTab.CanRedo}"
+                        in:KeyHint.Command="Redo"/>
+              <Separator/>
+              <!-- One "New" rather than three top-level entries that all create
+                   something. Only in a real folder: all three commands write
+                   into the folder on screen, and RefusedVirtualDestination turns
+                   every other listing away. It was hidden in the bin alone, and
+                   refused in This PC, Recent, a search and both scans. -->
+              <MenuItem Header="_New"
+                        IsVisible="{Binding ActiveTab.IsRealFolder}">
+                <MenuItem Header="New _folder" Command="{Binding ActiveTab.NewFolderCommand}"
+                          in:KeyHint.Command="NewFolder"/>
+                <MenuItem x:Name="NewFileMenu" Header="New f_ile" ItemsSource="{Binding ActiveTab.NewFileKinds}">
+                  <MenuItem.ItemTemplate>
+                    <DataTemplate x:DataType="fs:NewFileKind">
+                      <TextBlock Text="{Binding Label}"/>
+                    </DataTemplate>
+                  </MenuItem.ItemTemplate>
+                  <MenuItem.Styles>
+                    <Style Selector="MenuItem#NewFileMenu > MenuItem" x:DataType="fs:NewFileKind">
+                      <Setter Property="Command"
+                              Value="{Binding $parent[Window].((vm:ShellViewModel)DataContext).ActiveTab.NewFileCommand}"/>
+                      <Setter Property="CommandParameter" Value="{Binding}"/>
+                    </Style>
+                  </MenuItem.Styles>
+                </MenuItem>
+                <MenuItem x:Name="NewTemplateMenu" Header="New from _template"
+                          ItemsSource="{Binding ActiveTab.Templates}"
+                          IsVisible="{Binding ActiveTab.HasTemplates}">
+                  <MenuItem.ItemTemplate>
+                    <DataTemplate x:DataType="fs:FileTemplate">
+                      <TextBlock Text="{Binding Name}"/>
+                    </DataTemplate>
+                  </MenuItem.ItemTemplate>
+                  <MenuItem.Styles>
+                    <Style Selector="MenuItem#NewTemplateMenu > MenuItem" x:DataType="fs:FileTemplate">
+                      <Setter Property="Command"
+                              Value="{Binding $parent[Window].((vm:ShellViewModel)DataContext).ActiveTab.NewFromTemplateCommand}"/>
+                      <Setter Property="CommandParameter" Value="{Binding}"/>
+                    </Style>
+                  </MenuItem.Styles>
+                </MenuItem>
               </MenuItem>
+              <!-- Refresh had F5 and nowhere to be found. Mostly covered by the
+                   folder watcher — but a listing that has gone stale is exactly
+                   when somebody goes looking for it in a menu. -->
+              <MenuItem Header="Re_fresh"
+                        Command="{Binding ActiveTab.RefreshCommand}"
+                        in:KeyHint.Command="Refresh"/>
+              <Separator/>
               <!-- **Two entries for one action, and only one is ever shown.**
                    Most machines have a single terminal, where a submenu holding
                    one row is a hover that buys nothing; a machine with Warp and
                    Windows Terminal and a Git Bash needs to be asked which. F4
                    opens the preferred one either way, so the direct route never
-                   depends on which shape is showing. -->
-              <MenuItem Header="Open terminal here"
-                                      Command="{Binding ActiveTab.OpenTerminalHereCommand}"
-                                      in:KeyHint.Command="OpenTerminalHere"
-                                      IsVisible="{Binding ActiveTab.ShowOneTerminal}"/>
-              <MenuItem x:Name="TerminalMenu" Header="Open terminal here"
-                                      ItemsSource="{Binding ActiveTab.Terminals}"
-                                      IsVisible="{Binding ActiveTab.ShowTerminalChoice}">
-                              <MenuItem.ItemTemplate>
-                                <DataTemplate x:DataType="fs:TerminalOption">
-                                  <TextBlock Text="{Binding Name}"/>
-                                </DataTemplate>
-                              </MenuItem.ItemTemplate>
-                              <MenuItem.Styles>
-                                <Style Selector="MenuItem#TerminalMenu > MenuItem" x:DataType="fs:TerminalOption">
-                                  <Setter Property="Command"
-                                          Value="{Binding $parent[Window].((vm:ShellViewModel)DataContext).ActiveTab.OpenTerminalInCommand}"/>
-                                  <Setter Property="CommandParameter" Value="{Binding}"/>
-                                </Style>
-                              </MenuItem.Styles>
-                            </MenuItem>
-              <!-- **"More" is gone, not renamed.** It sat one row above the
-                   hosted "More options" and the pair read as the same drawer
-                   twice; nobody could say which held what. Its residents now
-                   stand here under their own names, each pair collapsing to a
-                   single visible row so the menu did not grow back. -->
-              <MenuItem x:Name="ScriptsMenu" Header="Scripts" ItemsSource="{Binding ActiveTab.Scripts}"
-                                      IsVisible="{Binding ActiveTab.HasScripts}">
-                              <MenuItem.ItemTemplate>
-                                <DataTemplate x:DataType="core:ScriptCommand">
-                                  <TextBlock Text="{Binding Name}"/>
-                                </DataTemplate>
-                              </MenuItem.ItemTemplate>
-                              <MenuItem.Styles>
-                                <Style Selector="MenuItem#ScriptsMenu > MenuItem" x:DataType="core:ScriptCommand">
-                                  <Setter Property="Command"
-                                          Value="{Binding $parent[Window].((vm:ShellViewModel)DataContext).ActiveTab.RunScriptCommand}"/>
-                                  <Setter Property="CommandParameter" Value="{Binding}"/>
-                                </Style>
-                              </MenuItem.Styles>
-                            </MenuItem>
-              <!-- The other half of the Scripts pair: with no scripts installed
-                   the submenu above is hidden and this row stands in its place,
-                   saying what the feature is for and opening the folder that
-                   starts it. No ellipsis: in this window that mark promises the
-                   entry asks before it acts, and this one opens the folder
-                   there and then. -->
-              <MenuItem Header="Add your own scripts"
-                                      Command="{Binding ActiveTab.OpenScriptsFolderCommand}"
-                                      IsVisible="{Binding !ActiveTab.HasScripts}"/>
-              <!-- Two commands, one visible row: pin the selected folder when
-                   there is one, the folder you are looking at otherwise. Both
-                   showing at once — the old behaviour — put "Add selection"
-                   over "Add this folder" and made the reader work out which
-                   acted on what. -->
-              <MenuItem Header="Add to places"
-                                      Command="{Binding $parent[Window].((vm:ShellViewModel)DataContext).AddSelectionToPlacesCommand}"
-                                      IsVisible="{Binding $parent[Window].((vm:ShellViewModel)DataContext).ShowAddSelectionToPlaces}"/>
-              <MenuItem Header="Add this folder to places"
-                                      Command="{Binding $parent[Window].((vm:ShellViewModel)DataContext).PinCurrentCommand}"
-                                      in:KeyHint.Command="PinCurrent"
-                                      IsVisible="{Binding $parent[Window].((vm:ShellViewModel)DataContext).ShowAddCurrentToPlaces}"/>
+                   depends on which shape is showing.
+
+                   Two different access keys for the two, because the rule is
+                   one key per row in a menu and both rows are in this one; a
+                   person only ever sees one of them. -->
+              <MenuItem Header="Open _terminal here"
+                        Command="{Binding ActiveTab.OpenTerminalHereCommand}"
+                        in:KeyHint.Command="OpenTerminalHere"
+                        IsVisible="{Binding ActiveTab.ShowOneTerminal}"/>
+              <MenuItem x:Name="TerminalMenu" Header="Open t_erminal here"
+                        ItemsSource="{Binding ActiveTab.Terminals}"
+                        IsVisible="{Binding ActiveTab.ShowTerminalChoice}">
+                <MenuItem.ItemTemplate>
+                  <DataTemplate x:DataType="fs:TerminalOption">
+                    <TextBlock Text="{Binding Name}"/>
+                  </DataTemplate>
+                </MenuItem.ItemTemplate>
+                <MenuItem.Styles>
+                  <Style Selector="MenuItem#TerminalMenu > MenuItem" x:DataType="fs:TerminalOption">
+                    <Setter Property="Command"
+                            Value="{Binding $parent[Window].((vm:ShellViewModel)DataContext).ActiveTab.OpenTerminalInCommand}"/>
+                    <Setter Property="CommandParameter" Value="{Binding}"/>
+                  </Style>
+                </MenuItem.Styles>
+              </MenuItem>
+              <!-- **Shift+right-click, the same gesture Explorer uses.**
+                   Elevating is how somebody gets past a permission that was set
+                   against them deliberately, so it belongs where it can be
+                   reached and not where it can be stumbled into. Only the admin
+                   TERMINAL keeps the Shift gate — it is an extended verb by
+                   Explorer's own convention; Run as administrator is on the
+                   item menu, ungated, where Explorer keeps it.
+
+                   Beside the ordinary terminal row now rather than behind a
+                   rule of its own at the end of the menu: it is the same verb
+                   with a privilege, and a Shift+right-click is looking for it.
+
+                   Vaktari never holds administrator rights itself: this asks
+                   the SYSTEM to start a new process elevated, and the system
+                   shows its own consent dialog and makes the decision. -->
+              <MenuItem Header="Open a_dmin terminal here"
+                        Command="{Binding ActiveTab.OpenAdminTerminalHereCommand}"
+                        IsVisible="{Binding ActiveTab.ShowAdminEntries}"/>
+              <!-- **The rare ways of looking at the folder, behind one hover.**
+                   Space usage and duplicate files were two top-level rows on
+                   every right-click, and comparing the sides was a submenu of
+                   its own; all three are things somebody does to a folder a few
+                   times a month. Named in the house spelling, which is British
+                   throughout the README and the changelog.
+
+                   Shown where one of them applies: a real folder for the two
+                   scans — a search, the bin, This PC and Recent hold rows from
+                   anywhere, so there is no one folder to measure — and a split
+                   for the comparison, whichever listing the half is showing. -->
+              <MenuItem Header="Anal_yse"
+                        IsVisible="{Binding $parent[Window].((vm:ShellViewModel)DataContext).ShowAnalyseInMenu}">
+                <MenuItem Header="Show space _usage"
+                          Command="{Binding ActiveTab.ShowSpaceUsageCommand}"
+                          IsVisible="{Binding ActiveTab.IsRealFolder}"
+                          in:KeyHint.Command="ShowSpaceUsage"/>
+                <MenuItem Header="Show _duplicate files"
+                          Command="{Binding ActiveTab.ShowDuplicatesCommand}"
+                          IsVisible="{Binding ActiveTab.IsRealFolder}"
+                          in:KeyHint.Command="ShowDuplicates"/>
+                <Separator/>
+                <!-- **Comparing had no pointer route on the left half of a
+                     split.** Its switch and the copy it offers lived in the
+                     view-options flyout, whose button only the right half
+                     shows, and pressing that button makes the right half
+                     active: copying across could only ever go right to left.
+                     This menu belongs to the listing, and each half has its
+                     own. Flat inside this submenu rather than a submenu of
+                     their own, which made them two hovers away. -->
+                <MenuItem Header="_Compare the two sides" ToggleType="CheckBox"
+                          IsChecked="{Binding $parent[Window].((vm:ShellViewModel)DataContext).IsComparing, Mode=OneWay}"
+                          Command="{Binding $parent[Window].((vm:ShellViewModel)DataContext).ToggleCompareCommand}"
+                          IsVisible="{Binding $parent[Window].((vm:ShellViewModel)DataContext).IsSplit}"
+                          in:KeyHint.Command="CompareSides"/>
+                <!-- The two that act on a comparison want one to be possible:
+                     both sides folders. See CanActAcrossSides, which says why
+                     the switch above them keeps the split's gate alone. -->
+                <MenuItem Header="_Select what differs from the other side"
+                          Command="{Binding ActiveTab.SelectDifferencesCommand}"
+                          IsVisible="{Binding $parent[Window].((vm:ShellViewModel)DataContext).CanActAcrossSides}"
+                          in:KeyHint.Command="SelectDifferences"/>
+                <MenuItem Header="C_opy what is newer or missing here to the other side"
+                          Command="{Binding $parent[Window].((vm:ShellViewModel)DataContext).RequestCopyAcrossCommand}"
+                          IsVisible="{Binding $parent[Window].((vm:ShellViewModel)DataContext).CanActAcrossSides}"
+                          in:KeyHint.Command="CopyAcross"/>
+              </MenuItem>
+              <!-- **Scripts run here with nothing selected, and the folder they
+                   live in is the last row.** The item menu's Scripts hands a
+                   script the selection; this one hands it none, because a
+                   right-click on empty space keeps the selection and a script
+                   run from the folder's menu must not quietly act on files.
+
+                   **Shown whenever there is a folder, with or without scripts
+                   in it.** There used to be a standing row, "Add your own
+                   scripts", on both menus whenever the submenu was empty; the
+                   submenu now always carries "Open scripts folder" as its last
+                   row, which is the same invitation one hover in and does not
+                   cost either menu a row. RunScriptHere takes both kinds of row
+                   — see ScriptRows — and the style is anchored on the name for
+                   the reason written on OpenWithMenu. -->
+              <MenuItem x:Name="FolderScriptsMenu" Header="_Scripts"
+                        ItemsSource="{Binding ActiveTab.ScriptRows}"
+                        IsVisible="{Binding ActiveTab.CanRunScriptsHere}">
+                <MenuItem.DataTemplates>
+                  <DataTemplate DataType="core:ScriptCommand">
+                    <TextBlock Text="{Binding Name}"/>
+                  </DataTemplate>
+                  <DataTemplate DataType="vm:ScriptsFolderRow">
+                    <TextBlock Text="{Binding Label}"/>
+                  </DataTemplate>
+                </MenuItem.DataTemplates>
+                <MenuItem.Styles>
+                  <Style Selector="MenuItem#FolderScriptsMenu > MenuItem" x:DataType="x:Object">
+                    <Setter Property="Command"
+                            Value="{Binding $parent[Window].((vm:ShellViewModel)DataContext).ActiveTab.RunScriptHereCommand}"/>
+                    <Setter Property="CommandParameter" Value="{Binding}"/>
+                  </Style>
+                </MenuItem.Styles>
+              </MenuItem>
+              <!-- The folder on screen, whatever is selected: the selected
+                   folder's own row is on the item menu. -->
+              <MenuItem Header="Add this fo_lder to places"
+                        Command="{Binding $parent[Window].((vm:ShellViewModel)DataContext).PinCurrentCommand}"
+                        in:KeyHint.Command="PinCurrent"
+                        IsVisible="{Binding $parent[Window].((vm:ShellViewModel)DataContext).ShowAddCurrentToPlaces}"/>
               <!-- The same slot in a search listing, under the words that are
                    true there: a search is not a folder, and the row that
                    saves it must not call it one. The same command — it knows
                    what it is standing in. -->
-              <MenuItem Header="Save this search to places"
-                                      Command="{Binding $parent[Window].((vm:ShellViewModel)DataContext).PinCurrentCommand}"
-                                      in:KeyHint.Command="PinCurrent"
-                                      IsVisible="{Binding $parent[Window].((vm:ShellViewModel)DataContext).ShowSaveSearchToPlaces}"/>
-              <!-- Gated on the one entry it introduces. Ungated it drew a rule
-                   with nothing under it in every listing that is not the recent
-                   one — which is most of them, including every ordinary folder —
-                   and Avalonia does not collapse the double rule that made with
-                   the one below. -->
-              <!-- **Shift+right-click, the same gesture Explorer uses.**
-                   Elevating is how somebody gets past a permission that was set
-                   against them deliberately, so it belongs where it can be
-                   reached and not where it can be stumbled into.
+              <MenuItem Header="Save th_is search to places"
+                        Command="{Binding $parent[Window].((vm:ShellViewModel)DataContext).PinCurrentCommand}"
+                        in:KeyHint.Command="PinCurrent"
+                        IsVisible="{Binding $parent[Window].((vm:ShellViewModel)DataContext).ShowSaveSearchToPlaces}"/>
+              <!-- **Sharing the folder you are in.** It used to be reached by
+                   right-clicking a FILE, whose Share rows shared the folder
+                   around it — an action about the folder, on the menu of
+                   something inside it. The item menu's Share is about the
+                   selected item now, and this one about the folder. Which rows
+                   show is decided in PrepareListingMenu, for the reason the
+                   item menu's Share gives: the Proton half is a question about
+                   one path that a binding cannot ask. -->
+              <MenuItem x:Name="FolderShareMenu" Header="S_hare" IsVisible="False">
+                <MenuItem x:Name="FolderProtonShareItem" Header="_Share via Proton Drive"
+                          IsVisible="False" Click="OnFolderProtonShareClicked"/>
+                <MenuItem x:Name="FolderProtonCopyLinkItem" Header="_Copy Proton Drive link"
+                          IsVisible="False" Click="OnFolderProtonCopyLinkClicked"/>
+                <MenuItem x:Name="FolderProtonUnshareItem" Header="S_top sharing via Proton Drive"
+                          IsVisible="False" Click="OnFolderProtonUnshareClicked"/>
+                <MenuItem x:Name="FolderProtonInstallingItem" Header="Setting up Proton Drive sharing…"
+                          IsEnabled="False" IsVisible="False"/>
+                <Separator/>
+                <MenuItem x:Name="FolderShareRow" IsVisible="False"
+                          Command="{Binding $parent[Window].((vm:ShellViewModel)DataContext).ShareCurrentFolderCommand}">
+                  <MenuItem.Header>
+                    <TextBlock>
+                      <Run Text="Share"/><Run Text=" "/><Run Text="{Binding ActiveTab.CurrentFolderLabel}"/><Run Text=" over network"/>
+                    </TextBlock>
+                  </MenuItem.Header>
+                </MenuItem>
+                <MenuItem x:Name="FolderShareWritableRow" IsVisible="False"
+                          Command="{Binding $parent[Window].((vm:ShellViewModel)DataContext).ShareCurrentFolderWritableCommand}">
+                  <MenuItem.Header>
+                    <TextBlock>
+                      <Run Text="Share"/><Run Text=" "/><Run Text="{Binding ActiveTab.CurrentFolderLabel}"/><Run Text=" over network, allow uploads"/>
+                    </TextBlock>
+                  </MenuItem.Header>
+                </MenuItem>
+                <MenuItem x:Name="FolderShareInstallRow" Header="_Install copyparty to share folders"
+                          IsVisible="False"
+                          Command="{Binding $parent[Window].((vm:ShellViewModel)DataContext).InstallSharingCommand}"/>
+                <MenuItem x:Name="FolderShareInstallingRow" Header="Installing copyparty…" IsEnabled="False"
+                          IsVisible="False"/>
+              </MenuItem>
+              <Separator/>
+              <!-- The folder on screen, never the selection — ShowFolderProperties
+                   says why. No key printed: Alt+Enter describes the selection
+                   when there is one, so printing it here would promise the
+                   folder and deliver the files. Only in a real folder; This
+                   PC, a search and the rest have no folder to describe. -->
+              <MenuItem Header="P_roperties"
+                        Command="{Binding $parent[Window].((vm:ShellViewModel)DataContext).ShowFolderPropertiesCommand}"
+                        IsVisible="{Binding ActiveTab.IsRealFolder}"/>
+              <Separator/>
+              <!-- The machine's own menu for the FOLDER — what Explorer shows on
+                   a right-click in empty space — hosted exactly as the item
+                   menu's is, and last for the same reason. Its own name so its
+                   SubmenuOpened can ask for the background menu whatever is
+                   selected: see OnShellMenuOpening. Only in a real folder, which
+                   is the only thing the shell's background menu can be built
+                   for — see HasBackgroundShellMenu. -->
+              <MenuItem x:Name="BackgroundShellMenu" Header="_Windows menu"
+                        IsVisible="{Binding ActiveTab.HasBackgroundShellMenu}"
+                        ItemsSource="{Binding ActiveTab.ShellMenuItems}"
+                        SubmenuOpened="OnShellMenuOpening">
+                <MenuItem.ItemTemplate>
+                  <DataTemplate x:DataType="fs:ShellMenuEntry">
+                    <TextBlock Text="{Binding Label}"/>
+                  </DataTemplate>
+                </MenuItem.ItemTemplate>
+                <MenuItem.Styles>
+                  <!-- A descendant selector, anchored on the name, for the
+                       reason the item menu's own copy of this style gives. -->
+                  <Style Selector="MenuItem#BackgroundShellMenu MenuItem" x:DataType="fs:ShellMenuEntry">
+                    <Setter Property="ItemsSource" Value="{Binding Items}"/>
+                    <Setter Property="IsEnabled" Value="{Binding IsEnabled}"/>
+                    <Setter Property="Command"
+                            Value="{Binding $parent[Window].((vm:ShellViewModel)DataContext).ActiveTab.InvokeShellEntryCommand}"/>
+                    <Setter Property="CommandParameter" Value="{Binding}"/>
+                  </Style>
+                </MenuItem.Styles>
+              </MenuItem>
+            </ContextMenu>
+          </Panel.ContextMenu>
 
-                   Vaktari never holds administrator rights itself: these ask
-                   the SYSTEM to start a new process elevated, and the system
-                   shows its own consent dialog and makes the decision. -->
-              <!-- Only the admin TERMINAL keeps the Shift gate now — it is an
-                   extended verb by Explorer's own convention. Run as
-                   administrator moved to the top of the menu, ungated, where
-                   Explorer keeps it. -->
-              <Separator IsVisible="{Binding ActiveTab.ShowAdminEntries}"/>
-              <MenuItem Header="Open admin terminal here"
-                                      Command="{Binding ActiveTab.OpenAdminTerminalHereCommand}"
-                                      IsVisible="{Binding ActiveTab.ShowAdminEntries}"/>
-              <!-- **The one thing the popup could do that the listing must
-                   not lose, and the thing Recent never had.** Choosing a
+        <ItemsControl ItemsSource="{Binding Tabs}" Background="{DynamicResource ViewBackground}">
+
+          <ItemsControl.ContextMenu>
+            <!-- **The menu for what was clicked.** Opened by a right-click on
+                 a row or a tile — anywhere on a full-width details row counts,
+                 the blank half included, because the row is what is there — or
+                 by the Menu key and Shift+F10 with something selected. A
+                 right-click on a row that is not selected selects it first
+                 (Avalonia's own ListBox does that; RightClickSelectionTests
+                 keeps it honest), so every row here has a selection to act on.
+
+                 Hiding rather than disabling, to match the Show*InMenu
+                 preferences. A row whose command would refuse where the menu
+                 opened — in the bin, in This PC, in a listing that is not a
+                 folder — is not drawn: each gate says which refusal it
+                 answers. -->
+            <ContextMenu x:Name="ItemMenu" x:DataType="vm:PaneGroupViewModel"
+                         Opening="OnItemMenuOpening"
+                         Opened="OnListingMenuOpened"
+                         Closed="OnListingMenuClosed">
+              <!-- **Every row here that has a key binding prints it.** Ten did
+                   and none said so, which left the keyboard route discoverable
+                   only by reading the source — and an entry nobody knows is
+                   reachable by key is the first one argued as redundant.
+
+                   in:KeyHint.Command rather than a literal gesture: the keymap
+                   prints the key the person has actually given the command,
+                   and it is display-only, so it cannot collide with the
+                   code-behind that owns Enter, Alt+Enter and Delete.
+                   MenuItem.HotKey is the property that WOULD register a second
+                   handler — deliberately not used. The one literal gesture left
+                   is Enter on Open, which is the grammar of every list and no
+                   command's key.
+
+                   Only rows with a real binding get one: a printed gesture that
+                   does nothing is worse than none, which is why "Open with",
+                   "Copy to", "Move to", "Scripts" and the share entry —
+                   parents with no command of their own — stay bare. -->
+              <!-- CanActOnSelection, not HasSelection: a bin row names where a
+                   file used to be, and opening that path opens whatever is
+                   there now, if anything. -->
+              <MenuItem Header="_Open"
+                        Command="{Binding ActiveTab.OpenSelectedCommand}"
+                        InputGesture="Enter"
+                        IsVisible="{Binding ActiveTab.CanActOnSelection}"/>
+              <!-- **Named, and the style anchored to that name, because a bare
+                   `MenuItem > MenuItem` selector matches the MenuItem it is
+                   DECLARED ON.** A style applies to its host as well as to the
+                   host's descendants, so as soon as one of these moved inside
+                   another MenuItem — which consolidating the menu did to New
+                   file, New from template and Scripts — the host matched its
+                   own rule and took a Command expecting one of its own items,
+                   with a CommandParameter that is the pane group. Avalonia
+                   calls CanExecute on every child when a submenu opens, so
+                   clicking "New" ended the process on an ArgumentException.
+
+                   Anchoring on the name excludes the host, whose parent is a
+                   different element, and still reaches the generated item
+                   containers. Done to every one rather than the ones that are
+                   nested: the others are safe only because of where they
+                   happen to sit today, and where they sit is what changes.
+
+                   CanOpenWith rather than HasOpenWithOptions: in the bin the
+                   list fills and OpenWithApp refuses. -->
+              <MenuItem x:Name="OpenWithMenu" Header="Open _with"
+                        IsVisible="{Binding ActiveTab.CanOpenWith}"
+                        ItemsSource="{Binding ActiveTab.OpenWithOptions}">
+                <MenuItem.ItemTemplate>
+                  <DataTemplate x:DataType="fs:LaunchOption">
+                    <TextBlock Text="{Binding Name}"/>
+                  </DataTemplate>
+                </MenuItem.ItemTemplate>
+                <MenuItem.Styles>
+                  <Style Selector="MenuItem#OpenWithMenu > MenuItem" x:DataType="fs:LaunchOption">
+                    <Setter Property="Command"
+                            Value="{Binding $parent[Window].((vm:ShellViewModel)DataContext).ActiveTab.OpenWithAppCommand}"/>
+                    <Setter Property="CommandParameter" Value="{Binding}"/>
+                  </Style>
+                </MenuItem.Styles>
+              </MenuItem>
+              <!-- **The critical verbs live at the top, unburied.** Run as
+                   administrator shows for any executable on a PLAIN
+                   right-click — Explorer never hid it behind Shift, and copying
+                   that gate here meant an ordinary click on an .exe offered no
+                   elevation anywhere visible. Open in new tab earns the same
+                   promotion: it was living in "More" while being one of the
+                   most-used folder actions a file manager has. -->
+              <!-- **The only row in this menu that can start a program without
+                   asking for root.** Windows needs none — its shell runs an
+                   executable that is double-clicked — but the desktop's opener
+                   never runs anything, so on Linux "Run as administrator" was
+                   the whole of it, and a script you had just written could be
+                   elevated or nothing. Above that row for the same reason it
+                   sits above everything else: the unprivileged verb is the one
+                   people want.
+
+                   No question behind this one, unlike the double-click: the
+                   row says the word, so clicking it is the answer. GNOME's
+                   "Run as a program" behaves the same way. -->
+              <MenuItem Header="R_un"
+                        Command="{Binding ActiveTab.RunSelectionCommand}"
+                        IsVisible="{Binding ActiveTab.CanRunSelection}"/>
+              <MenuItem Header="Run as _administrator"
+                        Command="{Binding ActiveTab.RunAsAdministratorCommand}"
+                        IsVisible="{Binding ActiveTab.CanRunSelectionAsAdministrator}"/>
+              <!-- **A verb of its own, and Open is left alone.** Explorer
+                   mounts an .iso on double-click; doing the same here would
+                   change what Open means for a file type, silently, for
+                   everyone who had it opening in an archive tool. Mount says
+                   what it does and is one click away.
+
+                   The two entries are mutually exclusive — an image is either
+                   attached or it is not — so this is one row that changes its
+                   word, not two rows to choose between. -->
+              <MenuItem Header="_Mount"
+                        Command="{Binding ActiveTab.MountImageCommand}"
+                        IsVisible="{Binding ActiveTab.CanMountSelection}"/>
+              <MenuItem Header="U_nmount"
+                        Command="{Binding ActiveTab.UnmountImageCommand}"
+                        IsVisible="{Binding ActiveTab.CanUnmountSelection}"/>
+              <MenuItem Header="Open in new _tab"
+                        Command="{Binding $parent[Window].((vm:ShellViewModel)DataContext).OpenInNewTabCommand}"
+                        CommandParameter="{Binding ActiveTab.SelectedEntry}"
+                        IsVisible="{Binding $parent[Window].((vm:ShellViewModel)DataContext).ShowOpenInNewTabInMenu}"/>
+              <!-- Its own gate, not the row above's: the context-menu settings
+                   page carries one flag per entry, and turning off "Open in new
+                   tab" must not silently take this away too. -->
+              <MenuItem Header="Open in new w_indow"
+                        Command="{Binding $parent[Window].((vm:ShellViewModel)DataContext).OpenInNewWindowCommand}"
+                        CommandParameter="{Binding ActiveTab.SelectedEntry}"
+                        IsVisible="{Binding $parent[Window].((vm:ShellViewModel)DataContext).ShowOpenInNewWindowInMenu}"/>
+              <!-- **The one thing the search popup could do that the listing
+                   must not lose, and the thing Recent never had.** Choosing a
                    result WAS this: you were taken to its folder with the row
-                   lit. Acting on results in place is the better default, but a
-                   search and both Recent listings draw rows from everywhere at
-                   once, and all of them show the parent-path column to say
-                   which of four `config.toml` a row is — only the search could
-                   then take you there, so Recent named a place and could not go
-                   to it.
+                   lit. A search and both Recent listings draw rows from
+                   everywhere at once, and all of them show the parent-path
+                   column to say which of four `config.toml` a row is — only the
+                   search could then take you there, so Recent named a place and
+                   could not go to it.
 
-                   One rule for the pair: CanGoToLocation is true wherever
-                   Forget is, so the rule that used to sit between them was
-                   deleted rather than left to draw a stray line INSIDE a group
-                   of two. -->
-              <Separator IsVisible="{Binding ActiveTab.CanGoToLocation}"/>
-              <MenuItem Header="Open file location"
-                                      IsVisible="{Binding ActiveTab.CanGoToLocation}"
-                                      Command="{Binding ActiveTab.GoToLocationCommand}"/>
-              <MenuItem Header="Forget (keeps the file)"
-                                      IsVisible="{Binding ActiveTab.IsRecentListing}"
-                                      Command="{Binding ActiveTab.ForgetRecentCommand}"/>
-              <!-- Restore and the empty-bin entry are deliberately absent. The
-                   trash listing docks both as buttons above the column header on
-                   the same IsTrashListing gate these rows carried, so the menu
-                   could only ever repeat a pair of controls already on screen. -->
-              <!-- **Ungated, this rule drew a second line against the one
-                   below it in This PC and in every search listing.** The two
-                   gates disagree there: CanShowProperties wants a selection or
-                   a real folder, HasShellMenu excludes only the bin and Recent,
-                   so with nothing picked in This PC the row between the rules
-                   was hidden and the rules met. Measured on a headless window
-                   at "vaktari:computer": two adjacent Separators reporting
-                   IsVisible true. Before the hosted row moved down here the
-                   same ungated rule was the LAST visible thing in the bin's
-                   menu — a line under the final row — so it carries the gate of
-                   the row it introduces now, the way every other rule in this
-                   menu does. -->
-              <Separator IsVisible="{Binding $parent[Window].((vm:ShellViewModel)DataContext).CanShowProperties}"/>
+                   **Up here beside Open, rather than near the bottom of the
+                   menu**, because both are about where the item IS: going to it
+                   and forgetting it are the two other answers to "open this",
+                   and they sat two groups below Properties' neighbours. -->
+              <MenuItem Header="Open _file location"
+                        IsVisible="{Binding ActiveTab.CanGoToLocation}"
+                        Command="{Binding ActiveTab.GoToLocationCommand}"/>
+              <MenuItem Header="For_get (keeps the file)"
+                        IsVisible="{Binding ActiveTab.IsRecentListing}"
+                        Command="{Binding ActiveTab.ForgetRecentCommand}"/>
+              <!-- No rule here binds IsVisible: OnListingMenuOpened decides every
+                   rule in both listing menus from what is drawn. The comment on
+                   the background menu's first rule gives the reason. -->
+              <Separator/>
+              <!-- CanMoveSelection, not CanActOnSelection: a This PC row is a
+                   volume, and a volume is not cut. See CanMoveSelection. -->
+              <MenuItem Header="_Cut" Command="{Binding ActiveTab.CutSelectionToClipboardCommand}"
+                        in:KeyHint.Command="Cut"
+                        IsVisible="{Binding ActiveTab.CanMoveSelection}"/>
+              <!-- **Not in the bin**, which it used to be: the row asked
+                   HasSelection, and WriteClipboardAsync refuses nothing — so it
+                   put the path a binned file USED to have on the clipboard, and
+                   the next Paste copied whatever lives there now, or failed on
+                   a name that is gone. A drive in This PC may be copied, as
+                   Explorer allows. -->
+              <MenuItem Header="Cop_y" Command="{Binding ActiveTab.CopySelectionToClipboardCommand}"
+                        in:KeyHint.Command="Copy"
+                        IsVisible="{Binding ActiveTab.CanActOnSelection}"/>
+              <!-- **Back at the top level, where they were before the menu was
+                   consolidated.** Pushing these behind "More" made the menu
+                   tidy and made the things people reach for a hover further
+                   away, which is the wrong trade for a menu opened dozens of
+                   times an hour.
+
+                   "Copy as path" rather than "Copy location": it is the same
+                   action Windows offers under that name, on the same gesture,
+                   and matching the vernacular costs nothing. -->
+              <MenuItem Header="Copy as pat_h"
+                        Command="{Binding $parent[Window].((vm:ShellViewModel)DataContext).CopyLocationCommand}"
+                        in:KeyHint.Command="CopyLocation"
+                        IsVisible="{Binding $parent[Window].((vm:ShellViewModel)DataContext).ShowCopyLocationInMenu}"/>
+              <MenuItem x:Name="CopyToMenu" Header="Co_py to"
+                        IsVisible="{Binding $parent[Window].((vm:ShellViewModel)DataContext).ShowCopyToInMenu}"
+                        ItemsSource="{Binding $parent[Window].((vm:ShellViewModel)DataContext).TransferTargets}">
+                <MenuItem.ItemTemplate>
+                  <DataTemplate x:DataType="vm:PlaceItemViewModel">
+                    <TextBlock Text="{Binding Label}"/>
+                  </DataTemplate>
+                </MenuItem.ItemTemplate>
+                <MenuItem.Styles>
+                  <Style Selector="MenuItem#CopyToMenu > MenuItem" x:DataType="vm:PlaceItemViewModel">
+                    <Setter Property="Command"
+                            Value="{Binding $parent[Window].((vm:ShellViewModel)DataContext).CopySelectionToCommand}"/>
+                    <Setter Property="CommandParameter" Value="{Binding}"/>
+                  </Style>
+                </MenuItem.Styles>
+              </MenuItem>
+              <MenuItem x:Name="MoveToMenu" Header="Mo_ve to"
+                        IsVisible="{Binding $parent[Window].((vm:ShellViewModel)DataContext).ShowMoveToInMenu}"
+                        ItemsSource="{Binding $parent[Window].((vm:ShellViewModel)DataContext).TransferTargets}">
+                <MenuItem.ItemTemplate>
+                  <DataTemplate x:DataType="vm:PlaceItemViewModel">
+                    <TextBlock Text="{Binding Label}"/>
+                  </DataTemplate>
+                </MenuItem.ItemTemplate>
+                <MenuItem.Styles>
+                  <Style Selector="MenuItem#MoveToMenu > MenuItem" x:DataType="vm:PlaceItemViewModel">
+                    <Setter Property="Command"
+                            Value="{Binding $parent[Window].((vm:ShellViewModel)DataContext).MoveSelectionToCommand}"/>
+                    <Setter Property="CommandParameter" Value="{Binding}"/>
+                  </Style>
+                </MenuItem.Styles>
+              </MenuItem>
+              <Separator/>
+              <MenuItem Header="_Rename" Command="{Binding ActiveTab.BeginRenameCommand}"
+                        in:KeyHint.Command="Rename"
+                        IsVisible="{Binding ActiveTab.CanMoveSelection}"/>
+              <MenuItem Header="Rename in _bulk…"
+                        Command="{Binding $parent[Window].((vm:ShellViewModel)DataContext).BatchRenameCommand}"
+                        in:KeyHint.Command="BatchRename"
+                        IsVisible="{Binding ActiveTab.CanRenameInBulk}"/>
+              <MenuItem Header="{Binding $parent[Window].((vm:ShellViewModel)DataContext).BinMoveLabel}"
+                        Command="{Binding $parent[Window].((vm:ShellViewModel)DataContext).TrashSelectionCommand}"
+                        in:KeyHint.Command="Trash"
+                        IsVisible="{Binding ActiveTab.CanMoveSelection}"/>
+              <!-- **In the bin there was one way out for one file, and it was
+                   putting it back.** Restore and Empty were the whole menu, so
+                   removing a single item meant emptying the lot — and
+                   Shift+Delete showed the permanent-delete prompt, took the
+                   answer, and then refused. Both references delete just what
+                   you picked.
+
+                   Restore and the empty-bin entry are deliberately absent. The
+                   trash listing docks both as buttons above the column header,
+                   so the menu could only ever repeat a pair of controls already
+                   on screen. -->
+              <MenuItem Header="_Delete permanently"
+                        Command="{Binding ActiveTab.PurgeFromTrashCommand}"
+                        in:KeyHint.Command="DeletePermanently"
+                        IsVisible="{Binding ActiveTab.CanPurgeFromBin}"/>
+              <Separator/>
+              <!-- **The two archive verbs, at the top level.** There was no
+                   compress and no extract anywhere in this window or in the
+                   shell view model, and the only ZipArchive in src was the
+                   icon-theme installer's — so every route to a zip went through
+                   the hosted "Windows menu" below, whatever the machine happened
+                   to have registered there.
+
+                   Extract needs exactly one archive selected in a real folder,
+                   and that is a subset of "something selected in a real
+                   folder", so wherever Extract shows Compress does too.
+
+                   No key printed on either: neither has a key binding, and a
+                   printed shortcut that does nothing is worse than none — see
+                   Every_shortcut_shown_in_the_menu_is_really_bound. -->
+              <MenuItem Header="Compress to _ZIP"
+                        Command="{Binding ActiveTab.CompressSelectionCommand}"
+                        IsVisible="{Binding ActiveTab.CanCompressSelection}"/>
+              <MenuItem Header="E_xtract all"
+                        Command="{Binding ActiveTab.ExtractSelectionCommand}"
+                        IsVisible="{Binding ActiveTab.CanExtractSelection}"/>
+              <!-- ShowDuplicateInMenu wants a real folder now: the copy is
+                   written into the folder on screen, and every other listing
+                   refuses it. -->
+              <MenuItem Header="Dup_licate" Command="{Binding ActiveTab.DuplicateSelectedCommand}"
+                        IsVisible="{Binding $parent[Window].((vm:ShellViewModel)DataContext).ShowDuplicateInMenu}"/>
+              <!-- **The one verb whose only route was a gesture.** Both
+                   platforms implement IShortcutMaker and nothing but a
+                   right-button drag ever called it, so a shortcut could only be
+                   made by dragging an item somewhere else with the other mouse
+                   button held down — and never beside the thing it points at.
+
+                   Beside Duplicate because it is the same shape of action: it
+                   makes one new item in the folder on screen, per selected row.
+
+                   On Windows this JOINS the desktop's own "Create shortcut",
+                   which stays where it is inside "Windows menu" below. The two
+                   are not the same row twice: this one lands the shortcut in
+                   the folder on screen and the shell's lands it beside the
+                   item, this one is undoable with Ctrl+Z and the shell's is
+                   invisible to the undo stack, and this one needs a real
+                   folder while the shell menu is offered in a search listing
+                   and in This PC as well — where it is the only one of the
+                   two. CreateShortcutAsync carries the same three.
+
+                   No settings flag gates it: the context-menu page answers one
+                   question per entry on Dolphin's Services list — eight of
+                   them, counted by NewWindowTests — rather than one per row in
+                   these menus, and Cut, Paste, Rename and New carry no flag
+                   either.
+
+                   No access key, and none is free: every letter of "Create" is
+                   taken on this menu, which is the one case the rule allows. -->
+              <MenuItem Header="Create shortcut"
+                        Command="{Binding ActiveTab.CreateShortcutCommand}"
+                        IsVisible="{Binding ActiveTab.CanCreateShortcut}"/>
+              <!-- **Sharing what was clicked, and only that.** Both ways of
+                   sharing live in one submenu. Which rows show is decided in
+                   PrepareListingMenu rather than bound, because the questions
+                   are per item and per machine at once: can THIS path be
+                   linked (inside the Proton Drive folder), has a link already
+                   been made for it, and is it a folder a network share would
+                   serve.
+
+                   **A file's menu used to offer to share its parent folder
+                   over the network.** The copyparty rows serve a folder, so on
+                   a file they served the folder around it — an action about
+                   the folder, on the menu of something inside it, which named
+                   the folder in its label and was still read as sharing the
+                   file. They show here only for a selected folder that is not
+                   a drive root now; the folder being looked at is shared from
+                   the background menu's Share. A file keeps the Proton rows
+                   where the per-item link applies. -->
+              <MenuItem x:Name="ShareMenu" Header="_Share" IsVisible="False">
+                <!-- Proton links. Hidden by default; PrepareListingMenu shows
+                     the pair that applies — share, or copy-and-stop. -->
+                <MenuItem x:Name="ProtonShareItem" Header="_Share via Proton Drive"
+                          IsVisible="False" Click="OnProtonShareClicked"/>
+                <MenuItem x:Name="ProtonCopyLinkItem" Header="_Copy Proton Drive link"
+                          IsVisible="False" Click="OnProtonCopyLinkClicked"/>
+                <MenuItem x:Name="ProtonUnshareItem" Header="S_top sharing via Proton Drive"
+                          IsVisible="False" Click="OnProtonUnshareClicked"/>
+                <!-- Takes the share row's place while the CLI downloads — the
+                     share click fetches the tool itself when it is missing,
+                     so this is the only install UI there is. -->
+                <MenuItem x:Name="ProtonInstallingItem" Header="Setting up Proton Drive sharing…"
+                          IsEnabled="False" IsVisible="False"/>
+                <Separator/>
+                <!-- **Flat, like the Proton rows above it: one row per thing
+                     that can happen, never a second hover.** Wrapping these in
+                     a "Share x over network" submenu made THREE levels for what
+                     Explorer and Dolphin do in one. The states cover each other
+                     — ready, missing, installing — and PrepareListingMenu shows
+                     the one that holds, so the visible set is never empty while
+                     the platform has a backend at all.
+
+                     The read-only share is the unqualified row because it is
+                     the safe default; the variant says exactly what it adds.
+                     Both name the folder, so which one gets served is visible
+                     before clicking rather than discovered afterwards. -->
+                <MenuItem x:Name="ShareRow" IsVisible="False"
+                          Command="{Binding $parent[Window].((vm:ShellViewModel)DataContext).ShareFolderCommand}">
+                  <MenuItem.Header>
+                    <TextBlock>
+                      <Run Text="Share"/><Run Text=" "/><Run Text="{Binding ActiveTab.ShareTargetLabel}"/><Run Text=" over network"/>
+                    </TextBlock>
+                  </MenuItem.Header>
+                </MenuItem>
+                <MenuItem x:Name="ShareWritableRow" IsVisible="False"
+                          Command="{Binding $parent[Window].((vm:ShellViewModel)DataContext).ShareFolderWritableCommand}">
+                  <MenuItem.Header>
+                    <TextBlock>
+                      <Run Text="Share"/><Run Text=" "/><Run Text="{Binding ActiveTab.ShareTargetLabel}"/><Run Text=" over network, allow uploads"/>
+                    </TextBlock>
+                  </MenuItem.Header>
+                </MenuItem>
+                <!-- No ellipsis, by the rule on the bin's Empty button: it
+                     promises the entry asks first, and this one starts the
+                     download the moment it is clicked. The entry already names
+                     what it installs, so the label is the question and the
+                     click is the answer. -->
+                <MenuItem x:Name="ShareInstallRow" Header="_Install copyparty to share folders"
+                          IsVisible="False"
+                          Command="{Binding $parent[Window].((vm:ShellViewModel)DataContext).InstallSharingCommand}"/>
+                <!-- Disabled and present, rather than absent: the download is
+                     the one state where somebody is waiting on an answer, and
+                     it is exactly the state that used to show nothing. -->
+                <MenuItem x:Name="ShareInstallingRow" Header="Installing copyparty…" IsEnabled="False"
+                          IsVisible="False"/>
+              </MenuItem>
+              <!-- The selected folder, never the one you are in — that is the
+                   background menu's "Add this folder to places". Not in the
+                   bin, where a deleted folder's path is the one it was deleted
+                   from; see ShowAddSelectionToPlaces.
+
+                   No access key: every letter of "Add" is taken here. -->
+              <MenuItem Header="Add to places"
+                        Command="{Binding $parent[Window].((vm:ShellViewModel)DataContext).AddSelectionToPlacesCommand}"
+                        IsVisible="{Binding $parent[Window].((vm:ShellViewModel)DataContext).ShowAddSelectionToPlaces}"/>
+              <!-- The scripts, run on the selection. The folder they live in
+                   is opened from the background menu's Scripts, whose last row
+                   it is; this one shows only when there is a script to run,
+                   and not in the bin — see CanRunScriptsOnSelection.
+
+                   No access key: every letter of "Scripts" is taken here. -->
+              <MenuItem x:Name="ScriptsMenu" Header="Scripts" ItemsSource="{Binding ActiveTab.Scripts}"
+                        IsVisible="{Binding ActiveTab.CanRunScriptsOnSelection}">
+                <MenuItem.ItemTemplate>
+                  <DataTemplate x:DataType="core:ScriptCommand">
+                    <TextBlock Text="{Binding Name}"/>
+                  </DataTemplate>
+                </MenuItem.ItemTemplate>
+                <MenuItem.Styles>
+                  <Style Selector="MenuItem#ScriptsMenu > MenuItem" x:DataType="core:ScriptCommand">
+                    <Setter Property="Command"
+                            Value="{Binding $parent[Window].((vm:ShellViewModel)DataContext).ActiveTab.RunScriptCommand}"/>
+                    <Setter Property="CommandParameter" Value="{Binding}"/>
+                  </Style>
+                </MenuItem.Styles>
+              </MenuItem>
+              <Separator/>
+              <!-- The selection's properties. CanShowProperties wants a
+                   selection or a real folder, and excludes the bin and Recent,
+                   whose rows name where a file USED to be; on this menu there
+                   is always a selection. -->
               <MenuItem Header="Prop_erties"
-                                      Command="{Binding $parent[Window].((vm:ShellViewModel)DataContext).ShowPropertiesCommand}"
-                                      IsVisible="{Binding $parent[Window].((vm:ShellViewModel)DataContext).CanShowProperties}"
-                                      in:KeyHint.Command="Properties"/>
+                        Command="{Binding $parent[Window].((vm:ShellViewModel)DataContext).ShowPropertiesCommand}"
+                        IsVisible="{Binding $parent[Window].((vm:ShellViewModel)DataContext).CanShowProperties}"
+                        in:KeyHint.Command="Properties"/>
+              <Separator/>
               <!-- **The machine's own menu: 7-Zip, VLC, Send to, Restore
                    previous versions.** Those are COM handlers registered by
                    installed applications, not a list anybody can write down, so
@@ -2602,61 +2818,56 @@
                    binding — because building it gives every extension on the
                    machine a turn, and no ordinary right-click should pay for
                    that. Released when the menu closes: the ids are offsets into
-                   one live menu and mean nothing afterwards. -->
-              <!-- **Last, below Properties, which is where Explorer keeps the
-                   same row.** It used to sit three groups higher, above Open
-                   file location and above Properties: the one row that hands
-                   the click to somebody else's code was in the middle of our
-                   own verbs, and Properties — which Windows 11 draws directly
-                   ABOVE "Show more options", with a rule between them — came
-                   after it.
+                   one live menu and mean nothing afterwards.
 
-                   The rule that introduces it is gated on HasShellMenu, and
-                   has to be: Avalonia draws every separator it is given and
-                   collapses none, so an ungated one at the end of the menu
-                   would be a trailing line in the bin, in Recent, and in every
-                   listing on Linux, where HasShellMenu is false for want of a
-                   provider.
+                   **Last, below Properties, which is where Explorer keeps the
+                   same row** — on both menus. It used to sit three groups
+                   higher: the one row that hands the click to somebody else's
+                   code was in the middle of our own verbs.
+
+                   **The item menu's asks the shell about the SELECTION, always**
+                   — the background menu has its own, BackgroundShellMenu, which
+                   asks about the folder. Which one is built follows the menu,
+                   not the selection: see OnShellMenuOpening. It was "the folder
+                   when nothing is selected", which a right-click on empty space
+                   beside a selection answered with the selection's menu.
 
                    **And the gate had to be made to fire before it could carry
                    a rule.** HasShellMenu is computed from the path and nothing
                    announced it when the path changed: measured on a headless
                    window, a pane moved from a folder to "vaktari:trash"
-                   reported HasShellMenu false while the row and everything
-                   bound to it stayed on screen. A stale ROW was already wrong —
-                   the bin offered a menu the pane refuses to build — and a
-                   stale RULE would have been a line hanging off the bottom of
-                   the bin's menu. OnCurrentPathChanged raises it now.
+                   reported HasShellMenu false while the row stayed on screen.
+                   OnCurrentPathChanged raises it now.
 
                    Named for what it IS, not for how much of it there is: these
                    rows come from Windows and the applications installed on it,
                    hosted here. Explorer's "Show more options" said "more"
-                   without saying whose; this says whose. -->
-              <Separator IsVisible="{Binding ActiveTab.HasShellMenu}"/>
+                   without saying whose; this says whose. No access key: every
+                   letter of "Windows" is taken on this menu. -->
               <MenuItem x:Name="ShellMenu" Header="Windows menu"
-                                      IsVisible="{Binding ActiveTab.HasShellMenu}"
-                                      ItemsSource="{Binding ActiveTab.ShellMenuItems}"
-                                      SubmenuOpened="OnShellMenuOpening">
-                              <MenuItem.ItemTemplate>
-                                <DataTemplate x:DataType="fs:ShellMenuEntry">
-                                  <TextBlock Text="{Binding Label}"/>
-                                </DataTemplate>
-                              </MenuItem.ItemTemplate>
-                              <MenuItem.Styles>
-                                <!-- A DESCENDANT selector, not a child one: the
-                                     shell's menu nests, and 7-Zip's own commands
-                                     live a level down. Anchored on the name so it
-                                     cannot match its own host — the fault that
-                                     killed the New submenu. -->
-                                <Style Selector="MenuItem#ShellMenu MenuItem" x:DataType="fs:ShellMenuEntry">
-                                  <Setter Property="ItemsSource" Value="{Binding Items}"/>
-                                  <Setter Property="IsEnabled" Value="{Binding IsEnabled}"/>
-                                  <Setter Property="Command"
-                                          Value="{Binding $parent[Window].((vm:ShellViewModel)DataContext).ActiveTab.InvokeShellEntryCommand}"/>
-                                  <Setter Property="CommandParameter" Value="{Binding}"/>
-                                </Style>
-                              </MenuItem.Styles>
-                            </MenuItem>
+                        IsVisible="{Binding ActiveTab.HasShellMenu}"
+                        ItemsSource="{Binding ActiveTab.ShellMenuItems}"
+                        SubmenuOpened="OnShellMenuOpening">
+                <MenuItem.ItemTemplate>
+                  <DataTemplate x:DataType="fs:ShellMenuEntry">
+                    <TextBlock Text="{Binding Label}"/>
+                  </DataTemplate>
+                </MenuItem.ItemTemplate>
+                <MenuItem.Styles>
+                  <!-- A DESCENDANT selector, not a child one: the
+                       shell's menu nests, and 7-Zip's own commands
+                       live a level down. Anchored on the name so it
+                       cannot match its own host — the fault that
+                       killed the New submenu. -->
+                  <Style Selector="MenuItem#ShellMenu MenuItem" x:DataType="fs:ShellMenuEntry">
+                    <Setter Property="ItemsSource" Value="{Binding Items}"/>
+                    <Setter Property="IsEnabled" Value="{Binding IsEnabled}"/>
+                    <Setter Property="Command"
+                            Value="{Binding $parent[Window].((vm:ShellViewModel)DataContext).ActiveTab.InvokeShellEntryCommand}"/>
+                    <Setter Property="CommandParameter" Value="{Binding}"/>
+                  </Style>
+                </MenuItem.Styles>
+              </MenuItem>
             </ContextMenu>
           </ItemsControl.ContextMenu>
 
@@ -4324,6 +4535,7 @@
           </ItemsControl.ItemTemplate>
 
         </ItemsControl>
+        </Panel>
 
       </DockPanel>
     </DataTemplate>

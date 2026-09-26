@@ -39,12 +39,19 @@ namespace Vaktari.Ui.Tests;
 ///
 /// WHAT THE RULES ARE, and why the obvious one is not among them:
 ///
-/// "Every row has a key" cannot be a rule here. The listing menu has 36 rows
+/// "Every row has a key" cannot be a rule here. The listing menu had 36 rows
 /// with a literal header, and between them their words contain 24 of the 26
 /// letters — no j and no q. Thirty-six rows cannot have thirty-six distinct
 /// keys out of twenty-four letters, and a maximum matching of rows to letters
 /// over the whole menu tops out at exactly 24 — computed, not guessed — so
-/// twelve rows must go without one or share.
+/// twelve rows had to go without one or share.
+///
+/// Splitting it into an item menu and a background menu freed most of them.
+/// The background menu's sixteen literal rows all have a key. The item menu
+/// has twenty-seven, and still no j or q among them — and g and k only in
+/// "Forget (keeps the file)", which can take one — so twenty-three is its
+/// ceiling and four rows go without: Create shortcut, Add to places, Scripts
+/// and Windows menu, each with every letter of its first word taken.
 ///
 /// Sharing is the worse half. **Measured on Avalonia 12.1's own
 /// AccessKeyHandler: a key two rows answer to MOVES THE HIGHLIGHT and picks
@@ -256,15 +263,17 @@ public sealed class ContextMenuKeysTests
 
         Assert.True(dead.Count == 0, string.Join("\n  ", dead.Prepend("")));
 
-        // A rule with nothing to rule on would pass on an empty file. Six
-        // rows: two placeholders in the Share submenu, and then the same pair
-        // twice over, once in each column chooser — the Name tick that is on
-        // and cannot be turned off, and the sentence under the rule that
-        // explains why a ticked column can still be off screen. Twice because
-        // there are now two choosers, the header's and Arrange > Columns, and
+        // A rule with nothing to rule on would pass on an empty file. Eight
+        // rows: the two placeholders in a Share submenu — and there are two
+        // Share submenus now, the item menu's for what was clicked and the
+        // background menu's for the folder, each with its own pair — and then
+        // the same pair twice over, once in each column chooser: the Name tick
+        // that is on and cannot be turned off, and the sentence under the rule
+        // that explains why a ticked column can still be off screen. Twice
+        // because there are two choosers, the header's and View > Columns, and
         // The_two_chooser_menus_offer_the_same_columns requires them to hold
-        // the same rows.
-        Assert.Equal(6, Menus().SelectMany(m => m.Rows).Count(NeverPickable));
+        // the same rows. It was six while one listing menu had one Share.
+        Assert.Equal(8, Menus().SelectMany(m => m.Rows).Count(NeverPickable));
     }
 
     /// <summary>
@@ -283,23 +292,30 @@ public sealed class ContextMenuKeysTests
         Assert.Contains(menus, m => m.File == "MainWindow.axaml");
         Assert.Contains(menus, m => m.File == "SettingsWindow.axaml");
 
-        // Fifteen menus and ninety-eight rows with a literal header, measured
-        // today. The floors are written well under those so that adding or
-        // dropping a row is not a test failure, and high enough that only a
-        // scan which has broken can go under them.
+        // Eighteen menus and a hundred and twenty-two rows with a literal
+        // header, measured when the listing menu was split in two (it was
+        // fifteen and ninety-eight before). The floors are written well under
+        // those so that adding or dropping a row is not a test failure, and
+        // high enough that only a scan which has broken can go under them.
         Assert.True(menus.Count >= 10, $"only {menus.Count} menus were found");
 
         var rows = menus.SelectMany(m => m.Rows).Select(Literal).OfType<string>().ToList();
 
         Assert.True(rows.Count >= 70, $"only {rows.Count} rows with a literal header were found");
 
-        // And the listing menu, which is the long one the rules are shaped
-        // around, is in there with all of its rows — thirty-nine of them, of
-        // which thirty-six carry a literal header.
-        var listing = Assert.Single(menus, m => m.Where.Contains("vm:PaneGroupViewModel"));
+        // And both listing menus are in there with all of their rows. There
+        // was one, of thirty-nine rows, and its floor was thirty-five; it is
+        // two now — the item menu with twenty-eight direct rows, twenty-seven
+        // of them literal, and the background menu with eighteen, sixteen
+        // literal — so the one floor became two, each a little under its own
+        // count for the reason the floors above are.
+        var item = Assert.Single(menus, m => m.Where == "ContextMenu ItemMenu");
+        var background = Assert.Single(menus, m => m.Where == "ContextMenu BackgroundMenu");
 
-        Assert.True(listing.Rows.Count >= 35,
-                    $"the listing menu came back with {listing.Rows.Count} rows");
+        Assert.True(item.Rows.Count >= 25,
+                    $"the item menu came back with {item.Rows.Count} rows");
+        Assert.True(background.Rows.Count >= 15,
+                    $"the background menu came back with {background.Rows.Count} rows");
     }
 
     // ---- and the marker means something at runtime --------------------------

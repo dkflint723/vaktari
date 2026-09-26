@@ -54,15 +54,10 @@ public sealed class ArchiveMenuTests : OwnedViewModels
     // ---- the rows themselves -----------------------------------------------
 
     /// <summary>
-    /// The listing's context menu, which is the only one in the file whose
-    /// DataType is the pane group.
+    /// The listing's ITEM menu, by the name the markup gives it: the archive
+    /// verbs act on what is selected, which is the item menu's whole subject.
     /// </summary>
-    private static XElement ListingMenu()
-        => XDocument.Parse(RepoSource.Ui("MainWindow.axaml"))
-            .Descendants(Avalonia + "ContextMenu")
-            .Single(m => (string?)m.Attribute(
-                XNamespace.Get("http://schemas.microsoft.com/winfx/2006/xaml") + "DataType")
-                == "vm:PaneGroupViewModel");
+    private static XElement ListingMenu() => ListingMenus.Markup(ListingMenus.Item);
 
     /// <summary>
     /// **Top level, which is the finding.** A row nested inside another
@@ -90,15 +85,16 @@ public sealed class ArchiveMenuTests : OwnedViewModels
     }
 
     /// <summary>
-    /// The rule that introduces the pair is gated on the compress row, and has
-    /// to be — the reason is the one the menu's own comments give for gating
-    /// every other separator in it: Avalonia draws every one it is given and
-    /// collapses none, so an ungated rule here would be a stray line in every
-    /// listing where neither row shows, which is the bin and every folder with
-    /// nothing selected.
+    /// A rule opens the block the pair leads. It used to carry the compress
+    /// row's gate, copied by hand, because Avalonia draws every rule it is
+    /// given and collapses none — an ungated one was a stray line in the bin.
+    /// **The rules of both listing menus are decided as the menu opens now**,
+    /// from what is actually drawn (MainWindow.TidyRules), so this one carries
+    /// no gate of its own: ListingMenusTests opens both menus in every kind of
+    /// listing, the bin included, and finds no rule first, last or doubled.
     /// </summary>
     [Fact]
-    public void The_rule_above_the_pair_comes_and_goes_with_them()
+    public void A_rule_opens_the_block_the_pair_leads()
     {
         var children = ListingMenu().Elements().ToList();
 
@@ -110,7 +106,7 @@ public sealed class ArchiveMenuTests : OwnedViewModels
         var before = children[compress - 1];
 
         Assert.Equal("Separator", before.Name.LocalName);
-        Assert.Equal("{Binding ActiveTab.CanCompressSelection}", (string?)before.Attribute("IsVisible"));
+        Assert.Null(before.Attribute("IsVisible"));
     }
 
     // ---- when the rows are offered -----------------------------------------

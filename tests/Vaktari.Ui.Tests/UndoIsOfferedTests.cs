@@ -28,7 +28,8 @@ public sealed class UndoIsOfferedTests : OwnedViewModels
         return (Own(new PaneViewModel(new Silent(), ops)), ops);
     }
 
-    /// <summary>Nothing done, so the row is there and dead.</summary>
+    /// <summary>Nothing done, so there is nothing for the row to offer — the
+    /// background menu hides it on this answer.</summary>
     [AvaloniaFact]
     public void With_nothing_to_take_back_the_row_says_so()
     {
@@ -147,7 +148,21 @@ public sealed class UndoIsOfferedTests : OwnedViewModels
     }
 
     /// <summary>
-    /// The rows exist, and they are the commands they claim to be.
+    /// The rows exist, on the background menu, and they are the commands they
+    /// claim to be.
+    ///
+    /// **Shown only when there is something to take back**, which reverses
+    /// the decision this test used to pin — "always shown, disabled when there
+    /// is nothing", on the argument that a row which disappears is a row nobody
+    /// learns is there. The maintainer overruled it when the listing menu was
+    /// split: two grey rows on most openings of a menu opened a dozen times an
+    /// hour were part of what made it large, and a row that appears with its
+    /// label at the moment there is something to undo is found at exactly that
+    /// moment. ListingMenusTests watches both rows come and go on a real
+    /// window.
+    ///
+    /// On the background menu and nowhere else: what they take back is the last
+    /// operation, which is rarely about the row under the pointer.
     ///
     /// Parsed rather than grepped: "Undo" appears in several bindings and a
     /// substring search cannot tell a menu row from a command name.
@@ -155,8 +170,8 @@ public sealed class UndoIsOfferedTests : OwnedViewModels
     [Fact]
     public void The_menu_offers_both()
     {
-        var rows = XDocument.Parse(RepoSource.Ui("MainWindow.axaml"))
-            .Descendants(Avalonia + "MenuItem")
+        var rows = ListingMenus.Markup(ListingMenus.Background)
+            .Elements(Avalonia + "MenuItem")
             .Where(e => (string?)e.Attribute("Command") is { } c
                         && (c.Contains("UndoCommand") || c.Contains("RedoCommand")))
             .ToList();
@@ -165,20 +180,25 @@ public sealed class UndoIsOfferedTests : OwnedViewModels
 
         foreach (var row in rows)
         {
-            // The label names what will happen, and the row is dead when
-            // nothing will.
+            // The label names what will happen, and the row is there only
+            // when something will.
             Assert.Contains("Label", (string?)row.Attribute("Header") ?? "");
-            Assert.Contains("Can", (string?)row.Attribute("IsEnabled") ?? "");
+            Assert.Contains("ActiveTab.Can", (string?)row.Attribute("IsVisible") ?? "");
+            Assert.Null(row.Attribute("IsEnabled"));
             Assert.Contains((string?)row.Attribute(In + "KeyHint.Command"), new[] { "Undo", "Redo" });
         }
+
+        Assert.DoesNotContain(
+            ListingMenus.Markup(ListingMenus.Item).Descendants(Avalonia + "MenuItem"),
+            e => ((string?)e.Attribute("Command") ?? "").Contains("UndoCommand"));
     }
 
     /// <summary>
     /// **And they bring no separator of their own.** Avalonia draws every
-    /// separator it is given and collapses none of them, so an ungated rule
-    /// here would be the first item in the menu whenever everything above it is
-    /// hidden — in the bin with nothing selected, that is all of it. This menu
-    /// has had that bug once already.
+    /// separator it is given and collapses none of them, so a rule of theirs
+    /// would be a line on its own whenever both are hidden — which is now most
+    /// of the time. They sit in Paste's block, under the rule every block has;
+    /// the menu decides that rule as it opens, from what is drawn.
     /// </summary>
     [Fact]
     public void They_bring_no_rule_of_their_own()

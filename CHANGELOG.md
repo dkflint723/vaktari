@@ -11,7 +11,38 @@ should not be trusted for compatibility yet.
 
 ## [Unreleased]
 
-Nothing yet.
+### Changed
+
+- **The right-click menu is two smaller menus: one for what you clicked,
+  one for the folder.** A right-click on a file, a folder or a tile —
+  anywhere on its row — opens a menu about it: *Open*, *Open with*, the
+  clipboard, *Copy to* and *Move to*, *Rename*, the bin, *Compress to ZIP*,
+  *Duplicate*, *Create shortcut*, *Share*, *Properties* and the *Windows
+  menu*. A right-click on the empty space around the rows opens the folder's
+  menu: *View*, which now holds sorting, grouping and columns as well as the
+  layouts and hidden files; *Select all*; *Paste*; *New*; *Refresh*; the
+  terminal; *Analyse*, holding the space and duplicate scans and, in a split,
+  comparing the sides; *Scripts*, ending in *Open scripts folder*; *Add this
+  folder to places*; *Share*; the folder's own *Properties*; and the
+  *Windows menu* for the folder. Right-clicking empty space still keeps
+  your selection; the folder's menu just does not act on it. The Menu key
+  and `Shift+F10` open the first with something selected and the second
+  without. *Undo* and *Redo* now appear only when there is something to take
+  back or put back, *Open file location* and *Forget* sit beside *Open*,
+  *Select nothing* and *Invert the selection* lose their rows but stay in
+  the command box, inverting on `Ctrl+Shift+A` as before,
+  and *Add your own scripts* is gone — *Scripts ▸ Open scripts folder* makes
+  the folder if it is missing. Rows are left off wherever they would refuse
+  or do the wrong thing: nothing moves, renames or bins a drive in *This
+  PC*; *Open with*, *Copy* and *Scripts* are not offered in the bin; *Paste*,
+  *New* and *Duplicate* only appear in a real folder; *Select what differs*
+  and *Copy what is newer or missing* only when both sides are folders;
+  *Share* on a file no longer shares the folder around it; and a tab's
+  *Close other tabs* and
+  *Close tabs to the right* appear only when there is a tab to close. Every
+  menu row is 24 pixels tall rather than 30, so a file's menu on Windows is
+  under half the height it was. The *Context menu* settings page's sort
+  checkbox now reads *Sorting, grouping and columns in View*.
 
 ## [0.11.0] — 2026-09-25
 

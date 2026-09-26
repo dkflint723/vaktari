@@ -11,8 +11,14 @@ using Xunit;
 namespace Vaktari.Ui.Tests;
 
 /// <summary>
-/// Where the hosted "Windows menu" sits in the listing's right-click menu, and
+/// Where the hosted "Windows menu" sits in the listing's right-click menus, and
 /// what the rules around it do when it is not there.
+///
+/// **Both menus carry one, and both put it last.** The item menu's asks the
+/// shell about the selection; the background menu's, BackgroundShellMenu, asks
+/// about the folder, and only where there is one. Most of this file is about
+/// the item menu's, which is the one with the longer history; the background
+/// menu's placement is pinned beside it.
 ///
 /// **It was three groups too high: above Open file location and above
 /// Properties.** Every other row in that menu is one of ours, with a command
@@ -96,18 +102,20 @@ public sealed class ShellMenuPlacementTests : OwnedViewModels
         Dispatcher.UIThread.RunJobs();
     }
 
-    /// <summary>The listing's own menu: the only one in the window holding a
-    /// direct child named ShellMenu.</summary>
-    private static ContextMenu ListingMenu(MainWindow window)
+    /// <summary>The listing menu holding a direct child with this name: the
+    /// item menu's hosted row is ShellMenu, the background menu's
+    /// BackgroundShellMenu.</summary>
+    private static ContextMenu ListingMenu(MainWindow window, string row = "ShellMenu")
         => window.GetVisualDescendants()
             .OfType<Control>()
             .Select(c => c.ContextMenu)
             .OfType<ContextMenu>()
-            .Single(m => m.Items.OfType<MenuItem>().Any(i => i.Name == "ShellMenu"));
+            .Distinct()
+            .Single(m => m.Items.OfType<MenuItem>().Any(i => i.Name == row));
 
     /// <summary>The hosted row itself.</summary>
     private static MenuItem ShellRow(ContextMenu menu)
-        => menu.Items.OfType<MenuItem>().Single(i => i.Name == "ShellMenu");
+        => menu.Items.OfType<MenuItem>().Single(i => i.Name is "ShellMenu" or "BackgroundShellMenu");
 
     /// <summary>The rule that introduces it: the child declared before it,
     /// whatever its own visibility.</summary>
@@ -143,7 +151,7 @@ public sealed class ShellMenuPlacementTests : OwnedViewModels
     /// the session it was built from when it closes.
     /// </summary>
     private async Task InTheMenu(
-        string? virtualPath, Func<ShellViewModel, ContextMenu, Task> body)
+        string? virtualPath, Func<ShellViewModel, ContextMenu, Task> body, string row = "ShellMenu")
     {
         var root = TempFolder();
         var window = new MainWindow();
@@ -165,7 +173,7 @@ public sealed class ShellMenuPlacementTests : OwnedViewModels
             await pane.NavigateAsync(root);
             await Layout(window);
 
-            var menu = ListingMenu(window);
+            var menu = ListingMenu(window, row);
 
             // **Opened in an ordinary folder first, and that is what makes
             // these tests able to fail.** A gate is read when the binding is
@@ -253,6 +261,29 @@ public sealed class ShellMenuPlacementTests : OwnedViewModels
 
             return Task.CompletedTask;
         });
+
+    /// <summary>
+    /// The background menu keeps the same arrangement for the folder's own
+    /// hosted menu: its Properties — the folder's — then a rule, then the
+    /// machine's rows last, as Explorer's background menu does.
+    /// </summary>
+    [AvaloniaFact(Skip = OnlyOn.Windows, SkipUnless = nameof(OnlyOn.IsWindows), SkipType = typeof(OnlyOn))]
+    public async Task The_background_menu_ends_the_same_way()
+        => await InTheMenu(null, (shell, menu) =>
+        {
+            Assert.True(shell.ActiveTab!.HasBackgroundShellMenu,
+                        "the row is not offered here, so this proves nothing");
+
+            var seen = Seen(menu);
+
+            Assert.Same(ShellRow(menu), seen[^1]);
+            Assert.Equal("BackgroundShellMenu", seen[^1].Name);
+            Assert.Equal("Windows menu", Words(seen[^1]));
+            Assert.IsType<Separator>(seen[^2]);
+            Assert.Equal("Properties", Words(seen[^3]));
+
+            return Task.CompletedTask;
+        }, row: "BackgroundShellMenu");
 
     // ---- and what the rules do when a row is not there -----------------------
 

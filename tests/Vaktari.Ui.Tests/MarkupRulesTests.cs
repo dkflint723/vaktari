@@ -185,6 +185,38 @@ public class MarkupRulesTests
     }
 
     /// <summary>
+    /// **And no style reaches a menu row without saying which menu.** The rows
+    /// were made 24 pixels tall by a window-wide style, and the shortest way
+    /// to write that — Selector="MenuItem" — is also the widest: it matches
+    /// every MenuItem the window will ever hold, a submenu's host included,
+    /// which is the shape the rule above exists for. The density styles are
+    /// anchored on the menu (ContextMenu, MenuFlyoutPresenter) and a command
+    /// style on its host's name; this keeps any other from being written bare.
+    /// Every comma-separated part of a selector is checked, because one bare
+    /// part is enough.
+    /// </summary>
+    [Fact]
+    public void Every_style_on_a_menu_row_names_the_menu_it_is_for()
+    {
+        var bare = Markup()
+            .Descendants(Avalonia + "Style")
+            .Select(style => (Style: style, Selector: (string?)style.Attribute("Selector") ?? ""))
+            .SelectMany(x => x.Selector.Split(',').Select(part => (x.Style, Part: part.Trim())))
+            .Where(x => x.Part.EndsWith("MenuItem", StringComparison.Ordinal)
+                        || x.Part.Contains("MenuItem:", StringComparison.Ordinal))
+            .Where(x => !x.Part.Contains('#')
+                        && !x.Part.StartsWith("ContextMenu ", StringComparison.Ordinal)
+                        && !x.Part.StartsWith("MenuFlyoutPresenter ", StringComparison.Ordinal))
+            .Select(x => $"{Where(x.Style)} \"{x.Part}\"")
+            .ToList();
+
+        Assert.True(bare.Count == 0,
+            "A style on MenuItem must be anchored on the menu it is for — "
+            + "`ContextMenu MenuItem`, `MenuFlyoutPresenter MenuItem` or `MenuItem#TheHost > MenuItem`: "
+            + string.Join("; ", bare));
+    }
+
+    /// <summary>
     /// The other half: anchoring on a name that does not exist would match
     /// nothing, which loses every command in the submenu silently — the menu
     /// still opens, the entries still draw, and clicking one does nothing.

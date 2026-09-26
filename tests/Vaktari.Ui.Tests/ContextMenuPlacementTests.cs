@@ -37,8 +37,11 @@ namespace Vaktari.Ui.Tests;
 /// the mouse was resting rather than on the list.
 ///
 /// The fix sets Placement for the keystroke and puts it back when the menu
-/// closes, rather than declaring it in the markup, because ONE ContextMenu
-/// serves both routes: a right-click has a pointer and must still open there.
+/// closes, rather than declaring it in the markup, because each of the two
+/// listing menus serves both routes: a right-click has a pointer and must
+/// still open there. The key opens the item menu when something is selected
+/// and the background menu when nothing is — see
+/// <see cref="The_menu_key_with_nothing_selected_opens_the_background_menu"/>.
 /// The restore is the half that is easy to leave out and impossible to see —
 /// the menu would look right every time it was opened with the key, and every
 /// right-click afterwards would open somewhere else.
@@ -85,15 +88,9 @@ public sealed class ContextMenuPlacementTests : OwnedViewModels
                             && ReferenceEquals(list.DataContext, pane)
                             && list.SelectionMode.HasFlag(SelectionMode.Multiple));
 
-    /// <summary>The menu that hangs off the tab strip above the listing, which
-    /// is where the listing's menu actually lives.</summary>
-    private static ContextMenu ListingMenu(ListBox list)
-    {
-        for (var visual = (Visual?)list; visual is not null; visual = visual.GetVisualParent())
-            if (visual is Control { ContextMenu: { } menu }) return menu;
-
-        throw new InvalidOperationException("the listing has no context menu above it");
-    }
+    /// <summary>The item menu, which hangs off the ItemsControl holding the
+    /// tabs above the listing — the one the key opens with a selection.</summary>
+    private static ContextMenu ListingMenu(ListBox list) => ListingMenus.Above(list, ListingMenus.Item);
 
     private static string TempFolder(int files)
     {
@@ -244,7 +241,7 @@ public sealed class ContextMenuPlacementTests : OwnedViewModels
     ///
     /// **Left set, BottomEdgeAlignedLeft outlives the keystroke and pins the
     /// next right-click under the tab strip.** Placement is a property of the
-    /// menu and one menu serves both routes. Measured, driving a real
+    /// menu and each menu serves both routes. Measured, driving a real
     /// right-button press at row 0 of a headless MainWindow with the keyboard's
     /// placement left behind: the popup opened BottomEdgeAlignedLeft anchored
     /// on a 30px-tall panel inside the tab strip — not at the cursor, and not
@@ -320,7 +317,8 @@ public sealed class ContextMenuPlacementTests : OwnedViewModels
     /// <summary>
     /// An empty folder has no row to hang the menu on, and the pointer is still
     /// no answer. The menu goes in the middle of the listing — on the thing it
-    /// is about — rather than at wherever the mouse was left.
+    /// is about — rather than at wherever the mouse was left. With nothing to
+    /// select, it is the background menu.
     /// </summary>
     [AvaloniaFact]
     public async Task An_empty_listing_puts_the_menu_in_the_middle_of_itself()
@@ -333,7 +331,7 @@ public sealed class ContextMenuPlacementTests : OwnedViewModels
             list.Focus();
             await Layout(window);
 
-            var menu = ListingMenu(list);
+            var menu = ListingMenus.Above(list, ListingMenus.Background);
 
             PressMenuKey(window);
             await Layout(window);
@@ -345,5 +343,76 @@ public sealed class ContextMenuPlacementTests : OwnedViewModels
 
             menu.Close();
             await Layout(window);
+        });
+
+    // ---- which of the two -----------------------------------------------------
+
+    /// <summary>
+    /// **The key has landed nowhere, so the selection decides.** A right-click
+    /// picks its menu by where it lands — on a row, the item menu; off every
+    /// row, the background menu — and a key has no such place; the selection
+    /// is what the keyboard has been building, and Explorer's Shift+F10 makes
+    /// the same choice. With a row selected, the item menu, and the background
+    /// menu stays shut.
+    /// </summary>
+    [AvaloniaFact]
+    public async Task The_menu_key_with_a_selection_opens_the_item_menu()
+        => await InAWindow(3, async (window, pane) =>
+        {
+            var list = Listing(window, pane);
+
+            list.SelectedIndex = 1;
+            Assert.IsType<ListBoxItem>(list.ContainerFromIndex(1)).Focus();
+            await Layout(window);
+
+            var item = ListingMenus.Above(list, ListingMenus.Item);
+            var background = ListingMenus.Above(list, ListingMenus.Background);
+
+            PressMenuKey(window);
+            await Layout(window);
+
+            Assert.True(item.IsOpen, "a selection did not get the item menu");
+            Assert.False(background.IsOpen, "the background menu opened as well");
+
+            item.Close();
+            await Layout(window);
+        });
+
+    /// <summary>
+    /// And with nothing selected, the background menu — in the middle of the
+    /// list, like an empty listing's, because it is about the listing rather
+    /// than about any row. A row can hold the keyboard without being selected
+    /// (Ctrl+arrow), and that is the case here: the focus is not what decides.
+    /// </summary>
+    [AvaloniaFact]
+    public async Task The_menu_key_with_nothing_selected_opens_the_background_menu()
+        => await InAWindow(3, async (window, pane) =>
+        {
+            var list = Listing(window, pane);
+
+            Assert.IsType<ListBoxItem>(list.ContainerFromIndex(1)).Focus();
+            list.SelectedItems?.Clear();
+            pane.SelectedEntry = null;
+            await Layout(window);
+
+            Assert.False(pane.HasSelection, "a row is still selected, so this proves nothing");
+
+            var item = ListingMenus.Above(list, ListingMenus.Item);
+            var background = ListingMenus.Above(list, ListingMenus.Background);
+
+            PressMenuKey(window);
+            await Layout(window);
+
+            Assert.True(background.IsOpen, "nothing selected did not get the background menu");
+            Assert.False(item.IsOpen, "the item menu opened with nothing selected");
+
+            Assert.Same(list, background.PlacementTarget);
+            Assert.Equal(PlacementMode.Center, background.Placement);
+
+            background.Close();
+            await Layout(window);
+
+            // And it gives the pointer its placement back, as the item menu does.
+            Assert.Equal(PlacementMode.Pointer, background.Placement);
         });
 }

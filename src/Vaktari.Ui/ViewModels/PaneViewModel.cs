@@ -658,6 +658,22 @@ public sealed partial class PaneViewModel : ObservableObject, IDisposable
     [ObservableProperty] private bool _isDropTarget;
 
     /// <summary>
+    /// Whether this tab shares its side with another — the gate on the tab
+    /// menu's "Close other tabs".
+    ///
+    /// **With one tab open the row was there and did nothing.** Both closing
+    /// rows were drawn unconditionally, so a lone tab offered to close the
+    /// others, and the last tab of a row offered to close the ones to its
+    /// right. Written by the group, which is the only thing that knows the
+    /// order — see PaneGroupViewModel.NotifyTabNeighbours.
+    /// </summary>
+    [ObservableProperty] private bool _hasOtherTabs;
+
+    /// <summary>Whether a tab sits to the right of this one on its side — the
+    /// gate on "Close tabs to the right". See <see cref="HasOtherTabs"/>.</summary>
+    [ObservableProperty] private bool _hasTabsToTheRight;
+
+    /// <summary>
     /// The folder row a drop would land IN, as opposed to the pane it is over.
     ///
     /// **The outline round the pane was never the question.** Which pane the
@@ -1958,6 +1974,7 @@ public sealed partial class PaneViewModel : ObservableObject, IDisposable
         OnPropertyChanged(nameof(CanCreateShortcut));
         OnPropertyChanged(nameof(CanPurgeFromBin));
         OnPropertyChanged(nameof(CanRenameInBulk));
+        NotifyMenuGates();
         OnPropertyChanged(nameof(HasDirectorySelected));
         OnPropertyChanged(nameof(HasAnyDirectorySelected));
         OnPropertyChanged(nameof(CanRunSelection));
@@ -1982,6 +1999,7 @@ public sealed partial class PaneViewModel : ObservableObject, IDisposable
         // list and returns here, and without this the row stayed visible from
         // whatever was selected before it.
         OnPropertyChanged(nameof(HasOpenWithOptions));
+        OnPropertyChanged(nameof(CanOpenWith));
 
         if (_launcher is null || value is not { IsDirectory: false } entry) return;
 
@@ -2040,6 +2058,7 @@ public sealed partial class PaneViewModel : ObservableObject, IDisposable
                 foreach (var option in wanted) OpenWithOptions.Add(option);
 
                 OnPropertyChanged(nameof(HasOpenWithOptions));
+                OnPropertyChanged(nameof(CanOpenWith));
             });
         });
     }
@@ -2359,6 +2378,11 @@ public sealed partial class PaneViewModel : ObservableObject, IDisposable
             OnPropertyChanged(nameof(ShowOneTerminal));
             OnPropertyChanged(nameof(ShowTerminalChoice));
             OnPropertyChanged(nameof(CanActOnSelection));
+
+            // Every gate the two listing menus added reads the path as well —
+            // This PC, a real folder for the background's Windows menu and
+            // Scripts, the folder's own name on its Share rows.
+            NotifyMenuGates();
 
             // Both read IsRealFolder, so both change when the pane moves
             // between a folder and one of the virtual listings — a change
@@ -2762,7 +2786,7 @@ public sealed partial class PaneViewModel : ObservableObject, IDisposable
 
     /// <summary>
     /// Flips hidden-file visibility. Two routes reach it — Ctrl+H, and the
-    /// listing menu's View row, which is the only pointer route the left half
+    /// background menu's View row, which is the only pointer route the left half
     /// of a split has. The settings flyout binds `ShowHidden` directly
     /// instead, so this must stay a plain flip with no extra behaviour, or the
     /// paths would diverge.

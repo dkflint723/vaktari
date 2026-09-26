@@ -269,8 +269,8 @@ public static class Commands
         new("GroupByType", "Group by type", Looking, KeyTier.Listing, []) { Command = Pane(p => p.GroupByKindCommand) },
 
         // Keyless, like the sorting and grouping rows above it: this is a way
-        // of looking at the folder you are in, reached from the listing's menu
-        // or by name from the palette.
+        // of looking at the folder you are in, reached from the background
+        // menu's Analyse or by name from the palette.
         new("ShowSpaceUsage", "Show space usage", Looking, KeyTier.Listing, []) { Command = Pane(p => p.ShowSpaceUsageCommand) },
 
         // Beside it, and keyless for the same reason. The second is not

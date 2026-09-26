@@ -9,7 +9,9 @@ namespace Vaktari.Ui;
 ///
 /// **One if/else, kept in one place.** The keyboard asks InAddressBar whether
 /// the focus is on the crumb bar: if it is, the bar raises its own context
-/// request; if it is not, the listing's menu opens at the focused row. Those
+/// request; if it is not, one of the listing's two menus opens — the item
+/// menu at the focused row when something is selected, the background menu in
+/// the middle of the list when nothing is. Those
 /// are the two arms of a single keystroke, and an earlier plan would have put
 /// one of them in the keymap file and left the other forty lines up in the
 /// window — which is the shape this whole item exists to undo.
@@ -32,11 +34,13 @@ public partial class MainWindow
            ?? (list.SelectedIndex >= 0 ? list.ContainerFromIndex(list.SelectedIndex) : null);
 
     /// <summary>
-    /// Opens the listing's context menu from the keyboard, at the focused row.
+    /// Opens one of the listing's two context menus from the keyboard: the
+    /// item menu at the focused row, or the background menu on the list.
     ///
-    /// The menu hangs off the ItemsControl that holds the tabs, so it is found
-    /// by walking up from the listing rather than from the row — the row's own
-    /// template has no menu of its own.
+    /// The item menu hangs off the ItemsControl that holds the tabs and the
+    /// background menu off the Panel around it, so each is found by walking up
+    /// from the listing rather than from the row — the row's own template has
+    /// no menu of its own.
     ///
     /// **The Menu key did not open a menu in the wrong place — it threw.** This
     /// called menu.Open(list), under a comment claiming that placed the menu on
@@ -58,8 +62,8 @@ public partial class MainWindow
     ///
     /// Placement is set here and put back in <see cref="OnListingMenuClosed"/>,
     /// over in MainWindow.ListingMenu.cs, rather than in the markup: a
-    /// RIGHT-CLICK must still open at the pointer, and the markup has one
-    /// ContextMenu serving both routes. This is the only line of the keyboard
+    /// RIGHT-CLICK must still open at the pointer, and each of the two menus
+    /// serves both routes. This is the only line of the keyboard
     /// route that another file has to undo, which is why it is named on both
     /// sides.
     /// </summary>
@@ -67,51 +71,63 @@ public partial class MainWindow
     {
         if (ActiveListing() is not { } list) return;
 
+        // **The item menu with a selection, the background menu without one.**
+        // A right-click decides by where it landed; a key has landed nowhere,
+        // so the selection is the only thing it can go by — and it is what the
+        // keyboard has been building. Explorer's Shift+F10 makes the same
+        // choice.
+        var items = list.DataContext is ViewModels.PaneViewModel { HasSelection: true };
+
+        if (ListingMenuHost(list, items ? ItemMenuName : BackgroundMenuName) is not
+            { ContextMenu: { } menu } host) return;
+
+        // The item menu under the focused row and left-aligned with it, which
+        // is where Explorer puts the Menu key's menu. The background menu is
+        // about the listing rather than any row, so it goes in the middle of
+        // the list — still on the thing the menu is about, which the
+        // pointer's last resting place is not — and so does an item menu
+        // whose row has scrolled out of the realized set.
+        var row = items ? FocusedRow(list) : null;
+
+        menu.Placement = row is null
+            ? PlacementMode.Center
+            : PlacementMode.BottomEdgeAlignedLeft;
+
+        menu.PlacementTarget = row ?? list;
+
+        // **Open() takes the control the menu is ATTACHED to and refuses
+        // any other**, so the row cannot be handed to it — the host is.
+        // The anchor is PlacementTarget, set above, and it does reach the
+        // popup: measured on a real Menu-key press in a headless
+        // MainWindow, with the fourth row focused, the popup's own
+        // PlacementTarget came back as that ListBoxItem, bounds 0,90 by
+        // 1185x30 — the fourth 30px row.
+        //
+        // **And Open() does not raise Opening** — measured, a headless
+        // ContextMenu opened this way raised it zero times. So the click
+        // memory the right-click route clears in Opening is cleared here for
+        // the keyboard's menu (see ForgetTheClick), and everything an opening
+        // re-reads is re-read in OnListingMenuOpened, which Open() does raise.
+        ForgetTheClick();
+        menu.Open(host);
+    }
+
+    /// <summary>The name the markup gives the item menu.</summary>
+    private const string ItemMenuName = "ItemMenu";
+
+    /// <summary>
+    /// The control carrying the named listing menu, walked up to from the
+    /// listing: the ItemsControl that holds the tabs for the item menu, and the
+    /// Panel around it for the background's. Named rather than "the first menu
+    /// above the list", which is how this found its menu while there was one.
+    /// </summary>
+    private static Control? ListingMenuHost(ListBox list, string menuName)
+    {
         for (var visual = (Visual?)list; visual is not null; visual = visual.GetVisualParent())
-        {
-            if (visual is not Control { ContextMenu: { } menu } host) continue;
+            if (visual is Control { ContextMenu: { } menu } host && menu.Name == menuName)
+                return host;
 
-            // Under the focused row and left-aligned with it, which is where
-            // Explorer puts the Menu key's menu. An empty listing has no row to
-            // hang it on, so it goes in the middle of the list — still on the
-            // thing the menu is about, which the pointer's last resting place
-            // is not.
-            var row = FocusedRow(list);
-
-            menu.Placement = row is null
-                ? PlacementMode.Center
-                : PlacementMode.BottomEdgeAlignedLeft;
-
-            menu.PlacementTarget = row ?? list;
-
-            // **Open() does not raise Opening**, so OnListingMenuOpening never
-            // ran for this route, and everything that handler re-reads (the
-            // scripts, templates, Undo label, Paste row and the Proton rows)
-            // was whatever the last right-click had left. Measured: with this
-            // call removed, a script added after the window was built never
-            // reached the keyboard's menu.
-            //
-            // The group comes from the HOST, not the menu: until it opens, the
-            // menu's own DataContext is null — measured — and asking it made
-            // this call a silent no-op.
-            PrepareListingMenu(menu, host.DataContext as ViewModels.PaneGroupViewModel);
-
-            // **Open() takes the control the menu is ATTACHED to and refuses
-            // any other**, so the row cannot be handed to it — the host is.
-            // The anchor is PlacementTarget, set above, and it does reach the
-            // popup: measured on a real Menu-key press in a headless
-            // MainWindow, with the fourth row focused, the popup's own
-            // PlacementTarget came back as that ListBoxItem, bounds 0,90 by
-            // 1185x30 — the fourth 30px row.
-            //
-            // **And Open() does not raise Opening**, so OnListingMenuOpening
-            // never hears about this route — measured, a headless ContextMenu
-            // opened this way raised it zero times. The click memory it clears
-            // is cleared here for the keyboard's menu. See ForgetTheClick.
-            ForgetTheClick();
-            menu.Open(host);
-            return;
-        }
+        return null;
     }
 
     /// <summary>

@@ -31,12 +31,13 @@ public sealed partial class ShellViewModel
     [RelayCommand]
     private void OpenInNewTab(FileEntry? entry)
     {
-        // Nullable because the CommandParameter binds to the selected entry and
-        // one menu serves both a row and the empty space below it — on an
-        // empty-space click it resolves to null. FileEntry is a struct, so a
-        // RelayCommand<FileEntry> could not accept that and threw
-        // ArgumentException from the menu rather than doing nothing; taking
-        // FileEntry? is what lets the command be handed the empty case at all.
+        // Nullable because the CommandParameter binds to the selected entry,
+        // and that can be null: the row lives on the item menu now, which
+        // opens on a selection, but the binding is live while the menu is
+        // closed, and it was once on a menu that also served empty space.
+        // FileEntry is a struct, so a RelayCommand<FileEntry> could not accept
+        // a null and threw ArgumentException from the menu rather than doing
+        // nothing; taking FileEntry? is what lets it be handed one at all.
         //
         // **Five folders selected opened one tab.** The parameter is a single
         // row — ActiveTab.SelectedEntry — so the entry that says "Open in new

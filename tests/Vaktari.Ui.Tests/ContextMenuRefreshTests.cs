@@ -25,6 +25,10 @@ namespace Vaktari.Ui.Tests;
 /// script dropped into the scripts folder, which the menu itself invites, showed
 /// up on the next right-click and never on the next Menu key.
 ///
+/// The re-reading happens in OnListingMenuOpened now, for both listing menus:
+/// Opened is the one event every route raises. The Menu key with a row
+/// selected opens the item menu, whose Scripts is what this watches.
+///
 /// A script rather than any of the others because it is the one a test can add
 /// without a clipboard or an operation behind it, and its folder is the
 /// platform's own: on Windows under the per-class state directory TestState

@@ -36,6 +36,20 @@
        Both numbers are checked against the chrome as it actually measures, in
        WindowFloorTests, rather than left to rot when another page is added. -->
 
+  <!-- The listing menus' density, for this window's two flyouts: rows of
+       24 pixels rather than Fluent's 30, and rules of 7 rather than 9. The
+       reasoning, and why the selector is anchored on the menu, is on the same
+       two styles in MainWindow.axaml; MenuDensityTests measures both copies. -->
+  <Window.Styles>
+    <Style Selector="ContextMenu MenuItem, MenuFlyoutPresenter MenuItem">
+      <Setter Property="Padding" Value="11,2,11,3"/>
+      <Setter Property="MinHeight" Value="24"/>
+    </Style>
+    <Style Selector="ContextMenu Separator, MenuFlyoutPresenter Separator">
+      <Setter Property="Margin" Value="12,3,12,3"/>
+    </Style>
+  </Window.Styles>
+
   <!-- NO margin on the shell. It used to be 16 all round, which inset the tab
        strip from the window edges so the sidebar colour read as a floating box
        instead of a surface. Spacing now lives INSIDE each region, the way the
@@ -1466,16 +1480,20 @@
                       IsChecked="{Binding MenuCopyLocation}"/>
             <CheckBox Content="Duplicate" FontSize="{DynamicResource FontSizeSmall}"
                       IsChecked="{Binding MenuDuplicate}"/>
-            <!-- **Named for what it hides, which is now all three parts of
-                 Arrange.** Sort by and Group by were folded into one submenu and
+            <!-- **Named for what it hides, which is now the lower half of
+                 View.** Sort by and Group by were folded into one submenu and
                  this gate moved up onto the parent, so as "Sort by" the label
-                 understated it by half and left people wondering where grouping
-                 had gone; Columns then joined them, because the chooser had no
-                 home a keyboard could reach, and the label understated it again.
+                 understated it by half; Columns then joined them, and the three
+                 were Arrange. When the listing's menu was split in two, Arrange
+                 merged into View on the background menu, and the gate went with
+                 its three rows rather than onto View — the layouts and hidden
+                 files above them were never something this page offered to
+                 hide, and the left half of a split has no other pointer route
+                 to them. So the label names the rows and where they now live.
                  MenuSortBy stays MenuSortBy: it is the key the setting is stored
                  under, and renaming it would silently reset the preference on
                  every install that already has one. -->
-            <CheckBox Content="Arrange (sort, group and columns)" FontSize="{DynamicResource FontSizeSmall}"
+            <CheckBox Content="Sorting, grouping and columns in View" FontSize="{DynamicResource FontSizeSmall}"
                       IsChecked="{Binding MenuSortBy}"/>
           </StackPanel>
 
@@ -1487,17 +1505,19 @@
 
                The two exceptions are named rather than rounded away, because a
                note that undersells is the same defect in the other direction.
-               Add to places gates two entries, and the second of them is Ctrl+D
-               — PinCurrentCommand, the folder you are in, not the selection —
-               which is a real binding and goes on working while the entries are
-               hidden. Arrange keeps two of its three parts through the list
-               view's column headers: left-clicking one sorts by it, and
-               right-clicking them opens the same column chooser Arrange holds.
+               Add to places gates three entries — the selected folder's on the
+               item menu, and "Add this folder" and "Save this search" on the
+               background menu — and the last two are Ctrl+D, PinCurrentCommand,
+               the folder you are in, which is a real binding and goes on
+               working while the entries are hidden. The sort half of View keeps two of its three parts
+               through the list view's column headers: left-clicking one sorts by it, and
+               right-clicking them opens the same column chooser View's Columns
+               holds.
 
                **In Details, and only there. The band those headings live in
                carries IsVisible="{Binding IsDetailsView}" and the menu's Sort
                by carries no gate at all**, so in Grid and Compact there is
-               nothing to click and hiding Arrange takes sorting away along with
+               nothing to click and hiding it takes sorting away along with
                grouping — it is the grouping half alone only in the layout that
                draws columns. The sentence below is scoped to "the list view's
                column headers" for that reason and is true as it stands;
@@ -1509,7 +1529,7 @@
                names which entries are commands — in the palette, and able to
                take a key there — rather than printing keys that can be moved.
                -->
-          <TextBlock Text="Hiding an entry takes it off the menu without removing the command — but for most of these the menu is the only route. Add this folder to places and Copy as path keep their keys while hidden, and Duplicate, sorting and grouping stay in the command palette, where any of them can be given a key under Keyboard. While Arrange is hidden, the list view's column headers still sort by name, type, size or modified, and right-clicking those headers still chooses which columns to show."
+          <TextBlock Text="Hiding an entry takes it off the menu without removing the command — but for most of these the menu is the only route. Add this folder to places and Copy as path keep their keys while hidden, and Duplicate, sorting and grouping stay in the command palette, where any of them can be given a key under Keyboard. While sorting is hidden from View, the list view's column headers still sort by name, type, size or modified, and right-clicking those headers still chooses which columns to show."
                      FontSize="{DynamicResource FontSizeTiny}"
                      Foreground="{DynamicResource ViewDimText}"
                      TextWrapping="Wrap"/>

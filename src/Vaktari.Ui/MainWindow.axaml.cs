@@ -460,6 +460,11 @@ public partial class MainWindow : Window
             _suppressContextMenu = false;
             e.Handled = true;
         }, RoutingStrategies.Tunnel);
+
+        // Which of the listing's two menus a right-click is for is decided by
+        // where it landed, and only the way down knows — see
+        // OnContextRequestedTunnel in MainWindow.ListingMenu.cs.
+        AddHandler(ContextRequestedEvent, OnContextRequestedTunnel, RoutingStrategies.Tunnel);
         AddHandler(PointerMovedEvent, OnPointerMovedAnywhere, RoutingStrategies.Tunnel);
         AddHandler(
             PointerReleasedEvent,

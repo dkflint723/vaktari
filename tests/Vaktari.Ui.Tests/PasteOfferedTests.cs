@@ -150,9 +150,47 @@ public sealed class PasteOfferedTests : OwnedViewModels
         Assert.Equal("{Binding ActiveTab.CanPaste}", (string?)row.Attribute("IsEnabled"));
 
         // Hidden would move the entries under it between two right-clicks in
-        // the same folder; its neighbours hide on a rule about the SELECTION,
-        // which does not change under you the way a clipboard does.
-        Assert.Equal("{Binding !ActiveTab.IsTrashListing}", (string?)row.Attribute("IsVisible"));
+        // the same folder; its neighbours hide on a rule about WHERE the menu
+        // is, which does not change under you the way a clipboard does.
+        //
+        // **And hidden wherever the paste is refused**, which is every listing
+        // that is not a folder: PasteInto answers "this listing is a view, not
+        // a folder" in This PC, Recent, a search and the scan listings as well
+        // as in the bin, and the row used to be hidden in the bin alone.
+        Assert.Equal("{Binding ActiveTab.IsRealFolder}", (string?)row.Attribute("IsVisible"));
+    }
+
+    /// <summary>
+    /// The listings Paste and New now hide in are the ones their commands
+    /// refuse — asserted against the commands rather than taken from the
+    /// comment. Both end in RefusedVirtualDestination for the folder on
+    /// screen: New directly, and Paste through PasteInto, which asks it of
+    /// CurrentPath after checking it has an engine at all. With no engine
+    /// behind this pane the same refusal is reached through PasteIntoFolder,
+    /// which asks it first, of the destination it is handed.
+    /// </summary>
+    [AvaloniaTheory]
+    [InlineData(VirtualPaths.Computer)]
+    [InlineData(VirtualPaths.Files)]
+    [InlineData("vaktari:search:report::everywhere")]
+    public async Task Where_paste_and_new_are_hidden_both_are_refused(string listing)
+    {
+        const string refusal = "this listing is a view, not a folder — open a real folder first";
+
+        var pane = Own(new PaneViewModel(new Inert()) { CurrentPath = listing });
+
+        Assert.False(pane.IsRealFolder);
+
+        pane.PasteIntoFolder(pane.CurrentPath, [Path.Combine(Path.GetTempPath(), "anything.txt")],
+                             move: false);
+
+        Assert.Equal(refusal, pane.Status);
+
+        pane.Status = "";
+
+        await pane.NewFolderAsync();
+
+        Assert.Equal(refusal, pane.Status);
     }
 
     /// <summary>
@@ -160,9 +198,10 @@ public sealed class PasteOfferedTests : OwnedViewModels
     /// specifically — above the early return further down that has swallowed
     /// work in this handler before.
     ///
-    /// Read from PrepareListingMenu rather than OnListingMenuOpening, because
-    /// that is where the body went when the Menu key was given it too: the
-    /// handler is now one line, and only the right-click route reaches it.
+    /// Read from PrepareListingMenu rather than from a handler, because that
+    /// is where the body went when the Menu key was given it too; it is called
+    /// from OnListingMenuOpened, which every route to either listing menu
+    /// raises.
     /// </summary>
     [Fact]
     public void The_menu_asks_the_clipboard_as_it_opens()
@@ -175,10 +214,11 @@ public sealed class PasteOfferedTests : OwnedViewModels
 
         Assert.True(probe > 0, "nothing asks the clipboard when the listing menu opens");
 
-        // Inside the ActiveTab block, and above the share-menu walk — that walk
-        // opens with a return, and work placed after it has been silently
-        // swallowed in this handler before. The guard at the very top is a
-        // different thing: without a menu there is nothing to ask for.
+        // Inside the ActiveTab block, and above the share rows — the walk that
+        // found them used to open with a return, and work placed after it was
+        // silently swallowed in this handler before. It is PrepareShare's now,
+        // and returns nothing early, but the order stays. The guard at the top
+        // is a different thing: without a pane there is nothing to ask for.
         var block = body.IndexOf("ActiveTab: { } tab }", StringComparison.Ordinal);
         var shareWalk = body.IndexOf("shareMenu", StringComparison.Ordinal);
 

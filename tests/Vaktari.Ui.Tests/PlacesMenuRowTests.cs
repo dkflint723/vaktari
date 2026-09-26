@@ -6,10 +6,13 @@ using Xunit;
 namespace Vaktari.Ui.Tests;
 
 /// <summary>
-/// "Add to places" is one visible row filled by one of two commands — pin the
-/// selected folder when there is one, pin the folder being looked at
-/// otherwise. The old menu showed both at once and left the reader to work
-/// out which acted on what.
+/// "Add to places" is two rows in two menus now: the item menu's pins the
+/// selected folder, the background menu's pins the folder being looked at.
+/// The oldest menu showed both at once, side by side, and left the reader to
+/// work out which acted on what; then one menu showed one of them, filled by
+/// whichever command the selection called for. With the menu split, each row
+/// is in the menu whose subject it names, and neither has to give way to the
+/// other.
 /// </summary>
 public sealed class PlacesMenuRowTests : OwnedViewModels
 {
@@ -45,6 +48,14 @@ public sealed class PlacesMenuRowTests : OwnedViewModels
         return shell;
     }
 
+    /// <summary>
+    /// A selected folder puts the selection's row on the item menu — and
+    /// **leaves the background menu's row where it is.** This asserted the
+    /// opposite while the two shared one slot of one menu. A right-click on
+    /// empty space keeps the selection, so hiding the folder's row for a
+    /// selected folder would take "Add this folder to places" off the one menu
+    /// that is about the folder, beside exactly the selection that made it go.
+    /// </summary>
     [AvaloniaFact]
     public void A_selected_folder_fills_the_row_with_the_selection_command()
     {
@@ -55,7 +66,7 @@ public sealed class PlacesMenuRowTests : OwnedViewModels
             0, DateTimeOffset.UnixEpoch, EntryFlags.Directory);
 
         Assert.True(shell.ShowAddSelectionToPlaces);
-        Assert.False(shell.ShowAddCurrentToPlaces);
+        Assert.True(shell.ShowAddCurrentToPlaces);
     }
 
     [AvaloniaFact]

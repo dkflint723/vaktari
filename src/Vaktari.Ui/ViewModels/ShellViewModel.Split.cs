@@ -184,6 +184,12 @@ public sealed partial class ShellViewModel
         // offered neither row.
         OnPropertyChanged(nameof(ShowSaveSearchToPlaces));
         OnPropertyChanged(nameof(CanTransferToOtherPane));
+
+        // Both read the active pane's listing as well, and are raised here for
+        // the reason the list above is: the active tab changing underneath
+        // them. The menus raise every gate again as they open.
+        OnPropertyChanged(nameof(ShowDetailsArrangeInMenu));
+        OnPropertyChanged(nameof(ShowAnalyseInMenu));
     }
 
     [RelayCommand]

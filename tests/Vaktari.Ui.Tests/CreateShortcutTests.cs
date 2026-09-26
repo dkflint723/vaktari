@@ -568,8 +568,8 @@ public sealed class CreateShortcutTests : OwnedViewModels
         var listing = XDocument.Parse(RepoSource.Ui("MainWindow.axaml"))
             .Descendants(avalonia + "ContextMenu")
             .Single(m => (string?)m.Attribute(
-                XNamespace.Get("http://schemas.microsoft.com/winfx/2006/xaml") + "DataType")
-                == "vm:PaneGroupViewModel");
+                XNamespace.Get("http://schemas.microsoft.com/winfx/2006/xaml") + "Name")
+                == ListingMenus.Item);
 
         var row = listing.Elements(avalonia + "MenuItem")
             .SingleOrDefault(m => (string?)m.Attribute("Header") == "Create shortcut");
