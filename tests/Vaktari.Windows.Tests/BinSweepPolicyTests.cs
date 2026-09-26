@@ -50,4 +50,28 @@ public sealed class BinSweepPolicyTests
     [InlineData(-10)]
     public void A_share_of_no_percent_allows_nothing_to_be_deleted(int percent)
         => Assert.Equal(0, WindowsTrashMaintenance.Allowance(percent));
+
+    /// <summary>
+    /// **The two rules above hold only if the sweep asks them.** The cutoff
+    /// and the allowance are tested as functions, and the sweep that deletes
+    /// cannot be run here without a Recycle Bin to empty — so putting the old
+    /// <c>Math.Max(1, DeleteAfterDays)</c> back into the sweep, or letting a
+    /// zero allowance through to the oldest-first purge, left every test above
+    /// green (both measured, as one-line mutations). Read from the source,
+    /// like the other call-site rules: the age half goes through
+    /// <see cref="WindowsTrashMaintenance.AgeCutoff"/> and nothing else in the
+    /// sweep reads the day count, and the size half deletes only under an
+    /// allowance there is one of.
+    /// </summary>
+    [Fact]
+    public void The_sweep_asks_the_cutoff_and_a_zero_allowance_deletes_nothing()
+    {
+        var sweep = RepoSource.Body(
+            RepoSource.Read("src", "Vaktari.Windows", "WindowsTrashMaintenance.cs"),
+            "private static TrashSweepResult Sweep(");
+
+        Assert.Contains("AgeCutoff(policy, DateTimeOffset.UtcNow) is { } cutoff", sweep, StringComparison.Ordinal);
+        Assert.DoesNotContain("DeleteAfterDays", sweep, StringComparison.Ordinal);
+        Assert.Contains("if (allowance > 0 && total > allowance)", sweep, StringComparison.Ordinal);
+    }
 }
