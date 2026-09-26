@@ -72,4 +72,11 @@ internal static class OnlyOn
     public const string Windows = "Asserts what only the Windows platform offers; runs on Windows only.";
 
     public static bool IsWindows => OperatingSystem.IsWindows();
+
+    /// <summary>The Linux counterpart: a headless window asserting what only
+    /// X11's drag protocol means — a proposed action rather than a mask, and
+    /// a finished move reported as Move.</summary>
+    public const string Linux = "Asserts what only the Linux platform means; runs on Linux only.";
+
+    public static bool IsLinux => OperatingSystem.IsLinux();
 }

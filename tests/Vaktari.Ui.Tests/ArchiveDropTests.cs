@@ -444,8 +444,11 @@ public sealed class ArchiveDropTests : OwnedViewModels
     /// programs, allows Copy alone. The move falls back to the copy the source
     /// allows, and the drop does what the cursor said: copies, and leaves the
     /// original where it was.
+    ///
+    /// Windows only: the mask is OLE's. X11 proposes one action and lets the
+    /// target answer another — see On_X11_the_proposed_action_limits_nothing.
     /// </summary>
-    [AvaloniaFact]
+    [AvaloniaFact(Skip = OnlyOn.Windows, SkipUnless = nameof(OnlyOn.IsWindows), SkipType = typeof(OnlyOn))]
     public async Task A_move_the_source_does_not_allow_is_a_copy()
     {
         var into = Folder("into");
@@ -486,8 +489,9 @@ public sealed class ArchiveDropTests : OwnedViewModels
     }
 
     /// <summary>Alt asks for a shortcut; a Copy-only source gets a copy, and
-    /// the cursor says so rather than no-drop.</summary>
-    [AvaloniaFact]
+    /// the cursor says so rather than no-drop. Windows only, for the reason
+    /// above.</summary>
+    [AvaloniaFact(Skip = OnlyOn.Windows, SkipUnless = nameof(OnlyOn.IsWindows), SkipType = typeof(OnlyOn))]
     public async Task A_link_the_source_does_not_allow_is_a_copy()
     {
         var into = Folder("into");
@@ -514,9 +518,9 @@ public sealed class ArchiveDropTests : OwnedViewModels
     /// <summary>
     /// The archive answer is held to the same rule: it is a Copy, and a source
     /// that allows no copy gets None rather than an answer OLE would throw
-    /// away.
+    /// away. Windows only, for the reason above.
     /// </summary>
-    [AvaloniaFact]
+    [AvaloniaFact(Skip = OnlyOn.Windows, SkipUnless = nameof(OnlyOn.IsWindows), SkipType = typeof(OnlyOn))]
     public async Task Archive_files_are_offered_only_as_the_source_allows()
     {
         var into = Folder("into");
@@ -529,6 +533,44 @@ public sealed class ArchiveDropTests : OwnedViewModels
             var over = Raise(ListingOf(window, pane), DragDrop.DragOverEvent, Words(), allowed: DragDropEffects.Move);
 
             Assert.Equal(DragDropEffects.None, over.DragEffects);
+        }
+        finally
+        {
+            window.Close();
+        }
+    }
+
+    /// <summary>
+    /// **On X11 what arrives is the one action the source proposes, and the
+    /// target may answer another** — so there it limits nothing. Read as a
+    /// mask, as it is on Windows, a Shift-drag from a file manager proposing
+    /// Copy would be turned into a copy, and an archive's files offered where
+    /// the source proposed Move would be refused. The window's own answers,
+    /// not the rule on its own, so the platform switch is held too.
+    /// </summary>
+    [AvaloniaFact(Skip = OnlyOn.Linux, SkipUnless = nameof(OnlyOn.IsLinux), SkipType = typeof(OnlyOn))]
+    public async Task On_X11_the_proposed_action_limits_nothing()
+    {
+        var into = Folder("into");
+        var from = Folder("from");
+
+        var file = Path.Combine(from, "proposed-copy.txt");
+        File.WriteAllText(file, "x");
+
+        var (window, pane) = await Shown(into, new Archive { Answer = _ => (true, null) });
+
+        try
+        {
+            var listing = ListingOf(window, pane);
+
+            var moved = Raise(listing, DragDrop.DragOverEvent, await Carrying(window, file),
+                              allowed: DragDropEffects.Copy, modifiers: KeyModifiers.Shift);
+
+            Assert.Equal(DragDropEffects.Move, moved.DragEffects);
+
+            var archived = Raise(listing, DragDrop.DragOverEvent, Words(), allowed: DragDropEffects.Move);
+
+            Assert.Equal(DragDropEffects.Copy, archived.DragEffects);
         }
         finally
         {
@@ -643,9 +685,10 @@ public sealed class ArchiveDropTests : OwnedViewModels
     /// shell reads a Move answered from the drop as "the target copied, you
     /// delete the originals" — while Vaktari's own move of them may still be
     /// running. What it is, in the shell's words, is an optimized move, and
-    /// the documented answer for one is anything but Move.
+    /// the documented answer for one is anything but Move. Windows only: on
+    /// X11 a None is a rejection — see On_X11_a_move_Vaktari_performs_is_reported_as_a_move.
     /// </summary>
-    [AvaloniaFact]
+    [AvaloniaFact(Skip = OnlyOn.Windows, SkipUnless = nameof(OnlyOn.IsWindows), SkipType = typeof(OnlyOn))]
     public async Task A_move_Vaktari_performs_is_not_reported_as_a_move()
     {
         var into = Folder("into");
@@ -670,6 +713,39 @@ public sealed class ArchiveDropTests : OwnedViewModels
             Assert.Equal(1, archive.ToldMoved);
 
             // And it did move — so the None above is not a drop that refused.
+            await Arrives(Path.Combine(into, "moved.txt"));
+        }
+        finally
+        {
+            window.Close();
+        }
+    }
+
+    /// <summary>
+    /// **On X11 a move Vaktari performs is reported as the Move it was.**
+    /// XdndFinished says "accepted" only when the action is not None, so the
+    /// None an optimized move answers on Windows told GTK or Qt the drop was
+    /// rejected, over a move that worked. Through the drop handler, so the
+    /// platform the call site asks about is held as well as MovedByUs.
+    /// </summary>
+    [AvaloniaFact(Skip = OnlyOn.Linux, SkipUnless = nameof(OnlyOn.IsLinux), SkipType = typeof(OnlyOn))]
+    public async Task On_X11_a_move_Vaktari_performs_is_reported_as_a_move()
+    {
+        var into = Folder("into");
+        var from = Folder("from");
+
+        var file = Path.Combine(from, "moved.txt");
+        File.WriteAllText(file, "x");
+
+        var (window, pane) = await Shown(into, new Archive());
+
+        try
+        {
+            var drop = Raise(ListingOf(window, pane), DragDrop.DropEvent, await Carrying(window, file),
+                             allowed: DragDropEffects.Copy | DragDropEffects.Move, modifiers: KeyModifiers.Shift);
+
+            Assert.Equal(DragDropEffects.Move, drop.DragEffects);
+
             await Arrives(Path.Combine(into, "moved.txt"));
         }
         finally

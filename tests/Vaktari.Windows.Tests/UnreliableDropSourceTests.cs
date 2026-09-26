@@ -38,6 +38,28 @@ public sealed class UnreliableDropSourceTests
     }
 
     /// <summary>
+    /// COM's other "try again": RPC_E_SERVERCALL_RETRYLATER is asked a second
+    /// time as RPC_E_CALL_REJECTED is. A_busy_moment_is_asked_again holds only
+    /// the first, so dropping this one from the retry went unnoticed.
+    /// </summary>
+    [WindowsFact]
+    public void A_source_that_says_retry_later_is_asked_again()
+    {
+        var source = new NativeDropSource(("a.txt", "x"u8.ToArray(), false))
+        {
+            FailQueries = 1,
+            QueryFailure = unchecked((int)0x8001010A),
+        };
+
+        Serve(source, drag =>
+        {
+            Assert.True(new VirtualFileDrop().Offers(drag, out var failure),
+                "RPC_E_SERVERCALL_RETRYLATER was taken as the source's answer instead of asked again");
+            Assert.Null(failure);
+        });
+    }
+
+    /// <summary>
     /// **Only a busy answer is asked again.** E_NOTIMPL is the source's
     /// considered answer, not a moment of it being busy; asking it twice on
     /// every drag-over would only double the calls into the other process.
