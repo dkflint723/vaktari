@@ -15,7 +15,7 @@ public sealed class Cp437NamesTests
 
     /// <summary>
     /// Latin-1 bytes are not UTF-8, so the name is CP437 — and the two stay
-    /// two. Decoding them as UTF-8 would give <c>caf�</c> for both.
+    /// two. Decoding them as UTF-8 would give <c>caf\uFFFD</c> for both.
     /// </summary>
     [Fact]
     public void Unflagged_latin1_names_decode_as_cp437_and_stay_distinct()
@@ -25,7 +25,7 @@ public sealed class Cp437NamesTests
 
         Assert.Equal("cafΘ", one);
         Assert.Equal("cafΦ", two);
-        Assert.DoesNotContain('�', one + two);
+        Assert.DoesNotContain('\uFFFD', one + two);
     }
 
     [Fact]
@@ -33,7 +33,7 @@ public sealed class Cp437NamesTests
     {
         Assert.Equal("Ç", Decode([0x80], flagged: false));
         Assert.Equal("é", Decode([0x82], flagged: false));
-        Assert.Equal(" ", Decode([0xFF], flagged: false));
+        Assert.Equal("\u00A0", Decode([0xFF], flagged: false));
     }
 
     [Fact]
@@ -46,7 +46,7 @@ public sealed class Cp437NamesTests
         var two = Decode([(byte)'x', 0xFE], flagged: true);
 
         Assert.NotEqual(one, two);
-        Assert.DoesNotContain('�', one + two);
+        Assert.DoesNotContain('\uFFFD', one + two);
     }
 
     /// <summary>Plenty of tools write UTF-8 names without the flag.</summary>

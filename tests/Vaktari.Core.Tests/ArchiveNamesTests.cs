@@ -53,10 +53,10 @@ public sealed class ArchiveNamesTests
     [InlineData("tab\there", "tab_here")]
     [InlineData("del\u007F", "del_")]
     [InlineData("c1\u0085", "c1_")]
-    [InlineData("inv‮gpj.exe", "inv_gpj.exe")]
-    [InlineData("iso⁦late⁩", "iso_late_")]
-    [InlineData("zero​width", "zero_width")]
-    [InlineData("bom﻿", "bom_")]
+    [InlineData("inv\u202Egpj.exe", "inv_gpj.exe")]
+    [InlineData("iso\u2066late\u2069", "iso_late_")]
+    [InlineData("zero\u200Bwidth", "zero_width")]
+    [InlineData("bom\uFEFF", "bom_")]
     public void Controls_bidi_and_invisibles_are_replaced_under_both(string raw, string landed)
     {
         Assert.Equal(landed, Win(raw));

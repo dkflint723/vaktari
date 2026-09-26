@@ -500,7 +500,7 @@ public sealed class ArchiveExtractionTests : IDisposable
     [Fact]
     public void A_file_written_under_a_replaced_name_says_so()
     {
-        var archive = ArchiveTestData.Zip(At("bidi.zip"), ("inv‮gpj.exe", "x"), ("ok.txt", "y"));
+        var archive = ArchiveTestData.Zip(At("bidi.zip"), ("inv\u202Egpj.exe", "x"), ("ok.txt", "y"));
 
         var done = Extract(archive, Dir("out"));
 

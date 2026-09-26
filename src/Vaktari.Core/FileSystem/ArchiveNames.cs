@@ -8,7 +8,7 @@ namespace Vaktari.Core.FileSystem;
 /// **An archive's names are somebody else's, and several kinds of them cannot
 /// or should not be written.** Windows refuses <c>a:b</c> and quietly drops a
 /// trailing dot (measured on Windows 11 26200: <c>trail.</c> becomes
-/// <c>trail</c>), a name like <c>inv‮gpj.exe</c> displays as
+/// <c>trail</c>), a name like <c>inv\u202Egpj.exe</c> displays as
 /// <c>invexe.jpg</c> in every file manager, and a control character is a
 /// name nobody can type. The maintainer's decision, following 7-Zip: replace
 /// the offending characters with <c>_</c> rather than leave the entry out —
@@ -124,11 +124,11 @@ public static class ArchiveNames
 
         // Bidirectional controls: each one makes a name display in an order
         // other than the one it has.
-        if (c is '؜' or '‎' or '‏' or (>= '‪' and <= '‮') or (>= '⁦' and <= '⁩'))
+        if (c is '\u061C' or '\u200E' or '\u200F' or (>= '\u202A' and <= '\u202E') or (>= '\u2066' and <= '\u2069'))
             return true;
 
         // Invisible characters, which make two names look identical.
-        if (c is (>= '​' and <= '‍') or '⁠' or '﻿') return true;
+        if (c is (>= '\u200B' and <= '\u200D') or '\u2060' or '\uFEFF') return true;
 
         // A surrogate reaching here is one without its partner.
         if (char.IsSurrogate(c)) return true;

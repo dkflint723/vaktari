@@ -175,7 +175,7 @@ public sealed class ArchiveReaderTests : IDisposable
     /// name as U+FFFD, with no raw bytes to do better from.</summary>
     [Fact]
     public void A_latin1_tar_name_arrives_with_a_replacement_character()
-        => Assert.Contains("caf�", List(ArchiveTestData.Fixture("latin1-gnu.tar")).Select(i => i.RawKey));
+        => Assert.Contains("caf\uFFFD", List(ArchiveTestData.Fixture("latin1-gnu.tar")).Select(i => i.RawKey));
 
     /// <summary>
     /// **A stream truncated part-way reads its early entries and then fails**

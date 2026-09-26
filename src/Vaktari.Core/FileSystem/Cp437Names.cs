@@ -21,7 +21,7 @@ namespace Vaktari.Core.FileSystem;
 /// **A flagged name whose bytes are not UTF-8 falls back to CP437**, rather
 /// than decoding with U+FFFD in place of each bad byte: measured in the
 /// refutations, two different flagged-invalid names (<c>x\xFF</c> and
-/// <c>x\xFE</c>) both became <c>x�</c> — one name for two entries.
+/// <c>x\xFE</c>) both became <c>x\uFFFD</c> — one name for two entries.
 /// </summary>
 internal static class Cp437Names
 {
@@ -36,7 +36,7 @@ internal static class Cp437Names
         "└┴┬├─┼╞╟╚╔╩╦╠═╬╧" +
         "╨╤╥╙╘╒╓╫╪┘┌█▄▌▐▀" +
         "αßΓπΣσµτΦΘΩδ∞φε∩" +
-        "≡±≥≤⌠⌡÷≈°∙·√ⁿ²■ ";
+        "≡±≥≤⌠⌡÷≈°∙·√ⁿ²■\u00A0";
 
     internal static string Decode(byte[] bytes, int index, int count, EncodingType type)
     {
