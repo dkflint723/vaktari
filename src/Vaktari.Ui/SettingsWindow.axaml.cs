@@ -60,13 +60,24 @@ public partial class SettingsWindow : Window
             if (e.Source is Control control
                 && e.NavigationMethod is NavigationMethod.Tab or NavigationMethod.Directional
                 && Avalonia.Automation.AutomationProperties.GetHelpText(control) is { Length: > 0 })
+            {
+                // **Under the control, not at the pointer.** A tooltip's
+                // default placement is wherever the mouse happens to be, so
+                // help opened from the keyboard was drawn by a pointer parked
+                // in a corner, far from the box it explains.
+                ToolTip.SetPlacement(control, PlacementMode.Bottom);
                 ToolTip.SetIsOpen(control, true);
+            }
         });
 
         AddHandler(LostFocusEvent, (_, e) =>
         {
-            if (e.Source is Control control && ToolTip.GetIsOpen(control))
-                ToolTip.SetIsOpen(control, false);
+            if (e.Source is not Control control) return;
+
+            if (ToolTip.GetIsOpen(control)) ToolTip.SetIsOpen(control, false);
+
+            // Hover goes back to the pointer, as everywhere else.
+            control.ClearValue(ToolTip.PlacementProperty);
         });
 
         // **The offer's answers take the keyboard when they appear**, rather

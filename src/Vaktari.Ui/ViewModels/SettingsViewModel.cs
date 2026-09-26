@@ -924,7 +924,26 @@ public sealed partial class SettingsViewModel : ObservableObject
     /// <summary>Said next to the button rather than in a dialog: none of the
     /// three is worth interrupting for, and a refusal has to be readable.</summary>
     [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(ShownStatus))]
     private string _settingsFileStatus = "";
+
+    /// <summary>
+    /// What the footer shows: the latest status, and while the file may not
+    /// be written, why — whatever else is being said.
+    ///
+    /// **The reason nothing is saved was replaced by the next thing said.** A
+    /// second Apply said "Nothing has changed since the last Apply", a Forget
+    /// said it would happen "when you press Apply or Save", and the line that
+    /// explained that none of it would reach the disk was gone. Every status
+    /// is set in one place and shown through this, so none of them can drop
+    /// it again.
+    /// </summary>
+    public string ShownStatus
+        => _notSaved is not { } why || SettingsFileStatus.Contains(why, StringComparison.Ordinal)
+            ? SettingsFileStatus
+            : SettingsFileStatus.Length == 0
+                ? why
+                : $"{SettingsFileStatus} — not saved: {why}";
 
     /// <summary>A save-file picker, for somewhere to put a copy.</summary>
     public event EventHandler? SettingsExportRequested;
@@ -1855,10 +1874,24 @@ public sealed partial class SettingsViewModel : ObservableObject
 
     private bool ForgetArmed => ForgetViewsOnSave || ForgetRecentOnSave || ForgetSearchHistoryOnSave;
 
-    /// <summary>Whether committing this state would change anything since
-    /// the last Apply.</summary>
+    /// <summary>
+    /// Whether committing this state would change anything since the last
+    /// Apply — measured against what is LIVE when the window handed that over.
+    ///
+    /// **Against the last Apply alone, another window's dialog could win.**
+    /// This dialog applied tooltips off, a dialog in another window applied
+    /// them on, and this one's untouched Save then committed nothing — leaving
+    /// them on while this dialog showed off. What is live is what a commit
+    /// would change, so that is what is compared.
+    /// </summary>
     private bool Changed(SettingsState state)
-        => _committed is null || ForgetArmed || !Bytes(state).AsSpan().SequenceEqual(_committed);
+    {
+        if (_committed is null || ForgetArmed) return true;
+
+        var against = Live?.Invoke() is { } live ? Bytes(SettingsRepair.Complete(live)) : _committed;
+
+        return !Bytes(state).AsSpan().SequenceEqual(against);
+    }
 
     /// <summary>
     /// Raised by Apply with what to commit. The window that opened the dialog
@@ -1919,9 +1952,10 @@ public sealed partial class SettingsViewModel : ObservableObject
 
         // **"Applied" over the reason nothing is written** would have told
         // somebody running an older build over a newer file that their choice
-        // was kept. It is kept until Vaktari closes, and the reason stays.
-        SettingsFileStatus = _notSaved is { } why
-            ? $"Applied until Vaktari closes — not saved: {why}"
+        // was kept. It is kept until Vaktari closes, and ShownStatus adds the
+        // reason.
+        SettingsFileStatus = _notSaved is not null
+            ? "Applied until Vaktari closes"
             : "Applied. Cancel now closes without undoing that — only later changes are dropped.";
     }
 

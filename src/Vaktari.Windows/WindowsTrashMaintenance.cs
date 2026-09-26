@@ -156,10 +156,8 @@ public sealed class WindowsTrashMaintenance : ITrashMaintenance
         var removed = 0;
         long freed = 0;
 
-        if (policy.DeleteOldFiles)
+        if (AgeCutoff(policy, DateTimeOffset.UtcNow) is { } cutoff)
         {
-            var cutoff = DateTimeOffset.UtcNow.AddDays(-Math.Max(1, policy.DeleteAfterDays));
-
             foreach (var entry in entries.Where(e => e.Deleted < cutoff))
             {
                 ct.ThrowIfCancellationRequested();
@@ -203,8 +201,27 @@ public sealed class WindowsTrashMaintenance : ITrashMaintenance
         };
     }
 
-    /// <summary>The size the bin is allowed, as a share of the system volume.</summary>
-    private static long Allowance(int percent)
+    /// <summary>
+    /// Anything deleted before this goes, or null when the age half of the
+    /// policy is off.
+    ///
+    /// **Zero days swept everything older than a day.** A day count of zero
+    /// or less was raised to one, so a hand-edited
+    /// <c>"trash": {"deleteOldFiles": true}</c> with no number — which reads
+    /// as zero — emptied the Recycle Bin of all but today's deletions, while
+    /// the Linux sweep treated the same file as off. A number nobody typed is
+    /// not a reason to delete files: off here too, and the disk-share half
+    /// already was (<see cref="Allowance"/> answers zero). Separate from the
+    /// sweep so a test can ask it without a Recycle Bin to empty.
+    /// </summary>
+    internal static DateTimeOffset? AgeCutoff(TrashSettings policy, DateTimeOffset now)
+        => policy.DeleteOldFiles && policy.DeleteAfterDays > 0
+            ? now.AddDays(-policy.DeleteAfterDays)
+            : null;
+
+    /// <summary>The size the bin is allowed, as a share of the system volume.
+    /// Zero — nothing is ever over it — for a share of zero or less.</summary>
+    internal static long Allowance(int percent)
     {
         if (percent is <= 0 or > 100) return 0;
 

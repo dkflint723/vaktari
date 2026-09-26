@@ -1395,9 +1395,9 @@
              read — has to be readable somewhere, and none of these is worth a
              dialog of its own. -->
         <SelectableTextBlock DockPanel.Dock="Left"
-                             Text="{Binding SettingsFileStatus}"
-                             IsVisible="{Binding SettingsFileStatus, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"
-                             ToolTip.Tip="{Binding SettingsFileStatus}"
+                             Text="{Binding ShownStatus}"
+                             IsVisible="{Binding ShownStatus, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"
+                             ToolTip.Tip="{Binding ShownStatus}"
                              FontSize="{DynamicResource FontSizeTiny}"
                              Foreground="{DynamicResource ViewDimText}"
                              VerticalAlignment="Center"

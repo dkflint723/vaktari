@@ -67,6 +67,16 @@ should not be trusted for compatibility yet.
   opened files and folders* under Settings ▸ Privacy and system, and *Open in
   new window* under Settings ▸ Context menu, if you want them back.
 
+- **On Windows, a bin sweep switched on with no number of days emptied the
+  Recycle Bin of everything older than a day.** A settings file saying
+  `"deleteOldFiles": true` and nothing else reads as zero days, which the
+  sweep raised to one; it is off now, as it always was on Linux.
+
+- **A window opened after changing Settings ignored the new startup
+  choices.** Split view, the filter bar, the editable path bar and the full
+  path in the title bar reached new windows only after a restart; a window
+  opened with `Ctrl+N` now starts the way Settings says.
+
 - **Settings notes that were not true.** *Show the full path in the title bar*
   sat under "changes to how it opens apply on the next launch" and changes as
   soon as it is saved; the click choice said it "takes effect immediately" and

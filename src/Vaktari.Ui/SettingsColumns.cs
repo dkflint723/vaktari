@@ -37,8 +37,11 @@ public sealed class SettingsColumns : Panel
         AvaloniaProperty.Register<SettingsColumns, double>(nameof(MinColumnWidth), 200);
 
     /// <summary>
-    /// The font size <see cref="MinColumnWidth"/> was chosen at: the settings
-    /// window's small text at an interface text size of 100%.
+    /// The font size <see cref="MinColumnWidth"/> was chosen at, and at which
+    /// it is taken as it stands. Not quite the settings window's small text at
+    /// 100% — PaneScale sets that at 12.5, which makes the minimum about 208px
+    /// there — but the size the column test measured and the 416px arithmetic
+    /// in this class's summary were written at.
     /// </summary>
     public const double ReferenceFontSize = 12;
 

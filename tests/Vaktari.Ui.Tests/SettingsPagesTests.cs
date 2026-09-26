@@ -800,8 +800,10 @@ public sealed class SettingsPagesTests : OwnedViewModels
         model.ShowStatusBar = false;
         model.ApplyCommand.Execute(null);
 
-        Assert.Contains("not saved", model.SettingsFileStatus, StringComparison.Ordinal);
-        Assert.Contains(why, model.SettingsFileStatus, StringComparison.Ordinal);
+        // Read from what the footer shows, which carries the reason whatever
+        // the latest status is (see the test below).
+        Assert.Contains("not saved", model.ShownStatus, StringComparison.Ordinal);
+        Assert.Contains(why, model.ShownStatus, StringComparison.Ordinal);
 
         // And an ordinary file still hears that it was saved.
         Assert.StartsWith("Saves", new SettingsViewModel(new SettingsState()).ApplyTip, StringComparison.Ordinal);
@@ -1106,6 +1108,137 @@ public sealed class SettingsPagesTests : OwnedViewModels
         }
 
         Assert.True(groups >= 6, $"only {groups} column groups were shown");
+    }
+
+    // ---- verification fixes -----------------------------------------------------------
+
+    /// <summary>
+    /// **A new window ignored the startup choices Apply had just made.** The
+    /// constructor read the launch snapshot WindowServices took, which nothing
+    /// updated, so Ctrl+N after applying split view, the filter bar and the
+    /// full-path title opened unsplit, with no filter bar and a short title —
+    /// while the dialog said they apply to new windows. Through a real second
+    /// window, after a real Apply.
+    /// </summary>
+    [AvaloniaFact]
+    public void A_window_opened_after_apply_starts_the_way_it_says()
+    {
+        UseSearch(PaneViewModel.Search);
+
+        var main = Shown(new MainWindow());
+
+        main.ShowSettings(SettingsPage.General);
+        Pump();
+
+        var dialog = Assert.Single(main.OwnedWindows.OfType<SettingsWindow>());
+        var model = Assert.IsType<SettingsViewModel>(dialog.DataContext);
+
+        model.BeginInSplitView = true;
+        model.ShowFilterBar = true;
+        model.ShowFullPathInTitleBar = true;
+        model.ApplyCommand.Execute(null);
+        model.CancelCommand.Execute(null);
+        Pump();
+
+        main.Shell.NewWindowCommand.Execute(null);
+        Pump();
+
+        var peer = main.Services.Windows.Single(w => !ReferenceEquals(w, main));
+        _windows.Add(peer);
+
+        Assert.True(peer.Shell.IsSplit, "the new window is not split");
+        Assert.True(peer.Shell.ActiveTab!.IsFilterVisible, "the new window has no filter bar");
+        Assert.Contains(Path.DirectorySeparatorChar.ToString(), peer.Title, StringComparison.Ordinal);
+    }
+
+    /// <summary>
+    /// **Help opened from the keyboard was drawn at the pointer**, wherever
+    /// the mouse was parked — measured at (5,25) for a box at (196,481). It
+    /// is placed under the control it explains, and hover goes back to the
+    /// pointer once the keyboard moves on.
+    /// </summary>
+    [AvaloniaFact]
+    public void Keyboard_opened_help_sits_under_its_control()
+    {
+        var (window, model) = Dialog();
+
+        window.MouseMove(new Avalonia.Point(5, 5));
+        Pump();
+
+        var boxes = window.GetVisualDescendants().OfType<CheckBox>()
+            .Where(c => c.IsEffectivelyVisible && AutomationProperties.GetHelpText(c) is { Length: > 0 })
+            .ToList();
+
+        var box = boxes[^1];
+
+        box.Focus(NavigationMethod.Tab);
+        Pump();
+
+        Assert.True(ToolTip.GetIsOpen(box));
+        Assert.Equal(PlacementMode.Bottom, ToolTip.GetPlacement(box));
+
+        boxes[0].Focus(NavigationMethod.Tab);
+        Pump();
+
+        Assert.Equal(PlacementMode.Pointer, ToolTip.GetPlacement(box));
+
+        ToolTip.SetIsOpen(boxes[0], false);
+    }
+
+    /// <summary>
+    /// **A second, unchanged Apply over a read-only file said only "Nothing
+    /// has changed"** — the reason nothing is saved was gone again. The
+    /// footer shows the reason with whatever it says, a Forget included.
+    /// </summary>
+    [AvaloniaFact]
+    public void The_reason_nothing_is_saved_stays_with_every_status()
+    {
+        const string why = "settings.json was written by a newer Vaktari";
+
+        var model = new SettingsViewModel(new SettingsState(), recents: new Recents(2), settingsFileNote: why);
+
+        Assert.Equal(why, model.ShownStatus);
+
+        model.ShowStatusBar = false;
+        model.ApplyCommand.Execute(null);
+        model.ApplyCommand.Execute(null);
+
+        Assert.StartsWith("Nothing has changed", model.ShownStatus, StringComparison.Ordinal);
+        Assert.Contains(why, model.ShownStatus, StringComparison.Ordinal);
+
+        model.ForgetRecentCommand.Execute(null);
+        Assert.Contains(why, model.ShownStatus, StringComparison.Ordinal);
+
+        // And the footer shows this, not the bare status.
+        Assert.Contains(Page(Markup(), SettingsPage.General).Document!.Descendants(Ax + "SelectableTextBlock"),
+                        t => (string?)t.Attribute("Text") == "{Binding ShownStatus}");
+    }
+
+    /// <summary>
+    /// **An untouched Save lost to another window's dialog.** This dialog
+    /// applied tooltips off; another applied them on; this one's Save,
+    /// compared only with its own last Apply, committed nothing and left them
+    /// on while it showed off. Compared with what is live, it commits.
+    /// </summary>
+    [AvaloniaFact]
+    public void An_untouched_save_is_measured_against_what_is_live()
+    {
+        var live = new SettingsState();
+
+        var model = new SettingsViewModel(new SettingsState()) { Live = () => live };
+
+        model.ApplyRequested += (_, state) => live = state;
+
+        model.ShowTooltips = false;
+        model.ApplyCommand.Execute(null);
+
+        // Another window's dialog puts them back on.
+        live = live with { General = live.General with { ShowTooltips = true } };
+
+        model.SaveCommand.Execute(null);
+
+        Assert.True(model.CommitNeeded, "the Save thought the live settings still matched");
+        Assert.False(model.Result.General.ShowTooltips);
     }
 
     // ---- the merged choosers, both ways ------------------------------------------------

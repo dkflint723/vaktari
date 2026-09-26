@@ -97,7 +97,6 @@ internal sealed class WindowServices
     private WindowServices(
         IPlatform platform,
         JsonSettingsStore settingsStore,
-        SettingsState settings,
         JsonSessionStore session,
         JsonFolderViewStore folderViews,
         JsonRecentStore recents,
@@ -108,7 +107,6 @@ internal sealed class WindowServices
     {
         Platform = platform;
         SettingsStore = settingsStore;
-        Settings = settings;
         Session = session;
         FolderViews = folderViews;
         Recents = recents;
@@ -120,7 +118,6 @@ internal sealed class WindowServices
 
     internal IPlatform Platform { get; }
     internal JsonSettingsStore SettingsStore { get; }
-    internal SettingsState Settings { get; }
     internal JsonSessionStore Session { get; }
     internal JsonFolderViewStore FolderViews { get; }
     internal JsonRecentStore Recents { get; }
@@ -423,7 +420,7 @@ internal sealed class WindowServices
         var session = new JsonSessionStore(JsonSessionStore.DefaultDirectory());
 
         return new WindowServices(
-            platform, settingsStore, settings, session, folderViews, recents,
+            platform, settingsStore, session, folderViews, recents,
             searches, driveLinks, driveLinkStore,
             new Vaktari.Core.Updates.ReleaseCheck(JsonSessionStore.DefaultDirectory()))
         {
