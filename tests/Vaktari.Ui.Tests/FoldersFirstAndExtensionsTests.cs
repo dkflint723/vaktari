@@ -475,16 +475,16 @@ public sealed class FoldersFirstAndExtensionsTests : OwnedViewModels
     /// both view-model properties and every test above them would pass with no
     /// control anywhere on the window. Read out of the markup for that reason,
     /// the way the Restore defaults button is.
+    ///
+    /// The label is the box's Content now: the paragraph that was a second
+    /// line inside it is its help text (SettingsPagesTests holds that rule
+    /// for every box), so that is where the label is read from.
     /// </summary>
     [Fact]
     public void The_dialog_carries_a_control_for_each()
     {
-        Assert.Equal(
-            "Sort folders before files",
-            (string?)Box("FoldersFirst").Descendants(Xaml + "TextBlock").First().Attribute("Text"));
+        Assert.Equal("Sort folders before files", (string?)Box("FoldersFirst").Attribute("Content"));
 
-        Assert.Equal(
-            "Show file name extensions",
-            (string?)Box("ShowFileExtensions").Descendants(Xaml + "TextBlock").First().Attribute("Text"));
+        Assert.Equal("Show file name extensions", (string?)Box("ShowFileExtensions").Attribute("Content"));
     }
 }

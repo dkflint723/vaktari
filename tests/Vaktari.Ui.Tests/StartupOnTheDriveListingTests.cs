@@ -173,30 +173,34 @@ public class StartupOnTheDriveListingTests
     }
 
     /// <summary>
-    /// And the page really offers it.
+    /// The startup choice as it is on the page: one dropdown on General.
     ///
     /// **A view-model property with nothing bound to it is a preference nobody
     /// can set**, which is the state this finding started in — and compiled
     /// bindings would let <c>StartInComputer</c> go on existing, and go on
     /// passing every test above, with no control on the page touching it.
-    ///
-    /// The GroupName is asserted as well as the binding: a radio in its own
-    /// group stays checked while another choice is picked beside it, so the
-    /// dialog would offer two answers to one question.
     /// </summary>
-    [Fact]
-    public void The_startup_page_offers_the_drive_listing()
+    private static List<string?> StartupRows()
     {
         var page = XDocument.Parse(RepoSource.Ui("SettingsWindow.axaml"))
             .Descendants(Avalonia + "TabItem")
-            .Single(t => (string?)t.Attribute("Header") == "Startup");
+            .Single(t => MenuLabels.Plain((string?)t.Attribute("Header")) == "General");
 
-        var radio = page.Descendants(Avalonia + "RadioButton").Single(
-            r => (string?)r.Attribute("IsChecked") == "{Binding StartInComputer}");
+        var choice = page.Descendants(Avalonia + "ComboBox")
+            .Single(c => (string?)c.Attribute("SelectedIndex") == "{Binding StartupIndex}");
 
-        Assert.Equal("{Binding StartInComputerLabel}", (string?)radio.Attribute("Content"));
-        Assert.Equal("startup", (string?)radio.Attribute("GroupName"));
+        return [.. choice.Elements(Avalonia + "ComboBoxItem").Select(i => (string?)i.Attribute("Content"))];
     }
+
+    /// <summary>
+    /// And the page really offers it — as the dropdown's third row, in the
+    /// platform's own word. The four radios this was are one dropdown now,
+    /// which can only ever hold one answer: the guarantee the radios' shared
+    /// GroupName used to be asserted here for.
+    /// </summary>
+    [Fact]
+    public void The_startup_page_offers_the_drive_listing()
+        => Assert.Equal("{Binding StartInComputerLabel}", StartupRows()[2]);
 
     /// <summary>
     /// What the new NAME costs on disk, which is not what the new number costs.
@@ -257,28 +261,24 @@ public class StartupOnTheDriveListingTests
     }
 
     /// <summary>
-    /// **And the three radios beside it still bind their own properties.**
+    /// **And the three rows beside it still say what they store.**
     ///
     /// Not paranoia: BackspacePreferenceTests records a control beside a newly
-    /// added one silently becoming a second switch for it, on this very page,
-    /// with the whole suite still green. Four radios in one group is exactly
-    /// the shape that happens in.
+    /// added one silently becoming a second switch for it, with the whole
+    /// suite still green. For a dropdown the same fault is a row whose words
+    /// and index part company — so each row's words are read at its index,
+    /// and the index is decoded into the flag it must set.
     /// </summary>
-    [Theory]
-    [InlineData("Restore folders, tabs and window from last time", "RestoreLastSession")]
-    [InlineData("Open the home folder", "StartInHome")]
-    [InlineData("Open a specific folder", "StartInSpecificFolder")]
-    public void The_radios_beside_it_are_untouched(string label, string property)
+    [AvaloniaTheory]
+    [InlineData(0, "Restore folders, tabs and window from last time", "RestoreLastSession")]
+    [InlineData(1, "Open the home folder", "StartInHome")]
+    [InlineData(3, "Open a specific folder", "StartInSpecificFolder")]
+    public void The_rows_beside_it_are_untouched(int row, string label, string property)
     {
-        var page = XDocument.Parse(RepoSource.Ui("SettingsWindow.axaml"))
-            .Descendants(Avalonia + "TabItem")
-            .Single(t => (string?)t.Attribute("Header") == "Startup");
+        Assert.Equal(label, StartupRows()[row]);
 
-        var radio = page.Descendants(Avalonia + "RadioButton")
-            .Single(r => (string?)r.Attribute("Content") == label
-                         || r.Descendants(Avalonia + "TextBlock")
-                             .Any(t => (string?)t.Attribute("Text") == label));
+        var vm = new SettingsViewModel(new SettingsState()) { StartupIndex = row };
 
-        Assert.Equal("{Binding " + property + "}", (string?)radio.Attribute("IsChecked"));
+        Assert.True((bool)typeof(SettingsViewModel).GetProperty(property)!.GetValue(vm)!);
     }
 }

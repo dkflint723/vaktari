@@ -48,9 +48,12 @@ public sealed class EnterConfirmsDialogsTests
     {
         var model = new SettingsViewModel(new SettingsState())
         {
-            // A marker on the General page, which is the page a fresh window
-            // opens on — so the box below is realised and can take focus.
+            // A marker in the Proton Drive box, on Privacy and system since
+            // the pages were regrouped — so the window is opened there, which
+            // is what realises the box and lets it take focus. Only the page
+            // on screen is built.
             ProtonDriveFolder = @"D:\marker",
+            Page = SettingsPage.PrivacyAndSystem,
         };
 
         var window = new SettingsWindow { DataContext = model };

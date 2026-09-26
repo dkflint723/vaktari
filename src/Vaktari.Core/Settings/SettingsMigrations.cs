@@ -9,7 +9,7 @@ namespace Vaktari.Core.Settings;
 /// **A file from any other version was thrown away.** Load kept a file only
 /// when its version number was exactly the current one and answered anything
 /// else with defaults — so the first release to change the number would have
-/// reset every choice on six pages for everyone who upgraded, silently, on
+/// reset every choice in the dialog for everyone who upgraded, silently, on
 /// the morning they installed it. A reset is the failure a version number
 /// exists to prevent, not the one it exists to cause.
 ///

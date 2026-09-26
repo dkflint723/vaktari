@@ -7,20 +7,20 @@ using Vaktari.Ui.ViewModels;
 namespace Vaktari.Ui;
 
 /// <summary>
-/// The settings dialog, and what a save reaches when it closes.
+/// The settings dialog, and what an Apply or a Save reaches.
 ///
 /// **What makes this big is not that it opens a window.** Every other dialog
 /// this class puts up is a one-line lambda in the constructor. This one is
 /// long because the window it opens asks seven questions back — browse for a
 /// startup folder, run diagnostics, export, import, install an icon theme,
-/// browse for one, open a URL — and because its Closed handler is where a
-/// saved setting becomes a running application, through a dozen separate
-/// statements.
+/// browse for one, open a URL — and because Commit, which Apply and the
+/// Closed handler both call, is where a saved setting becomes a running
+/// application, through a dozen separate statements.
 ///
 /// SettingsChangedEverywhere is one of those statements, lifted out because it
 /// is the one that leaves this window: it tells the OTHER windows in the
 /// family. It comes here rather than staying behind because its only caller in
-/// the application is that Closed handler. It is <c>internal</c> rather than
+/// the application is Commit. It is <c>internal</c> rather than
 /// private only so a test can call it by reference, which is a thing worth
 /// saying out loud — a member that looks like it has outside callers, and has
 /// none except a test, is exactly how a member gets left somewhere nothing
@@ -95,12 +95,28 @@ public partial class MainWindow
         }
     }
     /// <summary>
-    /// Saving swaps AppSettings.Current and writes the file. Most of what the
-    /// Startup page controls only means anything at launch, so it is applied
-    /// then rather than re-run here — except the title bar, which is visible
-    /// right now and would otherwise look broken until a restart.
+    /// The settings page last left open, for the next time the dialog opens
+    /// without being asked for a particular one.
+    ///
+    /// **The dialog always opened on General**, so somebody working through
+    /// the Keyboard page — change a key, close, try it, reopen — found it
+    /// again every time by hand. Per process and in memory, and static
+    /// because every window in the family opens the same dialog: the page is
+    /// a convenience of this sitting, not a preference worth a key in
+    /// settings.json.
     /// </summary>
-    private void ShowSettings()
+    internal static SettingsPage LastSettingsPage { get; set; }
+
+    /// <summary>
+    /// Saving swaps AppSettings.Current and writes the file. Most of what
+    /// "When Vaktari opens" controls only means anything at launch, so it is
+    /// applied then rather than re-run here — except the title bar, which is
+    /// visible right now and would otherwise look broken until a restart.
+    ///
+    /// Opens on <paramref name="page"/> when a caller names one — the tour's
+    /// line about keys names Keyboard — and otherwise where it was last left.
+    /// </summary>
+    internal void ShowSettings(SettingsPage? page = null)
     {
         var model = new SettingsViewModel(
             AppSettings.Current, _defaultFileManager, _platform.FileIcons, _fileManager,
@@ -118,6 +134,8 @@ public partial class MainWindow
         // The pane already holds the detected list, ordered and cached, so the
         // dialog borrows it rather than probing the disk again as it opens.
         if (_shell.ActiveTab is { } pane) model.UseTerminals(pane.Terminals);
+
+        model.Page = page ?? LastSettingsPage;
 
         var window = new SettingsWindow(model);
 
@@ -301,59 +319,79 @@ public partial class MainWindow
         // which of its own applications answers.
         model.OpenUrlRequested += (_, url) => _launcher?.Open(url);
 
+        // **Apply and Save land through this one body.** Apply commits without
+        // closing and Save commits on the way out; both hand over what
+        // Collect gathered, and both must reach every window, the file, the
+        // icon theme and the armed Forget buttons — so there is one list of
+        // those steps rather than two to keep in step.
+        model.ApplyRequested += (_, result) => Commit(model, result);
+
         window.Closed += (_, _) =>
         {
+            LastSettingsPage = model.Page;
+
             if (!model.Saved) return;
 
-            AppSettings.Apply(model.Result);
-
-            // The mapping follows the setting immediately, or a corrected
-            // folder would need a restart to matter. Clearing it falls back
-            // to the guess, the same as startup.
-            _services.DriveLinks.LocalRoot =
-                model.Result.General.ProtonDriveFolder is { Length: > 0 } chosen
-                    ? chosen
-                    : Vaktari.Core.Sharing.ProtonDriveLinks.GuessLocalRoot() ?? "";
-
-            // Rebuilt on save, or choosing a theme would need a restart — and
-            // the resolved-path cache has no theme in its key, so it has to be
-            // dropped or it keeps serving files from the theme just abandoned.
-            WindowServices.InstallIconTheme(_platform);
-            Thumbnails.IconLoader.Invalidate();
-            _ = _services.SettingsStore.SaveAsync(model.Result);
-
-            // Turned on just now: ask now rather than tomorrow. The check's
-            // own cadence keeps a save that leaves it on from asking twice.
-            if (model.Result.General.CheckForUpdates) _ = CheckForUpdatesAsync();
-
-            // Here rather than in the dialog, so it lands through the one
-            // handler that already applies a save — and so Cancel throws it
-            // away like every other change made in that dialog.
-            if (model.ForgetViewsOnSave) _services.FolderViews.ForgetAll();
-            if (model.ForgetRecentOnSave) _services.Recents.ForgetAll();
-            if (model.ForgetSearchHistoryOnSave) _services.Searches.ForgetAll();
-
-            // The font lives in the theme resources, and ThemeApplier is the
-            // only thing that writes them — so a saved font does nothing until
-            // this runs. It was called at startup and on a Plasma scheme change
-            // and nowhere else, which is why changing the font appeared to do
-            // nothing at all.
-            ThemeApplier.Apply(this, _theme?.Read());
-
-            // Icon spacing lands in the SAME kind of place — a resource that
-            // only the markup reads — so it needs the same treatment. Without
-            // this the setting saves, the file records it, and absolutely
-            // nothing moves until the next restart, which is precisely how the
-            // font setting managed to look broken for weeks.
-            ApplyScales(_shell.FontScale, _shell.IconScale);
-
-            // Most settings are read at the moment they matter. Sorting and the
-            // status bar are not — a listing already on screen was ordered under
-            // the old rule, and a visibility binding needs telling. The title
-            // bar's full-path choice goes with it, to every window.
-            SettingsChangedEverywhere();
+            Commit(model, model.Result);
         };
 
         window.ShowDialog(this);
+    }
+
+    /// <summary>
+    /// A collected state made live: applied to every window in the family,
+    /// written to disk, and the armed Forget buttons carried out. The body
+    /// the dialog's Closed handler used to hold, lifted out so Apply reaches
+    /// exactly what a Save reaches.
+    /// </summary>
+    private void Commit(SettingsViewModel model, Vaktari.Core.Settings.SettingsState result)
+    {
+        AppSettings.Apply(result);
+
+        // The mapping follows the setting immediately, or a corrected
+        // folder would need a restart to matter. Clearing it falls back
+        // to the guess, the same as startup.
+        _services.DriveLinks.LocalRoot =
+            result.General.ProtonDriveFolder is { Length: > 0 } chosen
+                ? chosen
+                : Vaktari.Core.Sharing.ProtonDriveLinks.GuessLocalRoot() ?? "";
+
+        // Rebuilt on save, or choosing a theme would need a restart — and
+        // the resolved-path cache has no theme in its key, so it has to be
+        // dropped or it keeps serving files from the theme just abandoned.
+        WindowServices.InstallIconTheme(_platform);
+        Thumbnails.IconLoader.Invalidate();
+        _ = _services.SettingsStore.SaveAsync(result);
+
+        // Turned on just now: ask now rather than tomorrow. The check's
+        // own cadence keeps a save that leaves it on from asking twice.
+        if (result.General.CheckForUpdates) _ = CheckForUpdatesAsync();
+
+        // Here rather than in the dialog, so it lands through the one
+        // body that already applies a save — and so Cancel throws it
+        // away like every other change not yet applied.
+        if (model.ForgetViewsOnSave) _services.FolderViews.ForgetAll();
+        if (model.ForgetRecentOnSave) _services.Recents.ForgetAll();
+        if (model.ForgetSearchHistoryOnSave) _services.Searches.ForgetAll();
+
+        // The font lives in the theme resources, and ThemeApplier is the
+        // only thing that writes them — so a saved font does nothing until
+        // this runs. It was called at startup and on a Plasma scheme change
+        // and nowhere else, which is why changing the font appeared to do
+        // nothing at all.
+        ThemeApplier.Apply(this, _theme?.Read());
+
+        // Icon spacing lands in the SAME kind of place — a resource that
+        // only the markup reads — so it needs the same treatment. Without
+        // this the setting saves, the file records it, and absolutely
+        // nothing moves until the next restart, which is precisely how the
+        // font setting managed to look broken for weeks.
+        ApplyScales(_shell.FontScale, _shell.IconScale);
+
+        // Most settings are read at the moment they matter. Sorting and the
+        // status bar are not — a listing already on screen was ordered under
+        // the old rule, and a visibility binding needs telling. The title
+        // bar's full-path choice goes with it, to every window.
+        SettingsChangedEverywhere();
     }
 }

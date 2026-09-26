@@ -832,7 +832,9 @@ public sealed class SearchHistoryTests : OwnedViewModels
 
         vm.ForgetSearchHistoryCommand.Execute(null);
 
-        Assert.Equal("2 remembered searches will be forgotten when you press Save.",
+        // Apply as well as Save since the dialog gained Apply: either one
+        // carries the clearing out, so the line names both.
+        Assert.Equal("2 remembered searches will be forgotten when you press Apply or Save.",
                      vm.SettingsFileStatus);
     }
 
@@ -874,8 +876,8 @@ public sealed class SearchHistoryTests : OwnedViewModels
 
         // And it SAYS it is armed, in the strip the two buttons beside it use:
         // a button that reports nothing looks like a button that did nothing,
-        // and the clearing does not happen until Save.
-        Assert.Equal("One remembered search will be forgotten when you press Save.",
+        // and the clearing does not happen until Apply or Save.
+        Assert.Equal("One remembered search will be forgotten when you press Apply or Save.",
                      vm.SettingsFileStatus);
     }
 

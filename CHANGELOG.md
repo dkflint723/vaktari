@@ -11,6 +11,47 @@ should not be trusted for compatibility yet.
 
 ## [Unreleased]
 
+### Changed
+
+- **The settings window is seven pages that each hold what their name
+  says.** *General* is where Vaktari opens and how, what a click and
+  Backspace and Tab do, the split, and the confirmations; *Appearance* is
+  colour, type, what a row shows, the window's furniture and the file icons;
+  *Folders and lists* is sorting, per-folder views, what a folder's size shows,
+  dates, tooltips, previews and grid spacing; *Privacy and system* is the
+  recent lists and search history, the default file manager, the terminal,
+  Proton Drive and the update check; then *Keyboard*, *Context menu* and the
+  bin. The *Startup*, *View modes* and *Navigation* pages are gone. Nothing
+  in settings.json moved, so no setting changes on upgrade. General was four
+  screens tall at the default size and is under a screen and a half.
+
+- **Each setting's explanation is its tooltip**, and what a screen reader
+  reads for it, rather than a paragraph always on the page. A note on the page
+  is one short line at most. Short groups of check boxes sit in two columns,
+  and fall back to one when the window is narrow.
+
+- **Paired controls are one each.** *File icons* is one list — Vaktari's own,
+  your desktop's (on Windows), and every installed or downloaded theme — where
+  a check box, a list and a paragraph explaining which of the two won used to
+  be. *Colour* is one list, and *the desktop's own colours and accent* brings
+  the desktop's light or dark with it: a forced lightness under a desktop's
+  own backgrounds could put dark text on dark surfaces. The sort order is one
+  list — naturally, alphabetically, or alphabetically with capitals first —
+  instead of a *Case sensitive* box that was greyed out without saying why.
+  Where Vaktari opens, what a folder's size shows and what happens when the
+  details panel does not fit are each a dropdown.
+
+- **The settings window has an Apply button**: what is on screen takes effect
+  without closing the window. *Cancel* after an Apply closes without undoing
+  it, and the footer says so when it happens.
+
+- **The settings window works from the keyboard.** `Ctrl+Tab` and
+  `Ctrl+PageDown` go to the next page, `Ctrl+Shift+Tab` and `Ctrl+PageUp` to
+  the previous one; every page name has an `Alt` letter; `Tab` reaches the
+  page before the buttons at the bottom; and the window reopens on the page it
+  was last closed on. The tour's line about changing keys opens it straight on
+  the Keyboard page.
+
 ### Fixed
 
 - **Upgrading from 0.9.x switched the recent lists off and took *Open in new
@@ -18,6 +59,13 @@ should not be trusted for compatibility yet.
   on, and a settings file written before then read them as off. A setting a
   file does not mention now gets its real default; a file that switched either
   off keeps it off.
+
+- **Settings notes that were not true.** *Show the full path in the title bar*
+  sat under "changes to how it opens apply on the next launch" and changes as
+  soon as it is saved; the click choice said it "takes effect immediately" and
+  lands on Save like everything else; the Proton Drive box had no label and
+  suggested a `D:\` path on Linux; and on Linux the icon list offered
+  *Vaktari's own icons* for the row that draws your desktop's icon theme.
 
 ## [0.11.0] — 2026-09-25
 

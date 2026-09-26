@@ -29,14 +29,37 @@ public sealed record FontOption(string Name, FontFamily Family, bool IsFollowDes
 public sealed record TerminalChoice(string Id, string Name);
 
 /// <summary>
-/// Edits a copy and commits it whole, rather than writing each control as it
-/// changes. Cancel then genuinely cancels, and a half-finished set of
-/// preferences never reaches disk.
+/// The settings dialog's pages, in the order the strip lists them.
 ///
-/// Only the Startup page exists so far. The remaining five are separate pieces
-/// of work, each landing with the plumbing that makes its toggles do something
-/// — a control that does nothing is worse than an absent one, and this project
-/// requires the UI to be usable by someone with no prior knowledge of it.
+/// **The window always opened on the first page, and nothing outside it could
+/// name another.** The tour's line about changing keys could only say "Settings
+/// — Keyboard" and leave the reader to find it, and somebody working through
+/// the Keyboard page had to click back to it after every visit. The order here
+/// IS the strip's order — <see cref="SettingsViewModel.PageIndex"/> is this
+/// value as a number — and SettingsPagesTests reads the markup to hold the two
+/// together.
+/// </summary>
+public enum SettingsPage
+{
+    General,
+    Appearance,
+    FoldersAndLists,
+    PrivacyAndSystem,
+    Keyboard,
+    ContextMenu,
+    Bin,
+}
+
+/// <summary>
+/// Edits a copy and commits it whole, rather than writing each control as it
+/// changes. Cancel then genuinely cancels what has not been applied, and a
+/// half-finished set of preferences never reaches disk.
+///
+/// Seven pages, each holding what its name says: General (how Vaktari opens,
+/// what a click and a key do, splits, confirmations), Appearance, Folders and
+/// lists, Privacy and system, Keyboard, Context menu and the bin. **The pages
+/// are a layout, not a data shape** — every control still reads and writes the
+/// stored key it always did, so regrouping them needed no migration.
 /// </summary>
 public sealed partial class SettingsViewModel : ObservableObject
 {
@@ -287,14 +310,86 @@ public sealed partial class SettingsViewModel : ObservableObject
         Keyboard.Load(current.Keyboard);
     }
 
-    // Four booleans rather than one enum property because Avalonia's
-    // RadioButton binds IsChecked, and a converter per option would be more
-    // moving parts than the thing it converts. Only the setters coordinate.
+    // ---- which page is showing ---------------------------------------------
+
+    /// <summary>
+    /// The page on screen, as the strip's index — bound to the TabControl's
+    /// SelectedIndex, so setting it before the window is shown opens the
+    /// dialog there, and reading it at close says where the person left off.
+    /// See <see cref="SettingsPage"/> for why that needed saying.
+    /// </summary>
+    [ObservableProperty] private int _pageIndex;
+
+    /// <summary>The same, by name.</summary>
+    public SettingsPage Page
+    {
+        get => Enum.IsDefined((SettingsPage)PageIndex) ? (SettingsPage)PageIndex : SettingsPage.General;
+        set => PageIndex = (int)value;
+    }
+
+    /// <summary>
+    /// Whether the Keyboard page is the one showing, decided here and only
+    /// here.
+    ///
+    /// **Asked to open on Keyboard, the dialog opened on General.** The
+    /// Keyboard tab's IsSelected was bound both ways to Keyboard.IsOpen, and
+    /// that binding, still reading false, unselected the page the index had
+    /// just selected — whereupon the strip fell back to its first page and
+    /// wrote 0 back here. Telling it from here instead only moved the fault:
+    /// turning off the Keyboard page cleared IsOpen, the tab binding
+    /// unselected mid-turn, and Ctrl+Tab from Keyboard landed on General. Two
+    /// bindings answering one question will disagree at some moment, so
+    /// there is one: the strip's index, which this turns into IsOpen — and
+    /// IsOpen going false is what stops a row listening when the page is
+    /// left.
+    /// </summary>
+    partial void OnPageIndexChanged(int value)
+    {
+        Keyboard.IsOpen = value == (int)SettingsPage.Keyboard;
+        OnPropertyChanged(nameof(Page));
+    }
+
+    // ---- when Vaktari opens -------------------------------------------------
+
+    // Four booleans, which are what the record's one enum is collected from
+    // (see Collect) and what the tests and the old radios drove. The page now
+    // shows them as ONE dropdown, through StartupIndex below.
 
     [ObservableProperty] private bool _restoreLastSession;
     [ObservableProperty] private bool _startInHome;
     [ObservableProperty] private bool _startInComputer;
     [ObservableProperty] private bool _startInSpecificFolder;
+
+    /// <summary>
+    /// The startup choice as one dropdown's row: restore, home, the drive
+    /// listing, a specific folder — in that order.
+    ///
+    /// **Four radio buttons and an indented folder box took a third of a page
+    /// to ask one question**, and the box sat there greyed out for the three
+    /// answers that ignore it. One dropdown asks it in a line, and the folder
+    /// box appears only for the answer that reads it.
+    ///
+    /// Derived from the four booleans rather than replacing them: they are what
+    /// <see cref="Collect"/> reads, and setting a row sets exactly one of them,
+    /// which is the guarantee the radios' shared GroupName used to give.
+    /// </summary>
+    public int StartupIndex
+    {
+        get => StartInSpecificFolder ? 3 : StartInComputer ? 2 : StartInHome ? 1 : 0;
+        set
+        {
+            if (value == StartupIndex) return;
+
+            RestoreLastSession = value is not (1 or 2 or 3);
+            StartInHome = value == 1;
+            StartInComputer = value == 2;
+            StartInSpecificFolder = value == 3;
+        }
+    }
+
+    partial void OnStartInHomeChanged(bool value) => OnPropertyChanged(nameof(StartupIndex));
+
+    partial void OnStartInComputerChanged(bool value) => OnPropertyChanged(nameof(StartupIndex));
 
     [ObservableProperty] private string _startupFolder = "";
     [ObservableProperty] private bool _beginInSplitView;
@@ -355,14 +450,35 @@ public sealed partial class SettingsViewModel : ObservableObject
     [ObservableProperty] private bool _showFreeSpace;
 
     /// <summary>
-    /// Natural order compares case-insensitively by construction, so the case
-    /// choice only means anything with it off. Disabled rather than hidden, so
-    /// the relationship between the two is visible instead of mysterious.
+    /// The sort order as one dropdown's row: natural, alphabetical, or
+    /// alphabetical with capitals apart.
+    ///
+    /// **"Case sensitive" sat greyed out under "Natural sorting" with nothing
+    /// saying why.** Natural order compares case-insensitively by construction,
+    /// so the case choice only means anything with it off — a relationship the
+    /// page showed as a box that would not tick. Three rows say the same thing
+    /// as three answers to one question, and there is nothing to grey.
+    ///
+    /// On the two stored keys, unchanged. The natural row leaves
+    /// CaseSensitiveSorting as it was rather than clearing it: natural order
+    /// never reads it, and a file that says true keeps saying true until
+    /// somebody picks a row that does read it.
     /// </summary>
-    public bool CanSetCaseSensitivity => !NaturalSorting;
+    public int SortOrderIndex
+    {
+        get => NaturalSorting ? 0 : CaseSensitiveSorting ? 2 : 1;
+        set
+        {
+            if (value == SortOrderIndex) return;
 
-    partial void OnNaturalSortingChanged(bool value)
-        => OnPropertyChanged(nameof(CanSetCaseSensitivity));
+            NaturalSorting = value is not (1 or 2);
+            if (value is 1 or 2) CaseSensitiveSorting = value == 2;
+        }
+    }
+
+    partial void OnNaturalSortingChanged(bool value) => OnPropertyChanged(nameof(SortOrderIndex));
+
+    partial void OnCaseSensitiveSortingChanged(bool value) => OnPropertyChanged(nameof(SortOrderIndex));
 
     // CanSetFreeSpace was here, gating the free-space checkbox on the status
     // bar because that is where the number used to print. It prints on the
@@ -420,7 +536,7 @@ public sealed partial class SettingsViewModel : ObservableObject
     [ObservableProperty] private bool _menuAddToPlaces;
     [ObservableProperty] private bool _menuCopyLocation;
 
-    // ---- View modes -------------------------------------------------------
+    // ---- how listings are drawn (Appearance, Folders and lists) ----------
     //
     // Three of the six. Icons.TextWidth, Icons.MaximumLines and
     // Compact.MaximumTextWidth stay out: they are structural metrics that would
@@ -469,23 +585,12 @@ public sealed partial class SettingsViewModel : ObservableObject
 
     public bool HasIconTheme => IconThemeFolder.Length > 0;
 
-    /// <summary>
-    /// Why the box above it is doing nothing, said where the box is.
-    ///
-    /// **An imported theme outranks the desktop's own icons deliberately, and
-    /// nothing on screen said so.** The precedence lives in one place —
-    /// IconLoader.UseSystemIcons — and was recorded only in source comments, so
-    /// ticking the box with a theme chosen looked like a setting that had
-    /// stopped working rather than one that had been overruled. It names the
-    /// theme doing the drawing and the row that undoes it, and says the tick is
-    /// remembered, because it is.
-    /// </summary>
-    public string DesktopIconsOverridden => HasIconTheme
-        ? $"An imported theme is drawing the icons — {IconThemeLabel} — and it wins over your "
-          + "desktop's, because it is the more deliberate choice of the two. Pick "
-          + "\"Vaktari's own icons\" in the list below to use your desktop's set instead. "
-          + "What is ticked here is remembered until then."
-        : "";
+    partial void OnUseSystemIconsChanged(bool value)
+    {
+        // Set from somewhere other than the chooser — a re-seed, or a test —
+        // so the chooser follows it. Choosing a row sets it under the guard.
+        if (!_syncingIconThemes) SelectCurrentIconRow();
+    }
 
     /// <summary>
     /// Where the Proton Drive sync folder is, for the link-sharing gestures. A
@@ -549,10 +654,6 @@ public sealed partial class SettingsViewModel : ObservableObject
         OnPropertyChanged(nameof(IconThemeLabel));
         OnPropertyChanged(nameof(HasIconTheme));
 
-        // The note beside the desktop-icons box names the theme, so it has to
-        // follow the chooser live rather than waiting for the dialog to reopen.
-        OnPropertyChanged(nameof(DesktopIconsOverridden));
-
         // Set from somewhere other than the list — browsing, or a theme that
         // has just been installed — so the list is rebuilt around it.
         if (!_syncingIconThemes) RefreshIconThemes();
@@ -561,8 +662,9 @@ public sealed partial class SettingsViewModel : ObservableObject
     // ---- the list of themes to pick from -----------------------------------
 
     /// <summary>One row in the list: what it is called, and what to hand the
-    /// reader.</summary>
-    public sealed record IconThemeChoice(string Label, string Folder);
+    /// reader. <paramref name="DesktopIcons"/> marks the one row that asks for
+    /// the desktop's per-file icons rather than a theme.</summary>
+    public sealed record IconThemeChoice(string Label, string Folder, bool DesktopIcons = false);
 
     public ObservableCollection<IconThemeChoice> IconThemeChoices { get; } = [];
 
@@ -576,6 +678,20 @@ public sealed partial class SettingsViewModel : ObservableObject
     private bool _syncingIconThemes;
 
     /// <summary>
+    /// What the row with no theme draws, which is not the same on both
+    /// platforms.
+    ///
+    /// **It said "Vaktari's own icons" on Linux, where it is not.** With no
+    /// theme chosen the listing draws with the platform's icon provider, and
+    /// on Linux that IS the desktop's icon theme — the one Plasma names — with
+    /// the drawn set only as the fallback; on Windows there is no such
+    /// provider and the drawn set is what shows.
+    /// </summary>
+    private static string NoThemeLabel => Core.Naming.Platform == "windows"
+        ? "Vaktari's own icons"
+        : "Your desktop's icon theme";
+
+    /// <summary>
     /// Rebuilds the list from what is actually on disk.
     ///
     /// **Read rather than remembered.** One download produces several themes
@@ -584,6 +700,14 @@ public sealed partial class SettingsViewModel : ObservableObject
     /// by browsing is added on the end, so a theme kept somewhere else is still
     /// a row in the list rather than a reason for the list to disagree with the
     /// setting.
+    ///
+    /// **And the desktop's own icons are a row of it, not a box beside it.**
+    /// "Use my desktop's icons" was a check box above this list, and a theme
+    /// chosen here silently outranked it — so the box was greyed out with a
+    /// paragraph under it explaining which of the two was drawing. Three
+    /// sources, one of which wins, is one question: this list asks it. The row
+    /// is offered only where the platform has per-file icons
+    /// (<see cref="CanUseDesktopIcons"/>), exactly where the box was.
     /// </summary>
     public void RefreshIconThemes()
     {
@@ -592,24 +716,58 @@ public sealed partial class SettingsViewModel : ObservableObject
         try
         {
             IconThemeChoices.Clear();
-            IconThemeChoices.Add(new IconThemeChoice("Vaktari's own icons", ""));
+            IconThemeChoices.Add(new IconThemeChoice(NoThemeLabel, ""));
+
+            if (CanUseDesktopIcons)
+                IconThemeChoices.Add(new IconThemeChoice("Your desktop's icons", "", DesktopIcons: true));
 
             foreach (var installed in Core.FileSystem.IconThemeCatalogue.Installed())
                 IconThemeChoices.Add(new IconThemeChoice(installed.Name, installed.Folder));
 
-            if (IconThemeFolder.Length > 0 && !IconThemeChoices.Any(Chosen))
+            if (IconThemeFolder.Length > 0 && !IconThemeChoices.Any(c => c.Folder.Length > 0 && Chosen(c)))
                 IconThemeChoices.Add(new IconThemeChoice(IconThemeLabel + "  (chosen folder)", IconThemeFolder));
-
-            SelectedIconTheme = IconThemeChoices.FirstOrDefault(Chosen) ?? IconThemeChoices[0];
         }
         finally
         {
             _syncingIconThemes = false;
         }
 
+        SelectCurrentIconRow();
+
         bool Chosen(IconThemeChoice choice) => Core.FileSystem.PathRules.Same(choice.Folder, IconThemeFolder);
     }
 
+    /// <summary>
+    /// The row the two stored keys describe, by the precedence
+    /// IconLoader.UseSystemIcons applies: a chosen theme wins; then the
+    /// desktop's icons, where they exist and are asked for; then the row with
+    /// no theme. So what the chooser shows is what the listing draws.
+    /// </summary>
+    private void SelectCurrentIconRow()
+    {
+        var row = IconThemeFolder.Length > 0
+            ? IconThemeChoices.FirstOrDefault(c => c.Folder.Length > 0
+                                                   && Core.FileSystem.PathRules.Same(c.Folder, IconThemeFolder))
+            // With no desktop row — no per-file icons here — asking for it
+            // finds nothing and falls to the first row below, which is the
+            // rule as IconLoader.UseSystemIcons applies it.
+            : IconThemeChoices.FirstOrDefault(c => c.DesktopIcons == UseSystemIcons);
+
+        _syncingIconThemes = true;
+
+        try { SelectedIconTheme = row ?? IconThemeChoices.FirstOrDefault(); }
+        finally { _syncingIconThemes = false; }
+    }
+
+    /// <summary>
+    /// A row chosen, onto the two stored keys.
+    ///
+    /// The row with no theme and the desktop's row both clear the folder and
+    /// say which of the two they are — but only where the desktop's row exists:
+    /// on Linux UseSystemIcons can do nothing, so it is left as the file had
+    /// it. A theme row leaves it alone too, because the theme outranks it
+    /// either way and a choice nobody touched is not rewritten.
+    /// </summary>
     partial void OnSelectedIconThemeChanged(IconThemeChoice? value)
     {
         if (_syncingIconThemes || value is null) return;
@@ -619,6 +777,7 @@ public sealed partial class SettingsViewModel : ObservableObject
         try
         {
             IconThemeFolder = value.Folder;
+            if (value.Folder.Length == 0 && CanUseDesktopIcons) UseSystemIcons = value.DesktopIcons;
             IconThemeProblem = "";
             IconThemeStatus = "";
         }
@@ -784,7 +943,7 @@ public sealed partial class SettingsViewModel : ObservableObject
     /// <summary>
     /// Puts a chosen file back, and leaves through the same door Save uses.
     ///
-    /// **Closing is the point, not a shortcut.** Every control on these six
+    /// **Closing is the point, not a shortcut.** Every control on these seven
     /// pages was seeded from the state this dialog opened with, so a file read
     /// in behind them would leave forty boxes showing the old values over the
     /// new ones — and pressing Save would then write the old values straight
@@ -1089,7 +1248,7 @@ public sealed partial class SettingsViewModel : ObservableObject
     public bool HasDefaultStatus => DefaultStatus.Length > 0;
 
     /// <summary>
-    /// **Applied immediately, not on Save**, and the label says so.
+    /// **Applied immediately, not on Apply or Save**, and the label says so.
     ///
     /// Everything else in this dialog edits a copy and commits it whole, which
     /// is what makes Cancel mean something. This does not: it writes to the
@@ -1164,6 +1323,45 @@ public sealed partial class SettingsViewModel : ObservableObject
 
     /// <summary>The same starting a label: "Recycle Bin", "Trash".</summary>
     public string BinTitle => Core.Naming.BinTitle;
+
+    /// <summary>
+    /// The bin page's name in the strip, with its access key: Alt+B for the
+    /// Recycle Bin, Alt+T for the trash. Its own letter on each platform,
+    /// because the word is different — and neither letter is taken by the
+    /// other six pages (SettingsPagesTests counts them).
+    /// </summary>
+    public string BinPageHeader => BinPageHeaderFor(BinTitle);
+
+    /// <summary>The marker goes on the last word's first letter: "Recycle
+    /// _Bin", "_Trash".</summary>
+    internal static string BinPageHeaderFor(string title)
+    {
+        var last = title.LastIndexOf(' ') + 1;
+
+        return title[..last] + "_" + title[last..];
+    }
+
+    /// <summary>
+    /// What the Proton Drive box suggests, as a path on THIS machine.
+    ///
+    /// **It said "D:\Proton-Drive" on Linux**, the startup box's old mistake
+    /// in the other direction: a path shape one platform cannot have, in the
+    /// one box whose whole job is to be given a path here. Built from the
+    /// profile folder, where the Proton Drive app puts it unless told
+    /// otherwise.
+    /// </summary>
+    public static string ProtonDriveHint
+        => Environment.GetFolderPath(Environment.SpecialFolder.UserProfile) is { Length: > 0 } home
+            ? "e.g. " + Path.Combine(home, "Proton Drive")
+            : "The folder the Proton Drive app syncs";
+
+    /// <summary>
+    /// The bin page's note, in a line: the part a person must not miss, which
+    /// is that the bin is shared. The whole of <see cref="BinSweepExplanation"/>
+    /// is the line's tooltip and its help text.
+    /// </summary>
+    public string BinSweepSummary =>
+        $"{TheBin[0].ToString().ToUpperInvariant()}{TheBin[1..]} is shared, so this also removes what other applications put there.";
 
     public string ConfirmTrashLabel => $"Moving files to {TheBin}";
 
@@ -1242,6 +1440,78 @@ public sealed partial class SettingsViewModel : ObservableObject
         2 => Core.Settings.ThemeMode.Dark,
         _ => Core.Settings.ThemeMode.FollowDesktop,
     };
+
+    /// <summary>
+    /// The one Colour chooser: Vaktari's colours following the desktop's light
+    /// or dark, Vaktari's colours light, Vaktari's colours dark, or the
+    /// desktop's own colours — rows 0 to 3.
+    ///
+    /// **Two controls answered one question, and one combination of them was
+    /// broken.** "Follow desktop colours" layers the desktop's window and view
+    /// backgrounds, text, selection and accent — and its font, when none is
+    /// chosen — over the bundled scheme (ThemeApplier.Apply). The backgrounds
+    /// come in the desktop's OWN lightness, while the Colour row above it went
+    /// on telling Fluent light or dark: so "Light" with desktop colours on a
+    /// dark desktop drew dark surfaces under Fluent's dark text, the 1.02:1
+    /// failure that file was repaired for. As one list, the desktop's colours
+    /// are one row and come with the desktop's lightness.
+    ///
+    /// On the two stored keys, unchanged. Choosing row 3 stores FollowDesktop
+    /// with the flag; a file that already pairs the flag with a forced
+    /// lightness shows as row 3 and is saved as it was until another row is
+    /// picked — a dialog nobody touched does not rewrite a choice.
+    /// </summary>
+    public int ColourIndex
+    {
+        get => FollowDesktopColours ? 3 : ThemeModeIndex;
+        set
+        {
+            if (value == ColourIndex) return;
+
+            if (value == 3)
+            {
+                ThemeModeIndex = 0;
+                FollowDesktopColours = true;
+            }
+            else
+            {
+                FollowDesktopColours = false;
+                ThemeModeIndex = value is 1 or 2 ? value : 0;
+            }
+        }
+    }
+
+    partial void OnThemeModeIndexChanged(int value) => OnPropertyChanged(nameof(ColourIndex));
+
+    partial void OnFollowDesktopColoursChanged(bool value) => OnPropertyChanged(nameof(ColourIndex));
+
+    /// <summary>
+    /// What happens when the details panel is asked for and does not fit: grey
+    /// its button out, widen the window and shrink it back afterwards, or widen
+    /// it and leave it wide — rows 0 to 2.
+    ///
+    /// **Two check boxes, the second greyed out under the first, with two
+    /// paragraphs between them.** The second only means anything when the
+    /// first is ticked, so they were one question with three answers spread
+    /// over a quarter of a page. The two stored keys are unchanged: the first
+    /// row leaves KeepWidthAfterPanelClose as it was, because nothing is widened
+    /// for it to act on.
+    /// </summary>
+    public int DetailsPanelIndex
+    {
+        get => !GrowWindowForPanel ? 0 : RestoreWidthOnPanelClose ? 1 : 2;
+        set
+        {
+            if (value == DetailsPanelIndex) return;
+
+            GrowWindowForPanel = value is 1 or 2;
+            if (value is 1 or 2) RestoreWidthOnPanelClose = value == 1;
+        }
+    }
+
+    partial void OnGrowWindowForPanelChanged(bool value) => OnPropertyChanged(nameof(DetailsPanelIndex));
+
+    partial void OnRestoreWidthOnPanelCloseChanged(bool value) => OnPropertyChanged(nameof(DetailsPanelIndex));
 
     /// <summary>
     /// How large the interface's text is drawn, as a ComboBox index.
@@ -1359,6 +1629,34 @@ public sealed partial class SettingsViewModel : ObservableObject
 
     [ObservableProperty] private bool _folderSizeNothing;
 
+    /// <summary>
+    /// The three folder-size answers as one dropdown's row — how many things,
+    /// how big, nothing — over the three booleans <see cref="Collect"/> reads.
+    /// A dropdown for the same reason as <see cref="StartupIndex"/>: three
+    /// radios and a two-line note under the middle one were a quarter of the
+    /// page for one question.
+    /// </summary>
+    public int FolderSizeIndex
+    {
+        // Decoded in Collect's order, so a state with two set reads as the
+        // row it would be saved as.
+        get => FolderSizeContents ? 1 : FolderSizeCounts ? 0 : 2;
+        set
+        {
+            if (value == FolderSizeIndex) return;
+
+            FolderSizeCounts = value is not (1 or 2);
+            FolderSizeContents = value == 1;
+            FolderSizeNothing = value == 2;
+        }
+    }
+
+    partial void OnFolderSizeCountsChanged(bool value) => OnPropertyChanged(nameof(FolderSizeIndex));
+
+    partial void OnFolderSizeContentsChanged(bool value) => OnPropertyChanged(nameof(FolderSizeIndex));
+
+    partial void OnFolderSizeNothingChanged(bool value) => OnPropertyChanged(nameof(FolderSizeIndex));
+
     // ---- Navigation -------------------------------------------------------
     //
     // **This said "one setting" and there are two.** Dolphin has no control of
@@ -1437,6 +1735,7 @@ public sealed partial class SettingsViewModel : ObservableObject
     partial void OnStartInSpecificFolderChanged(bool value)
     {
         OnPropertyChanged(nameof(CanEditStartupFolder));
+        OnPropertyChanged(nameof(StartupIndex));
 
         // The warning under the box is about a folder that is only consulted
         // for this one choice, so turning the choice off takes it away.
@@ -1452,7 +1751,53 @@ public sealed partial class SettingsViewModel : ObservableObject
     }
 
     /// <summary>
-    /// Everything on the six pages, as the record that gets written.
+    /// Raised by Apply with what to commit. The window that opened the dialog
+    /// answers it through the same code a Save reaches on close, so there is
+    /// one way a choice lands rather than two to keep in step.
+    /// </summary>
+    public event EventHandler<SettingsState>? ApplyRequested;
+
+    /// <summary>How many times Apply has committed since the dialog opened.</summary>
+    public int AppliedCount { get; private set; }
+
+    /// <summary>
+    /// Commits what is on screen now, without closing.
+    ///
+    /// **A change could only be seen by closing the dialog**, so trying a
+    /// colour, a text size or an icon theme meant Save, look, reopen, find the
+    /// page again, change it back. Apply is Save without the close: the same
+    /// <see cref="Collect"/>, handed to the same code a Save reaches on close
+    /// — MainWindow.Commit, which applies to every window in the family and
+    /// writes the file.
+    ///
+    /// **Cancel after an Apply keeps what was applied**, and drops only what
+    /// changed since. That is the contract of every property sheet with an
+    /// Apply button, Windows' and KDE's both — undoing an Apply on Cancel
+    /// would make the button a preview rather than a commit, and would have to
+    /// un-forget a history it has already emptied. The footer says so the
+    /// moment it happens, which is when somebody might wonder.
+    ///
+    /// The three armed Forget buttons are carried out here too, and then
+    /// disarmed and zeroed, so the rows that offered them disappear rather
+    /// than offering to empty a list that is already empty.
+    /// </summary>
+    [RelayCommand]
+    private void Apply()
+    {
+        Result = Collect();
+        AppliedCount++;
+
+        ApplyRequested?.Invoke(this, Result);
+
+        if (ForgetViewsOnSave) { ForgetViewsOnSave = false; RememberedViews = 0; }
+        if (ForgetRecentOnSave) { ForgetRecentOnSave = false; RecentCount = 0; }
+        if (ForgetSearchHistoryOnSave) { ForgetSearchHistoryOnSave = false; SearchCount = 0; }
+
+        SettingsFileStatus = "Applied. Cancel now closes without undoing that — only later changes are dropped.";
+    }
+
+    /// <summary>
+    /// Everything on the seven pages, as the record that gets written.
     ///
     /// Lifted out of Save so that exporting writes what is ON SCREEN rather
     /// than what is on disk. Exporting the file would have been simpler and
@@ -1465,11 +1810,11 @@ public sealed partial class SettingsViewModel : ObservableObject
     {
         // Above StartInHome, below the folder — and the position is not load
         // bearing: the order decides only what a state with two of them set
-        // would collapse to, and the four radios share one GroupName (pinned by
-        // StartupOnTheDriveListingTests.The_startup_page_offers_the_drive_listing)
-        // so the dialog does not hand one over. Restore stays LAST, which is the
-        // one position that matters: it is the fallback, so a dialog nobody
-        // touched saves the default rather than a choice nobody made.
+        // would collapse to, and the page's one dropdown sets exactly one
+        // (StartupIndex) so the dialog does not hand one over. Restore stays
+        // LAST, which is the one position that matters: it is the fallback, so
+        // a dialog nobody touched saves the default rather than a choice nobody
+        // made.
         var location = StartInSpecificFolder ? StartupLocation.SpecificFolder
             : StartInComputer ? StartupLocation.Computer
             : StartInHome ? StartupLocation.HomeFolder
@@ -1611,26 +1956,6 @@ public sealed partial class SettingsViewModel : ObservableObject
         };
     }
 
-    /// <summary>
-    /// Puts every setting back to what a first run would have given.
-    ///
-    /// **There was no way back.** Nine sections on one page and five more
-    /// pages, every one of them remembering what it was last set to, and the
-    /// only route to the defaults was to close Vaktari, find settings.json —
-    /// which nothing in the application could name until recently — delete it,
-    /// and start again.
-    ///
-    /// **No confirmation, and that is not carelessness.** This dialog edits a
-    /// copy and commits it whole on Save, so Cancel discards this exactly as it
-    /// discards any other change: the defaults are on screen to be looked at,
-    /// and nothing has reached disk. A confirmation would be asking permission
-    /// for something the next button already undoes.
-    ///
-    /// The state seeded is a bare SettingsState, which also resets the pages
-    /// this dialog has not built — Collect carries _original forward with
-    /// `with`, so replacing it is what makes "every setting" true rather than
-    /// "every setting you can see".
-    /// </summary>
     // ---- the startup folder box ---------------------------------------------
 
     /// <summary>
@@ -1694,13 +2019,16 @@ public sealed partial class SettingsViewModel : ObservableObject
     /// folder and every file opened went in, no setting was consulted, and the
     /// only way out was a per-row "Forget" needing the entry still on screen.
     /// </summary>
-    private readonly int _recentCount;
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(HasRecent), nameof(RecentCountLabel))]
+    [NotifyCanExecuteChangedFor(nameof(ForgetRecentCommand))]
+    private int _recentCount;
 
-    public bool HasRecent => _recentCount > 0;
+    public bool HasRecent => RecentCount > 0;
 
-    public string RecentCountLabel => _recentCount == 1
+    public string RecentCountLabel => RecentCount == 1
         ? "One entry is remembered"
-        : $"{_recentCount:N0} entries are remembered";
+        : $"{RecentCount:N0} entries are remembered";
 
     /// <summary>
     /// Armed like the folder views beside it: Save clears them, Cancel does
@@ -1715,9 +2043,9 @@ public sealed partial class SettingsViewModel : ObservableObject
     {
         ForgetRecentOnSave = true;
 
-        SettingsFileStatus = _recentCount == 1
-            ? "One remembered entry will be forgotten when you press Save."
-            : $"{_recentCount:N0} remembered entries will be forgotten when you press Save.";
+        SettingsFileStatus = RecentCount == 1
+            ? "One remembered entry will be forgotten when you press Apply or Save."
+            : $"{RecentCount:N0} remembered entries will be forgotten when you press Apply or Save.";
     }
 
     // ---- the searches nothing recorded --------------------------------------
@@ -1737,13 +2065,16 @@ public sealed partial class SettingsViewModel : ObservableObject
     /// at that moment, so a search run in another window between opening this
     /// dialog and pressing Save is forgotten too, whatever this number said.
     /// </summary>
-    private readonly int _searchCount;
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(HasSearchHistory), nameof(SearchCountLabel))]
+    [NotifyCanExecuteChangedFor(nameof(ForgetSearchHistoryCommand))]
+    private int _searchCount;
 
-    public bool HasSearchHistory => _searchCount > 0;
+    public bool HasSearchHistory => SearchCount > 0;
 
-    public string SearchCountLabel => _searchCount == 1
+    public string SearchCountLabel => SearchCount == 1
         ? "One search is remembered"
-        : $"{_searchCount:N0} searches are remembered";
+        : $"{SearchCount:N0} searches are remembered";
 
     /// <summary>
     /// Armed like the two beside it: Save clears them, Cancel does not. And
@@ -1757,9 +2088,9 @@ public sealed partial class SettingsViewModel : ObservableObject
     {
         ForgetSearchHistoryOnSave = true;
 
-        SettingsFileStatus = _searchCount == 1
-            ? "One remembered search will be forgotten when you press Save."
-            : $"{_searchCount:N0} remembered searches will be forgotten when you press Save.";
+        SettingsFileStatus = SearchCount == 1
+            ? "One remembered search will be forgotten when you press Apply or Save."
+            : $"{SearchCount:N0} remembered searches will be forgotten when you press Apply or Save.";
     }
 
     // ---- the folder views nothing could see ---------------------------------
@@ -1776,15 +2107,18 @@ public sealed partial class SettingsViewModel : ObservableObject
     /// delete it.
     ///
     /// Read once, at open, rather than live: this dialog is modal and nothing
-    /// behind it is browsing.
+    /// behind it is browsing. Zeroed by Apply once it has forgotten them.
     /// </summary>
-    private readonly int _rememberedViews;
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(HasRememberedViews), nameof(RememberedViewsLabel))]
+    [NotifyCanExecuteChangedFor(nameof(ForgetRememberedViewsCommand))]
+    private int _rememberedViews;
 
-    public bool HasRememberedViews => _rememberedViews > 0;
+    public bool HasRememberedViews => RememberedViews > 0;
 
-    public string RememberedViewsLabel => _rememberedViews == 1
+    public string RememberedViewsLabel => RememberedViews == 1
         ? "One folder is remembered"
-        : $"{_rememberedViews:N0} folders are remembered";
+        : $"{RememberedViews:N0} folders are remembered";
 
     /// <summary>
     /// Whether Save should clear them. **Armed rather than done**, so this
@@ -1799,17 +2133,38 @@ public sealed partial class SettingsViewModel : ObservableObject
     {
         ForgetViewsOnSave = true;
 
-        SettingsFileStatus = _rememberedViews == 1
-            ? "One remembered folder view will be forgotten when you press Save."
-            : $"{_rememberedViews:N0} remembered folder views will be forgotten when you press Save.";
+        SettingsFileStatus = RememberedViews == 1
+            ? "One remembered folder view will be forgotten when you press Apply or Save."
+            : $"{RememberedViews:N0} remembered folder views will be forgotten when you press Apply or Save.";
     }
 
+    /// <summary>
+    /// Puts every setting back to what a first run would have given.
+    ///
+    /// **There was no way back.** Seven pages, every setting on them
+    /// remembering what it was last set to, and the only route to the
+    /// defaults was to close Vaktari, find settings.json — which nothing in
+    /// the application could name until recently — delete it, and start
+    /// again.
+    ///
+    /// **No confirmation, and that is not carelessness.** This dialog edits a
+    /// copy and commits it whole on Apply or Save, so Cancel discards this
+    /// exactly as it discards any other change not yet applied: the defaults
+    /// are on screen to be looked at, and nothing has reached disk. A
+    /// confirmation would be asking permission for something the next button
+    /// already undoes.
+    ///
+    /// The state seeded is a bare SettingsState, which also resets the pages
+    /// this dialog has not built — Collect carries _original forward with
+    /// `with`, so replacing it is what makes "every setting" true rather than
+    /// "every setting you can see".
+    /// </summary>
     [RelayCommand]
     private void RestoreDefaults()
     {
         Seed(new SettingsState());
 
-        SettingsFileStatus = "Defaults restored — nothing is saved until you press Save.";
+        SettingsFileStatus = "Defaults restored — nothing is saved until you press Apply or Save.";
     }
 
     [RelayCommand]

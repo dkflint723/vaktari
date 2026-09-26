@@ -94,8 +94,8 @@ public static class Shortcuts
                 // what it did, and the second clause is the only thing on the
                 // sheet that tells them the answer is theirs to change.
                 new("Backspace", backspaceGoesUp
-                    ? "Up one folder — Settings, Navigation makes it Back"
-                    : "Back — Settings, Navigation makes it up one folder"),
+                    ? "Up one folder — Settings, General makes it Back"
+                    : "Back — Settings, General makes it up one folder"),
                 Bound("Refresh", "Refresh"),
                 Bound("EditPath", "Type a path"),
                 new("Enter", "Open what is selected"),

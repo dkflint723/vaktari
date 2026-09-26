@@ -38,6 +38,14 @@ public partial class SettingsWindow : Window
 
             if (model.Keyboard.Offer(e.Key, e.KeyModifiers))
                 e.Handled = true;
+
+            // A key the listening row took is handled by now, so this one
+            // test keeps a page turn from stealing it.
+            if (!e.Handled && PageStep(e) is var step and not 0)
+            {
+                e.Handled = true;
+                TurnPage(model, step);
+            }
         }, RoutingStrategies.Tunnel);
 
         // **The offer's answers take the keyboard when they appear**, rather
@@ -148,6 +156,54 @@ public partial class SettingsWindow : Window
                && e.KeyModifiers == KeyModifiers.None
                && FocusManager?.GetFocusedElement() is { } focused
                && (ReferenceEquals(focused, TakeItButton) || ReferenceEquals(focused, KeepItButton));
+    }
+
+    /// <summary>
+    /// +1 for the next page, -1 for the previous, 0 for a key that is not a
+    /// page turn.
+    ///
+    /// **Ctrl+Tab moved focus like Tab, and there was no key for the next
+    /// page at all.** A tabbed dialog answers Ctrl+Tab and Ctrl+PageDown with
+    /// the next page and their Shift and PageUp partners with the previous one
+    /// — in Windows' property sheets, in KDE's, in every browser — and here
+    /// the only way between pages from the keyboard was to Tab back up to the
+    /// strip and arrow along it.
+    ///
+    /// On the tunnel, before the focused control: a text box or a list would
+    /// otherwise take PageDown for itself, and Avalonia's own Tab handling
+    /// ignores Ctrl and would move focus instead. After the Keyboard page's
+    /// listening row, which is given every key first — Ctrl+Tab is a key
+    /// somebody might be trying to assign.
+    /// </summary>
+    internal static int PageStep(KeyEventArgs e)
+    {
+        var mods = e.KeyModifiers;
+
+        return e.Key switch
+        {
+            Key.Tab when mods == KeyModifiers.Control => 1,
+            Key.Tab when mods == (KeyModifiers.Control | KeyModifiers.Shift) => -1,
+            Key.PageDown when mods == KeyModifiers.Control => 1,
+            Key.PageUp when mods == KeyModifiers.Control => -1,
+            _ => 0,
+        };
+    }
+
+    /// <summary>
+    /// Moves to the next or previous page, wrapping round, and gives that
+    /// page's name in the strip the keyboard — the page that was showing is
+    /// gone, and focus left inside it would fall out of the window.
+    /// </summary>
+    private void TurnPage(SettingsViewModel model, int step)
+    {
+        var count = Pages.ItemCount;
+
+        if (count == 0) return;
+
+        model.PageIndex = ((model.PageIndex + step) % count + count) % count;
+
+        Dispatcher.UIThread.Post(() =>
+            (Pages.ContainerFromIndex(model.PageIndex) as Control)?.Focus(NavigationMethod.Directional));
     }
 
     public SettingsWindow(SettingsViewModel model) : this()

@@ -23,6 +23,10 @@ namespace Vaktari.Ui.Tests;
 /// Windows composes an icon per file and has such a provider, freedesktop
 /// answers by icon name and has none — so the box could be ticked, saved, and
 /// found still ticked, while every row drew exactly what it drew before.
+///
+/// The box is a row of the File icons chooser now, so the gate is on the row:
+/// the list offers "Your desktop's icons" exactly where the box was shown, and
+/// the chooser itself — live on both platforms — is never gated.
 /// </summary>
 public sealed class OfferedWhereItWorksTests : OwnedViewModels
 {
@@ -109,59 +113,63 @@ public sealed class OfferedWhereItWorksTests : OwnedViewModels
             // which says nothing about whether the icons still are.
             "_platform.FileIcons",
             RepoSource.Body(
-                RepoSource.UiClass("", "MainWindow"), "private void ShowSettings()"));
+                RepoSource.UiClass("", "MainWindow"), "internal void ShowSettings(SettingsPage? page = null)"));
 
     /// <summary>
-    /// The markup half. Hiding the checkbox in the view model buys nothing if
-    /// the control on screen is not the one that asks.
+    /// The chooser half. Hiding the desktop's row in the view model buys
+    /// nothing unless the row is really absent from the list on screen — and
+    /// with a provider, really there.
     /// </summary>
-    [Fact]
-    public void The_checkbox_asks_before_it_shows()
+    [AvaloniaFact]
+    public void The_desktop_s_row_is_offered_only_with_a_provider()
     {
-        var panel = XDocument.Parse(RepoSource.Ui("SettingsWindow.axaml"))
-            .Descendants(Avalonia + "StackPanel")
-            .Single(e => (string?)e.Attribute(X + "Name") == "DesktopIconsChoice");
+        Assert.DoesNotContain(
+            new SettingsViewModel(Vaktari.Ui.Settings.AppSettings.Current).IconThemeChoices,
+            c => c.DesktopIcons);
 
-        Assert.Equal("{Binding CanUseDesktopIcons}", (string?)panel.Attribute("IsVisible"));
-
-        // It wraps the checkbox itself, not something near it.
-        Assert.Contains(panel.Descendants(Avalonia + "CheckBox"),
-                        c => (string?)c.Attribute("IsChecked") == "{Binding UseSystemIcons}");
+        Assert.Single(
+            new SettingsViewModel(Vaktari.Ui.Settings.AppSettings.Current, desktopIcons: new NoIcons())
+                .IconThemeChoices,
+            c => c.DesktopIcons);
     }
 
     /// <summary>
-    /// And the icon-theme chooser below it must NOT have been swept into the
-    /// gate: that one is live on both platforms, and hiding it on Linux would
-    /// take away the only icon control that works there.
+    /// And the chooser that holds the row must NOT be gated: it is live on
+    /// both platforms, and hiding it on Linux would take away the only icon
+    /// control that works there.
     /// </summary>
     [Fact]
-    public void The_theme_chooser_below_it_is_not_hidden_too()
+    public void The_icon_chooser_itself_is_not_hidden()
     {
-        var markup = XDocument.Parse(RepoSource.Ui("SettingsWindow.axaml"));
+        var chooser = XDocument.Parse(RepoSource.Ui("SettingsWindow.axaml"))
+            .Descendants(Avalonia + "ComboBox")
+            .Single(e => (string?)e.Attribute(X + "Name") == "IconChoice");
 
-        var gated = markup.Descendants(Avalonia + "StackPanel")
-            .Single(e => (string?)e.Attribute(X + "Name") == "DesktopIconsChoice");
-
-        Assert.DoesNotContain(gated.Descendants(Avalonia + "ComboBox"),
-                              _ => true);
+        Assert.Equal("{Binding IconThemeChoices}", (string?)chooser.Attribute("ItemsSource"));
+        Assert.DoesNotContain(chooser.AncestorsAndSelf(), e => e.Attribute("IsVisible") is not null);
     }
 
     /// <summary>
     /// The paragraph named Windows on both platforms, promising something a
-    /// Linux reader could not have.
+    /// Linux reader could not have. It is the chooser's help text now, and
+    /// the row's own words name the desktop too.
     /// </summary>
-    [Fact]
-    public void And_the_paragraph_names_the_desktop_rather_than_one_of_them()
+    [AvaloniaFact]
+    public void And_the_words_name_the_desktop_rather_than_one_of_them()
     {
-        var text = XDocument.Parse(RepoSource.Ui("SettingsWindow.axaml"))
-            .Descendants(Avalonia + "StackPanel")
-            .Single(e => (string?)e.Attribute(X + "Name") == "DesktopIconsChoice")
-            .Descendants(Avalonia + "TextBlock")
-            .Select(t => (string?)t.Attribute("Text") ?? "")
-            .Single(t => t.Contains("they use the ones", StringComparison.Ordinal));
+        var text = (string?)XDocument.Parse(RepoSource.Ui("SettingsWindow.axaml"))
+            .Descendants(Avalonia + "ComboBox")
+            .Single(e => (string?)e.Attribute(X + "Name") == "IconChoice")
+            .Attribute("AutomationProperties.HelpText") ?? "";
 
         Assert.DoesNotContain("Windows", text);
-        Assert.Contains("your desktop", text);
+        Assert.Contains("desktop", text);
+
+        var row = new SettingsViewModel(Vaktari.Ui.Settings.AppSettings.Current, desktopIcons: new NoIcons())
+            .IconThemeChoices.Single(c => c.DesktopIcons);
+
+        Assert.DoesNotContain("Windows", row.Label);
+        Assert.Contains("desktop", row.Label);
     }
 
     private sealed class Empty : IFileSystemProvider

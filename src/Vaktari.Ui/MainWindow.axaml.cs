@@ -341,7 +341,14 @@ public partial class MainWindow : Window
             new ConnectionWindow(info).ShowDialog(this);
 
         _shell.ShortcutsRequested += (_, _) => new ShortcutsWindow().ShowDialog(this);
-        _shell.TourRequested += (_, _) => new TourWindow().ShowDialog(this);
+        _shell.TourRequested += (_, _) =>
+        {
+            var tour = new TourWindow();
+
+            // The one line that names a settings page opens it there.
+            tour.SettingsPageRequested += (_, page) => ShowSettings(page);
+            tour.ShowDialog(this);
+        };
         _shell.PaletteRequested += (_, _) => _ = RunFromPaletteAsync();
 
         _shell.RenamePlaceRequested += OnRenamePlaceRequested;

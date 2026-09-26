@@ -22,6 +22,19 @@ public sealed record TourLine(string? Command, string Gesture, string Does)
     public string Keys => Command is { } id
         ? Keymap.Current.Readable(id) is { Length: > 0 } printed ? printed : "no key yet"
         : Gesture;
+
+    /// <summary>
+    /// The settings page this line is about, when it is about one — and then
+    /// the line is a link that opens the dialog there.
+    ///
+    /// **The tour said "Settings — Keyboard" and left the reader to find it.**
+    /// The dialog could only open on its first page, so the line named a page
+    /// three clicks away from where the key it printed would land.
+    /// </summary>
+    public SettingsPage? OpensSettingsAt { get; init; }
+
+    /// <summary>Whether the line is a link rather than text.</summary>
+    public bool OpensSettings => OpensSettingsAt is not null;
 }
 
 /// <summary>One card of the tour: a heading, a sentence, and the keys under it.</summary>
@@ -76,7 +89,8 @@ public static class Tour
             TourLine.Of("ToggleView", "Switch between the list, the small grid and the large grid"),
             TourLine.Fixed("Ctrl + scroll", "Resize the pane under the pointer"),
             TourLine.Fixed("Right-click a heading", "Choose the columns; drag a heading's edge to make it wider"),
-            TourLine.Of("OpenSettings", "Settings — Keyboard is where a command's keys are changed"),
+            TourLine.Of("OpenSettings", "Settings — Keyboard is where a command's keys are changed")
+                with { OpensSettingsAt = SettingsPage.Keyboard },
             TourLine.Of("ShowShortcuts", "Every key, on one sheet"),
         ]),
     ];

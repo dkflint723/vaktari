@@ -4,7 +4,7 @@ using Xunit;
 namespace Vaktari.Ui.Tests;
 
 /// <summary>
-/// Where the confirmations live on the General page.
+/// Where the confirmations live, and where the open-ended section does.
 ///
 /// **They were ninth of nine, under the icon-theme catalogue.** Those three
 /// check boxes are the only settings on that page that decide whether a
@@ -20,6 +20,14 @@ namespace Vaktari.Ui.Tests;
 /// file are not underneath the longest and most open-ended section on the page
 /// is not a judgement — the catalogue's length is decided by what the person
 /// has installed, so anything below it has no knowable position at all.
+///
+/// **Rethought when the pages were regrouped.** The catalogue moved to
+/// Appearance with the rest of the icons, so "confirmations above Icons" stopped
+/// being a question the General page could ask. What the finding needs is two
+/// facts that are still true whatever order anybody likes: the confirmations
+/// are on the page a fresh window opens on, which holds nothing open-ended; and
+/// the catalogue is the last section of whatever page it is on, so nothing
+/// anywhere sits below it.
 /// </summary>
 public class SettingsSectionOrderTests
 {
@@ -38,7 +46,7 @@ public class SettingsSectionOrderTests
         var ns = markup.Root!.GetDefaultNamespace();
 
         var tab = markup.Descendants(ns + "TabItem")
-            .Single(t => (string?)t.Attribute("Header") == page);
+            .Single(t => MenuLabels.Plain((string?)t.Attribute("Header")) == page);
 
         // The page's own StackPanel, inside its ScrollViewer. Its direct
         // TextBlock children are the headings; everything deeper belongs to a
@@ -50,35 +58,48 @@ public class SettingsSectionOrderTests
                         .Where(t => t.Length > 0)];
     }
 
-    /// <summary>The whole finding.</summary>
-    [Fact]
-    public void Confirmations_are_not_below_the_icon_theme_catalogue()
+    /// <summary>
+    /// The page the catalogue is on: the one holding the list bound to
+    /// AvailableThemes. Found, not named, so moving the catalogue again cannot
+    /// leave the next test asking about a page it has left.
+    /// </summary>
+    private static XElement CataloguePage(XDocument markup)
     {
-        var headings = Headings("General");
+        var ns = markup.Root!.GetDefaultNamespace();
 
-        var confirmations = headings.IndexOf("Ask for confirmation before");
-        var icons = headings.IndexOf("Icons");
-
-        Assert.True(confirmations >= 0, "the confirmations heading is not a section of the General page");
-        Assert.True(icons >= 0, "the icons heading is not a section of the General page");
-
-        Assert.True(
-            confirmations < icons,
-            $"confirmations sit at {confirmations} of {headings.Count}, below Icons at {icons}: "
-            + string.Join(" | ", headings));
+        return markup.Descendants(ns + "ItemsControl")
+            .Single(i => (string?)i.Attribute("ItemsSource") == "{Binding AvailableThemes}")
+            .Ancestors(ns + "TabItem")
+            .Single();
     }
 
     /// <summary>
-    /// And not last, which is the other half of how they were unreachable —
-    /// the four sections that used to follow Icons could each grow without
-    /// anything moving the confirmations back up.
+    /// The whole finding, as it stands now: the confirmations are on General,
+    /// the page a fresh window opens on — and the catalogue is not.
     /// </summary>
     [Fact]
-    public void And_are_not_the_last_thing_on_the_page()
+    public void Confirmations_are_not_below_the_icon_theme_catalogue()
     {
-        var headings = Headings("General");
+        var markup = XDocument.Parse(RepoSource.Ui("SettingsWindow.axaml"));
 
-        Assert.NotEqual(headings.Count - 1, headings.IndexOf("Ask for confirmation before"));
+        Assert.Contains("Ask for confirmation before", Headings("General"));
+
+        Assert.NotEqual("General", MenuLabels.Plain((string?)CataloguePage(markup).Attribute("Header")));
+    }
+
+    /// <summary>
+    /// **And nothing is below the catalogue, on any page.** The four sections
+    /// that used to follow it could each be scrolled out of reach by a theme
+    /// installed; its own section is now the last one on its page.
+    /// </summary>
+    [Fact]
+    public void And_the_catalogue_is_the_last_thing_on_its_page()
+    {
+        var markup = XDocument.Parse(RepoSource.Ui("SettingsWindow.axaml"));
+
+        var headings = Headings(MenuLabels.Plain((string?)CataloguePage(markup).Attribute("Header")));
+
+        Assert.Equal("File icons", headings[^1]);
     }
 
     /// <summary>
