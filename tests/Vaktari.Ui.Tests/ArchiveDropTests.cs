@@ -100,12 +100,14 @@ public sealed class ArchiveDropTests : OwnedViewModels
     /// The drop's own half: the exception is caught, the drop reports None to
     /// the source, and the pane's status line says the drop failed — a drop
     /// that does nothing is otherwise indistinguishable from one that missed.
+    /// In the application's own words for the failure, as every other status
+    /// line gives it, rather than the exception's message.
     /// </summary>
     [AvaloniaFact]
     public async Task A_drop_that_throws_says_so_on_the_status_line()
     {
         var into = Folder("into");
-        var archive = new Archive { Answer = _ => throw new InvalidOperationException("the reader broke") };
+        var archive = new Archive { Answer = _ => throw new UnauthorizedAccessException("Access to the path is denied.") };
 
         var (window, pane) = await Shown(into, archive);
 
@@ -114,7 +116,7 @@ public sealed class ArchiveDropTests : OwnedViewModels
             var drop = Raise(ListingOf(window, pane), DragDrop.DropEvent, Words(), allowed: Everything);
 
             Assert.Equal(DragDropEffects.None, drop.DragEffects);
-            Assert.StartsWith("that drop failed", pane.Status);
+            Assert.Equal("that drop failed: you do not have permission to take that drop", pane.Status);
             Assert.Contains(LogLines(), l => l.Contains(" error ", StringComparison.Ordinal)
                                              && l.Contains("taking a drop failed", StringComparison.Ordinal));
         }
@@ -236,16 +238,21 @@ public sealed class ArchiveDropTests : OwnedViewModels
     }
 
     /// <summary>
-    /// The other side of the same rule: a leave that nothing follows IS the
-    /// drag going, and what it learned goes with it — so a drop that later
-    /// arrives, with nothing of its own to go on, is not handed a stale yes.
+    /// **A leave that no enter follows is the pointer crossing a part of the
+    /// window that takes no drop** — the toolbar, the status bar, the handle
+    /// between the listing and the tree. Avalonia raises a leave there and
+    /// nothing after it. Forgetting the yes one dispatcher turn later, as a
+    /// first version did, meant the next drag-over asked the source again,
+    /// and a failed answer there is the None Windows takes the drag away on.
+    /// RealDropTargetTests drives the same crossing through Avalonia's own
+    /// drop target.
     /// </summary>
     [AvaloniaFact]
-    public async Task A_drag_that_leaves_forgets_its_yes()
+    public async Task Crossing_a_part_that_takes_no_drop_keeps_the_yes()
     {
         var into = Folder("into");
-        var archive = new Archive { Taking = () => [Staged("stale.txt")] };
-        archive.Answer = _ => archive.Asked == 1 ? (true, null) : (false, null);
+        var archive = new Archive();
+        archive.Answer = _ => archive.Asked == 1 ? (true, null) : (false, "the source was busy");
 
         var (window, pane) = await Shown(into, archive);
 
@@ -254,15 +261,15 @@ public sealed class ArchiveDropTests : OwnedViewModels
             var data = Words();
             var listing = ListingOf(window, pane);
 
-            Raise(listing, DragDrop.DragOverEvent, data);
+            Assert.Equal(DragDropEffects.Copy, Raise(listing, DragDrop.DragOverEvent, data).DragEffects);
+
+            // The leave the toolkit raises for a crossing: it carries what the
+            // source allows, and no enter follows it.
             Raise(listing, DragDrop.DragLeaveEvent, data);
             Pump();
 
-            // What the refusal reports back is A_drop_that_takes_nothing_reports_none's
-            // business; this is about what the drop was left to go on.
-            Raise(listing, DragDrop.DropEvent, Words(), allowed: Everything);
-
-            Assert.Equal(0, archive.Took);
+            Assert.Equal(DragDropEffects.Copy, Raise(listing, DragDrop.DragOverEvent, data).DragEffects);
+            Assert.Equal(1, archive.Asked);
         }
         finally
         {
@@ -273,13 +280,18 @@ public sealed class ArchiveDropTests : OwnedViewModels
     // ---- saying why ---------------------------------------------------------
 
     /// <summary>
-    /// **A drag refused because a question failed now says so, in the log.**
-    /// The drag-over answered None because the source did not answer, and the
-    /// drag then left — which is what Windows does in place of a drop. That is
-    /// the "nothing happened" the maintainer saw, and it left no trace at all.
+    /// **A drag refused because a question failed now says so, in the log —
+    /// once, and only when it has really gone.** The drag-over answered None
+    /// because the source did not answer; the pointer crossed parts of the
+    /// window that take no drop, twice, which raise leaves of their own; and
+    /// then Windows ended the visit with the leave it sends in place of a
+    /// drop, which arrives carrying no effects. That last one is the "nothing
+    /// happened" the maintainer saw, and it left no trace at all. A first
+    /// version wrote the line at the crossings too, and started counting
+    /// again after each.
     /// </summary>
     [AvaloniaFact]
-    public async Task A_drag_refused_by_a_failure_says_why_when_it_leaves()
+    public async Task A_drag_refused_by_a_failure_says_why_once_when_it_leaves()
     {
         var into = Folder("into");
         var archive = new Archive { Answer = _ => (false, "the source was busy") };
@@ -291,19 +303,275 @@ public sealed class ArchiveDropTests : OwnedViewModels
             var data = Words();
             var listing = ListingOf(window, pane);
 
+            for (var crossing = 0; crossing < 2; crossing++)
+            {
+                Assert.Equal(DragDropEffects.None, Raise(listing, DragDrop.DragOverEvent, data).DragEffects);
+
+                Raise(listing, DragDrop.DragLeaveEvent, data);
+                Pump();
+            }
+
+            Assert.DoesNotContain(LogLines(), l => l.Contains("a drag ended", StringComparison.Ordinal));
+
             Assert.Equal(DragDropEffects.None, Raise(listing, DragDrop.DragOverEvent, data).DragEffects);
 
-            Raise(listing, DragDrop.DragLeaveEvent, data);
+            Raise(listing, DragDrop.DragLeaveEvent, data, allowed: DragDropEffects.None);
             Pump();
 
-            Assert.Contains(LogLines(), l => l.Contains(" warn ", StringComparison.Ordinal)
-                                             && l.Contains("a drag ended with nothing taken", StringComparison.Ordinal)
-                                             && l.Contains("the source was busy", StringComparison.Ordinal));
+            var told = LogLines().Where(l => l.Contains("a drag ended with nothing taken", StringComparison.Ordinal)).ToList();
+
+            Assert.True(told.Count == 1, $"expected one line for the drag, found {told.Count}");
+            Assert.Contains(" warn ", told[0]);
+            Assert.Contains("the source was busy", told[0]);
         }
         finally
         {
             window.Close();
         }
+    }
+
+    /// <summary>
+    /// **A failure the drag got past is not why it ended.** The first question
+    /// fails, the next says yes, and the drop then takes nothing — which is
+    /// the drop's own business to explain. Logging the drag's FIRST fault
+    /// there, as a first version did, blamed a moment that had been survived.
+    ///
+    /// Two resets keep it so — each drag-over's and the drop's own — and each
+    /// hides the other's mutation: only the pair reddens this.
+    /// </summary>
+    [AvaloniaFact]
+    public async Task A_failure_the_drag_got_past_is_not_blamed_for_its_end()
+    {
+        var into = Folder("into");
+        var archive = new Archive();
+        archive.Answer = _ => archive.Asked == 1 ? (false, "a moment ago") : (true, null);
+
+        var (window, pane) = await Shown(into, archive);
+
+        try
+        {
+            var data = Words();
+            var listing = ListingOf(window, pane);
+
+            Assert.Equal(DragDropEffects.None, Raise(listing, DragDrop.DragOverEvent, data).DragEffects);
+            Assert.Equal(DragDropEffects.Copy, Raise(listing, DragDrop.DragOverEvent, data).DragEffects);
+
+            Raise(listing, DragDrop.DropEvent, Words(), allowed: Everything);
+
+            Assert.Equal(1, archive.Took);
+            Assert.DoesNotContain(LogLines(), l => l.Contains("a moment ago", StringComparison.Ordinal));
+        }
+        finally
+        {
+            window.Close();
+        }
+    }
+
+    // ---- a descriptor is not an archive -----------------------------------
+
+    /// <summary>
+    /// **Explorer describes an ordinary file on disk the way it describes a
+    /// zip's contents**, with FileGroupDescriptorW and FileContents beside the
+    /// path — measured through Avalonia's own drop target in
+    /// RealDropTargetTests. A Shift-drag of a file onto the folder it is in is
+    /// refused by the path rules as already there; asked only whether a
+    /// descriptor came with it, the cursor said Copy instead. The reader here
+    /// says yes to everything, which is what Explorer's object says.
+    /// </summary>
+    [AvaloniaFact]
+    public async Task A_drag_that_carries_paths_is_never_taken_for_an_archive_s()
+    {
+        var into = Folder("into");
+        var file = Path.Combine(into, "plain.txt");
+        File.WriteAllText(file, "x");
+
+        var archive = new Archive { Answer = _ => (true, null), Taking = () => [Staged("plain.txt")] };
+
+        var (window, pane) = await Shown(into, archive);
+
+        try
+        {
+            var over = Raise(ListingOf(window, pane), DragDrop.DragOverEvent, await Carrying(window, file),
+                             allowed: Everything, modifiers: KeyModifiers.Shift);
+
+            Assert.Equal(DragDropEffects.None, over.DragEffects);
+            Assert.Equal(0, archive.Asked);
+        }
+        finally
+        {
+            window.Close();
+        }
+    }
+
+    /// <summary>
+    /// The drop's own half, with no drag-over before it to have said no: the
+    /// file is not taken out of an "archive" and pasted back beside itself —
+    /// which is what the measured drop did, under "taking the files out of
+    /// the archive…".
+    /// </summary>
+    [AvaloniaFact]
+    public async Task A_drop_that_carries_paths_is_never_taken_for_an_archive_s()
+    {
+        var into = Folder("into");
+        var file = Path.Combine(into, "plain.txt");
+        File.WriteAllText(file, "x");
+
+        var archive = new Archive { Answer = _ => (true, null), Taking = () => [Staged("plain.txt")] };
+
+        var (window, pane) = await Shown(into, archive);
+
+        try
+        {
+            var drop = Raise(ListingOf(window, pane), DragDrop.DropEvent, await Carrying(window, file),
+                             allowed: Everything, modifiers: KeyModifiers.Shift);
+
+            Assert.Equal(0, archive.Took);
+            Assert.Equal(DragDropEffects.None, drop.DragEffects);
+            Assert.Equal("that is already here", pane.Status);
+        }
+        finally
+        {
+            window.Close();
+        }
+    }
+
+    // ---- what the source allows ------------------------------------------------
+
+    /// <summary>
+    /// **A Shift-drag from a source that allows only Copy showed no-drop and
+    /// dropped nothing.** OLE masks the answer with what the source allows
+    /// and skips the drop when nothing is left — and 7-Zip, like most
+    /// programs, allows Copy alone. The move falls back to the copy the source
+    /// allows, and the drop does what the cursor said: copies, and leaves the
+    /// original where it was.
+    /// </summary>
+    [AvaloniaFact]
+    public async Task A_move_the_source_does_not_allow_is_a_copy()
+    {
+        var into = Folder("into");
+
+        // Outside the temporary folder: a drop from inside it is an archiver's
+        // scratch copy, which the drop rescues by MOVING it — see DropStaging —
+        // and that would take the original for a reason unrelated to this.
+        var from = Outside("from");
+
+        var file = Path.Combine(from, "only-copy.txt");
+        File.WriteAllText(file, "x");
+
+        var (window, pane) = await Shown(into, new Archive());
+
+        try
+        {
+            var data = await Carrying(window, file);
+            var listing = ListingOf(window, pane);
+
+            var over = Raise(listing, DragDrop.DragOverEvent, data,
+                             allowed: DragDropEffects.Copy, modifiers: KeyModifiers.Shift);
+
+            Assert.Equal(DragDropEffects.Copy, over.DragEffects);
+
+            var drop = Raise(listing, DragDrop.DropEvent, data,
+                             allowed: DragDropEffects.Copy, modifiers: KeyModifiers.Shift);
+
+            Assert.Equal(DragDropEffects.Copy, drop.DragEffects);
+
+            await Arrives(Path.Combine(into, "only-copy.txt"));
+
+            Assert.True(File.Exists(file), "a source that allowed only a copy lost its original");
+        }
+        finally
+        {
+            window.Close();
+        }
+    }
+
+    /// <summary>Alt asks for a shortcut; a Copy-only source gets a copy, and
+    /// the cursor says so rather than no-drop.</summary>
+    [AvaloniaFact]
+    public async Task A_link_the_source_does_not_allow_is_a_copy()
+    {
+        var into = Folder("into");
+        var from = Folder("from");
+
+        var file = Path.Combine(from, "no-link.txt");
+        File.WriteAllText(file, "x");
+
+        var (window, pane) = await Shown(into, new Archive());
+
+        try
+        {
+            var over = Raise(ListingOf(window, pane), DragDrop.DragOverEvent, await Carrying(window, file),
+                             allowed: DragDropEffects.Copy, modifiers: KeyModifiers.Alt);
+
+            Assert.Equal(DragDropEffects.Copy, over.DragEffects);
+        }
+        finally
+        {
+            window.Close();
+        }
+    }
+
+    /// <summary>
+    /// The archive answer is held to the same rule: it is a Copy, and a source
+    /// that allows no copy gets None rather than an answer OLE would throw
+    /// away.
+    /// </summary>
+    [AvaloniaFact]
+    public async Task Archive_files_are_offered_only_as_the_source_allows()
+    {
+        var into = Folder("into");
+        var archive = new Archive { Answer = _ => (true, null) };
+
+        var (window, pane) = await Shown(into, archive);
+
+        try
+        {
+            var over = Raise(ListingOf(window, pane), DragDrop.DragOverEvent, Words(), allowed: DragDropEffects.Move);
+
+            Assert.Equal(DragDropEffects.None, over.DragEffects);
+        }
+        finally
+        {
+            window.Close();
+        }
+    }
+
+    /// <summary>
+    /// The rule itself, both platforms. On Windows the incoming effect is the
+    /// source's mask; X11 hands over the one action the source proposes and
+    /// lets the target answer another, so there it limits nothing — a same-
+    /// drive move from a file manager stays a move.
+    /// </summary>
+    [Fact]
+    public void What_the_source_allows_limits_the_answer_only_where_it_is_a_mask()
+    {
+        Assert.Equal(DragDropEffects.Copy,
+            MainWindow.Permitted(DragDropEffects.Move, DragDropEffects.Copy, masked: true));
+        Assert.Equal(DragDropEffects.Move,
+            MainWindow.Permitted(DragDropEffects.Move, DragDropEffects.Copy | DragDropEffects.Move, masked: true));
+        Assert.Equal(DragDropEffects.None,
+            MainWindow.Permitted(DragDropEffects.Link, DragDropEffects.Move, masked: true));
+        Assert.Equal(DragDropEffects.Move,
+            MainWindow.Permitted(DragDropEffects.Move, DragDropEffects.Copy, masked: false));
+
+        // An event with no mask at all is one a test built by hand.
+        Assert.Equal(DragDropEffects.Move,
+            MainWindow.Permitted(DragDropEffects.Move, DragDropEffects.None, masked: true));
+    }
+
+    /// <summary>
+    /// **What a finished move is called differs by platform, and None on X11
+    /// is a rejection.** XdndFinished says "accepted" only when the action is
+    /// not None, so reporting a move Vaktari performed as None made GTK play
+    /// its failed-drop animation over a move that worked. Windows is the
+    /// other way round: the shell wants anything but Move for a move the
+    /// target did itself.
+    /// </summary>
+    [Fact]
+    public void A_move_Vaktari_performs_is_reported_in_each_platform_s_words()
+    {
+        Assert.Equal(DragDropEffects.None, MainWindow.MovedByUs(windows: true));
+        Assert.Equal(DragDropEffects.Move, MainWindow.MovedByUs(windows: false));
     }
 
     /// <summary>
@@ -386,7 +654,8 @@ public sealed class ArchiveDropTests : OwnedViewModels
         var file = Path.Combine(from, "moved.txt");
         File.WriteAllText(file, "x");
 
-        var (window, pane) = await Shown(into, new Archive());
+        var archive = new Archive();
+        var (window, pane) = await Shown(into, archive);
 
         try
         {
@@ -394,6 +663,11 @@ public sealed class ArchiveDropTests : OwnedViewModels
                              allowed: Everything, modifiers: KeyModifiers.Shift);
 
             Assert.Equal(DragDropEffects.None, drop.DragEffects);
+
+            // And the data object is told the same, which is the half of the
+            // shell's optimized-move rule a source reads when it does not
+            // trust the effect.
+            Assert.Equal(1, archive.ToldMoved);
 
             // And it did move — so the None above is not a drop that refused.
             await Arrives(Path.Combine(into, "moved.txt"));
@@ -414,7 +688,8 @@ public sealed class ArchiveDropTests : OwnedViewModels
         var file = Path.Combine(from, "copied.txt");
         File.WriteAllText(file, "x");
 
-        var (window, pane) = await Shown(into, new Archive());
+        var archive = new Archive();
+        var (window, pane) = await Shown(into, archive);
 
         try
         {
@@ -422,6 +697,7 @@ public sealed class ArchiveDropTests : OwnedViewModels
                              allowed: Everything, modifiers: KeyModifiers.Control);
 
             Assert.Equal(DragDropEffects.Copy, drop.DragEffects);
+            Assert.Equal(0, archive.ToldMoved);
 
             await Arrives(Path.Combine(into, "copied.txt"));
         }
@@ -461,6 +737,67 @@ public sealed class ArchiveDropTests : OwnedViewModels
         }
     }
 
+    // ---- where the drop lands ----------------------------------------------------
+
+    /// <summary>
+    /// **The drop goes into the row the ring was on.** Avalonia delivers the
+    /// drop to the element the last drag-over was over, and the edge scroll
+    /// can recycle that row's container for another item in between — the
+    /// ring said one folder and the element now says another. Staged here on
+    /// a real listing row by giving its container the other folder's entry
+    /// between the drag-over and the drop, which is what recycling does to
+    /// it.
+    /// </summary>
+    [AvaloniaFact]
+    public async Task The_drop_lands_in_the_listing_row_the_drag_over_marked()
+    {
+        var into = Folder("into");
+        var marked = Directory.CreateDirectory(Path.Combine(into, "marked")).FullName;
+        var recycled = Directory.CreateDirectory(Path.Combine(into, "recycled")).FullName;
+        var from = Folder("from");
+
+        var file = Path.Combine(from, "aimed.txt");
+        File.WriteAllText(file, "x");
+
+        var (window, pane) = await Shown(into, new Archive());
+
+        try
+        {
+            await pane.RefreshAsync();
+
+            ListBoxItem? row = null;
+
+            for (var i = 0; i < 300 && row is null; i++)
+            {
+                Pump();
+                row = window.GetVisualDescendants().OfType<ListBoxItem>()
+                    .FirstOrDefault(r => r.IsEffectivelyVisible && r.DataContext is FileEntry { Name: "marked" });
+                if (row is null) await Task.Delay(10);
+            }
+
+            Assert.True(row is not null, "the listing drew no row for the folder");
+
+            var other = pane.Entries.First(entry => entry.Name == "recycled");
+            var data = await Carrying(window, file);
+
+            Assert.Equal(DragDropEffects.Copy,
+                Raise(row!, DragDrop.DragOverEvent, data, allowed: Everything, modifiers: KeyModifiers.Control).DragEffects);
+
+            row!.DataContext = other;
+
+            Raise(row, DragDrop.DropEvent, data, allowed: Everything, modifiers: KeyModifiers.Control);
+
+            await Arrives(Path.Combine(marked, "aimed.txt"));
+
+            Assert.False(File.Exists(Path.Combine(recycled, "aimed.txt")),
+                "the drop went into the folder the row was recycled for");
+        }
+        finally
+        {
+            window.Close();
+        }
+    }
+
     // ---- the harness ----------------------------------------------------------
 
     private const DragDropEffects Everything =
@@ -480,6 +817,14 @@ public sealed class ArchiveDropTests : OwnedViewModels
         public int Asked { get; private set; }
 
         public int Took { get; private set; }
+
+        public int ToldMoved { get; private set; }
+
+        public bool MovedByTarget(object dataTransfer)
+        {
+            ToldMoved++;
+            return true;
+        }
 
         public bool Offers(object dataTransfer) => Offers(dataTransfer, out _);
 

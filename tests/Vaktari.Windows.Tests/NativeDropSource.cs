@@ -70,8 +70,25 @@ internal sealed partial class NativeDropSource : NativeDropSource.IServedDataObj
             return QueryFailure;
         }
 
+        if (OffersPaths && format.Format == CfHdrop && (format.Tymed & TymedHGlobal) != 0) return 0;
+
         return Offered(format, out _) ? 0 : DvEFormatEtc;
     }
+
+    /// <summary>
+    /// Says it has CF_HDROP as well — what Explorer's data object for an
+    /// ORDINARY file on disk does beside the descriptor. Only asked about,
+    /// never read.
+    /// </summary>
+    public bool OffersPaths { get; set; }
+
+    /// <summary>Refuses SetData, as a source that keeps no such formats
+    /// would.</summary>
+    public bool RefuseSetData { get; set; }
+
+    /// <summary>What SetData was handed, by format name, as the DWORD in its
+    /// memory block.</summary>
+    public Dictionary<string, int> WasSet { get; } = [];
 
     public int GetDataHere(in FormatEtc format, ref StgMedium medium) => ENotImpl;
     public int GetCanonicalFormatEtc(in FormatEtc format, out FormatEtc canonical)
@@ -79,7 +96,28 @@ internal sealed partial class NativeDropSource : NativeDropSource.IServedDataObj
         canonical = default;
         return ENotImpl;
     }
-    public int SetData(in FormatEtc format, in StgMedium medium, int release) => ENotImpl;
+
+    public int SetData(in FormatEtc format, in StgMedium medium, int release)
+    {
+        if (RefuseSetData || medium.Tymed != TymedHGlobal || medium.Handle == IntPtr.Zero) return ENotImpl;
+
+        var name = format.Format == (ushort)RegisterClipboardFormatW("Performed DropEffect") ? "Performed DropEffect"
+                 : format.Format == (ushort)RegisterClipboardFormatW("Logical Performed DropEffect") ? "Logical Performed DropEffect"
+                 : $"cf {format.Format}";
+
+        var block = GlobalLock(medium.Handle);
+        WasSet[name] = Marshal.ReadInt32(block);
+        GlobalUnlock(medium.Handle);
+
+        // Owned from here, as fRelease says: freed the way the caller would.
+        if (release != 0)
+        {
+            var owned = medium;
+            ReleaseStgMedium(ref owned);
+        }
+
+        return 0;
+    }
     public int EnumFormatEtc(uint direction, out IntPtr formats)
     {
         formats = IntPtr.Zero;
@@ -190,6 +228,11 @@ internal sealed partial class NativeDropSource : NativeDropSource.IServedDataObj
 
     [LibraryImport("shlwapi.dll")]
     private static partial IntPtr SHCreateMemStream(byte[] init, uint size);
+
+    [LibraryImport("ole32.dll")]
+    private static partial void ReleaseStgMedium(ref StgMedium medium);
+
+    private const ushort CfHdrop = 15;
 
     [LibraryImport("user32.dll", StringMarshalling = StringMarshalling.Utf16)]
     private static partial uint RegisterClipboardFormatW(string format);

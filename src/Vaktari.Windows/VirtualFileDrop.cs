@@ -85,10 +85,10 @@ public sealed partial class VirtualFileDrop : IVirtualFileDrop
             if (data is null) return false;
 
             var wide = Query(data, DescriptorW);
-            if (wide == 0) return true;
+            if (wide == 0) return !HasPaths(data);
 
             var narrow = Query(data, DescriptorA);
-            if (narrow == 0) return true;
+            if (narrow == 0) return !HasPaths(data);
 
             // Only a failure is worth a reason. The shell answering that it has
             // no such format is the ordinary no of an ordinary drag.
@@ -132,6 +132,83 @@ public sealed partial class VirtualFileDrop : IVirtualFileDrop
             Release(data);
         }
     }
+
+    /// <summary>
+    /// Tells the source that the target moved its files itself.
+    ///
+    /// **The shell asks for this in two places, and the drop answered one.**
+    /// For an optimized move — the target doing the whole move, as Vaktari's
+    /// own operation does — the drop's effect must not be Move, and the data
+    /// object is also to be given CFSTR_PERFORMEDDROPEFFECT = DROPEFFECT_NONE,
+    /// "because some drop targets might not set pdwEffect properly", with
+    /// CFSTR_LOGICALPERFORMEDDROPEFFECT = DROPEFFECT_MOVE saying what the user
+    /// saw happen. A source that reads the format instead of the effect is
+    /// then told the same thing.
+    ///
+    /// Safe to skip: both are set through SetData, and a source that does not
+    /// take them answers with a failure, which is the end of it — the memory
+    /// is freed here, since a refused SetData leaves it with the caller. Never
+    /// throws; a drop handler must not.
+    /// </summary>
+    public bool MovedByTarget(object dataTransfer)
+    {
+        IDataObject? data = null;
+
+        try
+        {
+            data = Native(dataTransfer);
+
+            if (data is null) return false;
+
+            var performed = SetDropEffect(data, PerformedDropEffect, DropEffectNone);
+            var logical = SetDropEffect(data, LogicalPerformedDropEffect, DropEffectMove);
+
+            return performed && logical;
+        }
+        catch (Exception e)
+        {
+            Say($"could not tell the source it was moved: {Fault(e)}");
+            return false;
+        }
+        finally
+        {
+            Release(data);
+        }
+    }
+
+    private static bool SetDropEffect(IDataObject data, string format, int effect)
+    {
+        var handle = GlobalAlloc(GmemMoveable, 4);
+
+        if (handle == IntPtr.Zero) return false;
+
+        var block = GlobalLock(handle);
+
+        if (block == IntPtr.Zero)
+        {
+            GlobalFree(handle);
+            return false;
+        }
+
+        Marshal.WriteInt32(block, effect);
+        GlobalUnlock(handle);
+
+        var descriptor = Descriptor(format, -1, TymedHGlobal);
+        var medium = new StgMedium { Tymed = TymedHGlobal, Handle = handle };
+
+        // Released by the source on success, which is what fRelease=TRUE
+        // hands over; still ours on failure.
+        if (data.SetData(in descriptor, in medium, 1) == 0) return true;
+
+        GlobalFree(handle);
+        return false;
+    }
+
+    private const string PerformedDropEffect = "Performed DropEffect";
+    private const string LogicalPerformedDropEffect = "Logical Performed DropEffect";
+    private const int DropEffectNone = 0;
+    private const int DropEffectMove = 2;
+    private const uint GmemMoveable = 2;
 
     private static IReadOnlyList<string> Take(IDataObject data, CancellationToken token)
     {
@@ -412,33 +489,69 @@ public sealed partial class VirtualFileDrop : IVirtualFileDrop
     private static bool Available(IDataObject data, string format) => Query(data, format) == 0;
 
     /// <summary>
-    /// QueryGetData for one format as a memory block, asked twice when the
-    /// first answer was a failure rather than a no.
-    ///
-    /// **One bad moment was the whole drag.** The source is in another
-    /// process, so this is a call across it — and a busy or momentarily
-    /// refusing Explorer answers with a failure that says nothing about the
-    /// format. Asked once, that failure read as "no archive files here", the
-    /// drag-over answered None, and when that was the last answer before the
-    /// button came up Windows took the drag away rather than dropping it. A
-    /// second ask costs one more call, and only on the failure path.
+    /// **A descriptor is not an archive.** Explorer offers
+    /// FileGroupDescriptorW and FileContents beside CF_HDROP for an ORDINARY
+    /// file on disk (measured: a folder's data object does not, a file's
+    /// does). A drag that carries paths is a drag of those paths, and is read
+    /// as one; treating it as an archive's contents turned a Shift-drag of a
+    /// file onto its own folder — refused by the path rules as already there
+    /// — into a copy of it pasted back beside itself.
     /// </summary>
+    private static bool HasPaths(IDataObject data)
+    {
+        var hdrop = new FormatEtc { Format = CfHdrop, Aspect = DvaspectContent, Index = -1, Tymed = TymedHGlobal };
+
+        return Ask(data, in hdrop) == 0;
+    }
+
     private static int Query(IDataObject data, string format)
     {
         var descriptor = Descriptor(format, -1, TymedHGlobal);
 
-        var hr = data.QueryGetData(in descriptor);
-
-        return Transient(hr) ? data.QueryGetData(in descriptor) : hr;
+        return Ask(data, in descriptor);
     }
 
     /// <summary>
-    /// A failure that is not the source's considered answer. The DV_E codes
-    /// and S_FALSE are how a data object says it does not have that format in
-    /// that shape, which asking again will not change.
+    /// QueryGetData, asked a second time — after a short pause — when the
+    /// source said it was too busy to answer.
+    ///
+    /// **One bad moment was the whole drag.** The source is in another
+    /// process, so this is a call across it, and a drag whose last answer was
+    /// None is taken away by Windows rather than dropped. That a busy Explorer
+    /// is what the maintainer met is INFERRED — from the symptom (the same
+    /// drag working and failing), from COM's documented busy answers, and from
+    /// what the drop code did with any failure — not reproduced against a
+    /// live Explorer. So only the two answers COM itself calls "try again"
+    /// are retried: RPC_E_CALL_REJECTED and RPC_E_SERVERCALL_RETRYLATER. Any
+    /// other failure — E_NOTIMPL, E_INVALIDARG — is an answer, and asking it
+    /// again on every drag-over would only double the calls into the source.
+    /// </summary>
+    private static int Ask(IDataObject data, in FormatEtc format)
+    {
+        var hr = data.QueryGetData(in format);
+
+        if (hr is not (RpcECallRejected or RpcEServerCallRetryLater)) return hr;
+
+        Thread.Sleep(RetryPause);
+
+        return data.QueryGetData(in format);
+    }
+
+    /// <summary>Long enough for a busy message loop to come round once, short
+    /// enough not to be felt in a drag.</summary>
+    private static readonly TimeSpan RetryPause = TimeSpan.FromMilliseconds(15);
+
+    /// <summary>
+    /// A failure that is not the source's considered answer, and so worth a
+    /// reason. The DV_E codes are how a data object says it does not have
+    /// that format in that shape — the ordinary no of an ordinary drag.
     /// </summary>
     private static bool Transient(int hr) => hr < 0 && hr is not (
         DvEFormatEtc or DvELindex or DvETymed or DvEClipFormat or DvEDvAspect);
+
+    private const ushort CfHdrop = 15;
+    private const int RpcECallRejected = unchecked((int)0x80010001);
+    private const int RpcEServerCallRetryLater = unchecked((int)0x8001010A);
 
     private const int DvEFormatEtc = unchecked((int)0x80040064);
     private const int DvELindex = unchecked((int)0x80040068);
@@ -797,6 +910,12 @@ public sealed partial class VirtualFileDrop : IVirtualFileDrop
 
     [LibraryImport("kernel32.dll")]
     private static partial IntPtr GlobalLock(IntPtr handle);
+
+    [LibraryImport("kernel32.dll")]
+    private static partial IntPtr GlobalAlloc(uint flags, UIntPtr size);
+
+    [LibraryImport("kernel32.dll")]
+    private static partial IntPtr GlobalFree(IntPtr handle);
 
     [LibraryImport("kernel32.dll")]
     [return: MarshalAs(UnmanagedType.Bool)]

@@ -27,6 +27,14 @@ public sealed partial class FolderNode : ObservableObject
 
     public string Path { get; }
 
+    /// <summary>
+    /// False for a root whose place the sidebar holds as not there — a drive
+    /// with no disc in it, a share that has gone. Carried from the place row
+    /// rather than asked of the disk: the drag asks on every movement, and
+    /// asking a share that has gone whether it exists can take seconds.
+    /// </summary>
+    public bool IsAvailable { get; init; } = true;
+
     /// <summary>What the row says. A root carries the name the sidebar gave it
     /// — "Home", a drive's label — and everything below carries its own leaf,
     /// because a tree that renamed folders as it went would be describing
@@ -232,13 +240,18 @@ public sealed partial class FolderTreeViewModel : ObservableObject
     /// drive that has gone would offer a triangle onto nothing.
     /// </summary>
     public void SetRoots(IEnumerable<(string Path, string Label)> places)
+        => SetRoots(places.Select(place => (place.Path, place.Label, true)));
+
+    /// <summary>The roots, with whether each place is there to be used — see
+    /// <see cref="FolderNode.IsAvailable"/>.</summary>
+    public void SetRoots(IEnumerable<(string Path, string Label, bool IsAvailable)> places)
     {
         foreach (var root in Roots) root.IsExpanded = false;
 
         Roots.Clear();
 
-        foreach (var (path, label) in places)
-            Roots.Add(new FolderNode(this, path, label, depth: 0));
+        foreach (var (path, label, available) in places)
+            Roots.Add(new FolderNode(this, path, label, depth: 0) { IsAvailable = available });
 
         Reflow();
     }

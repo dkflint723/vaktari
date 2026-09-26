@@ -180,6 +180,49 @@ public sealed class FolderTreeDropTests : OwnedViewModels
         }
     }
 
+    /// <summary>
+    /// **Held to the place row's rule.** A root whose place is not there — a
+    /// drive with no disc, a share that has gone — is shown dimmed and refused
+    /// as a place row; as a tree row it lit up and took the drag, and the copy
+    /// then failed. So did a folder the tree had already found it could not
+    /// read. Both are refused now, and an ordinary row beside them is not.
+    /// </summary>
+    [AvaloniaFact]
+    public void A_tree_row_that_is_not_there_or_not_readable_takes_no_drop()
+    {
+        var tree = new FolderTreeViewModel(null!);
+        var here = Folder("here");
+
+        var ordinary = new FolderNode(tree, here, "here", depth: 0);
+        var gone = new FolderNode(tree, here, "gone", depth: 0) { IsAvailable = false };
+        var unreadable = new FolderNode(tree, here, "locked", depth: 1) { IsUnreadable = true };
+
+        Assert.Equal(here, TreeOf(ordinary));
+        Assert.Null(TreeOf(gone));
+        Assert.Null(TreeOf(unreadable));
+    }
+
+    /// <summary>The sidebar hands the place's own answer to the root, so the
+    /// rule above has something to read.</summary>
+    [AvaloniaFact]
+    public void A_root_carries_whether_its_place_is_there()
+    {
+        var tree = new FolderTreeViewModel(null!);
+
+        tree.SetRoots([(Folder("there"), "there", true), (Folder("gone"), "gone", false)]);
+
+        Assert.Equal([true, false], tree.Roots.Select(root => root.IsAvailable));
+    }
+
+    private static string? TreeOf(FolderNode node)
+    {
+        var spot = typeof(MainWindow)
+            .GetMethod("TargetAt", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Static)!
+            .Invoke(null, [new ContentControl { DataContext = node }])!;
+
+        return (string?)spot.GetType().GetProperty("Tree")!.GetValue(spot);
+    }
+
     // ---- the harness ----------------------------------------------------------
 
     /// <summary>

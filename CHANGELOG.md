@@ -14,39 +14,53 @@ should not be trusted for compatibility yet.
 ### Added
 
 - **The folder tree takes drops.** Dropping files on a row of the *FOLDERS*
-  section puts them in that folder, by the same rules a place row uses —
-  a drag within one drive moves unless Ctrl is held, and so on — and the
-  row lights up while it would take the drop, the way a place does. Before,
-  the whole tree refused every drag.
+  section puts them in that folder by the rules a place row uses — a drag
+  from another Vaktari folder on the same drive moves, one from another
+  program copies, and Ctrl, Shift and Alt change that as usual — and the
+  row lights up while it would take the drop, the way a place does. A row
+  whose drive or share is not there, or whose folder could not be read,
+  refuses the drop as its place row does. Before, the whole tree refused
+  every drag.
 
 ### Fixed
 
 - **A drag out of a zip open in Explorer is no longer called off by one
-  moment of Explorer not answering.** Whether the drag carried a zip's
-  files was asked again on every movement of the pointer, and one
-  unanswered question just before you let go was enough for Windows to
-  call the drag off instead of dropping it, with nothing said anywhere —
-  so it worked only some of the time. The answer is now kept for the whole
-  drag, a question that fails is asked a second time, and a drop the drag
-  already accepted is taken even when asking again at the drop fails.
-  Letting go over the folder tree used to end the drag the same way; see
-  above.
-- **A drop now tells the program it came from what was done.** A drop out
-  of a zip told Explorer the files had been *moved*, which is a source's
-  cue to delete what it sent; a copy now says copy, a shortcut says
-  shortcut, and a move Vaktari makes itself — like a drop that did
-  nothing — says neither, so the source leaves its files alone.
+  moment of Explorer not answering.** Whether the drag carried files from
+  inside the zip was asked again every time the pointer moved, and if
+  Explorer failed to answer just before you let go, Windows called the
+  drag off instead of dropping it, with nothing said anywhere. The answer
+  is now kept for the whole drag, even while the pointer crosses the
+  toolbar or the edge between the listing and the sidebar; a busy answer
+  is asked once more; and a drop the drag already accepted is taken even
+  when asking again at the drop fails. Letting go over the folder tree used
+  to end the drag the same way; see above.
+- **A file dragged from Explorer is no longer mistaken for one inside a
+  zip.** Explorer describes an ordinary file the same way it describes a
+  zip's contents, alongside its path. Vaktari now goes by the path, so
+  Shift-dragging a file onto the folder it is already in is refused as
+  "already here" instead of putting a second copy beside it.
+- **Shift- and Alt-drags from most programs work on Windows.** A program
+  that allows only copying — 7-Zip and most others — showed the no-drop
+  cursor for a Shift-drag (move) or an Alt-drag (shortcut), and nothing was
+  dropped. Those now copy, which is what the program allows, and the cursor
+  says so.
+- **A drop tells the program it came from what was done.** Vaktari answered
+  every drop with whatever the source had allowed, so a copy out of a zip
+  was reported as possibly a move. A copy now reports a copy and a shortcut
+  a shortcut. A move Vaktari makes itself reports, on Windows, that the
+  source has nothing left to delete; on Linux it reports the move, where
+  answering nothing had made the source show the drop as failed.
 - **A drop that lands a moment after the listing scrolled goes where the
   highlight said.** Resting a drag at the edge of a listing scrolls it,
   and releasing just after a scroll could drop the files into whichever
   folder had scrolled under the pointer instead of the one that was lit.
-- **A drag or drop that goes wrong says so.** A failure while a drag was
-  over the window, or while it was being dropped, made the drop silently
-  not happen. It now shows on the status line, and it, the reason a drag
-  was refused because Explorer did not answer, and everything a drop out of
-  an archive could not take are written to the log in the `logs` folder
-  beside your settings — until now they went to a console the Windows
-  build does not have.
+- **A drop that goes wrong says so.** A failure while a drop was being
+  taken made it silently not happen; it now shows on the status line. It,
+  a failure while a drag was over the window, the reason a drag was
+  refused because Explorer did not answer, and everything a drop out of an
+  archive could not take are written to the log in the `logs` folder beside
+  your settings — until now they went to a console the Windows build does
+  not have.
 
 ## [0.11.0] — 2026-09-25
 

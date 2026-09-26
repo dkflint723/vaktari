@@ -16,7 +16,10 @@ namespace Vaktari.Core.FileSystem;
 public interface IVirtualFileDrop
 {
     /// <summary>
-    /// Whether this drop is offering files with no location on disk.
+    /// Whether this drop is offering files with no location on disk — and
+    /// ONLY such files: Explorer describes an ordinary file on disk with the
+    /// same descriptor it uses for a zip's contents, beside its path, and a
+    /// drag that carries paths is a drag of those paths.
     ///
     /// Asked while the pointer is still moving, so it must be cheap: it reads
     /// the list of formats and nothing else.
@@ -48,4 +51,16 @@ public interface IVirtualFileDrop
     /// the temporary folder for nobody.
     /// </summary>
     IReadOnlyList<string> Take(object dataTransfer, CancellationToken token = default);
+
+    /// <summary>
+    /// Tells the drop's source, on the data object itself, that the target
+    /// has moved the files and the source must not delete them — the shell's
+    /// "optimized move". False when the source could not be told, which costs
+    /// nothing: the drop's own effect already says the same.
+    ///
+    /// On this interface because it is the one place the native data object
+    /// behind a drop can be reached; it has nothing to do with archive files
+    /// beyond that.
+    /// </summary>
+    bool MovedByTarget(object dataTransfer);
 }

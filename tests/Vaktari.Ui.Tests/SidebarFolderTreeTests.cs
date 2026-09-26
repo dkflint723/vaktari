@@ -242,6 +242,22 @@ public sealed class SidebarFolderTreeTests : OwnedViewModels
     }
 
     /// <summary>
+    /// **A share that has gone keeps its root, and says it has gone.** Its
+    /// place row is dimmed and refuses a drop; the root is handed the same
+    /// answer, so the tree refuses one too rather than lighting up over a
+    /// folder the copy cannot reach — see FolderTreeDropTests.
+    /// </summary>
+    [AvaloniaFact]
+    public async Task A_root_knows_when_its_place_is_not_there()
+    {
+        var gone = At(P("share"), "Share") with { IsAvailable = false };
+
+        var sidebar = await Loaded(new Places(At(P("home"), "Home"), gone), new Quiet());
+
+        Assert.Equal([("Home", true), ("Share", false)], sidebar.Tree!.Roots.Select(r => (r.Label, r.IsAvailable)));
+    }
+
+    /// <summary>
     /// **Revealing reads a folder per level, so it waits until anyone can see
     /// it.** A folded section that still walked the tree on every navigation
     /// would be work for nobody.

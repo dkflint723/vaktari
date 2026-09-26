@@ -942,7 +942,7 @@ public sealed partial class SidebarViewModel : ObservableObject, IDisposable
                 Groups.SelectMany(group => group.Places)
                     .Where(place => !string.IsNullOrEmpty(place.Path))
                     .Where(place => !VirtualPaths.IsVirtual(place.Path))
-                    .Select(place => (place.Path, place.Label)));
+                    .Select(place => (place.Path, place.Label, place.IsAvailable)));
 
             // The rows are new objects, so the current-location mark has to be
             // re-applied — a refresh would otherwise silently clear the

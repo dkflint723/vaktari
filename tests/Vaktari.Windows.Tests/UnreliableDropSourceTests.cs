@@ -38,6 +38,76 @@ public sealed class UnreliableDropSourceTests
     }
 
     /// <summary>
+    /// **Only a busy answer is asked again.** E_NOTIMPL is the source's
+    /// considered answer, not a moment of it being busy; asking it twice on
+    /// every drag-over would only double the calls into the other process.
+    /// It is still a failure with a reason.
+    /// </summary>
+    [WindowsFact]
+    public void An_answer_that_is_not_busy_is_not_asked_again()
+    {
+        var source = new NativeDropSource(("a.txt", "x"u8.ToArray(), false))
+        {
+            FailQueries = 1,
+            QueryFailure = unchecked((int)0x80004001),
+        };
+
+        Serve(source, drag =>
+        {
+            Assert.False(new VirtualFileDrop().Offers(drag, out var failure),
+                "E_NOTIMPL was asked again as though the source had been busy");
+            Assert.NotNull(failure);
+        });
+    }
+
+    /// <summary>
+    /// **A descriptor is not an archive.** Explorer's data object for an
+    /// ordinary file on disk offers FileGroupDescriptorW and FileContents
+    /// beside CF_HDROP; a drag with paths is a drag of those paths.
+    /// </summary>
+    [WindowsFact]
+    public void A_source_with_paths_offers_no_archive_files()
+    {
+        var source = new NativeDropSource(("a.txt", "x"u8.ToArray(), false)) { OffersPaths = true };
+
+        Serve(source, drag =>
+        {
+            Assert.False(new VirtualFileDrop().Offers(drag, out var failure));
+            Assert.Null(failure);
+        });
+    }
+
+    /// <summary>
+    /// **The shell's optimized-move rule has two halves, and the data object
+    /// is the second.** The target that moved the files itself sets
+    /// CFSTR_PERFORMEDDROPEFFECT to DROPEFFECT_NONE — so a source that reads
+    /// the format rather than the drop's effect still leaves its originals —
+    /// and CFSTR_LOGICALPERFORMEDDROPEFFECT to DROPEFFECT_MOVE.
+    /// </summary>
+    [WindowsFact]
+    public void A_move_by_the_target_is_written_on_the_data_object()
+    {
+        var source = new NativeDropSource(("a.txt", "x"u8.ToArray(), false));
+
+        Serve(source, drag => Assert.True(new VirtualFileDrop().MovedByTarget(drag)));
+
+        Assert.Equal(0, source.WasSet["Performed DropEffect"]);
+        Assert.Equal(2, source.WasSet["Logical Performed DropEffect"]);
+    }
+
+    /// <summary>A source that takes no such formats is simply not told —
+    /// no throw, and the memory handed to it freed here.</summary>
+    [WindowsFact]
+    public void A_source_that_refuses_the_formats_is_left_alone()
+    {
+        var source = new NativeDropSource(("a.txt", "x"u8.ToArray(), false)) { RefuseSetData = true };
+
+        Serve(source, drag => Assert.False(new VirtualFileDrop().MovedByTarget(drag)));
+
+        Assert.Empty(source.WasSet);
+    }
+
+    /// <summary>
     /// A source that fails every time is still a no — but one with a reason,
     /// the HRESULT, so the window can say why the drag was refused.
     /// </summary>

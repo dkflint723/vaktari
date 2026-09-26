@@ -526,15 +526,19 @@ public partial class MainWindow
     /// navigates with the same command the place rows use — so it takes a
     /// drop by the same rules a place does.
     ///
-    /// Virtual paths are refused for <see cref="PlaceAt"/>'s reason: there is
-    /// nowhere in one to put anything.
+    /// Refused, as <see cref="PlaceAt"/> refuses them: a virtual path, which
+    /// has nowhere in it to put anything; a root whose place is not there —
+    /// a drive with no disc, a share that has gone — which the place row
+    /// already shows dimmed and refuses; and a folder the tree could not read,
+    /// which says so on its row. Lighting any of them up would promise a drop
+    /// the copy then fails.
     /// </summary>
     private static string? TreeFolderAt(object? source)
     {
         for (var visual = source as Visual; visual is not null;
              visual = visual.GetVisualParent())
         {
-            if (visual is Control { DataContext: FolderNode node }
+            if (visual is Control { DataContext: FolderNode { IsAvailable: true, IsUnreadable: false } node }
                 && node.Path.Length > 0
                 && !VirtualPaths.IsVirtual(node.Path))
                 return node.Path;
