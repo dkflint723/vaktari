@@ -11,7 +11,42 @@ should not be trusted for compatibility yet.
 
 ## [Unreleased]
 
-Nothing yet.
+### Added
+
+- **The folder tree takes drops.** Dropping files on a row of the *FOLDERS*
+  section puts them in that folder, by the same rules a place row uses —
+  a drag within one drive moves unless Ctrl is held, and so on — and the
+  row lights up while it would take the drop, the way a place does. Before,
+  the whole tree refused every drag.
+
+### Fixed
+
+- **A drag out of a zip open in Explorer is no longer called off by one
+  moment of Explorer not answering.** Whether the drag carried a zip's
+  files was asked again on every movement of the pointer, and one
+  unanswered question just before you let go was enough for Windows to
+  call the drag off instead of dropping it, with nothing said anywhere —
+  so it worked only some of the time. The answer is now kept for the whole
+  drag, a question that fails is asked a second time, and a drop the drag
+  already accepted is taken even when asking again at the drop fails.
+  Letting go over the folder tree used to end the drag the same way; see
+  above.
+- **A drop now tells the program it came from what was done.** A drop out
+  of a zip told Explorer the files had been *moved*, which is a source's
+  cue to delete what it sent; a copy now says copy, a shortcut says
+  shortcut, and a move Vaktari makes itself — like a drop that did
+  nothing — says neither, so the source leaves its files alone.
+- **A drop that lands a moment after the listing scrolled goes where the
+  highlight said.** Resting a drag at the edge of a listing scrolls it,
+  and releasing just after a scroll could drop the files into whichever
+  folder had scrolled under the pointer instead of the one that was lit.
+- **A drag or drop that goes wrong says so.** A failure while a drag was
+  over the window, or while it was being dropped, made the drop silently
+  not happen. It now shows on the status line, and it, the reason a drag
+  was refused because Explorer did not answer, and everything a drop out of
+  an archive could not take are written to the log in the `logs` folder
+  beside your settings — until now they went to a console the Windows
+  build does not have.
 
 ## [0.11.0] — 2026-09-25
 

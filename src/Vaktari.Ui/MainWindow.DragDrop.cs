@@ -266,6 +266,215 @@ public partial class MainWindow
     /// </summary>
     private bool _suppressContextMenu;
 
+    // ---- the drag being answered --------------------------------------------
+
+    /// <summary>
+    /// The drag this window is answering, as the object Avalonia hands every
+    /// enter, over and leave of it.
+    ///
+    /// **One object per visit, and that is what makes it the drag's identity.**
+    /// Avalonia's Windows backend wraps the source's data object once when the
+    /// drag enters the window and hands that same wrapper to every event until
+    /// the drag leaves or drops — and the drop itself gets a FRESH wrapper,
+    /// which is why the drop reads what the drag-overs learned instead of
+    /// asking this. A different object here is a different drag, and
+    /// <see cref="Join"/> starts again.
+    /// </summary>
+    private IDataTransfer? _session;
+
+    /// <summary>
+    /// The drag was seen to carry files from inside an archive.
+    ///
+    /// **Asked once and remembered, because asking can fail.** The question is
+    /// a call into the source process, made on every drag-over, and one that
+    /// failed turned that tick's answer into None. Windows drops only where
+    /// the LAST answer before the release was not None, so one bad moment at
+    /// the end of the gesture took the whole drag away — "sometimes it works,
+    /// sometimes nothing happens". A yes is a fact about the drag, not about
+    /// the tick, so it is kept until the drag is over.
+    /// </summary>
+    private bool _sessionCarriesVirtual;
+
+    /// <summary>The first failure met while answering this drag, kept so a
+    /// drag that ends up taking nothing can say why.</summary>
+    private string? _sessionFault;
+
+    /// <summary>The failure that decided the latest answer, if one did. A
+    /// drag that ends on a refusal because of THIS is worth a line in the
+    /// log; one that ends over somewhere that refuses is not.</summary>
+    private string? _tickFault;
+
+    /// <summary>At most one error line per drag: a handler that throws does so
+    /// twenty times a second.</summary>
+    private bool _sessionErrorLogged;
+
+    /// <summary>Counts drag-overs, drag-enters and drops, so a posted check can
+    /// tell whether anything has happened since it was posted.</summary>
+    private int _dragTicks;
+
+    /// <summary>
+    /// What the last drag-over told the user, and the element it told it about.
+    ///
+    /// **The drop is delivered to the element the last drag-over was over —
+    /// not to whatever is under the pointer when the button comes up.**
+    /// Avalonia raises it on the target it remembered from that drag-over,
+    /// which is up to one polling interval old. In between, the edge scroll
+    /// may have moved the listing, and a virtualized list recycles the row
+    /// that was under the pointer for another item: the ring was on "Photos",
+    /// and the element the drop arrives on now says "Tax 2025". Reading the
+    /// folder again from that element put the files where the user never
+    /// pointed. So the drop takes what the drag-over promised when it arrives
+    /// on the same element, and works it out afresh only when it does not.
+    /// </summary>
+    private object? _promisedSource;
+
+    private DropTarget? _promised;
+
+    private DropTarget? Promised(object? source)
+        => source is not null && ReferenceEquals(source, _promisedSource) ? _promised : null;
+
+    private void Join(IDataTransfer data)
+    {
+        if (ReferenceEquals(data, _session)) return;
+
+        EndSession();
+        _session = data;
+    }
+
+    private void EndSession()
+    {
+        _session = null;
+        _sessionCarriesVirtual = false;
+        _sessionFault = null;
+        _tickFault = null;
+        _sessionErrorLogged = false;
+        _promisedSource = null;
+        _promised = null;
+    }
+
+    /// <summary>
+    /// A drag that left without dropping — which is what Windows does instead
+    /// of dropping when the last answer was None. Says why, if a failure is
+    /// what made that answer None.
+    /// </summary>
+    private void EndedWithoutDrop()
+    {
+        if (_tickFault is { } fault) TellRefused(fault);
+
+        EndSession();
+    }
+
+    /// <summary>Remembers a failure, for this tick and for the drag.</summary>
+    private void Fault(string what)
+    {
+        _tickFault = what;
+        _sessionFault ??= what;
+    }
+
+    /// <summary>
+    /// An exception caught at a handler's edge: remembered as a fault, and
+    /// logged as an error with its stack — the first time in each drag.
+    /// </summary>
+    private void Failed(string doing, Exception ex)
+    {
+        var what = $"{doing} failed: {Describe(ex)}";
+
+        Fault(what);
+
+        if (_sessionErrorLogged) return;
+
+        _sessionErrorLogged = true;
+
+        Console.Error.WriteLine("[vaktari] drop: " + what);
+        Vaktari.Core.Diagnostics.Log.Error("drop", what + Environment.NewLine + ex);
+    }
+
+    /// <summary>
+    /// **A drag that failed and a drag that was refused looked the same, and
+    /// neither said anything.** A drop out of an archive that ended with
+    /// nothing, because asking the source a question failed at the wrong
+    /// moment, left no trace anywhere: the cursor had simply said no. This is
+    /// the one line that tells the two apart.
+    ///
+    /// Once per drag without a flag to say so: a drag ends once, either in
+    /// the drop or in <see cref="EndedWithoutDrop"/>, each calls this at most
+    /// once, and both end the session behind them.
+    /// </summary>
+    private void TellRefused(string? fault = null)
+    {
+        fault ??= _sessionFault;
+
+        if (fault is null) return;
+
+        DropWarn("a drag ended with nothing taken, because " + fault);
+    }
+
+    /// <summary>
+    /// Whether the drag carries files that exist only inside an archive —
+    /// asked of the source until it says yes, then remembered for the drag.
+    /// See <see cref="_sessionCarriesVirtual"/>.
+    /// </summary>
+    private bool CarriesVirtualFiles(IDataTransfer data)
+    {
+        if (_sessionCarriesVirtual) return true;
+
+        if (_virtualDrop is not { } drop) return false;
+
+        if (drop.Offers(data, out var failure)) return _sessionCarriesVirtual = true;
+
+        if (failure is not null) Fault("asking whether the drag carries files from an archive: " + failure);
+
+        return false;
+    }
+
+    /// <summary>
+    /// A read of the drag that may fail — every one of them is a call into
+    /// another process — answered with <paramref name="otherwise"/> and a
+    /// remembered fault when it does, rather than an exception that takes the
+    /// rest of the answer with it. A drop out of an archive has no paths to
+    /// read, so a failure here must still leave the question of its archive
+    /// files to be asked.
+    /// </summary>
+    private T Guarded<T>(string doing, Func<T> read, T otherwise)
+    {
+        try
+        {
+            return read();
+        }
+        catch (Exception ex)
+        {
+            Fault($"{doing} failed: {Describe(ex)}");
+            return otherwise;
+        }
+    }
+
+    /// <summary>The local paths the drag carries, or none when they could not
+    /// be read.</summary>
+    private IReadOnlyList<string> OfferedPaths(DragEventArgs e)
+        => Guarded("reading the paths the drag carries",
+                   () => Input.DroppedFileReader.Offered(e.DataTransfer), []);
+
+    /// <summary>The type, the HRESULT and the message: a COM failure's message
+    /// is often a generic sentence, and the number is what identifies it.</summary>
+    private static string Describe(Exception ex)
+        => $"{ex.GetType().Name} 0x{ex.HResult:X8}: {ex.Message.Trim()}";
+
+    /// <summary>A line about a drop, to stderr — seen from a console run and
+    /// nowhere else.</summary>
+    private static void DropSay(string line) => Console.Error.WriteLine("[vaktari] drop: " + line);
+
+    /// <summary>
+    /// **A drop that went wrong, to the log as well.** Every drop diagnostic
+    /// wrote to stderr alone, and the shipped build is a windowed process that
+    /// has none — so the lines written to explain a lost drop were written
+    /// nowhere anybody could read. The log keeps warnings and redacts paths.
+    /// </summary>
+    private static void DropWarn(string line)
+    {
+        DropSay(line);
+        Vaktari.Core.Diagnostics.Log.Warn("drop", line);
+    }
+
     /// <summary>
     /// Moves the label that says what the drag is carrying.
     ///
@@ -292,7 +501,7 @@ public partial class MainWindow
     private void ShowDragGhost(DragEventArgs e)
     {
         var carried = _dragBegunInThisApplication
-            ? Input.DroppedFileReader.Offered(e.DataTransfer)
+            ? OfferedPaths(e)
             : [];
 
         var label = Input.DragGhost.Label(carried);
@@ -325,135 +534,172 @@ public partial class MainWindow
 
     private void HideDragGhost() => DragGhostBox.IsVisible = false;
 
+    /// <summary>
+    /// Answers the drag-over and the drag-enter, which is the same question.
+    ///
+    /// **Nothing thrown in here may leave it.** An exception out of a drag
+    /// handler goes up through Avalonia into its COM layer, which turns it
+    /// into E_FAIL for Windows and writes nothing anywhere. On the enter that
+    /// is worse than one lost answer: a failed DragEnter tells Windows this
+    /// window is no drop target, and it stops asking until the pointer leaves
+    /// the window. So the whole answer is inside one try, a failure answers
+    /// None for this tick only, and is logged — once per drag, because this
+    /// runs twenty times a second.
+    /// </summary>
     private void OnDragOver(object? sender, DragEventArgs e)
     {
         e.Handled = true;
 
-        // Before every branch below, refusals included: what a drag is carrying
-        // does not stop being carried over a target that will not take it, and
-        // a label that blinked out over the wrong folder would read as the drag
-        // itself having ended.
-        ShowDragGhost(e);
+        _dragTicks++;
+        Join(e.DataTransfer);
+        _tickFault = null;
 
-        // The sidebar first: a place row has no pane above it, so asking for
-        // one would refuse the drop before the place was ever considered.
-        var spot = TargetAt(e.Source);
+        try
+        {
+            // Before every branch below, refusals included: what a drag is
+            // carrying does not stop being carried over a target that will not
+            // take it, and a label that blinked out over the wrong folder would
+            // read as the drag itself having ended.
+            ShowDragGhost(e);
 
-        // Before the refusal below: a tab strip is not a pane and not a place,
-        // so a drag resting on it would be refused and never counted as a hover.
-        HoverTab(TabAt(e.Source));
+            // The sidebar first: a place row has no pane above it, so asking
+            // for one would refuse the drop before the place was ever
+            // considered.
+            var spot = TargetAt(e.Source);
 
-        if (!spot.Exists)
+            // What this answer promises, kept for the drop — see _promised.
+            _promisedSource = e.Source;
+            _promised = spot;
+
+            // Before the refusal below: a tab strip is not a pane and not a
+            // place, so a drag resting on it would be refused and never counted
+            // as a hover.
+            HoverTab(TabAt(e.Source));
+
+            if (!spot.Exists)
+            {
+                e.DragEffects = DragDropEffects.None;
+                HighlightDropTarget(null);
+                StopDragScroll();
+                return;
+            }
+
+            // **The bin is a verb, not a folder**, so it is answered here
+            // rather than falling through to the destination rules below —
+            // which would ask what it costs to copy into "vaktari:trash" and
+            // refuse.
+            //
+            // Move, because that is what dropping on the bin does to the
+            // original, and it is the effect Explorer's own cursor shows over
+            // the Recycle Bin.
+            if (spot.IsBin)
+            {
+                e.DragEffects = OfferedPaths(e).Count > 0
+                    ? DragDropEffects.Move
+                    : DragDropEffects.None;
+
+                HighlightDropTarget(null, place: VirtualPaths.Trash);
+                StopDragScroll();
+                return;
+            }
+
+            // **The sidebar's own ground pins**, and like the bin it is
+            // answered before the destination rules, which name no folder for
+            // it: measured by letting a drag over the blank strip fall through
+            // to them, the cursor came back Copy with a destination of "" — so
+            // the toolkit would deliver the drop and the copy path would be
+            // handed nowhere to put it. What the cursor says here is
+            // PinPlan.Effect's rule instead, and the Link it answers is what
+            // tells the two apart.
+            if (spot.IsSidebar)
+            {
+                e.DragEffects = Input.PinnableDrop.For(OfferedPaths(e)).Effect;
+
+                HighlightDropTarget(null);
+                StopDragScroll();
+                return;
+            }
+
+            // Near an edge of the listing, keep it moving — checked on every
+            // drag-over rather than only where the drop would be accepted,
+            // because scrolling is how you REACH somewhere that would accept
+            // it.
+            DragScroll(e);
+
+            var place = spot.Place;
+            var pane = spot.Pane;
+            var destination = spot.Destination;
+
+            // A virtual listing is a view, not a folder, so its background has
+            // nowhere to put anything. The paste path refuses it too, but that
+            // refusal arrives as a line of status text after the drop; the
+            // cursor can say it beforehand, which is when it is still useful.
+            // Read from `destination` rather than the pane, so a real folder
+            // ROW inside Recent still takes a drop.
+            if (VirtualPaths.IsVirtual(destination))
+            {
+                e.DragEffects = DragDropEffects.None;
+                HighlightDropTarget(null);
+                return;
+            }
+
+            // Refuse a drop that would achieve nothing, so the cursor says so
+            // before the click rather than a duplicate appearing after it.
+            // **The effect first, from the raw paths, then what the drop
+            // means.** Copying keeps a file dropped into its own folder — that
+            // is Explorer's duplicate gesture — while moving discards it as a
+            // no-op, so the filtering cannot be decided before the intent is.
+            //
+            // **Not Copy: everything that is not a Move.** The reader is told
+            // copy-or-move and only a MOVE has a reason to strip a path already
+            // living in the destination. Asking it `== Copy` put Link on the
+            // move side, so Alt+drag onto the folder a file is already in —
+            // Explorer's way of putting "X - Shortcut" beside the original —
+            // was filtered down to nothing and answered None. Measured: OnDrop
+            // asks the same reader `!move` and made the shortcut, so the drop
+            // handler was already right and unreachable, because a real OLE
+            // drag obeys the cursor. See
+            // Alt_onto_the_folder_the_file_already_lives_in_still_makes_a_shortcut.
+            var offered = OfferedPaths(e);
+            var effect = EffectFor(e.KeyModifiers, offered, destination);
+
+            var takeable = Guarded(
+                "reading what the drag carries",
+                () => Input.DroppedFileReader.Read(e.DataTransfer, destination, effect != DragDropEffects.Move),
+                Input.DroppedFiles.Nothing).Any;
+
+            // Files that live inside an archive have no paths yet, so nothing
+            // above sees them — but they can be had, and the cursor has to say
+            // so before the button is released rather than after.
+            if (!takeable && CarriesVirtualFiles(e.DataTransfer))
+            {
+                // Copy: there is no original to take away. A move out of an
+                // archive is not a thing the archive would survive.
+                e.DragEffects = DragDropEffects.Copy;
+                HighlightDropTarget(place is null ? pane : null, spot.Folder, spot.Place, spot.Tree);
+                return;
+            }
+
+            if (!takeable)
+            {
+                e.DragEffects = DragDropEffects.None;
+                HighlightDropTarget(null);
+                return;
+            }
+
+            e.DragEffects = effect;
+
+            // A place is its own target; highlighting a pane for it would
+            // point at the wrong half of the window. The row and the place are
+            // marked whichever it is, so the ring is on the thing the files
+            // will go into.
+            HighlightDropTarget(place is null ? pane : null, spot.Folder, spot.Place, spot.Tree);
+        }
+        catch (Exception ex)
         {
             e.DragEffects = DragDropEffects.None;
-            HighlightDropTarget(null);
-            StopDragScroll();
-            return;
+            Failed("answering a drag", ex);
         }
-
-        // **The bin is a verb, not a folder**, so it is answered here rather
-        // than falling through to the destination rules below — which would ask
-        // what it costs to copy into "vaktari:trash" and refuse.
-        //
-        // Move, because that is what dropping on the bin does to the original,
-        // and it is the effect Explorer's own cursor shows over the Recycle Bin.
-        if (spot.IsBin)
-        {
-            e.DragEffects = Input.DroppedFileReader.Offered(e.DataTransfer).Count > 0
-                ? DragDropEffects.Move
-                : DragDropEffects.None;
-
-            HighlightDropTarget(null, place: VirtualPaths.Trash);
-            StopDragScroll();
-            return;
-        }
-
-        // **The sidebar's own ground pins**, and like the bin it is answered
-        // before the destination rules, which name no folder for it: measured
-        // by letting a drag over the blank strip fall through to them, the
-        // cursor came back Copy with a destination of "" — so the toolkit would
-        // deliver the drop and the copy path would be handed nowhere to put it.
-        // What the cursor says here is PinPlan.Effect's rule instead, and the
-        // Link it answers is what tells the two apart.
-        if (spot.IsSidebar)
-        {
-            e.DragEffects =
-                Input.PinnableDrop.For(Input.DroppedFileReader.Offered(e.DataTransfer)).Effect;
-
-            HighlightDropTarget(null);
-            StopDragScroll();
-            return;
-        }
-
-        // Near an edge of the listing, keep it moving — checked on every
-        // drag-over rather than only where the drop would be accepted, because
-        // scrolling is how you REACH somewhere that would accept it.
-        DragScroll(e);
-
-        var place = spot.Place;
-        var pane = spot.Pane;
-        var destination = spot.Destination;
-
-        // A virtual listing is a view, not a folder, so its background has
-        // nowhere to put anything. The paste path refuses it too, but that
-        // refusal arrives as a line of status text after the drop; the cursor
-        // can say it beforehand, which is when it is still useful. Read from
-        // `destination` rather than the pane, so a real folder ROW inside
-        // Recent still takes a drop.
-        if (VirtualPaths.IsVirtual(destination))
-        {
-            e.DragEffects = DragDropEffects.None;
-            HighlightDropTarget(null);
-            return;
-        }
-
-        // Refuse a drop that would achieve nothing, so the cursor says so
-        // before the click rather than a duplicate appearing after it.
-        // **The effect first, from the raw paths, then what the drop means.**
-        // Copying keeps a file dropped into its own folder — that is Explorer's
-        // duplicate gesture — while moving discards it as a no-op, so the
-        // filtering cannot be decided before the intent is.
-        //
-        // **Not Copy: everything that is not a Move.** The reader is told
-        // copy-or-move and only a MOVE has a reason to strip a path already
-        // living in the destination. Asking it `== Copy` put Link on the move
-        // side, so Alt+drag onto the folder a file is already in — Explorer's
-        // way of putting "X - Shortcut" beside the original — was filtered down
-        // to nothing and answered None. Measured: OnDrop asks the same reader
-        // `!move` and made the shortcut, so the drop handler was already right
-        // and unreachable, because a real OLE drag obeys the cursor. See
-        // Alt_onto_the_folder_the_file_already_lives_in_still_makes_a_shortcut.
-        var offered = Input.DroppedFileReader.Offered(e.DataTransfer);
-        var effect = EffectFor(e.KeyModifiers, offered, destination);
-
-        var takeable = Input.DroppedFileReader
-            .Read(e.DataTransfer, destination, effect != DragDropEffects.Move).Any;
-
-        // Files that live inside an archive have no paths yet, so nothing above
-        // sees them — but they can be had, and the cursor has to say so before
-        // the button is released rather than after.
-        if (!takeable && _virtualDrop?.Offers(e.DataTransfer) == true)
-        {
-            // Copy: there is no original to take away. A move out of an archive
-            // is not a thing the archive would survive.
-            e.DragEffects = DragDropEffects.Copy;
-            HighlightDropTarget(place is null ? pane : null, spot.Folder, spot.Place);
-            return;
-        }
-
-        if (!takeable)
-        {
-            e.DragEffects = DragDropEffects.None;
-            HighlightDropTarget(null);
-            return;
-        }
-
-        e.DragEffects = effect;
-
-        // A place is its own target; highlighting a pane for it would point at
-        // the wrong half of the window. The row and the place are marked
-        // whichever it is, so the ring is on the thing the files will go into.
-        HighlightDropTarget(place is null ? pane : null, spot.Folder, spot.Place);
     }
 
     /// <summary>
@@ -511,10 +757,26 @@ public partial class MainWindow
     /// archive, but every entry refused, silently, in the wrong apartment.
     /// The window is held for the length of the unpack instead, which is what
     /// the bounds in VirtualFileDrop are for.
+    ///
+    /// **Asked again at the drop, and the drag-over's yes outranks the second
+    /// answer.** The drop arrives with a data object Avalonia has only just
+    /// wrapped, so asking it anything is another round trip into the source
+    /// process — and a drag the cursor had already accepted as an archive's
+    /// was lost, with nothing said, whenever that one question failed.
+    /// <paramref name="known"/> is the drag-over's yes; with it, Take is simply
+    /// tried, and Take says loudly why when it truly cannot.
+    ///
+    /// Null when the drop carries no such files; otherwise how many came out.
     /// </summary>
-    private bool TakeVirtual(IDataTransfer data, PaneViewModel pane, string destination)
+    private int? TakeVirtual(IDataTransfer data, PaneViewModel pane, string destination, bool known)
     {
-        if (_virtualDrop is not { } virtualDrop || !virtualDrop.Offers(data)) return false;
+        if (_virtualDrop is not { } virtualDrop) return null;
+
+        if (!known && !virtualDrop.Offers(data, out var failure))
+        {
+            if (failure is not null) Fault("asking whether the drop carries files from an archive: " + failure);
+            return null;
+        }
 
         pane.Status = "taking the files out of the archive…";
 
@@ -526,19 +788,20 @@ public partial class MainWindow
         }
         catch (Exception ex)
         {
+            DropWarn($"taking files out of an archive failed: {Describe(ex)}");
             pane.Status = $"could not take those out of the archive: {ex.Message}";
-            return true;
+            return 0;
         }
 
         if (taken.Count == 0)
         {
             pane.Status = "nothing came out of that archive";
-            return true;
+            return 0;
         }
 
         pane.PasteIntoFolder(destination, taken, move: true);
 
-        return true;
+        return taken.Count;
     }
 
     /// <summary>
@@ -564,10 +827,14 @@ public partial class MainWindow
     ///
     /// Bounded: a drag of a large tree should not be turned into a long walk by
     /// the thing reporting on it.
+    ///
+    /// **The two answers that mean trouble go to the log too.** This wrote to
+    /// stderr alone, which a windowed build does not have, so "already gone"
+    /// — the very line it exists for — was never seen outside a console run.
     /// </summary>
     private static void ReportDroppedPaths(IReadOnlyList<string> paths)
     {
-        Console.Error.WriteLine($"[vaktari] drop: {paths.Count} path(s) handed over");
+        DropSay($"{paths.Count} path(s) handed over");
 
         for (var i = 0; i < paths.Count && i < 8; i++)
         {
@@ -575,13 +842,13 @@ public partial class MainWindow
 
             if (File.Exists(path))
             {
-                Console.Error.WriteLine($"[vaktari] drop:   file present · {path}");
+                DropSay($"  file present · {path}");
                 continue;
             }
 
             if (!Directory.Exists(path))
             {
-                Console.Error.WriteLine($"[vaktari] drop:   ALREADY GONE · {path}");
+                DropWarn($"  ALREADY GONE · {path}");
                 continue;
             }
 
@@ -608,35 +875,71 @@ public partial class MainWindow
             }
             catch (Exception e) when (e is IOException or UnauthorizedAccessException)
             {
-                Console.Error.WriteLine($"[vaktari] drop:   folder unreadable · {path}");
+                DropWarn($"  folder unreadable · {path}");
                 continue;
             }
 
-            Console.Error.WriteLine(
-                $"[vaktari] drop:   folder with {files} file(s), {bytes} bytes · {path}");
+            DropSay($"  folder with {files} file(s), {bytes} bytes · {path}");
         }
     }
 
+    /// <summary>
+    /// Puts the drag's marks away.
+    ///
+    /// **This is not the end of the drag, and was nearly treated as one.**
+    /// Avalonia raises a leave on the old element and an enter on the new one
+    /// every time the pointer crosses from one control to another, all inside
+    /// one drag-over — so a leave arrives dozens of times in an ordinary drag.
+    /// Only a leave that nothing follows is Windows saying the drag has gone,
+    /// which it does instead of dropping when the last answer was None. That
+    /// is known one dispatcher turn later, when no drag-over has arrived since;
+    /// see <see cref="EndedWithoutDrop"/>.
+    /// </summary>
     private void OnDragLeave(object? sender, DragEventArgs e)
     {
-        HighlightDropTarget(null);
-        HideDragGhost();
-        StopDragScroll();
-        HoverTab(null);
+        try
+        {
+            HighlightDropTarget(null);
+            HideDragGhost();
+            StopDragScroll();
+            HoverTab(null);
+        }
+        catch (Exception ex)
+        {
+            // NO KILLING MUTATION, and none was found: nothing these four call
+            // throws on any state a test can reach. It is here for
+            // OnDragOver's reason, which a leave shares — whatever does throw
+            // in a drag handler vanishes into the COM layer unsaid.
+            Failed("ending a drag", ex);
+        }
+
+        var tick = _dragTicks;
+
+        Dispatcher.UIThread.Post(
+            () =>
+            {
+                if (tick == _dragTicks) EndedWithoutDrop();
+            },
+            DispatcherPriority.Background);
     }
 
     /// <summary>
-    /// Marks what a drop would land in: the pane, the folder row inside it, and
-    /// the sidebar place.
+    /// Marks what a drop would land in: the pane, the folder row inside it, the
+    /// sidebar place, and the row of the folder tree.
     ///
     /// **Only the pane was ever marked, and the pane is the one thing that was
     /// never in doubt.** What a drag could not tell you is whether releasing
     /// puts the files into the folder under the pointer or into the folder
     /// being listed — different places, and finding out meant releasing and
-    /// looking. All three are cleared together, because a stale ring on a row
-    /// you have moved off is worse than none.
+    /// looking. All of them are cleared together, because a stale ring on a
+    /// row you have moved off is worse than none.
+    ///
+    /// The tree row is marked by path and only in the tree, so a folder that
+    /// is both a pinned place and a tree row lights where the pointer is and
+    /// not in both sections at once.
     /// </summary>
-    private void HighlightDropTarget(PaneViewModel? pane, string? row = null, string? place = null)
+    private void HighlightDropTarget(
+        PaneViewModel? pane, string? row = null, string? place = null, string? tree = null)
     {
         foreach (var group in new[] { _shell.Left, _shell.Right })
         {
@@ -654,136 +957,230 @@ public partial class MainWindow
         foreach (var group in _shell.Sidebar.Groups)
             foreach (var row2 in group.Places)
                 row2.IsDropTarget = place is not null && PathRules.Same(row2.Path, place);
+
+        if (_shell.Sidebar.Tree is { } folders)
+            foreach (var node in folders.Rows)
+                node.IsDropTarget = tree is not null && PathRules.Same(node.Path, tree);
     }
 
+    /// <summary>
+    /// Takes the drop.
+    ///
+    /// **Every way out says what was done, as the effect Windows hands back to
+    /// the source.** This set none at all, so Avalonia returned the effect it
+    /// was given — which is everything the source allowed. Explorer's zip view
+    /// allows copy and move, so every drop out of an archive reported a MOVE,
+    /// and a move reported to a source is the source's cue to delete its
+    /// originals. None is set first and each path that does something
+    /// replaces it with what it did: Copy for a copy and for files taken out of
+    /// an archive, Link for shortcuts and pins. A move Vaktari performs itself
+    /// reports None rather than Move — the shell calls that an optimized move,
+    /// and says the target must answer anything but Move so the source does not
+    /// delete what the target is still moving.
+    ///
+    /// **Nothing thrown in here may leave it**, for OnDragOver's reason: the
+    /// COM layer swallows it, and the drop simply did not happen. It is logged,
+    /// and said on the status line, because a drop that does nothing is
+    /// indistinguishable from one that missed.
+    /// </summary>
     private void OnDrop(object? sender, DragEventArgs e)
     {
-        HighlightDropTarget(null);
-        HideDragGhost();
-        StopDragScroll();
-        HoverTab(null);
+        e.Handled = true;
+        e.DragEffects = DragDropEffects.None;
 
-        // **The bin takes drops.** Its row is AllowDrop with a comment about
-        // taking them "the way the tree and Quick access do in Explorer", and
-        // nothing ever mapped one to IFileOperations.Trash — PlaceAt refuses a
-        // virtual path, and the bin's path is the virtual vaktari:trash, so the
-        // drop landed nowhere and looked like the row was simply dead.
-        var spot = TargetAt(e.Source);
+        // Read before anything else can end the drag: what the drag-overs
+        // learned about it is what this drop is about to rely on.
+        var knownVirtual = _sessionCarriesVirtual;
+        var promised = Promised(e.Source);
 
-        if (spot.IsBin && _shell.ActiveTab is { } binPane)
+        _dragTicks++;
+        _tickFault = null;
+
+        PaneViewModel? reporter = null;
+
+        try
         {
-            var offered = Input.DroppedFileReader.Offered(e.DataTransfer);
+            HighlightDropTarget(null);
+            HideDragGhost();
+            StopDragScroll();
+            HoverTab(null);
 
-            if (offered.Count > 0) binPane.TrashPaths(offered);
-            return;
-        }
+            // **The bin takes drops.** Its row is AllowDrop with a comment
+            // about taking them "the way the tree and Quick access do in
+            // Explorer", and nothing ever mapped one to IFileOperations.Trash —
+            // PlaceAt refuses a virtual path, and the bin's path is the virtual
+            // vaktari:trash, so the drop landed nowhere and looked like the row
+            // was simply dead.
+            var spot = promised ?? TargetAt(e.Source);
 
-        // **A folder dropped on the panel becomes a place.** Not awaited: the
-        // pin writes a file, and a drag must not hold the UI thread while it
-        // does. The shell reports what happened on the active tab's status
-        // line, including the files it left alone.
-        if (spot.IsSidebar)
-        {
-            _ = _shell.PinDroppedAsync(Input.DroppedFileReader.Offered(e.DataTransfer));
-            return;
-        }
+            reporter = spot.Pane ?? _shell.ActiveTab;
 
-        // A sidebar place and a breadcrumb are destinations in their own right,
-        // and neither is guaranteed to have a pane above it to ask about — so
-        // the active tab stands in as the pane that reports what happened.
-        var pane = spot.Pane ?? (spot.Exists ? _shell.ActiveTab : null);
-
-        if (pane is null) return;
-
-        // Dropping onto a folder row means into that folder, not into the
-        // directory being listed — that is what the pointer was over.
-        var target = spot.Explicit;
-        var destination = target ?? pane.CurrentPath;
-
-        var intent = IntentFor(
-            e.KeyModifiers, Input.DroppedFileReader.Offered(e.DataTransfer), destination);
-
-        var move = intent == Input.DragIntent.Move;
-
-        var dropped = Input.DroppedFileReader.Read(e.DataTransfer, destination, !move);
-
-        if (!dropped.Any)
-        {
-            // **The contents of an archive, which have no paths until asked
-            // for.** This is what dragging out of 7-Zip carries, and looking
-            // only for paths saw an empty drop — so the drag did nothing at all
-            // and read as the application being unreliable.
-            if (TakeVirtual(e.DataTransfer, pane, destination))
+            if (spot.IsBin && _shell.ActiveTab is { } binPane)
             {
-                e.Handled = true;
+                // The bin sends the originals away itself, so the effect stays
+                // None: a Move here would ask the source to delete them too.
+                var offered = OfferedPaths(e);
+
+                if (offered.Count > 0) binPane.TrashPaths(offered);
+                else Refused(binPane, "");
                 return;
             }
 
-            // Said rather than silently ignored: a drop that does nothing is
-            // indistinguishable from one that missed the pane.
-            if (dropped.Refusal.Length > 0) pane.Status = dropped.Refusal;
+            // **A folder dropped on the panel becomes a place.** Not awaited:
+            // the pin writes a file, and a drag must not hold the UI thread
+            // while it does. The shell reports what happened on the active
+            // tab's status line, including the files it left alone.
+            if (spot.IsSidebar)
+            {
+                var offered = OfferedPaths(e);
 
-            e.Handled = true;
+                _ = _shell.PinDroppedAsync(offered);
+
+                // A pin is a link to the folder: the cursor's own answer, and
+                // nothing the source should act on.
+                e.DragEffects = Input.PinnableDrop.For(offered).Effect;
+                return;
+            }
+
+            // A sidebar place and a breadcrumb are destinations in their own
+            // right, and neither is guaranteed to have a pane above it to ask
+            // about — so the active tab stands in as the pane that reports what
+            // happened.
+            var pane = spot.Pane ?? (spot.Exists ? _shell.ActiveTab : null);
+
+            if (pane is null) return;
+
+            // Dropping onto a folder row means into that folder, not into the
+            // directory being listed — that is what the pointer was over.
+            var target = spot.Explicit;
+            var destination = target ?? pane.CurrentPath;
+
+            var intent = IntentFor(e.KeyModifiers, OfferedPaths(e), destination);
+
+            var move = intent == Input.DragIntent.Move;
+
+            var dropped = Guarded(
+                "reading what the drop carries",
+                () => Input.DroppedFileReader.Read(e.DataTransfer, destination, !move),
+                Input.DroppedFiles.Nothing);
+
+            if (!dropped.Any)
+            {
+                // **The contents of an archive, which have no paths until
+                // asked for.** This is what dragging out of 7-Zip carries, and
+                // looking only for paths saw an empty drop — so the drag did
+                // nothing at all and read as the application being unreliable.
+                if (TakeVirtual(e.DataTransfer, pane, destination, knownVirtual) is { } taken)
+                {
+                    // Copy: the archive keeps what it had.
+                    if (taken > 0) e.DragEffects = DragDropEffects.Copy;
+                    else TellRefused();
+                    return;
+                }
+
+                // Said rather than silently ignored: a drop that does nothing
+                // is indistinguishable from one that missed the pane.
+                Refused(pane, dropped.Refusal);
+                return;
+            }
+
+            var paths = dropped.Paths;
+
+            ReportDroppedPaths(paths);
+
+            // **Before this handler returns, because after it returns the
+            // files may not exist.** Dragging out of an archive hands over a
+            // path into the archiver's own temporary folder, and the archiver
+            // deletes it the moment the drop is over — measured at 541 files
+            // and 8,985,809 bytes present at the drop, and the whole folder
+            // gone by the time the copy ran. See DropStaging.
+            var rescue = Input.DropStaging.Rescue(
+                paths, Path.GetTempPath(), Path.Combine(DropStagingRoot(), Guid.NewGuid().ToString("N")[..12]));
+
+            if (rescue.Rescued)
+            {
+                // The two figures separate a healthy rescue from a degraded
+                // one: a move is a rename and costs nothing, while copied bytes
+                // are time this thread spent frozen — so a rescue that had to
+                // copy is the one that goes to the log.
+                var line = "rescued from the temporary folder before the source "
+                           + $"could clear it — {rescue.Moved} moved"
+                           + (rescue.CopiedBytes > 0 ? $", {rescue.CopiedBytes} bytes copied" : "");
+
+                if (rescue.CopiedBytes > 0) DropWarn(line);
+                else DropSay(line);
+
+                paths = rescue.Paths;
+
+                // Moved out of our own staging folder rather than copied, so
+                // nothing is left behind. What the user asked of the ORIGINAL
+                // is already satisfied: the archive still holds it either way.
+                move = true;
+            }
+
+            // Shortcuts, before anything else can spend work: nothing is
+            // copied or moved for a link, and the rescue above never fires for
+            // one because internal drags are not volatile.
+            if (intent == Input.DragIntent.Link && _shortcuts is { } shortcuts)
+            {
+                if (CreateShortcuts(shortcuts, pane, paths, destination) > 0)
+                    e.DragEffects = DragDropEffects.Link;
+
+                return;
+            }
+
+            // **A right-drag executes nothing.** The whole point of dragging
+            // with the right button is that the drop ASKS — Explorer's oldest
+            // answer to "did I just move that or copy it". The menu holds
+            // everything needed to carry on; letting the drop fall through
+            // would decide for the user the one time they explicitly asked to
+            // be consulted. Nothing has been done yet, so the effect stays
+            // None — and the source is this window, which does not read it.
+            if (_internalDrag && _rightDragInFlight)
+            {
+                ShowRightDropMenu(pane, target, destination, paths, defaultsToMove: move);
+                return;
+            }
+
+            Paste(pane, target, paths, move);
+
+            // Asked of the intent, not of `move`: a rescue moves our own
+            // staged copies, which to the source was a copy of its files.
+            e.DragEffects = intent == Input.DragIntent.Move
+                ? DragDropEffects.None
+                : DragDropEffects.Copy;
+        }
+        catch (Exception ex)
+        {
+            e.DragEffects = DragDropEffects.None;
+            Failed("taking a drop", ex);
+
+            if ((reporter ?? _shell.ActiveTab) is { } said)
+                said.Status = $"that drop failed: {ex.Message}";
+        }
+        finally
+        {
+            EndSession();
+        }
+    }
+
+    /// <summary>
+    /// Says a drop took nothing, and why: the reader's own reason when it has
+    /// one, and otherwise the failure that stopped the drop being read.
+    /// </summary>
+    private void Refused(PaneViewModel pane, string refusal)
+    {
+        if (refusal.Length > 0)
+        {
+            pane.Status = refusal;
             return;
         }
 
-        var paths = dropped.Paths;
-
-        ReportDroppedPaths(paths);
-
-        // **Before this handler returns, because after it returns the files may
-        // not exist.** Dragging out of an archive hands over a path into the
-        // archiver's own temporary folder, and the archiver deletes it the
-        // moment the drop is over — measured at 541 files and 8,985,809 bytes
-        // present at the drop, and the whole folder gone by the time the copy
-        // ran. See DropStaging.
-        var rescue = Input.DropStaging.Rescue(
-            paths, Path.GetTempPath(), Path.Combine(DropStagingRoot(), Guid.NewGuid().ToString("N")[..12]));
-
-        if (rescue.Rescued)
+        if (_sessionFault is { } fault)
         {
-            // The two figures separate a healthy rescue from a degraded one: a
-            // move is a rename and costs nothing, while copied bytes are time
-            // this thread spent frozen — if that number is ever large, the
-            // fallback is being hit and the log says so.
-            Console.Error.WriteLine(
-                $"[vaktari] drop: rescued from the temporary folder before the source "
-                + $"could clear it — {rescue.Moved} moved"
-                + (rescue.CopiedBytes > 0 ? $", {rescue.CopiedBytes} bytes copied" : ""));
-
-            paths = rescue.Paths;
-
-            // Moved out of our own staging folder rather than copied, so
-            // nothing is left behind. What the user asked of the ORIGINAL is
-            // already satisfied: the archive still holds it either way.
-            move = true;
+            pane.Status = "could not read that drop: " + fault;
+            TellRefused();
         }
-
-        // Shortcuts, before anything else can spend work: nothing is copied or
-        // moved for a link, and the rescue above never fires for one because
-        // internal drags are not volatile.
-        if (intent == Input.DragIntent.Link && _shortcuts is { } shortcuts)
-        {
-            CreateShortcuts(shortcuts, pane, paths, destination);
-            e.Handled = true;
-            return;
-        }
-
-        // **A right-drag executes nothing.** The whole point of dragging with
-        // the right button is that the drop ASKS — Explorer's oldest answer to
-        // "did I just move that or copy it". The menu holds everything needed
-        // to carry on; letting the drop fall through would decide for the user
-        // the one time they explicitly asked to be consulted.
-        if (_internalDrag && _rightDragInFlight)
-        {
-            ShowRightDropMenu(pane, target, destination, paths, defaultsToMove: move);
-            e.Handled = true;
-            return;
-        }
-
-        Paste(pane, target, paths, move);
-
-        e.Handled = true;
     }
 
     /// <summary>The one place a drop's files actually go somewhere, so the
@@ -801,8 +1198,11 @@ public partial class MainWindow
     /// Makes a shortcut per dropped item, and says what happened — including
     /// the refusal for files that live in somebody's temporary folder, where a
     /// shortcut would dangle the moment its owner tidies up.
+    ///
+    /// How many were made, which is what the drop reports back as Link — or
+    /// as nothing, when every one was skipped or refused.
     /// </summary>
-    private void CreateShortcuts(
+    private int CreateShortcuts(
         Vaktari.Core.FileSystem.IShortcutMaker shortcuts,
         ViewModels.PaneViewModel pane,
         IReadOnlyList<string> paths,
@@ -827,13 +1227,15 @@ public partial class MainWindow
             catch (Exception ex)
             {
                 pane.Status = Vaktari.Core.FileSystem.Failures.Describe(ex, "make that shortcut");
-                return;
+                return made;
             }
         }
 
         pane.Status = doomed > 0
             ? $"created {made} shortcut(s) — {doomed} skipped: files inside an archive have no lasting place to point at"
             : $"created {made} shortcut(s)";
+
+        return made;
     }
 
     /// <summary>

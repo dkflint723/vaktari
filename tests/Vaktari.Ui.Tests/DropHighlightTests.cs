@@ -218,12 +218,15 @@ public sealed class DropHighlightTests
         // last ring on screen while the pointer has moved on.
         Assert.DoesNotContain("HighlightDropTarget(place is null ? pane : null);", source);
 
+        // The tree row travels with the other three since the folder tree took
+        // drops: a branch that reports the place and not the tree row leaves
+        // the tree unmarked over exactly the rows it now accepts on.
         var reporting =
-            source.Split("HighlightDropTarget(place is null ? pane : null, spot.Folder, spot.Place)")
+            source.Split("HighlightDropTarget(place is null ? pane : null, spot.Folder, spot.Place, spot.Tree)")
                   .Length - 1;
 
         Assert.True(reporting >= 2,
-            $"only {reporting} of the accepting branches report the row and the place");
+            $"only {reporting} of the accepting branches report the row, the place and the tree row");
     }
 
 }

@@ -867,12 +867,18 @@ public sealed class SidebarPinDropTests : OwnedViewModels
 
             ShellOf(window).ActiveTab!.Status = "";
 
-            Raise(HitAt(window, point), DragDrop.DropEvent, await Carrying(window, dir), point);
+            var drop = Raise(HitAt(window, point), DragDrop.DropEvent, await Carrying(window, dir), point);
 
             PumpUntil(() => RowsOf(window).Any(p => PathRules.Same(p.Path, dir)));
 
             Assert.Contains(RowsOf(window), p => PathRules.Same(p.Path, dir));
             Assert.Equal("pinned 1 folder(s) to places", ShellOf(window).ActiveTab!.Status);
+
+            // **What goes back to the source is a Link**: a pin is a
+            // reference to the folder, and nothing the source should act on.
+            // The drop set no effect at all, so the source was told whatever
+            // it had allowed — Move included, which is its cue to delete.
+            Assert.Equal(DragDropEffects.Link, drop.DragEffects);
         }
         finally
         {

@@ -5277,8 +5277,11 @@
                                 IsVisible="{Binding !Sidebar.IsFoldersCollapsed}">
                     <ItemsControl.ItemTemplate>
                       <DataTemplate x:DataType="vm:FolderNode">
+                        <!-- Takes a drop into its folder by the place rows'
+                             rules, and washes the way they do while it would. -->
                         <Button HorizontalAlignment="Stretch" HorizontalContentAlignment="Left"
-                                Background="Transparent" BorderThickness="0" Padding="0,5"
+                                Background="{Binding IsDropTarget, Converter={x:Static vm:FileConverters.TreeRowFill}}"
+                                BorderThickness="0" Padding="0,5"
                                 AutomationProperties.Name="{Binding Path}" ToolTip.Tip="{Binding Path}"
                                 Command="{Binding $parent[Window].((vm:ShellViewModel)DataContext).GoToPlaceCommand}"
                                 CommandParameter="{Binding Path}">

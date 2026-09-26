@@ -482,11 +482,13 @@ public partial class MainWindow
     /// cannot drift apart again.
     /// </summary>
     private readonly record struct DropTarget(
-        bool IsBin, bool IsSidebar, string? Place, string? Crumb, string? Folder, PaneViewModel? Pane)
+        bool IsBin, bool IsSidebar, string? Place, string? Crumb, string? Folder, PaneViewModel? Pane,
+        string? Tree = null)
     {
         /// <summary>Somewhere a drop could land. False refuses the drag.</summary>
         public bool Exists =>
-            IsBin || IsSidebar || Place is not null || Crumb is not null || Pane is not null;
+            IsBin || IsSidebar || Place is not null || Tree is not null || Crumb is not null
+            || Pane is not null;
 
         /// <summary>
         /// The folder a drop goes into. Empty for the bin, which is a verb
@@ -498,18 +500,48 @@ public partial class MainWindow
         public string Destination => Explicit ?? Pane?.CurrentPath ?? "";
 
         /// <summary>
-        /// A folder the pointer is over in its own right — a place, a crumb or
-        /// a folder row — as opposed to falling back to the folder being
+        /// A folder the pointer is over in its own right — a place, a tree row,
+        /// a crumb or a folder row — as opposed to falling back to the folder being
         /// listed. The right-button drop menu needs the difference: it offers
         /// to put things INTO what you pointed at, and pointing at nothing in
         /// particular is not the same as pointing at the current folder.
         /// </summary>
-        public string? Explicit => Place ?? Crumb ?? Folder;
+        public string? Explicit => Place ?? Tree ?? Crumb ?? Folder;
     }
 
     private static DropTarget TargetAt(object? source) => new(
         TrashRowAt(source), SidebarAt(source), PlaceAt(source), CrumbAt(source),
-        FolderRowAt(source), PaneAt(source));
+        FolderRowAt(source), PaneAt(source), TreeFolderAt(source));
+
+    /// <summary>
+    /// The folder of the folder-tree row under the pointer.
+    ///
+    /// **The tree took no drop of any kind.** Every row is a Button, and
+    /// <see cref="SidebarAt"/> rightly says a button is not the panel's ground
+    /// — but nothing else claimed the row either, so a drag over the tree was
+    /// answered None the whole way down it. Dragging out of a zip and letting
+    /// go over a folder in the tree did nothing at all, and since Windows
+    /// drops only where the last answer was yes, it did not even arrive as a
+    /// drop to refuse. A tree row is a place that was not pinned — it
+    /// navigates with the same command the place rows use — so it takes a
+    /// drop by the same rules a place does.
+    ///
+    /// Virtual paths are refused for <see cref="PlaceAt"/>'s reason: there is
+    /// nowhere in one to put anything.
+    /// </summary>
+    private static string? TreeFolderAt(object? source)
+    {
+        for (var visual = source as Visual; visual is not null;
+             visual = visual.GetVisualParent())
+        {
+            if (visual is Control { DataContext: FolderNode node }
+                && node.Path.Length > 0
+                && !VirtualPaths.IsVirtual(node.Path))
+                return node.Path;
+        }
+
+        return null;
+    }
 
     /// <summary>
     /// The breadcrumb segment under the pointer.

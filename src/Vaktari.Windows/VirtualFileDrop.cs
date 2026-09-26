@@ -64,19 +64,44 @@ public sealed partial class VirtualFileDrop : IVirtualFileDrop
     /// with it — so a strange data object costs the feature rather than the
     /// gesture.
     /// </summary>
-    public bool Offers(object dataTransfer)
+    public bool Offers(object dataTransfer) => Offers(dataTransfer, out _);
+
+    /// <summary>
+    /// **Never throws, and says why when the no was a failure.** Every
+    /// exception is caught now, not four kinds of it: an exception out of a
+    /// drag handler is swallowed by the COM layer as E_FAIL, and a failed
+    /// DragEnter makes Windows give up on the whole window until the pointer
+    /// leaves it.
+    /// </summary>
+    public bool Offers(object dataTransfer, out string? failure)
     {
+        failure = null;
         IDataObject? data = null;
 
         try
         {
             data = Native(dataTransfer);
 
-            return data is not null && Describes(data);
+            if (data is null) return false;
+
+            var wide = Query(data, DescriptorW);
+            if (wide == 0) return true;
+
+            var narrow = Query(data, DescriptorA);
+            if (narrow == 0) return true;
+
+            // Only a failure is worth a reason. The shell answering that it has
+            // no such format is the ordinary no of an ordinary drag.
+            var failed = Transient(wide) ? wide : Transient(narrow) ? narrow : 0;
+
+            if (failed != 0)
+                failure = $"the drag source did not say whether it holds files (0x{failed:X8})";
+
+            return false;
         }
-        catch (Exception e) when (e is COMException or InvalidCastException
-                                    or NotSupportedException or MemberAccessException)
+        catch (Exception e)
         {
+            failure = Fault(e);
             return false;
         }
         finally
@@ -94,7 +119,7 @@ public sealed partial class VirtualFileDrop : IVirtualFileDrop
         // instrument for everything past the data object itself.
         if (Native(dataTransfer) is not { } data)
         {
-            Console.Error.WriteLine("[vaktari] drop: no native data object behind that drag");
+            Warn("no native data object behind that drag");
             return [];
         }
 
@@ -114,7 +139,7 @@ public sealed partial class VirtualFileDrop : IVirtualFileDrop
 
         if (names.Count == 0)
         {
-            Console.Error.WriteLine("[vaktari] drop: the drag names no files");
+            Warn("the drag names no files");
             return [];
         }
 
@@ -172,14 +197,19 @@ public sealed partial class VirtualFileDrop : IVirtualFileDrop
                 refused++;
 
                 if (refused <= 5)
-                    Console.Error.WriteLine($"[vaktari] drop: '{names[i].Name}' refused — {Fault(e)}");
+                    Warn($"'{names[i].Name}' refused — {Fault(e)}");
             }
         }
 
-        Console.Error.WriteLine(
-            $"[vaktari] drop: took {taken.Count} of {names.Count}"
-            + (refused > 0 ? $", {refused} refused" : "")
-            + $" · {written} bytes · apartment={Apartment()}");
+        var summary = $"took {taken.Count} of {names.Count}"
+                      + (refused > 0 ? $", {refused} refused" : "")
+                      + $" · {written} bytes · apartment={Apartment()}";
+
+        // A drop that took everything is not a warning, and the log keeps
+        // warnings and worse; one that lost anything is, because the summary
+        // is the one line that says how much.
+        if (refused > 0 || taken.Count == 0) Warn(summary);
+        else Say(summary);
 
         // Only the roots, or a tree would be copied flat into the destination.
         return Roots(folder, taken);
@@ -361,15 +391,60 @@ public sealed partial class VirtualFileDrop : IVirtualFileDrop
             _ => "unknown",
         };
 
-    private static bool Describes(IDataObject data) =>
-        Available(data, DescriptorW) || Available(data, DescriptorA);
+    /// <summary>
+    /// A line about a drop, to stderr — where a console run of Vaktari shows
+    /// it and a windowed one shows nothing.
+    /// </summary>
+    private static void Say(string line) => Console.Error.WriteLine("[vaktari] drop: " + line);
 
-    private static bool Available(IDataObject data, string format)
+    /// <summary>
+    /// **A refusal, to the log as well.** These lines went to stderr alone,
+    /// and the shipped build is a windowed process that has none — so the
+    /// one record of why an archive gave up nothing was written nowhere
+    /// anybody could read. The log redacts paths itself.
+    /// </summary>
+    private static void Warn(string line)
+    {
+        Say(line);
+        Vaktari.Core.Diagnostics.Log.Warn("drop", line);
+    }
+
+    private static bool Available(IDataObject data, string format) => Query(data, format) == 0;
+
+    /// <summary>
+    /// QueryGetData for one format as a memory block, asked twice when the
+    /// first answer was a failure rather than a no.
+    ///
+    /// **One bad moment was the whole drag.** The source is in another
+    /// process, so this is a call across it — and a busy or momentarily
+    /// refusing Explorer answers with a failure that says nothing about the
+    /// format. Asked once, that failure read as "no archive files here", the
+    /// drag-over answered None, and when that was the last answer before the
+    /// button came up Windows took the drag away rather than dropping it. A
+    /// second ask costs one more call, and only on the failure path.
+    /// </summary>
+    private static int Query(IDataObject data, string format)
     {
         var descriptor = Descriptor(format, -1, TymedHGlobal);
 
-        return data.QueryGetData(in descriptor) == 0;
+        var hr = data.QueryGetData(in descriptor);
+
+        return Transient(hr) ? data.QueryGetData(in descriptor) : hr;
     }
+
+    /// <summary>
+    /// A failure that is not the source's considered answer. The DV_E codes
+    /// and S_FALSE are how a data object says it does not have that format in
+    /// that shape, which asking again will not change.
+    /// </summary>
+    private static bool Transient(int hr) => hr < 0 && hr is not (
+        DvEFormatEtc or DvELindex or DvETymed or DvEClipFormat or DvEDvAspect);
+
+    private const int DvEFormatEtc = unchecked((int)0x80040064);
+    private const int DvELindex = unchecked((int)0x80040068);
+    private const int DvETymed = unchecked((int)0x80040069);
+    private const int DvEClipFormat = unchecked((int)0x8004006A);
+    private const int DvEDvAspect = unchecked((int)0x8004006B);
 
     private static FormatEtc Descriptor(string name, int index, uint tymed) => new()
     {

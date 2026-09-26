@@ -17,6 +17,10 @@ namespace Vaktari.Ui.Input;
 public readonly record struct DroppedFiles(IReadOnlyList<string> Paths, string Refusal)
 {
     public bool Any => Paths.Count > 0;
+
+    /// <summary>A drop that could not be read at all, with nothing of its own
+    /// to say — the failure is reported by whoever tried to read it.</summary>
+    public static DroppedFiles Nothing { get; } = new([], "");
 }
 
 public static class DroppedFileReader

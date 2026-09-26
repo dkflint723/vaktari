@@ -24,6 +24,19 @@ public interface IVirtualFileDrop
     bool Offers(object dataTransfer);
 
     /// <summary>
+    /// <see cref="Offers(object)"/>, and when the answer is no because the
+    /// question could not be put, why.
+    ///
+    /// **A failed question and a plain no were the same false.** The drag
+    /// source lives in another process, so asking it anything can fail for a
+    /// moment — and a drag whose last answer is no is taken away by Windows
+    /// without ever being dropped. That drag vanished with nothing, anywhere,
+    /// saying why; <paramref name="failure"/> is what lets the window say so.
+    /// Null for an honest no.
+    /// </summary>
+    bool Offers(object dataTransfer, out string? failure);
+
+    /// <summary>
     /// Writes them somewhere real and returns the paths, or an empty list if
     /// nothing could be taken.
     ///

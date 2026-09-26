@@ -553,6 +553,24 @@ public static class FileConverters
         });
 
     /// <summary>
+    /// A folder-tree row's fill: the place row's drop wash and nothing else.
+    ///
+    /// **A tree row that took a drop had to say so the way a place does.** The
+    /// tree took no drops at all until it was given the place rows' rules, and
+    /// a target that gives no sign it is one is the fault
+    /// <see cref="PlaceRowFill"/> was written for. The same converter, asked
+    /// only the drop question, so the two sections cannot drift apart in
+    /// colour or strength. Transparent otherwise, never null: a null
+    /// background is not hit-tested, and the row must go on catching the drag
+    /// that is aimed at it.
+    /// </summary>
+    public static readonly Avalonia.Data.Converters.IValueConverter TreeRowFill =
+        new Avalonia.Data.Converters.FuncValueConverter<bool, object?>(drop =>
+            PlaceRowFill.Convert(
+                [false, drop], typeof(object), null, System.Globalization.CultureInfo.InvariantCulture)
+            ?? Avalonia.Media.Brushes.Transparent);
+
+    /// <summary>
     /// The same answer as <see cref="DropRing"/>, as a brush.
     ///
     /// A brush rather than a visibility so the ring can keep a constant

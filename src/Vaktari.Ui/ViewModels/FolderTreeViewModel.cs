@@ -60,6 +60,13 @@ public sealed partial class FolderNode : ObservableObject
     /// is the only place that can say which folder it was.</summary>
     [ObservableProperty] private bool _isUnreadable;
 
+    /// <summary>
+    /// A drag would drop into this folder if released now. Written by the
+    /// window's drag handling, the way a place row's is, and drawn as the same
+    /// wash — see <see cref="FileConverters.PlaceRowFill"/>.
+    /// </summary>
+    [ObservableProperty] private bool _isDropTarget;
+
     private bool _isExpanded;
 
     /// <summary>

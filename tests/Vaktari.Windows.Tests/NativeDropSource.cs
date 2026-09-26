@@ -28,9 +28,25 @@ internal sealed partial class NativeDropSource : NativeDropSource.IServedDataObj
     public NativeDropSource(params (string Name, byte[] Bytes, bool AsStream)[] entries)
         => _entries = entries;
 
+    /// <summary>
+    /// How many QueryGetData calls fail before the source answers truly —
+    /// a source in another process that is busy for a moment.
+    /// </summary>
+    public int FailQueries { get; set; }
+
+    /// <summary>What a failing QueryGetData answers. RPC_E_CALL_REJECTED
+    /// unless a test says otherwise: the answer of a callee that is busy.</summary>
+    public int QueryFailure { get; set; } = RpcECallRejected;
+
+    /// <summary>Every item's contents are refused, as zipfldr refuses a
+    /// folder's.</summary>
+    public bool RefuseContents { get; set; }
+
     public int GetData(in FormatEtc format, out StgMedium medium)
     {
         medium = default;
+
+        if (RefuseContents && format.Format == _contents) return EFail;
 
         if (!Offered(format, out var tymed)) return DvEFormatEtc;
 
@@ -46,7 +62,16 @@ internal sealed partial class NativeDropSource : NativeDropSource.IServedDataObj
         return medium.Handle == IntPtr.Zero ? EOutOfMemory : 0;
     }
 
-    public int QueryGetData(in FormatEtc format) => Offered(format, out _) ? 0 : DvEFormatEtc;
+    public int QueryGetData(in FormatEtc format)
+    {
+        if (FailQueries > 0)
+        {
+            FailQueries--;
+            return QueryFailure;
+        }
+
+        return Offered(format, out _) ? 0 : DvEFormatEtc;
+    }
 
     public int GetDataHere(in FormatEtc format, ref StgMedium medium) => ENotImpl;
     public int GetCanonicalFormatEtc(in FormatEtc format, out FormatEtc canonical)
@@ -117,7 +142,9 @@ internal sealed partial class NativeDropSource : NativeDropSource.IServedDataObj
         return handle;
     }
 
-    private const int DvEFormatEtc = unchecked((int)0x80040064);
+    internal const int DvEFormatEtc = unchecked((int)0x80040064);
+    internal const int RpcECallRejected = unchecked((int)0x80010001);
+    internal const int EFail = unchecked((int)0x80004005);
     private const int ENotImpl = unchecked((int)0x80004001);
     private const int EOutOfMemory = unchecked((int)0x8007000E);
     private const int OleEAdviseNotSupported = unchecked((int)0x80040003);
