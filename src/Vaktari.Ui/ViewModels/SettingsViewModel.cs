@@ -64,8 +64,9 @@ public enum SettingsPage
 public sealed partial class SettingsViewModel : ObservableObject
 {
     /// <summary>
-    /// The state this dialog opened with, which Collect uses `with` over so
-    /// pages that were never built keep their file values.
+    /// The state this dialog opened with, which Collect uses `with` over when
+    /// no live state was handed in (see <see cref="Live"/>), so what the
+    /// dialog does not show keeps its file values.
     ///
     /// Not readonly, because "restore defaults" has to replace this as well:
     /// resetting only what is on screen would leave every setting on a page
@@ -77,6 +78,42 @@ public sealed partial class SettingsViewModel : ObservableObject
     /// rest of the dialog and collected with it, so Cancel throws a key away
     /// like any other change and Restore defaults puts the keys back too.</summary>
     public KeyboardPage Keyboard { get; } = new();
+
+    /// <summary>
+    /// Why nothing chosen here reaches the disk, when it will not: the store
+    /// refuses to write over a file a newer Vaktari wrote. Null nearly always.
+    /// </summary>
+    private readonly string? _notSaved;
+
+    /// <summary>
+    /// What Apply says it does, for its tooltip.
+    ///
+    /// **It said "Saves these settings now" while the store was refusing to
+    /// write**, over a settings.json from a newer Vaktari — so Apply changed
+    /// every window, reported success, and the next launch had none of it.
+    /// </summary>
+    public string ApplyTip => _notSaved is null
+        ? "Saves these settings now and keeps this window open"
+        : "Applies these settings until Vaktari closes and keeps this window open — they are not saved";
+
+    /// <summary>
+    /// The state the rest of the application holds now, for what this dialog
+    /// does not show — column widths, the default layout and sort, and the
+    /// like. Handed in by the window; null in a dialog built on its own.
+    ///
+    /// **Apply and Save wrote back the state the dialog OPENED with** for
+    /// everything it does not own, so a column dragged or "Use this view for
+    /// all folders" pressed in another window while this one was open was
+    /// quietly undone — and Apply, which invites keeping the dialog open,
+    /// made that likelier. Collect builds on this instead; see
+    /// <see cref="Basis"/>.
+    /// </summary>
+    public Func<SettingsState>? Live { get; set; }
+
+    /// <summary>Set by Restore defaults until the next Apply: then the basis
+    /// is the defaults, not the live state, or "restore" would keep whatever
+    /// the dialog does not show.</summary>
+    private bool _restoredSinceApply;
 
     private readonly Core.IDefaultFileManager? _defaults;
     private readonly Core.FileSystem.IFileIconProvider? _desktopIcons;
@@ -97,6 +134,7 @@ public sealed partial class SettingsViewModel : ObservableObject
         // The footer line, seeded: a file this build must not write is said
         // where the Save button is, not only on the status bar at startup.
         _settingsFileStatus = settingsFileNote ?? "";
+        _notSaved = settingsFileNote is { Length: > 0 } ? settingsFileNote : null;
 
         // And the version line, which is where "What is new" is the link.
         _updateAvailable = updateAvailable;
@@ -609,14 +647,34 @@ public sealed partial class SettingsViewModel : ObservableObject
     /// </summary>
     [ObservableProperty] private string _iconThemeProblem = "";
 
-    private const string ThemeGone =
+    /// <summary>
+    /// **These named "Vaktari's own icons" on Linux too**, where the row with
+    /// no theme is the desktop's icon theme — see <see cref="NoThemeLabel"/>.
+    /// </summary>
+    private static string ThemeGone =>
         "That folder is no longer an icon theme — it may have been moved or deleted. "
-        + "Pick another from the list, or Vaktari's own icons.";
+        + $"Pick another from the list, or {NoThemeInSentence}.";
 
-    private const string ThemeUnreadable =
+    private static string ThemeUnreadable =>
         "That folder no longer reads as an icon theme. If it keeps its icons as links to "
         + "another theme, that other theme may have been removed. Pick another from the "
-        + "list, or Vaktari's own icons.";
+        + $"list, or {NoThemeInSentence}.";
+
+    /// <summary>The row with no theme, mid-sentence.</summary>
+    private static string NoThemeInSentence => Core.Naming.Platform == "windows"
+        ? "Vaktari's own icons"
+        : "your desktop's icon theme";
+
+    /// <summary>
+    /// The line above the themes Vaktari can fetch.
+    ///
+    /// **It said "it unpacks what Windows cannot" on Linux**, where nothing
+    /// needs getting past: the symbolic links a theme is built from are made
+    /// by the desktop's own tools without complaint.
+    /// </summary>
+    public static string FetchNote => Core.Naming.Platform == "windows"
+        ? "Or let Vaktari fetch one — it unpacks what Windows cannot."
+        : "Or let Vaktari fetch and unpack one for you.";
 
     /// <summary>
     /// Whether a folder reads as a theme. A seam, so a test can ask the
@@ -664,7 +722,12 @@ public sealed partial class SettingsViewModel : ObservableObject
     /// <summary>One row in the list: what it is called, and what to hand the
     /// reader. <paramref name="DesktopIcons"/> marks the one row that asks for
     /// the desktop's per-file icons rather than a theme.</summary>
-    public sealed record IconThemeChoice(string Label, string Folder, bool DesktopIcons = false);
+    public sealed record IconThemeChoice(string Label, string Folder, bool DesktopIcons = false)
+    {
+        /// <summary>The theme's whole path, as the row's tooltip — null for
+        /// the rows that are not a folder, so they show no empty tip.</summary>
+        public string? Path => Folder.Length > 0 ? Folder : null;
+    }
 
     public ObservableCollection<IconThemeChoice> IconThemeChoices { get; } = [];
 
@@ -873,6 +936,18 @@ public sealed partial class SettingsViewModel : ObservableObject
     public event EventHandler<string>? DiagnosticsRequested;
 
     /// <summary>
+    /// Where the icons come from, for a bug report — by the precedence the
+    /// listing applies, and in the platform's terms. **It said "bundled" on
+    /// Linux for the row that draws the desktop's icon theme**, and "desktop"
+    /// for a tick no Linux provider can act on.
+    /// </summary>
+    internal string IconsForDiagnostics =>
+        HasIconTheme ? "theme " + IconThemeLabel
+        : CanUseDesktopIcons && UseSystemIcons ? "desktop"
+        : Core.Naming.Platform == "windows" ? "bundled"
+        : "desktop theme";
+
+    /// <summary>
     /// **What a bug report needs, in one paste.** Version and where it runs
     /// from, the platform, how the interface is set up, and the tail of the
     /// log — with every path in it already redacted by the log, so the text
@@ -889,7 +964,7 @@ public sealed partial class SettingsViewModel : ObservableObject
         sb.AppendLine($"{Environment.OSVersion} · {System.Runtime.InteropServices.RuntimeInformation.OSArchitecture} · .NET {Environment.Version}");
         sb.AppendLine($"interface text {InterfaceText.ScaleFor(InterfaceTextIndex):P0} · " +
                       $"theme {(FollowDesktopColours ? "desktop" : "bundled")} · " +
-                      $"icons {(HasIconTheme ? "theme " + IconThemeLabel : UseSystemIcons ? "desktop" : "bundled")}");
+                      $"icons {IconsForDiagnostics}");
         sb.AppendLine(Vaktari.Core.Diagnostics.Log.Redact($"settings {SettingsFile}"));
         sb.AppendLine();
 
@@ -1332,6 +1407,11 @@ public sealed partial class SettingsViewModel : ObservableObject
     /// </summary>
     public string BinPageHeader => BinPageHeaderFor(BinTitle);
 
+    /// <summary>The same letter as a screen reader states it — "Alt+B",
+    /// "Alt+T" — for the page's AutomationProperties.AccessKey.</summary>
+    public string BinPageAccessKey
+        => "Alt+" + char.ToUpperInvariant(BinPageHeader[BinPageHeader.IndexOf('_') + 1]);
+
     /// <summary>The marker goes on the last word's first letter: "Recycle
     /// _Bin", "_Trash".</summary>
     internal static string BinPageHeaderFor(string title)
@@ -1459,7 +1539,9 @@ public sealed partial class SettingsViewModel : ObservableObject
     /// On the two stored keys, unchanged. Choosing row 3 stores FollowDesktop
     /// with the flag; a file that already pairs the flag with a forced
     /// lightness shows as row 3 and is saved as it was until another row is
-    /// picked — a dialog nobody touched does not rewrite a choice.
+    /// picked — a dialog nobody touched does not rewrite a choice. And it is
+    /// DRAWN as row 3 says: with the flag on, ThemeApplier takes light or dark
+    /// from the desktop and does not read the forced lightness at all.
     /// </summary>
     public int ColourIndex
     {
@@ -1746,9 +1828,37 @@ public sealed partial class SettingsViewModel : ObservableObject
     private void Save()
     {
         Result = Collect();
+        CommitNeeded = Changed(Result);
         Saved = true;
         CloseRequested?.Invoke(this, EventArgs.Empty);
     }
+
+    /// <summary>
+    /// Whether a Save has anything to commit that the last Apply did not.
+    ///
+    /// **Apply and then an untouched Save committed twice.** A commit is not
+    /// free: it relists every loaded pane in every window — re-running a
+    /// search, a duplicates scan, a network listing — and reinstalls the icon
+    /// theme and the colour scheme. So a Save that would hand over exactly
+    /// what was last applied, and has no Forget armed, is not committed
+    /// again. True for a Save with no Apply before it, and for an import.
+    /// </summary>
+    public bool CommitNeeded { get; private set; } = true;
+
+    /// <summary>What the last Apply committed, as the bytes the store would
+    /// write — the record's own equality cannot say, because the keyboard's
+    /// bindings are a new dictionary every time they are collected.</summary>
+    private byte[]? _committed;
+
+    private static byte[] Bytes(SettingsState state)
+        => System.Text.Json.JsonSerializer.SerializeToUtf8Bytes(state, SettingsJsonContext.Default.SettingsState);
+
+    private bool ForgetArmed => ForgetViewsOnSave || ForgetRecentOnSave || ForgetSearchHistoryOnSave;
+
+    /// <summary>Whether committing this state would change anything since
+    /// the last Apply.</summary>
+    private bool Changed(SettingsState state)
+        => _committed is null || ForgetArmed || !Bytes(state).AsSpan().SequenceEqual(_committed);
 
     /// <summary>
     /// Raised by Apply with what to commit. The window that opened the dialog
@@ -1785,16 +1895,46 @@ public sealed partial class SettingsViewModel : ObservableObject
     private void Apply()
     {
         Result = Collect();
+
+        // Pressed again with nothing changed: a commit relists every pane in
+        // every window, so it is not paid for nothing. See CommitNeeded.
+        if (!Changed(Result))
+        {
+            SettingsFileStatus = "Nothing has changed since the last Apply.";
+            return;
+        }
+
         AppliedCount++;
+        _committed = Bytes(Result);
 
         ApplyRequested?.Invoke(this, Result);
+
+        // The applied state is live now, so the next Collect can build on it
+        // again rather than on the defaults a restore put on screen.
+        _restoredSinceApply = false;
 
         if (ForgetViewsOnSave) { ForgetViewsOnSave = false; RememberedViews = 0; }
         if (ForgetRecentOnSave) { ForgetRecentOnSave = false; RecentCount = 0; }
         if (ForgetSearchHistoryOnSave) { ForgetSearchHistoryOnSave = false; SearchCount = 0; }
 
-        SettingsFileStatus = "Applied. Cancel now closes without undoing that — only later changes are dropped.";
+        // **"Applied" over the reason nothing is written** would have told
+        // somebody running an older build over a newer file that their choice
+        // was kept. It is kept until Vaktari closes, and the reason stays.
+        SettingsFileStatus = _notSaved is { } why
+            ? $"Applied until Vaktari closes — not saved: {why}"
+            : "Applied. Cancel now closes without undoing that — only later changes are dropped.";
     }
+
+    /// <summary>
+    /// What Collect builds on for everything the dialog does not show: the
+    /// live state when the window handed one over, otherwise the state the
+    /// dialog opened with — and after Restore defaults, the defaults, until
+    /// an Apply makes them live.
+    /// </summary>
+    private SettingsState Basis()
+        => !_restoredSinceApply && Live?.Invoke() is { } live
+            ? SettingsRepair.Complete(live)
+            : _original;
 
     /// <summary>
     /// Everything on the seven pages, as the record that gets written.
@@ -1821,12 +1961,14 @@ public sealed partial class SettingsViewModel : ObservableObject
             : StartupLocation.RestoreSession;
 
 
-        // `with` on the whole state, so pages that are not built yet keep
-        // whatever is already in the file rather than being reset to defaults
-        // by a dialog that never showed them.
-        return _original with
+        // `with` on the whole state, so what the dialog does not show keeps
+        // whatever the application holds rather than being reset to defaults
+        // by a dialog that never showed it — see Basis.
+        var basis = Basis();
+
+        return basis with
         {
-            General = _original.General with
+            General = basis.General with
             {
                 NaturalSorting = NaturalSorting,
                 CaseSensitiveSorting = CaseSensitiveSorting,
@@ -1854,10 +1996,10 @@ public sealed partial class SettingsViewModel : ObservableObject
 
             // Also guarded: `with` on a null record throws, so saving would have
             // crashed too even once the dialog opened.
-            Vcs = (_original.Vcs ?? new VcsSettings())
+            Vcs = (basis.Vcs ?? new VcsSettings())
                   with { ShowDecorations = ShowVcsDecorations },
 
-            Views = _original.Views with
+            Views = basis.Views with
             {
                 NarrowDetailsPanel = GrowWindowForPanel
                     ? NarrowPanelBehaviour.GrowWindow
@@ -1876,10 +2018,10 @@ public sealed partial class SettingsViewModel : ObservableObject
                 ThemeMode = ThemeModeFromIndex(),
                 InterfaceTextScale = InterfaceText.ScaleFor(InterfaceTextIndex),
 
-                Icons = _original.Views.Icons with { Spacing = Spacing(IconSpacing) },
-                Compact = _original.Views.Compact with { Spacing = Spacing(CompactSpacing) },
+                Icons = basis.Views.Icons with { Spacing = Spacing(IconSpacing) },
+                Compact = basis.Views.Compact with { Spacing = Spacing(CompactSpacing) },
 
-                Details = _original.Views.Details with
+                Details = basis.Views.Details with
                 {
                     DateStyle = AbsoluteDates
                         ? Core.Settings.DateStyle.Absolute
@@ -1899,7 +2041,7 @@ public sealed partial class SettingsViewModel : ObservableObject
                 },
             },
 
-            Trash = _original.Trash with
+            Trash = basis.Trash with
             {
                 // A field that will not parse turns the feature OFF rather than
                 // falling back to a default. Guessing a number here means
@@ -1907,19 +2049,19 @@ public sealed partial class SettingsViewModel : ObservableObject
                 DeleteOldFiles = DeleteOldTrash && Days(DeleteAfterDays) > 0,
                 DeleteAfterDays = Days(DeleteAfterDays) is > 0 and var d
                     ? d
-                    : _original.Trash.DeleteAfterDays,
+                    : basis.Trash.DeleteAfterDays,
 
                 LimitSize = LimitTrashSize && Percent(MaxPercentOfDisk) > 0,
                 MaximumPercentOfDisk = Percent(MaxPercentOfDisk) is > 0 and var p
                     ? p
-                    : _original.Trash.MaximumPercentOfDisk,
+                    : basis.Trash.MaximumPercentOfDisk,
 
                 WhenLimitReached = LimitActionOldest ? TrashLimitAction.DeleteOldest
                     : LimitActionLargest ? TrashLimitAction.DeleteLargest
                     : TrashLimitAction.Warn,
             },
 
-            Navigation = _original.Navigation with
+            Navigation = basis.Navigation with
             {
                 OpenItemsWith = OpenWithSingle ? ActivationClick.Single
                     : OpenWithDouble ? ActivationClick.Double
@@ -1930,9 +2072,9 @@ public sealed partial class SettingsViewModel : ObservableObject
 
             // The rows that differ from their shipped keys, and whatever a
             // newer Vaktari left — see KeyboardPage.Collect.
-            Keyboard = _original.Keyboard with { Bindings = Keyboard.Collect() },
+            Keyboard = basis.Keyboard with { Bindings = Keyboard.Collect() },
 
-            ContextMenu = _original.ContextMenu with
+            ContextMenu = basis.ContextMenu with
             {
                 ShowCopyTo = MenuCopyTo,
                 ShowMoveTo = MenuMoveTo,
@@ -1944,7 +2086,7 @@ public sealed partial class SettingsViewModel : ObservableObject
                 ShowCopyLocation = MenuCopyLocation,
             },
 
-            Startup = _original.Startup with
+            Startup = basis.Startup with
             {
                 ShowOnStartup = location,
                 StartupFolder = string.IsNullOrWhiteSpace(StartupFolder) ? null : StartupFolder.Trim(),
@@ -2155,14 +2297,15 @@ public sealed partial class SettingsViewModel : ObservableObject
     /// already undoes.
     ///
     /// The state seeded is a bare SettingsState, which also resets the pages
-    /// this dialog has not built — Collect carries _original forward with
-    /// `with`, so replacing it is what makes "every setting" true rather than
-    /// "every setting you can see".
+    /// this dialog has not built — Collect builds on _original rather than on
+    /// the live state until the next Apply, so replacing it is what makes
+    /// "every setting" true rather than "every setting you can see".
     /// </summary>
     [RelayCommand]
     private void RestoreDefaults()
     {
         Seed(new SettingsState());
+        _restoredSinceApply = true;
 
         SettingsFileStatus = "Defaults restored — nothing is saved until you press Apply or Save.";
     }

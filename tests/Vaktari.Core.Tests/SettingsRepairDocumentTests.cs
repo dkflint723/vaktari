@@ -237,6 +237,10 @@ public sealed class SettingsRepairDocumentTests
                 if (scalar.GetValueKind() is not (JsonValueKind.True or JsonValueKind.Number)) continue;
                 if (scalar.GetValueKind() == JsonValueKind.Number && scalar.GetValue<double>() == 0) continue;
 
+                // The bin's two numbers are deliberately left out — see the
+                // test below for why.
+                if (groupKey == "trash") continue;
+
                 var document = (JsonObject)fresh.DeepClone();
                 ((JsonObject)document[groupKey]!).Remove(key);
 
@@ -252,9 +256,51 @@ public sealed class SettingsRepairDocumentTests
 
         // Measured today: NaturalSorting, ShowTooltips, TabSwitchesSplitPanes,
         // RememberRecent, ShowPreviews, ConfirmPermanentDelete, ShowStatusBar,
-        // ShowFreeSpace, ShowDecorations, eight context-menu entries and the
-        // two trash numbers. Written under that so adding one is not a failure.
+        // ShowFreeSpace, ShowDecorations and eight context-menu entries.
+        // Written under that so adding one is not a failure.
         Assert.True(checkedCount >= 15, $"only {checkedCount} non-zero defaults were found");
+    }
+
+    /// <summary>
+    /// **One level down too.** A layout the file names — <c>views.icons</c> —
+    /// that leaves out its label width gets the declared 120, not the zero
+    /// that would draw every grid label no wider than nothing. The recursion
+    /// that reaches it had no test: deleting it left everything green.
+    /// </summary>
+    [Fact]
+    public void A_layout_the_file_names_gets_its_missing_numbers_too()
+    {
+        var read = Read("""
+            {"version":1,"views":{"icons":{"spacing":4},"compact":{"spacing":2}}}
+            """, complete: true);
+
+        Assert.Equal(120, read.Views.Icons.TextWidth);
+        Assert.Equal(2, read.Views.Icons.MaximumLines);
+        Assert.Equal(180, read.Views.Compact.MaximumTextWidth);
+
+        // And what the file does say is kept.
+        Assert.Equal(4, read.Views.Icons.Spacing);
+    }
+
+    /// <summary>
+    /// **Filling a number must not arm a deletion.** A hand-edited bin group
+    /// that switches a sweep on and names no number used to be inert — zero
+    /// days and zero percent are off to the sweep on Linux — and filling the
+    /// declared 30 days or 10% would start deleting files against a number
+    /// nobody typed. So those two numbers are the exception: absent stays
+    /// absent.
+    /// </summary>
+    [Fact]
+    public void A_bin_sweep_switched_on_without_a_number_is_not_given_one()
+    {
+        var read = Read("""
+            {"version":1,"trash":{"deleteOldFiles":true,"limitSize":true}}
+            """, complete: true);
+
+        Assert.True(read.Trash.DeleteOldFiles);
+        Assert.True(read.Trash.LimitSize);
+        Assert.Equal(0, read.Trash.DeleteAfterDays);
+        Assert.Equal(0, read.Trash.MaximumPercentOfDisk);
     }
 
     /// <summary>

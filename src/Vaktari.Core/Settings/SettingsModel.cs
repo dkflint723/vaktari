@@ -229,11 +229,15 @@ public sealed record GeneralSettings
     /// <c>{"version":1,"general":{"showTooltips":true}}</c> deserialized
     /// through <see cref="SettingsJsonContext"/> came back with
     /// <see cref="RememberRecent"/> FALSE, though it is declared
-    /// <c>= true</c>. So a <c>= true</c> default is decorative for every
+    /// <c>= true</c>. So a <c>= true</c> default was decorative for every
     /// settings.json written before the key existed — which is every one that
-    /// exists — and a positively named <c>RememberSearches = true</c> would
+    /// existed — and a positively named <c>RememberSearches = true</c> would
     /// have shipped the feature switched off for everybody upgrading, with a
-    /// checkbox that says it is on.
+    /// checkbox that says it is on. (RememberRecent itself did exactly that to
+    /// every 0.9.x upgrade. Since <see cref="SettingsRepair.CompleteDocument"/>
+    /// the store writes a missing key's declared default back in, so through
+    /// the store a positive name would now survive; the zero-value name is
+    /// kept because it needs nothing to run.)
     ///
     /// So the wanted behaviour IS the zero: false means the history is kept,
     /// which is what should happen when nobody has said otherwise. The dialog
@@ -421,11 +425,12 @@ public enum NarrowPanelBehaviour
 /// <summary>
 /// Which lightness the bundled scheme uses.
 ///
-/// **Separate from <see cref="ViewSettings.FollowDesktopColours"/>, which is
-/// about hues.** That flag decides whether the desktop's scheme and accent are
-/// layered over the bundled one; this decides only whether the result is light
-/// or dark, and the two compose — a desktop-coloured window still honours a
-/// forced lightness.
+/// **Separate from <see cref="ViewSettings.FollowDesktopColours"/>, and read
+/// only while that flag is off.** The flag layers the desktop's own
+/// backgrounds, text and accent over the bundled scheme, and those come in the
+/// desktop's lightness — so a forced lightness under them drew dark text on
+/// dark surfaces. With the flag on and a palette to read, ThemeApplier takes
+/// light or dark from the desktop and this is kept but not consulted.
 /// </summary>
 public enum ThemeMode
 {
@@ -460,8 +465,17 @@ public sealed record ViewSettings
     /// Deserialization here does NOT run property initializers: a key absent from
     /// `settings.json` arrives as `default(T)`, not as the declared default —
     /// PROVEN by a control that printed `restoreWidth=False` from the file while a
-    /// freshly constructed record printed `True`. So a `= true` default is
+    /// freshly constructed record printed `True`. So a `= true` default was
     /// decorative for any file written before the property existed.
+    ///
+    /// **Through the store that is no longer so** —
+    /// <see cref="SettingsRepair.CompleteDocument"/> writes a missing key's
+    /// declared default back in when the key's group is in the file, and a
+    /// group the file does not name is built fresh, initializers and all. The
+    /// paragraph above still describes the deserializer, and a record built
+    /// straight from it (a test, a copy read by hand) still gets zeros; the
+    /// zero-value names in this file stay for that reason, and because they
+    /// need nothing to run.
     ///
     /// The fix that does not depend on knowing why: phrase the setting so the
     /// wanted behaviour IS the zero. `false` means "give the width back", which is
@@ -754,7 +768,14 @@ public sealed record KeyboardSettings
 /// For a SCALAR that is survivable, and the note on
 /// <see cref="ViewSettings.ShowSelectionBoxes"/> says how: `false` and `0` have
 /// to BE the wanted behaviour, and each such property is named for its zero
-/// value. For a reference-typed GROUP `default(T)` is null, and nothing
+/// value. **That is still what the deserializer does, and no longer what a
+/// settings.json read through the store gets:** <see cref="CompleteDocument"/>
+/// writes a missing true-or-false or number back in with its declared default
+/// before the file becomes a record — see there for the exceptions. The
+/// zero-value names stay, because they need nothing to run and hold for a
+/// record deserialized anywhere else.
+///
+/// For a reference-typed GROUP `default(T)` is null, and nothing
 /// downstream survives it — `settings.Views.HideFileExtensions` throws,
 /// <c>SettingsViewModel.Collect</c>'s `_original.General with { … }` throws,
 /// and the settings dialog's Closed handler reading
@@ -809,6 +830,8 @@ public static class SettingsRepair
     /// and are skipped for the same reason; every enum the model declares
     /// defaults to its zero member, which SettingsRepairDocumentTests holds,
     /// so an absent one is already right.
+    ///
+    /// **And not the bin's two numbers**, see <see cref="NotFilled"/>.
     /// </summary>
     public static void CompleteDocument(JsonObject document)
     {
@@ -821,22 +844,46 @@ public static class SettingsRepair
         // migrations, which have already stamped it by the time this runs.
         foreach (var (key, node) in defaults)
             if (node is JsonObject group && document[key] is JsonObject named)
-                FillScalars(named, group);
+                FillScalars(named, group, key);
     }
 
-    private static void FillScalars(JsonObject named, JsonObject defaults)
+    /// <summary>
+    /// Keys whose declared default must NOT be written in, by their path in
+    /// the file.
+    ///
+    /// **Filling a number could arm a deletion.** A hand-edited
+    /// <c>"trash": {"deleteOldFiles": true}</c> with no day count was inert on
+    /// Linux — the sweep treats zero days and zero percent as off — and
+    /// filling it would hand it 30 days, or 10% of the disk, and start
+    /// deleting files against a number nobody typed. That is the rule
+    /// SettingsViewModel.Collect already keeps for the dialog: "guessing a
+    /// number here means deleting files against something the user did not
+    /// type". These two stay whatever the file says, absent included.
+    /// </summary>
+    internal static readonly IReadOnlySet<string> NotFilled = new HashSet<string>(StringComparer.Ordinal)
+    {
+        "trash.deleteAfterDays",
+        "trash.maximumPercentOfDisk",
+    };
+
+    private static void FillScalars(JsonObject named, JsonObject defaults, string path)
     {
         foreach (var (key, node) in defaults)
         {
+            var here = path + "." + key;
+
             if (!named.ContainsKey(key))
             {
                 if (node is JsonValue value
-                    && value.GetValueKind() is JsonValueKind.True or JsonValueKind.False or JsonValueKind.Number)
+                    && value.GetValueKind() is JsonValueKind.True or JsonValueKind.False or JsonValueKind.Number
+                    && !NotFilled.Contains(here))
                     named[key] = value.DeepClone();
             }
+            // Down into a layout the file does name — views.icons and its
+            // neighbours carry numbers of their own.
             else if (node is JsonObject inner && named[key] is JsonObject nested)
             {
-                FillScalars(nested, inner);
+                FillScalars(nested, inner, here);
             }
         }
     }

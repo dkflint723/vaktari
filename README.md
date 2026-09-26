@@ -524,8 +524,9 @@ pays for other people's code.
 **Where Vaktari opens is yours to choose** — last session's folders, tabs and
 windows (the default), your home folder, *This PC*, or a folder you browse for.
 The same section decides how it opens: straight into a split, with the filter
-bar showing or with the path bar already editable, all from the next launch;
-the full path in the title bar changes as soon as you apply it.
+bar showing or with the path bar already editable — in windows opened from
+then on and at the next launch; the full path in the title bar changes as soon
+as you apply it.
 
 **Everything else is one dialog**, on `Ctrl+Shift+,`, in seven pages:
 

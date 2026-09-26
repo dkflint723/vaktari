@@ -590,7 +590,11 @@ public sealed class SettingsPagesTests : OwnedViewModels
             .Where(t => !t.StartsWith('{'))
             .ToList();
 
-        Assert.True(notes.Count >= 5, $"only {notes.Count} notes found");
+        // Four written in the markup; the fetch line is bound, because it
+        // differs per platform, and is held to the same rule below.
+        Assert.True(notes.Count >= 4, $"only {notes.Count} notes found");
+
+        notes.Add(SettingsViewModel.FetchNote);
 
         foreach (var note in notes)
         {
@@ -731,18 +735,377 @@ public sealed class SettingsPagesTests : OwnedViewModels
 
     /// <summary>
     /// **General was 2,040px tall at the default size — four screens.** It is
-    /// a screen and a half now; this pins it under two, which a page that
-    /// grew back its paragraphs would not be.
+    /// under a screen and a half now (718px in 513, measured), which is what
+    /// the changelog says and what this pins.
     /// </summary>
     [AvaloniaFact]
-    public void The_first_page_is_under_two_screens_at_the_default_size()
+    public void The_first_page_is_under_a_screen_and_a_half_at_the_default_size()
     {
         var (window, _) = Dialog();
 
         var scroller = window.GetVisualDescendants().OfType<ScrollViewer>().First(s => s.IsEffectivelyVisible);
 
-        Assert.True(scroller.Extent.Height < 2 * scroller.Viewport.Height,
+        Assert.True(scroller.Extent.Height < 1.5 * scroller.Viewport.Height,
                     $"General is {scroller.Extent.Height:0}px in a {scroller.Viewport.Height:0}px window");
+    }
+
+    // ---- review fixes ---------------------------------------------------------------
+
+    /// <summary>
+    /// **A stored forced lightness beside the desktop's colours drew dark text
+    /// on dark surfaces**, and the Colour chooser showed that pairing as "the
+    /// desktop's own colours". ThemeApplier took light or dark from ThemeMode
+    /// whatever the flag said, while the flag brought the desktop's own
+    /// backgrounds. With the flag on, the desktop decides — the control case,
+    /// flag off, still honours the forced lightness.
+    /// </summary>
+    [AvaloniaTheory]
+    [InlineData(true, true)]
+    [InlineData(false, false)]
+    public void The_desktop_s_colours_bring_the_desktop_s_lightness(bool desktopColours, bool expectDark)
+    {
+        AppSettings.Apply(new SettingsState
+        {
+            Views = new ViewSettings { FollowDesktopColours = desktopColours, ThemeMode = ThemeMode.Light },
+        });
+
+        var window = Shown(new Window());
+
+        ThemeApplier.Apply(window, new Vaktari.Core.ThemePalette
+        {
+            IsDark = true,
+            Colours = new Dictionary<string, string>(),
+        });
+
+        Assert.Equal(
+            expectDark ? Avalonia.Styling.ThemeVariant.Dark : Avalonia.Styling.ThemeVariant.Light,
+            Avalonia.Application.Current!.RequestedThemeVariant);
+    }
+
+    /// <summary>
+    /// **Apply said "Applied" over the reason nothing is written.** With a
+    /// settings.json from a newer Vaktari the store writes nothing; the
+    /// footer had said so, Apply replaced it with success, and its tooltip
+    /// promised a save. Both now say the change lasts until Vaktari closes.
+    /// </summary>
+    [AvaloniaFact]
+    public void Apply_over_a_file_it_may_not_write_says_so()
+    {
+        const string why = "settings.json was written by a newer Vaktari";
+
+        var model = new SettingsViewModel(new SettingsState(), settingsFileNote: why);
+
+        Assert.Contains("not saved", model.ApplyTip, StringComparison.Ordinal);
+
+        model.ShowStatusBar = false;
+        model.ApplyCommand.Execute(null);
+
+        Assert.Contains("not saved", model.SettingsFileStatus, StringComparison.Ordinal);
+        Assert.Contains(why, model.SettingsFileStatus, StringComparison.Ordinal);
+
+        // And an ordinary file still hears that it was saved.
+        Assert.StartsWith("Saves", new SettingsViewModel(new SettingsState()).ApplyTip, StringComparison.Ordinal);
+    }
+
+    /// <summary>
+    /// **A screen reader heard every page as "Avalonia.Controls.ScrollViewer"
+    /// with no access key** — measured on the pages' automation peers, which
+    /// fall back to the content's ToString. Each page's peer now gives its
+    /// words and its Alt letter, the bin's from the platform's word.
+    /// </summary>
+    [AvaloniaFact]
+    public void Each_page_is_announced_by_name_with_its_key()
+    {
+        var (window, model) = Dialog();
+
+        var pages = window.GetVisualDescendants().OfType<TabItem>().ToList();
+
+        Assert.Equal(7, pages.Count);
+
+        foreach (var tab in pages)
+        {
+            var header = (tab.Header as string)!;
+            var peer = Avalonia.Automation.Peers.ControlAutomationPeer.CreatePeerForElement(tab);
+
+            Assert.Equal(MenuLabels.Plain(header), peer.GetName());
+            Assert.Equal("Alt+" + char.ToUpperInvariant(header[header.IndexOf('_') + 1]), peer.GetAccessKey());
+        }
+
+        Assert.Equal(model.BinTitle, Avalonia.Automation.Peers.ControlAutomationPeer.CreatePeerForElement(pages[^1]).GetName());
+    }
+
+    /// <summary>
+    /// **Apply and then an untouched Save committed twice**, and a commit
+    /// relists every loaded pane in every window. Nothing new since the last
+    /// Apply is nothing to commit — for a second Apply as for the Save —
+    /// unless a Forget has been armed since.
+    /// </summary>
+    [AvaloniaFact]
+    public void Nothing_changed_since_an_apply_is_not_committed_again()
+    {
+        var model = new SettingsViewModel(new SettingsState(), recents: new Recents(2));
+        var applied = 0;
+
+        model.ApplyRequested += (_, _) => applied++;
+
+        model.ShowStatusBar = false;
+        model.ApplyCommand.Execute(null);
+        model.ApplyCommand.Execute(null);
+
+        Assert.Equal(1, applied);
+        Assert.Equal("Nothing has changed since the last Apply.", model.SettingsFileStatus);
+
+        model.SaveCommand.Execute(null);
+        Assert.False(model.CommitNeeded);
+
+        // A Forget armed after the Apply is something to commit.
+        var armed = new SettingsViewModel(new SettingsState(), recents: new Recents(2));
+
+        armed.ApplyCommand.Execute(null);
+        armed.ForgetRecentCommand.Execute(null);
+        armed.SaveCommand.Execute(null);
+        Assert.True(armed.CommitNeeded);
+
+        // And so is a change; and a Save with no Apply before it always is.
+        var changed = new SettingsViewModel(new SettingsState());
+
+        changed.ApplyCommand.Execute(null);
+        changed.ShowTooltips = false;
+        changed.SaveCommand.Execute(null);
+        Assert.True(changed.CommitNeeded);
+
+        var plain = new SettingsViewModel(new SettingsState());
+
+        plain.SaveCommand.Execute(null);
+        Assert.True(plain.CommitNeeded);
+    }
+
+    /// <summary>
+    /// And through the real window: the live settings change once for the
+    /// Apply and not again for the Save that follows it unchanged.
+    /// </summary>
+    [AvaloniaFact]
+    public void Through_the_window_an_untouched_save_after_apply_commits_nothing()
+    {
+        UseSearch(PaneViewModel.Search);
+
+        var main = Shown(new MainWindow());
+
+        main.ShowSettings(SettingsPage.General);
+        Pump();
+
+        var model = Assert.IsType<SettingsViewModel>(
+            Assert.Single(main.OwnedWindows.OfType<SettingsWindow>()).DataContext);
+
+        var commits = 0;
+        void Count(object? sender, EventArgs e) => commits++;
+
+        AppSettings.Changed += Count;
+
+        try
+        {
+            model.ConfirmClosingMultipleTabs = !model.ConfirmClosingMultipleTabs;
+            model.ApplyCommand.Execute(null);
+            Pump();
+
+            Assert.Equal(1, commits);
+
+            model.SaveCommand.Execute(null);
+            Pump();
+
+            Assert.Equal(1, commits);
+        }
+        finally
+        {
+            AppSettings.Changed -= Count;
+        }
+    }
+
+    /// <summary>
+    /// **What the dialog does not show was written back as it stood when the
+    /// dialog opened**, undoing a column dragged or a default view set in
+    /// another window meanwhile. It is taken from the live settings now — and
+    /// after Restore defaults, from the defaults, which is what that button
+    /// says.
+    /// </summary>
+    [AvaloniaFact]
+    public void What_the_dialog_does_not_show_comes_from_the_live_settings()
+    {
+        var live = new SettingsState
+        {
+            Views = new ViewSettings
+            {
+                DefaultView = Vaktari.Core.Session.ViewMode.Grid,
+                Details = new DetailsViewSettings { TypeColumn = 321 },
+            },
+        };
+
+        var model = new SettingsViewModel(new SettingsState()) { Live = () => live };
+
+        model.SaveCommand.Execute(null);
+
+        Assert.Equal(Vaktari.Core.Session.ViewMode.Grid, model.Result.Views.DefaultView);
+        Assert.Equal(321, model.Result.Views.Details.TypeColumn);
+
+        var restored = new SettingsViewModel(new SettingsState()) { Live = () => live };
+
+        restored.RestoreDefaultsCommand.Execute(null);
+        restored.SaveCommand.Execute(null);
+
+        Assert.Equal(default, restored.Result.Views.DefaultView);
+        Assert.Equal(0, restored.Result.Views.Details.TypeColumn);
+    }
+
+    /// <summary>And the real window hands the live settings over: a width
+    /// changed after the dialog opened survives an Apply.</summary>
+    [AvaloniaFact]
+    public void Through_the_window_a_change_made_elsewhere_survives_apply()
+    {
+        UseSearch(PaneViewModel.Search);
+
+        var main = Shown(new MainWindow());
+
+        main.ShowSettings(SettingsPage.General);
+        Pump();
+
+        var model = Assert.IsType<SettingsViewModel>(
+            Assert.Single(main.OwnedWindows.OfType<SettingsWindow>()).DataContext);
+
+        var now = AppSettings.Current;
+
+        AppSettings.Apply(now with
+        {
+            Views = now.Views with { Details = now.Views.Details with { TypeColumn = 321 } },
+        });
+
+        model.ShowTooltips = !model.ShowTooltips;
+        model.ApplyCommand.Execute(null);
+        Pump();
+
+        Assert.Equal(321, AppSettings.Current.Views.Details.TypeColumn);
+    }
+
+    /// <summary>
+    /// **The help of a greyed-out control could not be reached**, and none of
+    /// it from the keyboard. A disabled control shows its tooltip, and one
+    /// reached with Tab opens it — and closes it when the keyboard moves on.
+    /// </summary>
+    [AvaloniaFact]
+    public void Help_reaches_disabled_controls_and_the_keyboard()
+    {
+        var (window, model) = Dialog();
+
+        model.ShowPreviews = false;
+        Show(window, model, SettingsPage.FoldersAndLists);
+
+        var limit = window.GetVisualDescendants().OfType<TextBox>()
+            .Single(b => b.IsEffectivelyVisible && AutomationProperties.GetName(b)!.StartsWith("Skip network", StringComparison.Ordinal));
+
+        Assert.False(limit.IsEffectivelyEnabled);
+        Assert.True(ToolTip.GetShowOnDisabled(limit));
+
+        var boxes = window.GetVisualDescendants().OfType<CheckBox>()
+            .Where(c => c.IsEffectivelyVisible && AutomationProperties.GetHelpText(c) is { Length: > 0 })
+            .Take(2).ToList();
+
+        boxes[0].Focus(NavigationMethod.Tab);
+        Pump();
+        Assert.True(ToolTip.GetIsOpen(boxes[0]), "Tab onto a control with help did not show it");
+
+        boxes[1].Focus(NavigationMethod.Tab);
+        Pump();
+        Assert.False(ToolTip.GetIsOpen(boxes[0]), "the help stayed open after the keyboard moved on");
+        Assert.True(ToolTip.GetIsOpen(boxes[1]));
+
+        ToolTip.SetIsOpen(boxes[1], false);
+    }
+
+    /// <summary>
+    /// **Three places said Windows' or the bundled set's words on Linux**: the
+    /// line above the fetchable themes, the message when a chosen theme has
+    /// gone, and the icons line of the diagnostics. Each follows the platform.
+    /// </summary>
+    [AvaloniaTheory]
+    [InlineData("windows", true, "Vaktari's own icons", "bundled")]
+    [InlineData("linux", false, "your desktop's icon theme", "desktop theme")]
+    public void Icon_words_follow_the_platform(string platform, bool namesWindows, string noTheme, string diagnostics)
+    {
+        var previousBin = Core.Naming.BinName;
+        var previousPlatform = Core.Naming.Platform;
+
+        try
+        {
+            Core.Naming.Adopt(previousBin, platform);
+
+            Assert.Equal(namesWindows, SettingsViewModel.FetchNote.Contains("Windows", StringComparison.Ordinal));
+
+            var gone = Path.Combine(Path.GetTempPath(), "vaktari-gone-theme-" + Guid.NewGuid().ToString("N")[..8]);
+            var model = Icons(useDesktop: false, gone, perFile: false);
+
+            Assert.EndsWith(noTheme + ".", model.IconThemeProblem, StringComparison.Ordinal);
+
+            Assert.Equal(diagnostics, Icons(useDesktop: false, "", perFile: false).IconsForDiagnostics);
+        }
+        finally
+        {
+            Core.Naming.Adopt(previousBin, previousPlatform);
+        }
+    }
+
+    /// <summary>
+    /// **A browsed-to theme's full path showed nowhere** once the chooser's
+    /// tooltip became its help. It is a line under the chooser while a theme
+    /// is in use, and each theme row's own tooltip.
+    /// </summary>
+    [Fact]
+    public void The_theme_in_use_shows_its_whole_path()
+    {
+        var page = Page(Markup(), SettingsPage.Appearance);
+
+        var line = page.Descendants(Ax + "SelectableTextBlock")
+            .Single(t => (string?)t.Attribute("Text") == "{Binding IconThemeFolder}");
+
+        Assert.Equal("{Binding HasIconTheme}", (string?)line.Attribute("IsVisible"));
+
+        Assert.Contains(page.Descendants(Ax + "TextBlock"),
+                        t => (string?)t.Attribute("Text") == "{Binding Label}"
+                             && (string?)t.Attribute("ToolTip.Tip") == "{Binding Path}");
+
+        Assert.Null(new SettingsViewModel.IconThemeChoice("x", "").Path);
+        Assert.Equal("/t", new SettingsViewModel.IconThemeChoice("x", "/t").Path);
+    }
+
+    /// <summary>
+    /// **Two columns stayed two at 200%**, because the minimum column was a
+    /// fixed 200px while the labels doubled, and every label wrapped onto
+    /// two or three lines. The minimum grows with the text: at 150% and 200%
+    /// the default window is one column throughout.
+    /// </summary>
+    [AvaloniaTheory]
+    [InlineData(18)]
+    [InlineData(24)]
+    public void Larger_text_falls_back_to_one_column(double small)
+    {
+        var model = new SettingsViewModel(new SettingsState());
+        var window = new SettingsWindow(model) { Width = 700, Height = 560 };
+
+        window.Resources["FontSizeSmall"] = small;
+        Shown(window);
+
+        var groups = 0;
+
+        foreach (var page in Enum.GetValues<SettingsPage>())
+        {
+            Show(window, model, page);
+
+            foreach (var panel in window.GetVisualDescendants().OfType<SettingsColumns>().Where(p => p.IsEffectivelyVisible))
+            {
+                groups++;
+                Assert.Equal(1, panel.Columns);
+            }
+        }
+
+        Assert.True(groups >= 6, $"only {groups} column groups were shown");
     }
 
     // ---- the merged choosers, both ways ------------------------------------------------

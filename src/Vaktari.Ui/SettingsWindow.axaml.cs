@@ -48,6 +48,27 @@ public partial class SettingsWindow : Window
             }
         }, RoutingStrategies.Tunnel);
 
+        // **The help was the mouse's only.** Each setting's explanation is its
+        // tooltip, and a tooltip opens on hover — so somebody working this
+        // dialog from the keyboard, who can see it, could not reach any of
+        // it. A screen reader has it as HelpText; a sighted keyboard user now
+        // has it too, opened when Tab or an arrow brings a control that has
+        // help the keyboard, and closed when the keyboard moves on. Not on a
+        // click: the pointer already has hover for that.
+        AddHandler(GotFocusEvent, (_, e) =>
+        {
+            if (e.Source is Control control
+                && e.NavigationMethod is NavigationMethod.Tab or NavigationMethod.Directional
+                && Avalonia.Automation.AutomationProperties.GetHelpText(control) is { Length: > 0 })
+                ToolTip.SetIsOpen(control, true);
+        });
+
+        AddHandler(LostFocusEvent, (_, e) =>
+        {
+            if (e.Source is Control control && ToolTip.GetIsOpen(control))
+                ToolTip.SetIsOpen(control, false);
+        });
+
         // **The offer's answers take the keyboard when they appear**, rather
         // than leaving it on Add key where the keystroke that made the offer
         // started. Posted, because the line the buttons sit on is shown by

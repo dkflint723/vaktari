@@ -53,6 +53,10 @@
          font rows — is a local value and wins over this. -->
     <Style Selector="CheckBox, RadioButton, ComboBox, TextBox, TextBlock.note">
       <Setter Property="ToolTip.Tip" Value="{Binding $self.(AutomationProperties.HelpText)}"/>
+      <!-- **Help a disabled control has is help nobody could reach.** The
+           preview limits are greyed while thumbnails are off, and ToolTip
+           does not show on a disabled control unless told to. -->
+      <Setter Property="ToolTip.ShowOnDisabled" Value="True"/>
     </Style>
 
     <!-- A label that is longer than its column wraps inside the check box
@@ -188,7 +192,13 @@
            Dolphin, and it is the page nothing open-ended lives on — so the
            settings that decide whether a keystroke can lose a file have a
            place that does not move (SettingsSectionOrderTests). -->
-      <TabItem Header="_General">
+      <!-- **Each page is named for a screen reader, and says its key.** A
+           TabItem's peer takes its name from its content's ToString when it
+           has none, so every page was announced as "Avalonia.Controls.
+           ScrollViewer" with no access key — measured. The words and the key
+           are the header's, written out (SettingsPagesTests reads the peers). -->
+      <TabItem Header="_General"
+               AutomationProperties.Name="General" AutomationProperties.AccessKey="Alt+G">
         <ScrollViewer HorizontalScrollBarVisibility="Disabled"
                       Background="{DynamicResource AppBackground}">
         <StackPanel Spacing="14" Margin="20,16,20,16">
@@ -249,12 +259,12 @@
             <local:SettingsColumns Margin="0,4,0,0">
               <CheckBox Content="Begin in split view"
                         FontSize="{DynamicResource FontSizeSmall}"
-                        AutomationProperties.HelpText="Takes effect the next time Vaktari opens."
+                        AutomationProperties.HelpText="Takes effect in windows opened from now on, and the next time Vaktari starts."
                         IsChecked="{Binding BeginInSplitView}"/>
 
               <CheckBox Content="Show the filter bar"
                         FontSize="{DynamicResource FontSizeSmall}"
-                        AutomationProperties.HelpText="Takes effect the next time Vaktari opens."
+                        AutomationProperties.HelpText="Takes effect in windows opened from now on, and the next time Vaktari starts."
                         IsChecked="{Binding ShowFilterBar}"/>
 
               <!-- "Path bar", because that is what the thing is called
@@ -265,7 +275,7 @@
                    has one. -->
               <CheckBox Content="Start with the path bar editable"
                         FontSize="{DynamicResource FontSizeSmall}"
-                        AutomationProperties.HelpText="Takes effect the next time Vaktari opens."
+                        AutomationProperties.HelpText="Takes effect in windows opened from now on, and the next time Vaktari starts."
                         IsChecked="{Binding LocationBarEditable}"/>
 
               <CheckBox Content="Show the full path in the title bar"
@@ -279,8 +289,11 @@
                  is set on every window the moment a save lands
                  (MainWindow.SettingsChangedEverywhere). Named, so the note is
                  true of each box it is about. -->
+            <!-- "New windows" as well as the next launch: every window's
+                 constructor runs ApplyStartupPreferences, so Ctrl+N after an
+                 Apply opens with them. -->
             <TextBlock Classes="note"
-                       Text="Split view, the filter bar and the path bar apply from the next launch."/>
+                       Text="Split view, the filter bar and the path bar apply to new windows."/>
           </StackPanel>
 
           <Border Height="1" Background="{DynamicResource SeparatorColour}"/>
@@ -378,7 +391,8 @@
       <!-- How Vaktari looks: colour, type, what a row carries, the window's
            furniture — and the file icons last, because their catalogue is the
            one section whose length depends on what is installed. -->
-      <TabItem Header="_Appearance">
+      <TabItem Header="_Appearance"
+               AutomationProperties.Name="Appearance" AutomationProperties.AccessKey="Alt+A">
         <ScrollViewer HorizontalScrollBarVisibility="Disabled"
                       Background="{DynamicResource AppBackground}">
         <StackPanel Spacing="14" Margin="20,16,20,16">
@@ -392,7 +406,7 @@
                with it. -->
           <ComboBox SelectedIndex="{Binding ColourIndex}"
                     AutomationProperties.Name="Colour"
-                    AutomationProperties.HelpText="Vaktari's colours follow your desktop's light or dark by default, and that is the only light-or-dark choice that keeps up when you change your desktop while Vaktari is open. The desktop's own colours bring its backgrounds, text, selection and accent — and its font, unless you choose one below — in its own light or dark."
+                    AutomationProperties.HelpText="Vaktari's colours follow your desktop's light or dark by default. That row and the desktop's own colours both keep up when you change your desktop while Vaktari is open; always light and always dark hold whatever you pick. The desktop's own colours bring its backgrounds, text, selection and accent — and its font, unless you choose one below — in its own light or dark."
                     HorizontalAlignment="Stretch"
                     FontSize="{DynamicResource FontSizeSmall}">
             <ComboBoxItem Content="Vaktari's colours, light or dark as the desktop is"/>
@@ -562,11 +576,21 @@
                         FontSize="{DynamicResource FontSizeSmall}">
                 <ComboBox.ItemTemplate>
                   <DataTemplate x:DataType="vm:SettingsViewModel+IconThemeChoice">
-                    <TextBlock Text="{Binding Label}"/>
+                    <TextBlock Text="{Binding Label}" ToolTip.Tip="{Binding Path}"/>
                   </DataTemplate>
                 </ComboBox.ItemTemplate>
               </ComboBox>
             </DockPanel>
+
+            <!-- **The whole path of the theme in use.** The chooser's tooltip
+                 was that path before its help took the tooltip over, and a
+                 theme browsed to outside the install folder shows only its
+                 leaf name in the list. Selectable, because it is a path. -->
+            <SelectableTextBlock Text="{Binding IconThemeFolder}"
+                                 IsVisible="{Binding HasIconTheme}"
+                                 FontSize="{DynamicResource FontSizeTiny}"
+                                 Foreground="{DynamicResource ViewDimText}"
+                                 TextWrapping="Wrap"/>
 
             <TextBlock Text="{Binding IconThemeProblem}"
                        IsVisible="{Binding HasIconThemeProblem}"
@@ -574,8 +598,9 @@
                        Foreground="{DynamicResource AccentText}"
                        TextWrapping="Wrap"/>
 
+            <!-- Per platform: nothing needs getting past on Linux. -->
             <TextBlock Classes="note"
-                       Text="Or let Vaktari fetch one — it unpacks what Windows cannot."/>
+                       Text="{Binding FetchNote}"/>
 
             <!-- **Or let Vaktari fetch one.** Doing it by hand means finding the
                  project, downloading an archive and extracting it past forty
@@ -671,7 +696,8 @@
       </TabItem>
 
       <!-- How a folder is ordered and what its listing carries. -->
-      <TabItem Header="_Folders and lists">
+      <TabItem Header="_Folders and lists"
+               AutomationProperties.Name="Folders and lists" AutomationProperties.AccessKey="Alt+F">
         <ScrollViewer HorizontalScrollBarVisibility="Disabled"
                       Background="{DynamicResource AppBackground}">
         <StackPanel Spacing="14" Margin="20,16,20,16">
@@ -771,7 +797,7 @@
                    whole, a date in full. -->
               <CheckBox Content="Show tooltips on rows"
                         FontSize="{DynamicResource FontSizeSmall}"
-                        AutomationProperties.HelpText="The whole name of a trimmed row, its full path and the exact date, when the pointer rests on it."
+                        AutomationProperties.HelpText="The whole name of a trimmed row, its full path, the exact date, and the warning on a name that looks like another row's, when the pointer rests on it."
                         IsChecked="{Binding ShowTooltips}"/>
             </local:SettingsColumns>
           </StackPanel>
@@ -837,7 +863,8 @@
       <!-- What Vaktari keeps about you, and where it reaches outside itself:
            the recent lists and searches, the desktop's default, a terminal,
            Proton Drive, and github.com. -->
-      <TabItem Header="_Privacy and system">
+      <TabItem Header="_Privacy and system"
+               AutomationProperties.Name="Privacy and system" AutomationProperties.AccessKey="Alt+P">
         <ScrollViewer HorizontalScrollBarVisibility="Disabled"
                       Background="{DynamicResource AppBackground}">
         <StackPanel Spacing="14" Margin="20,16,20,16">
@@ -1009,7 +1036,8 @@
            Keyboard.IsOpen — see SettingsViewModel.OnPageIndexChanged for
            why that is no longer a binding of its own on this tab, and
            KeyboardPage for the rest of its rules. -->
-      <TabItem Header="_Keyboard">
+      <TabItem Header="_Keyboard"
+               AutomationProperties.Name="Keyboard" AutomationProperties.AccessKey="Alt+K">
         <DockPanel Background="{DynamicResource AppBackground}">
 
           <StackPanel DockPanel.Dock="Top" Spacing="10" Margin="20,16,20,8">
@@ -1120,7 +1148,8 @@
         </DockPanel>
       </TabItem>
 
-      <TabItem Header="Context _menu">
+      <TabItem Header="Context _menu"
+               AutomationProperties.Name="Context menu" AutomationProperties.AccessKey="Alt+M">
         <ScrollViewer HorizontalScrollBarVisibility="Disabled"
                       Background="{DynamicResource AppBackground}">
         <StackPanel Spacing="14" Margin="20,16,20,16">
@@ -1195,7 +1224,9 @@
         </StackPanel>
         </ScrollViewer>
       </TabItem>
-      <TabItem Header="{Binding BinPageHeader}">
+      <TabItem Header="{Binding BinPageHeader}"
+               AutomationProperties.Name="{Binding BinTitle}"
+               AutomationProperties.AccessKey="{Binding BinPageAccessKey}">
         <ScrollViewer HorizontalScrollBarVisibility="Disabled"
                       Background="{DynamicResource AppBackground}">
         <StackPanel Spacing="14" Margin="20,16,20,16">
@@ -1285,7 +1316,7 @@
                Save without the close: the same collected state, handed to the
                same code a Save reaches (SettingsViewModel.Apply). -->
           <Button Content="Apply" Padding="14,4" Command="{Binding ApplyCommand}"
-                  ToolTip.Tip="Saves these settings now and keeps this window open"/>
+                  ToolTip.Tip="{Binding ApplyTip}"/>
 
           <!-- **Escape left this window and Enter did not.** Cancel took
                IsCancel when the dialogs learnt Escape, and Save was left

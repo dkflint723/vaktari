@@ -705,20 +705,18 @@ public sealed class InterfaceTextSizeTests : OwnedViewModels
     /// a modal dialog to prove one line would be waiting on the dialog rather
     /// than on what it asserts. What is checkable is that the save applies to
     /// the family rather than to <c>_shell</c> alone.
+    ///
+    /// The save's body is MainWindow.Commit since the dialog gained Apply —
+    /// Apply and the Closed handler both call it — so that is the method read.
     /// </summary>
     [Fact]
     public void And_the_save_handler_is_what_calls_it()
     {
-        var source = RepoSource.UiClass("", "MainWindow");
+        var commit = RepoSource.Body(
+            RepoSource.UiClass("", "MainWindow"),
+            "private void Commit(SettingsViewModel model, Vaktari.Core.Settings.SettingsState result)");
 
-        var save = source.IndexOf("if (!model.Saved) return;", StringComparison.Ordinal);
-
-        Assert.True(save >= 0, "the settings-save handler is not written the way this looks for it");
-
-        var broadcast = source.IndexOf(
-            nameof(MainWindow.SettingsChangedEverywhere) + "();", save, StringComparison.Ordinal);
-
-        Assert.True(broadcast >= 0, "the save tells only its own window");
+        Assert.Contains(nameof(MainWindow.SettingsChangedEverywhere) + "();", commit, StringComparison.Ordinal);
     }
 
     // ---- the control in Settings ------------------------------------------

@@ -137,6 +137,12 @@ public partial class MainWindow
 
         model.Page = page ?? LastSettingsPage;
 
+        // What the dialog does not show — column widths, the default layout —
+        // is taken from the live settings at Apply or Save, not from the
+        // moment it opened, so a change made in another window meanwhile is
+        // not written back over.
+        model.Live = () => AppSettings.Current;
+
         var window = new SettingsWindow(model);
 
         // The dialogs belong to the window. A view model that opens a folder
@@ -330,7 +336,8 @@ public partial class MainWindow
         {
             LastSettingsPage = model.Page;
 
-            if (!model.Saved) return;
+            // Saved with nothing new since the last Apply: already live.
+            if (!model.Saved || !model.CommitNeeded) return;
 
             Commit(model, model.Result);
         };

@@ -35,7 +35,8 @@ should not be trusted for compatibility yet.
   a check box, a list and a paragraph explaining which of the two won used to
   be. *Colour* is one list, and *the desktop's own colours and accent* brings
   the desktop's light or dark with it: a forced lightness under a desktop's
-  own backgrounds could put dark text on dark surfaces. The sort order is one
+  own backgrounds could put dark text on dark surfaces, so a settings file that
+  still pairs the two is drawn in the desktop's lightness too. The sort order is one
   list — naturally, alphabetically, or alphabetically with capitals first —
   instead of a *Case sensitive* box that was greyed out without saying why.
   Where Vaktari opens, what a folder's size shows and what happens when the
@@ -58,7 +59,13 @@ should not be trusted for compatibility yet.
   window* off the right-click menu.** Both settings arrived in 0.10.0 switched
   on, and a settings file written before then read them as off. A setting a
   file does not mention now gets its real default; a file that switched either
-  off keeps it off.
+  off keeps it off. So an install that has not saved a setting since 0.9 finds
+  the recent lists recording again without being asked. But if you saved any
+  setting under 0.10 or 0.11 — in Settings, by dragging a column's width, or
+  with *Use this view for all folders* — that file already says off for both,
+  and Vaktari cannot tell that from a choice you made: tick *Remember recently
+  opened files and folders* under Settings ▸ Privacy and system, and *Open in
+  new window* under Settings ▸ Context menu, if you want them back.
 
 - **Settings notes that were not true.** *Show the full path in the title bar*
   sat under "changes to how it opens apply on the next launch" and changes as
