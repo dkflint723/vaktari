@@ -36,6 +36,14 @@ public sealed class ArchiveDamagedException(string message, int entriesBefore, E
     public int EntriesBefore { get; } = entriesBefore;
 }
 
+/// <summary>
+/// The file the archive is in could not be read — the drive went away, the
+/// share dropped — as opposed to the archive being damaged. Its HResult is
+/// the underlying failure's.
+/// </summary>
+public sealed class ArchiveUnreadableException(string message, Exception? inner = null)
+    : IOException(message, inner);
+
 /// <summary>The sentences, in one place so tests and callers agree on
 /// them.</summary>
 internal static class ArchiveSentences
@@ -47,6 +55,9 @@ internal static class ArchiveSentences
         => entries == 0
             ? $"{leaf} is damaged at its first entry — nothing was extracted"
             : $"{leaf} is damaged after {entries} {(entries == 1 ? "entry" : "entries")} — nothing was extracted";
+
+    internal static string Unreadable(string leaf)
+        => $"{leaf} could not be read — nothing was extracted";
 
     internal static string Password(string leaf)
         => $"{leaf} is password-protected — Vaktari cannot extract it yet";

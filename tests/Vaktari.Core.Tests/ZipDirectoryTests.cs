@@ -76,6 +76,19 @@ public sealed class ZipDirectoryTests
         Assert.True(Read(zip).Overlapping);
     }
 
+    /// <summary>
+    /// **A Zip64 size of 0xFFFF…FF read as a long is −1**, which shrank the
+    /// declared total and slipped an entry past the room check. A 64-bit
+    /// field past long.MaxValue is damage.
+    /// </summary>
+    [Fact]
+    public void A_zip64_size_past_the_largest_long_is_damage()
+    {
+        var zip = ZipBytes.Build(new ZipBytes.Entry("huge.bin") { Data = "x"u8.ToArray(), Size64 = -1 });
+
+        Assert.Throws<InvalidDataException>(() => Read(zip));
+    }
+
     [Fact]
     public void A_unix_symlink_is_known_by_its_mode()
     {

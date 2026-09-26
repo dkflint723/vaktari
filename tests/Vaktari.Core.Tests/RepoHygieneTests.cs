@@ -63,8 +63,8 @@ public sealed class RepoHygieneTests
 
         foreach (var (job, binary) in new[]
                  {
-                     (workflow[..split], "linux-x64/publish/Vaktari.Ui --self-test-archives tests/Fixtures/Archives"),
-                     (workflow[split..], "\"$P/Vaktari.Ui.exe\" --self-test-archives tests/Fixtures/Archives"),
+                     (workflow[..split], "\"$P/Vaktari.Ui\" --self-test-archives tests/Fixtures/Archives | tee selftest.txt"),
+                     (workflow[split..], "\"$P/Vaktari.Ui.exe\" --self-test-archives tests/Fixtures/Archives | tee selftest.txt"),
                  })
         {
             var publish = job.IndexOf("- name: Publish", StringComparison.Ordinal);
@@ -72,6 +72,15 @@ public sealed class RepoHygieneTests
 
             Assert.True(publish > 0, "no Publish step");
             Assert.True(selfTest > publish, $"no self-test after Publish: {binary}");
+
+            // Under pipefail, with its output read back, and shown able to
+            // fail against a broken expectation.
+            var step = job[job.LastIndexOf("- name: Archive self-test", selfTest, StringComparison.Ordinal)..];
+
+            Assert.Contains("shell: bash", step[..step.IndexOf(binary, StringComparison.Ordinal)]);
+            Assert.Contains("grep -q \"archive fixtures extracted as expected\" selftest.txt", step);
+            Assert.Contains("--self-test-archives ../broken-fixtures > broken.txt; then", step);
+            Assert.Contains("grep -q \"FAIL 7z-ppmd.7z\" broken.txt", step);
         }
     }
 
@@ -97,7 +106,7 @@ public sealed class RepoHygieneTests
         var attributes = Read(".gitattributes");
 
         Assert.Contains("tests/Fixtures/** binary", attributes);
-        Assert.Contains("tests/Fixtures/Archives/expected.tsv -text", attributes);
+        Assert.Contains("tests/Fixtures/Archives/expected.tsv -text diff", attributes);
     }
 
     [Fact]

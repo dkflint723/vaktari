@@ -68,7 +68,28 @@ public static class ArchiveNames
 
         var landed = Fit(sb.ToString());
 
-        return new Landed(landed, !string.Equals(landed, segment, StringComparison.Ordinal));
+        // **Cutting to fit can expose a space or a dot at the new end** —
+        // 254 a's, a space and twenty b's was planned as "a…a " and Windows
+        // created "a…a", a name the planner had never checked (review of
+        // Stage A). So the trailing rule runs again on what Fit left.
+        if (windowsRules) landed = Trailing(landed);
+
+        // **A replacement character means a name already lost something**
+        // upstream — the tar reader hands over U+FFFD for bytes that were not
+        // UTF-8 and keeps no raw bytes — so it counts as renamed even though
+        // nothing here changed it.
+        var changed = !string.Equals(landed, segment, StringComparison.Ordinal) || segment.Contains('�');
+
+        return new Landed(landed, changed);
+    }
+
+    private static string Trailing(string name)
+    {
+        var chars = name.ToCharArray();
+
+        for (var i = chars.Length - 1; i >= 0 && chars[i] is '.' or ' '; i--) chars[i] = '_';
+
+        return new string(chars);
     }
 
     /// <summary>

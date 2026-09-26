@@ -18,6 +18,10 @@ internal interface IExtractionObserver
     /// <summary>A file's bytes are in <paramref name="temporary"/>, and
     /// <paramref name="final"/> is where it will land.</summary>
     void WhileWriting(string temporary, string final);
+
+    /// <summary>The finished result is about to be moved to
+    /// <paramref name="target"/>, a name that was free a moment ago.</summary>
+    void BeforeLanding(string target);
 }
 
 /// <summary>How one run is to land its entries.</summary>
@@ -47,6 +51,20 @@ internal static class ArchiveLimits
     /// archive declares its count, stopped at the first entry over it where
     /// it does not.</summary>
     public const int MaxEntries = 1_000_000;
+
+    /// <summary>
+    /// Folders deep, per entry. **A 32 KB zip holding one entry of eight
+    /// thousand <c>a/</c> segments stack-overflowed the process**, and two
+    /// thousand took two minutes and 11.8 GB (review of Stage A). Nothing a
+    /// person archives is 512 folders deep; an entry deeper is counted as
+    /// unwritable before it is planned.
+    /// </summary>
+    public const int MaxDepth = 512;
+
+    /// <summary>The longest full path an entry may land at: Windows' own
+    /// limit in UTF-16 units, and Linux's PATH_MAX in bytes, each less a
+    /// margin for the working folder's name.</summary>
+    public static int MaxPath => OperatingSystem.IsWindows() ? 32_000 : 4_000;
 }
 
 /// <summary>
@@ -110,13 +128,17 @@ internal static class ArchiveExtraction
         /// hard links, which name their target the way the archive does.</summary>
         private readonly Dictionary<string, string> _landed = new(StringComparer.Ordinal);
 
+        /// <summary>Where each folder node this run created landed.</summary>
+        private readonly Dictionary<LandingPlanner.Node, string> _paths = [];
+
         private readonly List<(string Path, DateTimeOffset When)> _folderTimes = [];
         private readonly List<(string Path, int Mode)> _folderModes = [];
 
-        private int _files, _folders, _items;
+        private int _files, _folders, _items, _expected;
         private int _unsafe, _links, _special, _mac, _unwritable;
         private long _sinceFloorCheck;
         private long _compressedSeen;
+        private long _declaredReported;
 
         public ExtractionResult Go()
         {
@@ -135,18 +157,69 @@ internal static class ArchiveExtraction
 
             FinishFolders();
 
+            // The rest of a stream the pass never needed to read — a tar's
+            // end blocks — so the bar ends at the end.
+            if (pass.DeclaredTotal is null && handle is not null && pass.ArchiveLength > _compressedSeen)
+            {
+                handle.BytesCopied(pass.ArchiveLength - _compressedSeen);
+                _compressedSeen = pass.ArchiveLength;
+            }
+
             return new ExtractionResult(
                 _files, _folders, _planner.Renamed,
                 new Archives.LeftOut(_unsafe, _links, _special, _mac, _unwritable));
         }
 
+        /// <summary>
+        /// One entry, and what the bar hears about it.
+        ///
+        /// **Progress counts the way items finish.** The total was every
+        /// entry, folders included, and only written files counted as done,
+        /// so a clean zip ended at "4/7"; a tar began at "4/0"; and a link or
+        /// an unwritable entry's bytes were never counted, so the bar never
+        /// reached the end (review of Stage A). Every entry that is not a
+        /// folder now finishes — written or left out — and whatever of its
+        /// declared size was not written is counted when it does.
+        /// </summary>
         private void Land(ArchiveItem item)
+        {
+            var info = item.Info;
+            var folder = info.Kind == ArchiveEntryKind.Folder
+                         || (info.Kind == ArchiveEntryKind.File && info.RawKey.Length > 0 && info.RawKey[^1] is '/' or '\\');
+            var reportedBefore = _declaredReported;
+
+            if (!folder && pass.DeclaredItems is null) handle?.ItemsExpected(++_expected);
+
+            LandCore(item);
+
+            if (folder) return;
+
+            if (pass.DeclaredTotal is not null && info.Size is { } size && size > _declaredReported - reportedBefore)
+            {
+                var rest = size - (_declaredReported - reportedBefore);
+
+                _declaredReported += rest;
+                handle?.BytesCopied(rest);
+            }
+
+            handle?.ItemFinished();
+        }
+
+        private void LandCore(ArchiveItem item)
         {
             var info = item.Info;
 
             if (ArchiveKeys.Split(info.RawKey, pass.Format, out var keyIsFolder) is not { } segments)
             {
                 _unsafe++;
+                return;
+            }
+
+            // Before anything is planned: the planner's own work grows with
+            // the depth, and so did the stack before Ensure was a loop.
+            if (segments.Length > ArchiveLimits.MaxDepth || TooLong(segments))
+            {
+                _unwritable++;
                 return;
             }
 
@@ -197,7 +270,8 @@ internal static class ArchiveExtraction
                 land();
             }
             catch (Exception e) when (e is OperationCanceledException or ArchiveDamagedException
-                                          or ArchiveRefusedException or ArchivePasswordRequiredException)
+                                          or ArchiveRefusedException or ArchivePasswordRequiredException
+                                          or ArchiveUnreadableException)
             {
                 throw;
             }
@@ -274,6 +348,8 @@ internal static class ArchiveExtraction
 
             Backstop(final);
 
+            RoomFor(info);
+
             options.Observer?.BeforeCreate(final);
 
             if (!ChainIsOurs(parent))
@@ -295,7 +371,7 @@ internal static class ArchiveExtraction
                 // for why the mark cannot come later.
                 if (options.ZoneMark is { } mark) ZoneMarks.Apply(temporary, mark);
 
-                if (info.Modified is { } when) File.SetLastWriteTimeUtc(temporary, when.UtcDateTime);
+                if (info.Modified is { } when && Settable(when)) File.SetLastWriteTimeUtc(temporary, when.UtcDateTime);
 
                 if (!OperatingSystem.IsWindows())
                     File.SetUnixFileMode(temporary, ModeFor(info.UnixMode));
@@ -315,8 +391,45 @@ internal static class ArchiveExtraction
 
             _landed[key] = final;
             _files++;
+        }
 
-            handle?.ItemFinished();
+        /// <summary>
+        /// **For a format that declares no total, each entry's own size is
+        /// asked about before it is written**: a tar declares every entry's
+        /// size, so the running floor below — which used to run only for
+        /// entries with no size at all — never ran for tar, and a 3 MB
+        /// tar.gz holding 300 MB extracted in full onto a disk the room check
+        /// said had 100 MB (review of Stage A).
+        /// </summary>
+        private void RoomFor(ArchiveEntryInfo info)
+        {
+            if (pass.DeclaredTotal is null
+                && info.Size is { } size
+                && options.Room.FreeBytes(root) is { } free
+                && size + ArchiveRoom.StreamFloor > free)
+                throw new ArchiveRefusedException(ArchiveSentences.Floor(pass.Leaf, ArchiveRoom.Drive(root)));
+        }
+
+        /// <summary>
+        /// A time a file can carry. **Windows cannot date anything before
+        /// 1601**, and a tar is free to say so: a PAX time of −12,000,000,000
+        /// seconds threw ArgumentOutOfRangeException from
+        /// SetLastWriteTimeUtc, which no catch expected, and the whole
+        /// extraction failed in the runtime's words (review of Stage A). Such
+        /// a file keeps the time it was written at.
+        /// </summary>
+        internal static bool Settable(DateTimeOffset when) => when.UtcDateTime >= Earliest;
+
+        private static readonly DateTime Earliest = new(1601, 1, 1, 0, 0, 0, DateTimeKind.Utc);
+
+        private bool TooLong(string[] segments)
+        {
+            long length = OperatingSystem.IsWindows() ? root.Length : System.Text.Encoding.UTF8.GetByteCount(root);
+
+            foreach (var segment in segments)
+                length += 1 + (OperatingSystem.IsWindows() ? segment.Length : System.Text.Encoding.UTF8.GetByteCount(segment));
+
+            return length > ArchiveLimits.MaxPath;
         }
 
         /// <summary>
@@ -348,10 +461,17 @@ internal static class ArchiveExtraction
 
                 to.Write(buffer, 0, read);
 
-                if (pass.DeclaredTotal is not null) handle?.BytesCopied(read);
-                else ReportCompressedProgress();
+                if (pass.DeclaredTotal is not null)
+                {
+                    _declaredReported += read;
+                    handle?.BytesCopied(read);
+                }
+                else
+                {
+                    ReportCompressedProgress();
+                }
 
-                if (info.Size is null && (_sinceFloorCheck += read) >= ArchiveRoom.FloorInterval)
+                if (pass.DeclaredTotal is null && (_sinceFloorCheck += read) >= ArchiveRoom.FloorInterval)
                 {
                     _sinceFloorCheck = 0;
 
@@ -397,37 +517,74 @@ internal static class ArchiveExtraction
         /// The folder a node lands as, created along with its ancestors. A
         /// folder already on disk that this run did not create is a
         /// collision, not a merge, and the node is renumbered.
+        ///
+        /// **A loop, from the deepest folder that exists down**, where it was
+        /// a recursion that climbed to the root before creating anything —
+        /// one stack frame per segment, which is what overflowed. And each new
+        /// folder's PARENT is checked, once, rather than the whole chain above
+        /// it: that chain was checked as each of its folders was made, and
+        /// walking it again for every folder made a deep entry quadratic. The
+        /// whole chain is still checked before every FILE is created and
+        /// moved, which is where a swapped-in link would be written through.
         /// </summary>
         private string Ensure(LandingPlanner.Node node)
         {
-            if (node.Parent is null) return root;
+            var chain = new List<LandingPlanner.Node>();
+            var at = node;
 
-            var parent = Ensure(node.Parent);
+            for (; at.Parent is not null && !_paths.ContainsKey(at); at = at.Parent) chain.Add(at);
 
-            while (true)
+            var parent = at.Parent is null ? root : _paths[at];
+
+            for (var i = chain.Count - 1; i >= 0; i--)
             {
-                var path = Path.Combine(parent, node.Name);
+                token.ThrowIfCancellationRequested();
 
-                if (_created.Contains(path)) return path;
+                var next = chain[i];
 
-                Backstop(path);
-
-                if (Taken(path))
+                while (true)
                 {
-                    _planner.Renumber(node, name => Taken(Path.Combine(parent, name)));
-                    continue;
+                    var path = Path.Combine(parent, next.Name);
+
+                    Backstop(path);
+
+                    if (Taken(path))
+                    {
+                        var within = parent;
+                        _planner.Renumber(next, name => Taken(Path.Combine(within, name)));
+                        continue;
+                    }
+
+                    options.Observer?.BeforeCreate(path);
+
+                    if (!IsOurs(parent)) throw new UnauthorizedAccessException("a folder on the way is not one this extraction made");
+
+                    Directory.CreateDirectory(path);
+
+                    _created.Add(path);
+                    _paths[next] = path;
+                    _folders++;
+
+                    parent = path;
+                    break;
                 }
+            }
 
-                options.Observer?.BeforeCreate(path);
+            return node.Parent is null ? root : _paths[node];
+        }
 
-                if (!ChainIsOurs(parent)) throw new UnauthorizedAccessException("a folder on the way is not one this extraction made");
+        /// <summary>One folder: made by this run, and not a link.</summary>
+        private bool IsOurs(string folder)
+        {
+            if (!_created.Contains(folder)) return false;
 
-                Directory.CreateDirectory(path);
-
-                _created.Add(path);
-                _folders++;
-
-                return path;
+            try
+            {
+                return (File.GetAttributes(folder) & FileAttributes.ReparsePoint) == 0;
+            }
+            catch (Exception e) when (e is IOException or UnauthorizedAccessException)
+            {
+                return false;
             }
         }
 
@@ -439,6 +596,8 @@ internal static class ArchiveExtraction
         {
             for (var at = folder; ; at = Path.GetDirectoryName(at)!)
             {
+                token.ThrowIfCancellationRequested();
+
                 if (!_created.Contains(at)) return false;
 
                 try
@@ -472,7 +631,7 @@ internal static class ArchiveExtraction
         {
             foreach (var (path, when) in _folderTimes.OrderByDescending(f => f.Path.Length))
             {
-                try { Directory.SetLastWriteTimeUtc(path, when.UtcDateTime); }
+                try { if (Settable(when)) Directory.SetLastWriteTimeUtc(path, when.UtcDateTime); }
                 catch (Exception e) when (e is IOException or UnauthorizedAccessException or ArgumentOutOfRangeException)
                 {
                     Quiet.Swallowed("extract", e);
@@ -494,9 +653,19 @@ internal static class ArchiveExtraction
         /// <summary>
         /// A file's mode on Linux: the permission bits, less group and other
         /// write, and never setuid, setgid or sticky. 0644 when the archive
-        /// does not say.
+        /// does not say — and **always readable and writable by its owner**:
+        /// a zip from a Unix host with an external mode of 0 landed as
+        /// <c>----------</c>, a file its owner could not open (review of
+        /// Stage A). Nothing an archive says makes a file unreadable.
         /// </summary>
-        private static UnixFileMode ModeFor(int? mode) => (UnixFileMode)((mode ?? 0x1A4) & 0x1FF & ~0x12);
+        internal static UnixFileMode ModeFor(int? mode)
+        {
+            var bits = (mode ?? 0) & 0x1FF;
+
+            if (bits == 0) bits = 0x1A4;
+
+            return (UnixFileMode)((bits & ~0x12) | 0x180);
+        }
 
         /// <summary>Progress in compressed bytes, for formats that declare no
         /// sizes: the bar then measures how far through the ARCHIVE the run

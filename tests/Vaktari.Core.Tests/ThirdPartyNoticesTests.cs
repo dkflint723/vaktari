@@ -107,6 +107,9 @@ public sealed class ThirdPartyNoticesTests
     [InlineData("packaging/vaktari.spec", "%license THIRD-PARTY-NOTICES.txt")]
     [InlineData("packaging/vaktari.iss", "Source: \"..\\THIRD-PARTY-NOTICES.txt\"")]
     [InlineData(".github/workflows/build.yml", "cp LICENSE THIRD-PARTY-NOTICES.txt README.md dist/vaktari/")]
+    // **The packages ship unRAR-licensed code, so they cannot say MIT alone.**
+    [InlineData("packaging/vaktari.spec", "License:        MIT AND LicenseRef-unRAR")]
+    [InlineData("packaging/PKGBUILD", "license=('MIT' 'LicenseRef-unRAR')")]
     public void Every_package_carries_the_notices(string channel, string line)
     {
         Assert.Contains(line, RepoSource.Read(channel.Split('/')), StringComparison.Ordinal);

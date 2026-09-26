@@ -94,7 +94,11 @@ public static partial class ArchiveFormats
         ReadOnlySpan<byte> xz = [0xFD, 0x37, 0x7A, 0x58, 0x5A, 0x00];
         ReadOnlySpan<byte> zstd = [0x28, 0xB5, 0x2F, 0xFD];
 
-        if (head.StartsWith("PK\x03\x04"u8) || head.StartsWith("PK\x05\x06"u8)) return ArchiveFormat.Zip;
+        // PK00 is the marker a spanning writer leaves on an archive that
+        // turned out to need one part; the runtime's own reader opened such
+        // files (it reads from the end), so this does too.
+        if (head.StartsWith("PK\x03\x04"u8) || head.StartsWith("PK\x05\x06"u8) || head.StartsWith("PK00PK\x03\x04"u8))
+            return ArchiveFormat.Zip;
         if (head.StartsWith(sevenZip)) return ArchiveFormat.SevenZip;
         if (head.StartsWith("Rar!\x1A\x07\x00"u8) || head.StartsWith("Rar!\x1A\x07\x01\x00"u8)) return ArchiveFormat.Rar;
         if (head.StartsWith(gzip)) return ArchiveFormat.Gz;

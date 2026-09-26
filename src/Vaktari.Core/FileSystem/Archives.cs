@@ -230,9 +230,11 @@ public static class Archives
         if (room.RefuseUpFront(destination, pass.DeclaredTotal ?? 0, pass.DeclaredCount ?? 0, leaf) is { } noRoom)
             throw new ArchiveRefusedException(noRoom);
 
-        handle?.Begin(pass.DeclaredCount ?? 0, pass.DeclaredTotal ?? pass.ArchiveLength);
+        handle?.Begin(pass.DeclaredItems ?? 0, pass.DeclaredTotal ?? pass.ArchiveLength);
 
-        var working = Working(destination);
+        Sweep(destination);
+
+        var (working, held) = Working(destination);
 
         try
         {
@@ -246,7 +248,7 @@ public static class Archives
 
             var done = ArchiveExtraction.Run(pass, working, options, handle, cancel);
 
-            var (landed, isFile) = Publish(working, destination, archive, pass.Format);
+            var (landed, isFile) = Publish(working, destination, archive, pass.Format, observer);
 
             return new Extraction(landed, isFile, done.Files, done.Folders, done.Renamed, done.LeftOut);
         }
@@ -255,23 +257,138 @@ public static class Archives
             Discard(working);
             throw;
         }
+        finally
+        {
+            Release(working, held);
+        }
     }
+
+    private const string WorkingPrefix = ".vaktari-extracting-";
+
+    /// <summary>Working folders a run in this process is writing.</summary>
+    private static readonly System.Collections.Concurrent.ConcurrentDictionary<string, byte> Active =
+        new(PathRules.Comparer);
 
     /// <summary>
     /// A fresh working folder in the destination: a sibling of where the
     /// result lands, so landing it is a rename and not a second copy.
+    ///
+    /// **Held by a lock file beside it** for as long as the run lasts —
+    /// opened with no sharing, which Windows enforces and .NET turns into an
+    /// advisory lock on Linux, and released by the system when a process
+    /// dies — so <see cref="Sweep"/> can tell a live run from a dead one
+    /// without trusting a clock. Hidden on Windows while it is being written,
+    /// where the leading dot does not hide it.
     /// </summary>
-    private static string Working(string destination)
+    private static (string Working, FileStream Held) Working(string destination)
     {
         while (true)
         {
-            var working = Path.Combine(destination, ".vaktari-extracting-" + Guid.NewGuid().ToString("N")[..12]);
+            var working = Path.Combine(destination, WorkingPrefix + Guid.NewGuid().ToString("N")[..12]);
 
-            if (Directory.Exists(working) || File.Exists(working)) continue;
+            if (Directory.Exists(working) || File.Exists(working) || File.Exists(working + ".lock")) continue;
+
+            var held = new FileStream(working + ".lock", FileMode.CreateNew, FileAccess.Write, FileShare.None,
+                1, FileOptions.DeleteOnClose);
 
             Directory.CreateDirectory(working);
+            Active[working] = 0;
 
-            return working;
+            if (OperatingSystem.IsWindows())
+            {
+                Hide(held.Name, true);
+                Hide(working, true);
+            }
+
+            return (working, held);
+        }
+    }
+
+    private static void Release(string working, FileStream held)
+    {
+        Active.TryRemove(working, out _);
+
+        try { held.Dispose(); }
+        catch (Exception e) when (e is IOException or UnauthorizedAccessException) { Quiet.Swallowed("extract", e); }
+
+        try { if (File.Exists(working + ".lock")) File.Delete(working + ".lock"); }
+        catch (Exception e) when (e is IOException or UnauthorizedAccessException) { Quiet.Swallowed("extract", e); }
+    }
+
+    /// <summary>A working folder this long untouched, and unheld, is
+    /// abandoned.</summary>
+    internal static readonly TimeSpan Abandoned = TimeSpan.FromMinutes(10);
+
+    /// <summary>
+    /// Clears away what an earlier run left in <paramref name="destination"/>.
+    ///
+    /// **A crash, or a discard that failed four times, left a
+    /// <c>.vaktari-extracting-…</c> folder behind for good** (review of
+    /// Stage A); nothing ever looked for one. The next extraction into the
+    /// same folder does: one whose lock nobody holds, that no run in this
+    /// process is writing, and that has not changed for
+    /// <see cref="Abandoned"/>, is removed. The age is belt and braces for a
+    /// lock the platform could not enforce.
+    /// </summary>
+    internal static int Sweep(string destination)
+    {
+        var swept = 0;
+        IEnumerable<string> found;
+
+        try
+        {
+            found = Directory.EnumerateDirectories(destination, WorkingPrefix + "*").ToList();
+        }
+        catch (Exception e) when (e is IOException or UnauthorizedAccessException)
+        {
+            Quiet.Swallowed("extract", e);
+            return 0;
+        }
+
+        foreach (var folder in found)
+        {
+            try
+            {
+                if (Active.ContainsKey(folder)) continue;
+                if (DateTime.UtcNow - Directory.GetLastWriteTimeUtc(folder) < Abandoned) continue;
+
+                var lockFile = folder + ".lock";
+
+                if (File.Exists(lockFile))
+                {
+                    // Held means live: another Vaktari is writing it.
+                    using (new FileStream(lockFile, FileMode.Open, FileAccess.ReadWrite, FileShare.None)) { }
+
+                    File.Delete(lockFile);
+                }
+
+                Hide(folder, false);
+                Discard(folder);
+
+                if (!Directory.Exists(folder)) swept++;
+            }
+            catch (Exception e) when (e is IOException or UnauthorizedAccessException)
+            {
+                Quiet.Swallowed("extract", e);
+            }
+        }
+
+        return swept;
+    }
+
+    private static void Hide(string path, bool hidden)
+    {
+        if (!OperatingSystem.IsWindows()) return;
+
+        try
+        {
+            var attributes = File.GetAttributes(path);
+
+            File.SetAttributes(path, hidden ? attributes | FileAttributes.Hidden : attributes & ~FileAttributes.Hidden);
+        }
+        catch (Exception e) when (e is IOException or UnauthorizedAccessException)
+        {
+            Quiet.Swallowed("extract", e);
         }
     }
 
@@ -279,7 +396,7 @@ public static class Archives
     /// Moves what the run wrote to its final name, and says where that is.
     /// </summary>
     private static (string Landed, bool IsFile) Publish(
-        string working, string destination, string archive, ArchiveFormat format)
+        string working, string destination, string archive, ArchiveFormat format, IExtractionObserver? observer)
     {
         var top = Directory.GetFileSystemEntries(working);
 
@@ -287,11 +404,9 @@ public static class Archives
         // report.txt, numbered if that is taken.
         if (ArchiveFormats.IsBare(format) && top is [var only] && File.Exists(only))
         {
-            var name = Path.GetFileName(only);
-            var (stem, extension) = PathRules.SplitLeaf(name, isDirectory: false);
-            var target = NewItemName.Free(destination, stem, extension);
+            var target = Land(destination, Path.GetFileName(only), isFolder: false,
+                to => File.Move(only, to, overwrite: false), observer);
 
-            Retrying(() => File.Move(only, target, overwrite: false));
             Discard(working);
 
             return (target, true);
@@ -300,19 +415,55 @@ public static class Archives
         // One folder and nothing beside it: that folder is the result.
         if (top is [var folder] && Directory.Exists(folder))
         {
-            var target = NewItemName.Free(destination, Path.GetFileName(folder), "");
+            var target = Land(destination, Path.GetFileName(folder), isFolder: true,
+                to => Directory.Move(folder, to), observer);
 
-            Retrying(() => Directory.Move(folder, target));
             Discard(working);
 
             return (target, false);
         }
 
-        var named = NewItemName.Free(destination, ArchiveFormats.Stem(archive), "");
+        // The working folder itself becomes the result, so it stops hiding.
+        Hide(working, false);
 
-        Retrying(() => Directory.Move(working, named));
+        return (Land(destination, ArchiveFormats.Stem(archive), isFolder: true,
+            to => Directory.Move(working, to), observer), false);
+    }
 
-        return (named, false);
+    /// <summary>
+    /// The result, moved to the first free name — and to the next one when
+    /// the free name is taken between looking and moving.
+    ///
+    /// **Two things were wrong with borrowing <see cref="NewItemName.Free"/>
+    /// here** (review of Stage A). It numbers by appending, so a 255-unit
+    /// name numbered past the limit and the move threw; and it answers once,
+    /// so a second Extract all of the same archive finishing a moment
+    /// earlier — or anything else appearing at the name — failed the move
+    /// and discarded the whole extraction. Numbering is
+    /// <see cref="ArchiveNames.Numbered"/>, which shortens the stem to fit,
+    /// and a move refused because the name is now taken tries the next.
+    /// </summary>
+    private static string Land(
+        string destination, string name, bool isFolder, Action<string> move, IExtractionObserver? observer)
+    {
+        for (var n = 1; ; n++)
+        {
+            var target = Path.Combine(destination, n == 1 ? name : ArchiveNames.Numbered(name, n, isFolder));
+
+            if (File.Exists(target) || Directory.Exists(target)) continue;
+
+            observer?.BeforeLanding(target);
+
+            try
+            {
+                Retrying(() => move(target));
+                return target;
+            }
+            catch (IOException) when (File.Exists(target) || Directory.Exists(target))
+            {
+                // Taken since it was looked at: the next number.
+            }
+        }
     }
 
     /// <summary>

@@ -130,15 +130,15 @@ internal sealed class ZipDirectory
             if (BinaryPrimitives.ReadUInt32LittleEndian(locator) != Zip64LocatorSignature)
                 throw new InvalidDataException("zip64 locator missing");
 
-            var z64Offset = (long)BinaryPrimitives.ReadUInt64LittleEndian(locator.AsSpan(8));
+            var z64Offset = Long(locator.AsSpan(8));
             var z64 = ReadAt(s, z64Offset, 56);
 
             if (BinaryPrimitives.ReadUInt32LittleEndian(z64) != Zip64EndSignature)
                 throw new InvalidDataException("zip64 end record missing");
 
-            count = (long)BinaryPrimitives.ReadUInt64LittleEndian(z64.AsSpan(32));
-            cdSize = (long)BinaryPrimitives.ReadUInt64LittleEndian(z64.AsSpan(40));
-            cdOffset = (long)BinaryPrimitives.ReadUInt64LittleEndian(z64.AsSpan(48));
+            count = Long(z64.AsSpan(32));
+            cdSize = Long(z64.AsSpan(40));
+            cdOffset = Long(z64.AsSpan(48));
             cdEnd = z64Offset;
         }
 
@@ -188,9 +188,9 @@ internal sealed class ZipDirectory
                     // Zip64: only the fields that overflowed are present, in
                     // this order.
                     var z = data;
-                    if (uncompressed == 0xFFFFFFFF && z.Length >= 8) { uncompressed = (long)BinaryPrimitives.ReadUInt64LittleEndian(z); z = z[8..]; }
-                    if (compressed == 0xFFFFFFFF && z.Length >= 8) { compressed = (long)BinaryPrimitives.ReadUInt64LittleEndian(z); z = z[8..]; }
-                    if (local == 0xFFFFFFFF && z.Length >= 8) local = (long)BinaryPrimitives.ReadUInt64LittleEndian(z);
+                    if (uncompressed == 0xFFFFFFFF && z.Length >= 8) { uncompressed = Long(z); z = z[8..]; }
+                    if (compressed == 0xFFFFFFFF && z.Length >= 8) { compressed = Long(z); z = z[8..]; }
+                    if (local == 0xFFFFFFFF && z.Length >= 8) local = Long(z);
                 }
                 else if (id == 0x9901 && data.Length >= 7)
                 {
@@ -295,6 +295,19 @@ internal sealed class ZipDirectory
         s.ReadExactly(buffer);
 
         return buffer;
+    }
+
+    /// <summary>
+    /// A Zip64 field. **Read as unsigned and refused past long.MaxValue**:
+    /// cast straight to long, a field of 0xFFFF…FF declared an uncompressed
+    /// size of −1, which SHRANK the declared total and slipped an entry past
+    /// the room check (review of Stage A).
+    /// </summary>
+    private static long Long(ReadOnlySpan<byte> field)
+    {
+        var value = BinaryPrimitives.ReadUInt64LittleEndian(field);
+
+        return value > long.MaxValue ? throw new InvalidDataException("zip64 field out of range") : (long)value;
     }
 
     internal static uint Crc32(ReadOnlySpan<byte> bytes)

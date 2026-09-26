@@ -30,6 +30,9 @@ public static class ZoneMarks
     /// larger than this is not one worth copying onto every file.</summary>
     private const int Largest = 64 * 1024;
 
+    /// <summary>Zone 3, the internet, with nothing else said.</summary>
+    internal const string Internet = "[ZoneTransfer]\r\nZoneId=3\r\n";
+
     /// <summary>The mark on <paramref name="file"/>, or null for none.</summary>
     public static string? Read(string file)
     {
@@ -39,7 +42,13 @@ public static class ZoneMarks
         {
             var info = new FileInfo(file + Stream);
 
-            if (!info.Exists || info.Length > Largest) return null;
+            if (!info.Exists) return null;
+
+            // **Too large to copy is not the same as not marked.** Returning
+            // nothing here extracted everything unmarked from an archive
+            // whose mark had merely grown (review of Stage A) — failing open.
+            // The smallest mark that still says "from the internet" instead.
+            if (info.Length > Largest) return Internet;
 
             return File.ReadAllText(file + Stream);
         }

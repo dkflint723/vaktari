@@ -17,12 +17,15 @@ should not be trusted for compatibility yet.
   takes apart `.7z`, `.rar`, `.tar`, `.tar.gz`/`.tgz`, `.tar.bz2`, `.tar.xz`,
   `.tar.zst` and `.tar.lz`, and a single compressed file such as
   `report.txt.gz`. What the file is decides how it is read, not what it is
-  called, so a 7z renamed to .zip still opens. Password-protected and split
-  archives are refused with a sentence saying so.
+  called, so a 7z renamed to .zip still opens. A `.xz` of several streams and
+  a `.lz` of several members (what `plzip` writes) arrive whole.
+  Password-protected and split archives are refused with a sentence saying so.
 
 - **Extracting is an operation on the transfer bar**, "Extracting a.zip to
   Downloads", with progress, pause and cancel. A cancelled or failed run
-  leaves nothing behind — not half a folder, not a working folder.
+  removes what it wrote. If Vaktari itself stops part-way, the hidden
+  `.vaktari-extracting-…` folder it was writing is cleared away by the next
+  Extract all into the same folder.
 
 ### Changed
 
@@ -48,6 +51,10 @@ should not be trusted for compatibility yet.
   Windows, as it does from Explorer and 7-Zip, so Office still opens it in
   Protected View and SmartScreen still asks before running it — and each file
   keeps its own date from the archive.
+
+- **The Fedora and Arch packages declare `MIT AND LicenseRef-unRAR`.** They
+  now carry SharpCompress's RAR decoder, whose unRAR licence is reproduced in
+  THIRD-PARTY-NOTICES.txt; it is not a free licence as Fedora counts them.
 
 - **A damaged archive is refused whole.** Every entry is checked against its
   CRC and its declared size as it is written, and a zip built to unpack to far

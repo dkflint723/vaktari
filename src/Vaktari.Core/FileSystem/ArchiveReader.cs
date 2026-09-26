@@ -43,7 +43,8 @@ internal static class ArchiveReader
     internal static ArchivePass Open(string path, CancellationToken token)
     {
         var leaf = Path.GetFileName(path);
-        var named = ArchiveFormats.ByName(path) ?? ArchiveFormat.Zip;
+        var byName = ArchiveFormats.ByName(path);
+        var named = byName ?? ArchiveFormat.Zip;
 
         var file = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.ReadWrite | FileShare.Delete);
         var stream = new CancellableCountingStream(file, token, fillReads: true);
@@ -55,7 +56,14 @@ internal static class ArchiveReader
 
             stream.Position = 0;
 
-            if (ArchiveFormats.Sniff(head.AsSpan(0, got)) is not { } format)
+            // **A zip is known by its END**, the central directory, which is
+            // what the runtime's own reader looked for — so a zip with bytes
+            // in front of it (a spanning marker other than PK00, a stub)
+            // opened before and must open now. A file NAMED .zip that the
+            // first bytes do not place is tried as one, and refused in words
+            // when it has no directory either.
+            if ((ArchiveFormats.Sniff(head.AsSpan(0, got)) ?? (byName == ArchiveFormat.Zip ? ArchiveFormat.Zip : null))
+                is not { } format)
                 throw new InvalidDataException(ArchiveSentences.NotThisFormat(leaf, named));
 
             if (ArchiveFormats.IsBare(format) && HoldsTar(path, format))
@@ -81,11 +89,13 @@ internal static class ArchiveReader
             throw;
         }
         catch (Exception e) when (e is not (ArchivePasswordRequiredException or ArchiveRefusedException
-                                        or ArchiveDamagedException))
+                                        or ArchiveDamagedException or ArchiveUnreadableException))
         {
             stream.Dispose();
 
             if (token.IsCancellationRequested) throw new OperationCanceledException(token);
+
+            if (stream.SourceFailure is { } io) throw Unreadable(leaf, io);
 
             if (e is CryptographicException) throw new ArchivePasswordRequiredException(ArchiveSentences.Password(leaf), e);
 
@@ -142,10 +152,9 @@ internal static class ArchiveReader
         ArchiveFormat.Gz or ArchiveFormat.TarGz => new GZipStream(compressed, CompressionMode.Decompress, leaveOpen: true),
         ArchiveFormat.Bz2 or ArchiveFormat.TarBz2 => SharpCompress.Compressors.BZip2.BZip2Stream.Create(
             compressed, SharpCompressionMode.Decompress, decompressConcatenated: true, leaveOpen: true),
-        ArchiveFormat.Xz or ArchiveFormat.TarXz => new SharpCompress.Compressors.Xz.XZStream(new Unowned(compressed)),
+        ArchiveFormat.Xz or ArchiveFormat.TarXz => new XzMembers(compressed),
         ArchiveFormat.Zst or ArchiveFormat.TarZst => new SharpCompress.Compressors.ZStandard.DecompressionStream(compressed, leaveOpen: true),
-        ArchiveFormat.Lz or ArchiveFormat.TarLz => SharpCompress.Compressors.LZMA.LZipStream.Create(
-            compressed, SharpCompressionMode.Decompress, leaveOpen: true),
+        ArchiveFormat.Lz or ArchiveFormat.TarLz => new LzipMembers(compressed),
         _ => new Unowned(compressed),
     });
 
@@ -205,10 +214,16 @@ internal static class ArchiveReader
     {
         if (pass.Token.IsCancellationRequested) return new OperationCanceledException(pass.Token);
 
+        // **The disk the archive is on failed, not the archive** — an
+        // unplugged stick, a share that dropped. Asked of the stream, for
+        // the token's reason: a decoder may wrap what its input threw.
+        if (pass.SourceFailure is { } io) return Unreadable(pass.Leaf, io);
+
         return e switch
         {
             OperationCanceledException => e,
-            ArchivePasswordRequiredException or ArchiveRefusedException or ArchiveDamagedException => e,
+            ArchivePasswordRequiredException or ArchiveRefusedException or ArchiveDamagedException
+                or ArchiveUnreadableException => e,
             CryptographicException => new ArchivePasswordRequiredException(ArchiveSentences.Password(pass.Leaf), e),
 
             // **GNU sparse members are refused by the BCL reader itself**
@@ -219,6 +234,9 @@ internal static class ArchiveReader
             _ => new ArchiveDamagedException(ArchiveSentences.DamagedAfter(pass.Leaf, entriesBefore), entriesBefore, e),
         };
     }
+
+    private static ArchiveUnreadableException Unreadable(string leaf, IOException io)
+        => new(ArchiveSentences.Unreadable(leaf), io) { HResult = io.HResult };
 
     /// <summary>A stream whose disposal leaves the one underneath alone.</summary>
     internal sealed class Unowned(Stream inner) : Stream
@@ -269,6 +287,7 @@ internal sealed class ArchivePass : IDisposable
         _stream = stream;
         Token = token;
         ArchiveLength = stream.Length;
+        _baseline = stream.BytesRead;
     }
 
     public string Path { get; }
@@ -283,7 +302,19 @@ internal sealed class ArchivePass : IDisposable
     public int? DeclaredCount { get; private set; }
     public bool AnyEncrypted { get; private set; }
     public ZipDirectory? Directory { get; private set; }
-    public long CompressedBytesRead => _stream.BytesRead;
+    /// <summary>How far through the archive the pass has read, not counting
+    /// the sniff that opened it, and never past its end — a decoder that
+    /// seeks back reads some bytes twice.</summary>
+    public long CompressedBytesRead => Math.Min(_stream.BytesRead - _baseline, ArchiveLength);
+
+    private readonly long _baseline;
+
+    /// <summary>What reading the archive file itself threw, if it did.</summary>
+    public IOException? SourceFailure => _stream.SourceFailure;
+
+    /// <summary>How many entries will each report finishing — every one
+    /// that is not a folder — or null where the format does not say.</summary>
+    public int? DeclaredItems { get; private set; }
     public long ArchiveLength { get; }
 
     internal void Load()
@@ -304,6 +335,7 @@ internal sealed class ArchivePass : IDisposable
 
                 DeclaredTotal = Directory.Records.Sum(r => r.UncompressedSize);
                 DeclaredCount = Directory.Records.Count;
+                DeclaredItems = Directory.Records.Count(r => ZipKind(r) != ArchiveEntryKind.Folder);
                 AnyEncrypted = Directory.AnyEncrypted;
                 break;
             }
@@ -327,6 +359,7 @@ internal sealed class ArchivePass : IDisposable
 
                 DeclaredTotal = _entries.Where(e => !e.IsDirectory).Sum(e => e.Size);
                 DeclaredCount = _entries.Count;
+                DeclaredItems = _entries.Count(e => !e.IsDirectory);
                 AnyEncrypted = _entries.Any(e => e.IsEncrypted) || _archive.IsEncrypted;
                 break;
             }
@@ -380,17 +413,7 @@ internal sealed class ArchivePass : IDisposable
             var record = records[i];
             var entry = _entries![i];
             var mode = record.UnixMode;
-            var type = mode & 0xF000;
-
-            var kind = type switch
-            {
-                0xA000 => ArchiveEntryKind.SymbolicLink,
-                0x4000 => ArchiveEntryKind.Folder,
-                0x1000 or 0x2000 or 0x6000 or 0xC000 => ArchiveEntryKind.Special,
-                _ when record.Name.EndsWith('/') || record.Name.EndsWith('\\') => ArchiveEntryKind.Folder,
-                _ when record.Host != 3 && (record.ExternalAttributes & 0x10) != 0 && record.UncompressedSize == 0 => ArchiveEntryKind.Folder,
-                _ => ArchiveEntryKind.File,
-            };
+            var kind = ZipKind(record);
 
             var info = new ArchiveEntryInfo(
                 record.Name, kind, record.UncompressedSize, record.CompressedSize, record.Crc,
@@ -404,6 +427,16 @@ internal sealed class ArchivePass : IDisposable
             yield return Item(info, () => entry.OpenEntryStream(), i);
         }
     }
+
+    private static ArchiveEntryKind ZipKind(ZipRecord record) => (record.UnixMode & 0xF000) switch
+    {
+        0xA000 => ArchiveEntryKind.SymbolicLink,
+        0x4000 => ArchiveEntryKind.Folder,
+        0x1000 or 0x2000 or 0x6000 or 0xC000 => ArchiveEntryKind.Special,
+        _ when record.Name.EndsWith('/') || record.Name.EndsWith('\\') => ArchiveEntryKind.Folder,
+        _ when record.Host != 3 && (record.ExternalAttributes & 0x10) != 0 && record.UncompressedSize == 0 => ArchiveEntryKind.Folder,
+        _ => ArchiveEntryKind.File,
+    };
 
     private IEnumerable<ArchiveItem> EntryItems()
     {

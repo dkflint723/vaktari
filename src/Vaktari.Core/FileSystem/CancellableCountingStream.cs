@@ -30,6 +30,13 @@ internal sealed class CancellableCountingStream(Stream inner, CancellationToken 
     /// about — progress for the formats that declare no sizes.</summary>
     public long BytesRead => Interlocked.Read(ref _read);
 
+    /// <summary>
+    /// What reading the file underneath threw, kept because a decoder may
+    /// catch it and report something else — LZMA reports anything from its
+    /// input as "Data Error". An unplugged stick is not a damaged archive.
+    /// </summary>
+    public IOException? SourceFailure { get; private set; }
+
     public override int Read(byte[] buffer, int offset, int count) => Read(buffer.AsSpan(offset, count));
 
     public override int Read(Span<byte> buffer)
@@ -40,7 +47,17 @@ internal sealed class CancellableCountingStream(Stream inner, CancellationToken 
 
         do
         {
-            var n = inner.Read(buffer[total..]);
+            int n;
+
+            try
+            {
+                n = inner.Read(buffer[total..]);
+            }
+            catch (IOException e)
+            {
+                SourceFailure ??= e;
+                throw;
+            }
 
             if (n <= 0) break;
 

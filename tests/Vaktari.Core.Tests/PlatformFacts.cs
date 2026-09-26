@@ -56,6 +56,38 @@ public sealed class WindowsFactAttribute : FactAttribute
     }
 }
 
+/// <summary>
+/// A fact that needs 8.3 short names on the temp volume — Windows only, and
+/// only where the volume generates them. **Skipped, and shown as skipped**,
+/// where the volume does not: the test it replaced returned early and
+/// passed, so a run on such a volume looked like a proof it was not.
+/// </summary>
+public sealed class ShortNamesFactAttribute : FactAttribute
+{
+    public ShortNamesFactAttribute()
+    {
+        if (!OperatingSystem.IsWindows())
+        {
+            Skip = PlatformSkip.Windows;
+            return;
+        }
+
+        var probe = Directory.CreateTempSubdirectory("vaktari-8dot3").FullName;
+
+        try
+        {
+            File.WriteAllText(Path.Combine(probe, "longfilename.txt"), "x");
+
+            if (!File.Exists(Path.Combine(probe, "LONGFI~1.TXT")))
+                Skip = "8.3 short names are turned off on the temp volume, so there is no alias to collide with.";
+        }
+        finally
+        {
+            Directory.Delete(probe, recursive: true);
+        }
+    }
+}
+
 /// <inheritdoc cref="WindowsFactAttribute"/>
 public sealed class WindowsTheoryAttribute : TheoryAttribute
 {

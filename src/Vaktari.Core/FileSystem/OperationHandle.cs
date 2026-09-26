@@ -128,6 +128,17 @@ public sealed class OperationHandle : IOperationHandle
         Report();
     }
 
+    /// <summary>
+    /// Raises the item total while the work is under way, for an engine that
+    /// learns how many items there are only by reaching them — a tar says
+    /// nothing about its count until its last entry has been read.
+    /// </summary>
+    public void ItemsExpected(int itemsTotal)
+    {
+        _itemsTotal = itemsTotal;
+        Report();
+    }
+
     public void ItemStarted(string path)
     {
         _currentItem = Path.GetFileName(path);

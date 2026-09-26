@@ -40,6 +40,10 @@ public sealed class ArchiveExtractionTests : IDisposable
 
         public void BeforeCreate(string path) => Before?.Invoke(path);
         public void WhileWriting(string temporary, string final) => While?.Invoke(temporary, final);
+
+        public Action<string>? Landing { get; init; }
+
+        public void BeforeLanding(string target) => Landing?.Invoke(target);
     }
 
     private static Archives.Extraction Extract(
@@ -397,17 +401,6 @@ public sealed class ArchiveExtractionTests : IDisposable
         Assert.Empty(Directory.EnumerateFileSystemEntries(At("out")));
     }
 
-    /// <summary>AE-2 records CRC 0 by design; its check is an HMAC, which is
-    /// Stage D. Asked of our CRC it would always fail.</summary>
-    [Fact]
-    public void An_ae2_entry_is_not_held_to_a_CRC()
-    {
-        var dir = ZipDirectory.Read(new MemoryStream(ZipBytes.Build(
-            new ZipBytes.Entry("s.txt") { Data = "x"u8.ToArray(), Flags = 1, Crc = 0, Extra = ZipBytes.AesExtra(2) })));
-
-        Assert.Equal(2, dir.Records[0].AesVersion);
-    }
-
     // ---- cancelling ---------------------------------------------------------
 
     /// <summary>
@@ -478,15 +471,9 @@ public sealed class ArchiveExtractionTests : IDisposable
     /// A volume with short names turned off has no alias to collide with,
     /// and the test says so rather than passing on the wrong grounds.
     /// </summary>
-    [WindowsFact]
+    [ShortNamesFact]
     public void An_entry_named_like_a_short_alias_is_numbered()
     {
-        var probe = Dir("probe");
-
-        File.WriteAllText(Path.Combine(probe, "longfilename.txt"), "x");
-
-        if (!File.Exists(Path.Combine(probe, "LONGFI~1.TXT"))) return; // short names are off on this volume
-
         var archive = ArchiveTestData.Zip(At("alias.zip"), ("longfilename.txt", "the long one"), ("LONGFI~1.TXT", "the short one"));
 
         var done = Extract(archive, Dir("out"));

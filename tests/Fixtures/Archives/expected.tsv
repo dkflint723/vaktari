@@ -40,9 +40,13 @@ bare.txt.gz	file	bare.txt	24	cad93a01ee180374ccfff6270431537426ab0ac0c643d0faa44
 bare.txt.gz	summary				1	0	0	0	0	0	0	0	
 bare.txt.xz	file	bare.txt	24	cad93a01ee180374ccfff6270431537426ab0ac0c643d0faa4494350e049e115									
 bare.txt.xz	summary				1	0	0	0	0	0	0	0	
+concat.txt.xz	file	concat.txt	16400	b5157bc324ab0c5d84253d901f7070ebef1b8f28ed9f7ec18de7df87c694646d									
+concat.txt.xz	summary				1	0	0	0	0	0	0	0	
 latin1-gnu.tar	file	latin1-gnu/caf�	4	1d7a363ce12430881ec56c9cf1409c49c491043618e598c356e2959040872f5a									
 latin1-gnu.tar	file	latin1-gnu/small.txt	6	5891b5b522d5df086d0ff0b110fbd9d21bb4fc7163af34d08286a2e846f6be03									
-latin1-gnu.tar	summary				2	0	0	0	0	0	0	0	
+latin1-gnu.tar	summary				2	0	1	0	0	0	0	0	
+multi.txt.lz	file	multi.txt	16400	ee2d64789299f4700434e173247aeb5fe0216ab40ecd3a3c748f0cf80d23a9e4									
+multi.txt.lz	summary				1	0	0	0	0	0	0	0	
 paxglobal.tar	file	paxglobal/small.txt	6	5891b5b522d5df086d0ff0b110fbd9d21bb4fc7163af34d08286a2e846f6be03									
 paxglobal.tar	summary				1	0	0	0	0	0	0	0	
 rar4-hp.rar	refused												rar4-hp.rar is password-protected — Vaktari cannot extract it yet
@@ -66,6 +70,18 @@ rar5.rar	file	rar5/exe/test.exe	45056	8557928804f57ecc340b3bb38b095a3607474ec8de
 rar5.rar	file	rar5/jpg/test.jpg	40372	b251c7501fb0f55dd4a92feabe0a6f5733bc40a02679498155fae9b30138fc53									
 rar5.rar	file	rar5/тест.txt	15498	4d581d93d369f6e1c9b295ff38d82dabd577f927dfaf0c35818c015c85e322d9									
 rar5.rar	summary				3	3	0	0	0	0	0	0	
+sc-tar.tar	file	sc-tar/exe/test.exe	45056	8557928804f57ecc340b3bb38b095a3607474ec8deb0076f316fcfe02b562106									
+sc-tar.tar	file	sc-tar/jpg/test.jpg	40372	b251c7501fb0f55dd4a92feabe0a6f5733bc40a02679498155fae9b30138fc53									
+sc-tar.tar	file	sc-tar/���.txt	15498	4d581d93d369f6e1c9b295ff38d82dabd577f927dfaf0c35818c015c85e322d9									
+sc-tar.tar	summary				3	3	1	0	0	0	0	0	
+sc-tar.tar.lz	file	sc-tar/exe/test.exe	45056	8557928804f57ecc340b3bb38b095a3607474ec8deb0076f316fcfe02b562106									
+sc-tar.tar.lz	file	sc-tar/jpg/test.jpg	40372	b251c7501fb0f55dd4a92feabe0a6f5733bc40a02679498155fae9b30138fc53									
+sc-tar.tar.lz	file	sc-tar/���.txt	15498	4d581d93d369f6e1c9b295ff38d82dabd577f927dfaf0c35818c015c85e322d9									
+sc-tar.tar.lz	summary				3	3	1	0	0	0	0	0	
+sc-tar.tar.zst	file	sc-tar/exe/test.exe	45056	8557928804f57ecc340b3bb38b095a3607474ec8deb0076f316fcfe02b562106									
+sc-tar.tar.zst	file	sc-tar/jpg/test.jpg	40372	b251c7501fb0f55dd4a92feabe0a6f5733bc40a02679498155fae9b30138fc53									
+sc-tar.tar.zst	file	sc-tar/���.txt	15498	4d581d93d369f6e1c9b295ff38d82dabd577f927dfaf0c35818c015c85e322d9									
+sc-tar.tar.zst	summary				3	3	1	0	0	0	0	0	
 sparse-gnu.tar	refused												sparse-gnu.tar holds a sparse file, which Vaktari cannot extract — nothing was extracted
 sparse-pax01.tar	summary				0	0	0	0	0	1	0	0	
 tree.tar.bz2	file	tree/docs/a.txt	6	b6a98d9ce9a2d9149288fa3df42d377c3e42737afdcdaf714e33c0a100b51060									

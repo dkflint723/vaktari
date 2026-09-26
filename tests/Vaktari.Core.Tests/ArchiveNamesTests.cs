@@ -109,6 +109,27 @@ public sealed class ArchiveNamesTests
         Assert.False(char.IsHighSurrogate(landed[^5]), "a surrogate pair was split");
     }
 
+    /// <summary>
+    /// **Cutting to fit can leave a space at the end**, which Windows drops
+    /// when it creates the file: 254 a's, a space and twenty b's was planned
+    /// as "a…a " and landed as "a…a". The trailing rule runs again after the
+    /// cut.
+    /// </summary>
+    [Fact]
+    public void A_cut_that_leaves_a_trailing_space_is_mended()
+    {
+        var landed = Win(new string('a', 254) + " " + new string('b', 20))!;
+
+        Assert.True(landed.Length <= 255);
+        Assert.False(landed.EndsWith(' ') || landed.EndsWith('.'), $"ends with '{landed[^1]}'");
+    }
+
+    /// <summary>A U+FFFD in a name means bytes were lost before it got here
+    /// (the tar reader keeps none), so the name counts as changed.</summary>
+    [Fact]
+    public void A_name_that_already_lost_bytes_counts_as_changed()
+        => Assert.True(ArchiveNames.Land("caf\uFFFD", windowsRules: false)!.Value.Changed);
+
     [Fact]
     public void A_numbered_name_still_fits()
     {

@@ -400,7 +400,9 @@ compressed file such as `report.txt.gz`. It lands as one new thing and never
 over anything already there: an archive holding one folder becomes that
 folder, a compressed single file becomes the file, and anything else goes into
 a folder named after the archive. It runs on the transfer bar with progress,
-pause and cancel, and a cancelled or failed run leaves nothing behind. Names
+pause and cancel, and a cancelled or failed run removes what it wrote (should
+Vaktari itself stop part-way, the next *Extract all* into that folder clears
+the hidden `.vaktari-extracting-…` folder it left). Names
 Windows cannot hold, or that would display misleadingly, are written with `_`
 in place of the offending characters (`_CON.txt`, `inv_gpj.exe`), two entries
 with one name both arrive (the second numbered), and on Windows what comes out
@@ -747,7 +749,8 @@ promise yet. Worth knowing before you decide:
     are valid UTF-8; a zip made on a machine set to another code page (Shift-JIS,
     Cyrillic) extracts with the wrong characters, though every file arrives.
   - **Paths longer than 260 characters are written**, but some Windows programs
-    cannot open them.
+    cannot open them. An entry more than 512 folders deep, or whose path would
+    be longer than the system allows, is left out and counted.
   - On Linux nothing carries a mark of the web; there is no such thing to
     carry.
 - Permissions, owner and group can only be edited on **Linux**. On Windows that

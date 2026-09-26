@@ -40,9 +40,17 @@ internal sealed class LandingPlanner(bool windowsRules)
 
     private readonly Node _root = new() { Name = "", IsFolder = true };
 
-    /// <summary>Raw folder prefix (segments joined with <c>/</c>) to the
-    /// node it landed as. Ordinal: the archive's own distinction.</summary>
-    private readonly Dictionary<string, Node> _folders = new(StringComparer.Ordinal);
+    /// <summary>
+    /// A folder's raw segment, under the node its parent landed as, to the
+    /// node it landed as. Ordinal: the archive's own distinction.
+    ///
+    /// **Keyed by (parent, segment) rather than by the whole raw prefix**,
+    /// which stored a string as long as the path for every folder on it: an
+    /// entry 32,000 segments deep held a quarter of a billion characters of
+    /// keys, 2.1 GB at the peak (review of Stage A). The pair names the same
+    /// folder, because the parent node was itself reached by its own prefix.
+    /// </summary>
+    private readonly Dictionary<(Node Parent, string Segment), Node> _folders = [];
 
     /// <summary>How many landed names differ from what the archive said,
     /// whether by replaced characters or by a number.</summary>
@@ -60,22 +68,21 @@ internal sealed class LandingPlanner(bool windowsRules)
     internal Node? FolderNode(ReadOnlySpan<string> segments)
     {
         var node = _root;
-        var prefix = "";
 
-        for (var i = 0; i < segments.Length; i++)
+        foreach (var segment in segments)
         {
-            prefix = i == 0 ? segments[0] : prefix + "/" + segments[i];
-
-            if (_folders.TryGetValue(prefix, out var known))
+            if (_folders.TryGetValue((node, segment), out var known))
             {
                 node = known;
                 continue;
             }
 
-            if (ArchiveNames.Land(segments[i], windowsRules) is not { } landed) return null;
+            if (ArchiveNames.Land(segment, windowsRules) is not { } landed) return null;
 
-            node = Claim(node, landed.Name, isFolder: true, landed.Changed);
-            _folders[prefix] = node;
+            var parent = node;
+
+            node = Claim(parent, landed.Name, isFolder: true, landed.Changed);
+            _folders[(parent, segment)] = node;
         }
 
         return node;

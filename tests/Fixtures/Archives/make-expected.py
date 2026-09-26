@@ -13,6 +13,11 @@ counts, the refusal sentences, and the landing rule (one top-level folder
 lands as itself; anything else lands in a folder named after the archive).
 tree.tar.zst and tree.tar.lz are frozen from the tar inside tree.tar.gz (see
 PROVENANCE.md), so their rows are that tar's, under their own landing folder.
+sc-tar.tar.lz and sc-tar.tar.zst are SharpCompress's own test archives: the
+first decodes byte for byte to sc-tar.tar and the second to a tar holding the
+same members with the same contents (both checked with SharpCompress's
+decoders when they were vendored), so their rows are sc-tar.tar's.
+multi.txt.lz is two lzip members written from the two texts below.
 """
 import bz2, gzip, hashlib, io, lzma, os, shutil, subprocess, sys, tarfile, tempfile
 
@@ -45,11 +50,19 @@ SUMMARY = {
     "bare.txt.gz": ONE, "bare.txt.xz": ONE,
     "rar4.rar": RAR, "rar5.rar": RAR, "rar4-solid.rar": RAR, "rar5-solid.rar": RAR,
     "v7.tar": ONE, "paxglobal.tar": ONE,
-    "latin1-gnu.tar": (2, 0, 0, 0, 0, 0, 0, 0),
+    # The name that is not UTF-8 arrives with U+FFFD, counted as renamed.
+    "latin1-gnu.tar": (2, 0, 1, 0, 0, 0, 0, 0),
+    "sc-tar.tar": (3, 3, 1, 0, 0, 0, 0, 0), "sc-tar.tar.lz": (3, 3, 1, 0, 0, 0, 0, 0),
+    "sc-tar.tar.zst": (3, 3, 1, 0, 0, 0, 0, 0),
+    "concat.txt.xz": ONE, "multi.txt.lz": ONE,
     "sparse-pax01.tar": (0, 0, 0, 0, 0, 1, 0, 0),
 }
 
-SUFFIXES = [".tar.gz", ".tar.bz2", ".tar.xz", ".tar.zst", ".tar.lz", ".7z", ".zip", ".rar", ".tar", ".gz", ".xz"]
+SUFFIXES = [".tar.gz", ".tar.bz2", ".tar.xz", ".tar.zst", ".tar.lz", ".7z", ".zip", ".rar", ".tar", ".gz", ".xz", ".lz"]
+
+# The two members of multi.txt.lz, as the probe that froze it wrote them.
+MULTI_LZ = (''.join('first member line %04d\n' % i for i in range(1, 401))
+            + ''.join('second member line %04d\n' % i for i in range(1, 301))).encode()
 
 
 def stem(name):
@@ -100,12 +113,17 @@ def raw_tar(fixture):
 
 
 def files_of(fixture):
-    if fixture.startswith("bare.txt."):
+    if fixture == "multi.txt.lz":
+        return {"multi.txt": MULTI_LZ}
+    if fixture.startswith("bare.txt.") or fixture == "concat.txt.xz":
+        # lzma.decompress reads every stream of a concatenated .xz.
         data = gzip.decompress(open(os.path.join(HERE, fixture), "rb").read()) if fixture.endswith(".gz") \
             else lzma.decompress(open(os.path.join(HERE, fixture), "rb").read())
-        return {"bare.txt": data}
+        return {stem(fixture): data}
     if fixture in ("tree.tar.zst", "tree.tar.lz"):
         inner = untar(raw_tar("tree.tar.gz"))
+    elif fixture in ("sc-tar.tar.zst", "sc-tar.tar.lz"):
+        inner = untar(raw_tar("sc-tar.tar"))
     elif ".tar" in fixture:
         inner = {} if fixture == "sparse-pax01.tar" else untar(raw_tar(fixture))
     else:

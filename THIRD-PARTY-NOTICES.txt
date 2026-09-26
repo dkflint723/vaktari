@@ -100,6 +100,11 @@ licence asks for its own full text to be included, so here it is, in full:
 
 Vaktari only extracts RAR archives; it cannot create them.
 
+Because of this paragraph the packages declare their licence as
+"MIT AND LicenseRef-unRAR" rather than MIT alone. The unRAR licence is not a
+free licence as Fedora counts them, so Fedora proper, and a COPR that follows
+Fedora's licensing rules, would not accept a package carrying this code.
+
 ------------------------------------------------------------------------------
 DEFLATE, zlib, GZip and CRC-32  (DotNetZip, Ms-PL; jzlib, BSD; zlib)
 ------------------------------------------------------------------------------
