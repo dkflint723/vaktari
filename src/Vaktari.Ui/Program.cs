@@ -77,6 +77,37 @@ internal sealed class Program
         }
     }
 
+    /// <summary>The switch CI runs against the published binary.</summary>
+    public const string SelfTestArchivesFlag = "--self-test-archives";
+
+    /// <summary>
+    /// Null for an ordinary launch; the exit code of the archive self-test
+    /// when the command line asks for it — <c>--self-test-archives &lt;dir&gt;</c>.
+    ///
+    /// **In the shipped binary on purpose.** A NativeAOT publish with full
+    /// trimming can drop a decoder the tests never miss, because the tests run
+    /// on the JIT; only the binary itself can say it still reads a PPMd 7z or
+    /// a RAR5. See <see cref="Vaktari.Core.FileSystem.ArchiveSelfTest"/>.
+    ///
+    /// Separate from <see cref="Main"/> so a test can drive it, and answered
+    /// before the instance mutex for the same reason as --version: it runs in
+    /// CI with no display, and it is not a running file manager.
+    /// </summary>
+    internal static int? SelfTestExitCode(string[] args)
+    {
+        var at = Array.IndexOf(args, SelfTestArchivesFlag);
+
+        if (at < 0) return null;
+
+        if (at + 1 >= args.Length)
+        {
+            Console.Error.WriteLine($"{SelfTestArchivesFlag} needs the folder holding the fixtures");
+            return 2;
+        }
+
+        return Vaktari.Core.FileSystem.ArchiveSelfTest.Run(args[at + 1], Console.Out);
+    }
+
     /// <summary>
     /// Null for an ordinary launch; the exit code when this command line was an
     /// elevated file operation and it has now been done.
@@ -210,6 +241,12 @@ internal sealed class Program
         if (args.Any(a => a is "--version" or "-V"))
         {
             Console.WriteLine(Describe());
+            return;
+        }
+
+        if (SelfTestExitCode(args) is { } selfTest)
+        {
+            Environment.ExitCode = selfTest;
             return;
         }
 

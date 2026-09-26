@@ -4,22 +4,25 @@ namespace Vaktari.Core.FileSystem;
 
 /// <summary>
 /// The two archive verbs a file manager is expected to have of its own: put a
-/// selection into a zip, and take a zip apart.
+/// selection into a zip, and take an archive apart.
 ///
-/// **Zip and nothing else.** <see cref="IconThemeArchive"/> next door reads tar,
-/// gzip and xz as well, because it is fed whatever a theme's publisher chose;
-/// these are driven by a menu row that has to say up front what it will do, and
-/// "Extract all" on a .rar that then fails is worse than no row. The runtime
-/// writes and reads zip on both platforms with no dependency, which is the
-/// other half of the reason.
+/// **Compress writes zip and nothing else.** The runtime writes zip on both
+/// platforms with no dependency, and a zip opens everywhere the person might
+/// send it.
 ///
-/// **The containment check is <see cref="IconThemeArchive.Contained"/>, called
-/// rather than copied.** An entry is free to call itself
-/// <c>..\..\Windows\System32\something</c>, and the rule that stops it — resolve
-/// the path and require it to be genuinely underneath the destination — is
-/// already written and already exercised by the theme installer's own escape
-/// test, which unpacks an archive holding <c>theme/../../near.svg</c>. It is
-/// not a rule to have two of.
+/// **Extract reads every format <see cref="ArchiveFormats"/> names** — zip,
+/// 7z, RAR and tar however it is compressed, and a bare .gz, .bz2, .xz, .zst
+/// or .lz. RAR is read under the unRAR licence's terms, which are reproduced
+/// in THIRD-PARTY-NOTICES.txt.
+///
+/// **Containment is by construction.** Every segment of every landing path
+/// has come through <see cref="ArchiveNames.Land"/>, which leaves no
+/// separator, no <c>..</c> and — under Windows rules — no <c>:</c>, and every
+/// folder written into is checked to be one the extraction made itself. The
+/// whole of that is <see cref="ArchiveExtraction"/>, the only code that writes
+/// bytes out of an archive. The resolve-and-compare check this class used to
+/// borrow from <see cref="IconThemeArchive.Contained"/> is still that class's
+/// own, and is left alone.
 /// </summary>
 public static class Archives
 {
@@ -28,14 +31,13 @@ public static class Archives
     /// <summary>
     /// What <see cref="Extract"/> will open.
     ///
-    /// By extension rather than by the file's first bytes, unlike the theme
-    /// reader: this answers a MENU ROW, so it is asked every time the selection
-    /// changes and before anything has been clicked. Sniffing would open and
-    /// read the file to decide whether to draw an entry.
+    /// By name rather than by the file's first bytes: this answers a MENU
+    /// ROW, so it is asked every time the selection changes and before
+    /// anything has been clicked. Sniffing would open and read the file to
+    /// decide whether to draw an entry. The extraction itself goes by the
+    /// bytes.
     /// </summary>
-    public static bool CanExtract(string? path)
-        => path is not null
-           && Path.GetExtension(path).Equals(Extension, StringComparison.OrdinalIgnoreCase);
+    public static bool CanExtract(string? path) => ArchiveFormats.ByName(path) is not null;
 
     /// <summary>
     /// Whether these can go into one archive together, which they can when
@@ -48,7 +50,7 @@ public static class Archives
     /// before this rule existed: compressing <c>2023\notes.txt</c> and
     /// <c>2024\notes.txt</c> wrote an archive holding two entries called
     /// notes.txt, and extracting that archive produced ONE file, holding the
-    /// second. The first was gone, and <see cref="Extraction.Refused"/> — the
+    /// second. The first was gone, and the refused count — the
     /// counter that exists to notice an archive losing entries — did not count
     /// it, because nothing was refused.
     ///
@@ -128,106 +130,189 @@ public static class Archives
         }
     }
 
+    /// <summary>
+    /// The entries an extraction did not write, by why.
+    ///
+    /// **Counted rather than swallowed**, because an archive quietly losing
+    /// entries is exactly what somebody needs to be told: the status line says
+    /// "3 left out (2 links, 1 unsafe name)".
+    /// </summary>
+    /// <param name="Unsafe">A name that is not a name (<c>..</c>, empty) or
+    /// that climbs out of the folder.</param>
+    /// <param name="Links">Symbolic links, which are never created, and hard
+    /// links to a file that did not land.</param>
+    /// <param name="Special">Devices, pipes, and sparse tar members.</param>
+    /// <param name="MacMetadata"><c>__MACOSX/</c> and <c>._*</c>.</param>
+    /// <param name="Unwritable">Entries the disk refused one at a time — a
+    /// name a FAT stick will not take, a file too large for FAT32, a folder on
+    /// the way that turned into a link.</param>
+    public readonly record struct LeftOut(int Unsafe, int Links, int Special, int MacMetadata, int Unwritable)
+    {
+        public int Total => Unsafe + Links + Special + MacMetadata + Unwritable;
+
+        /// <summary>"3 left out (2 links, 1 unsafe name)", or null when
+        /// nothing was.</summary>
+        public string? Describe()
+        {
+            if (Total == 0) return null;
+
+            var parts = new List<string>(5);
+
+            if (Links > 0) parts.Add(Links == 1 ? "1 link" : $"{Links} links");
+            if (Unsafe > 0) parts.Add(Unsafe == 1 ? "1 unsafe name" : $"{Unsafe} unsafe names");
+            if (Special > 0) parts.Add(Special == 1 ? "1 device or pipe" : $"{Special} devices or pipes");
+            if (MacMetadata > 0) parts.Add($"{MacMetadata} Mac metadata");
+            if (Unwritable > 0) parts.Add(Unwritable == 1 ? "1 that could not be written" : $"{Unwritable} that could not be written");
+
+            return $"{Total} left out ({string.Join(", ", parts)})";
+        }
+    }
+
     /// <summary>What one extraction did.</summary>
-    /// <param name="Folder">The folder that was made for it.</param>
+    /// <param name="Landed">The one new thing in the destination: a folder,
+    /// or — for a bare compressed file — the file itself.</param>
+    /// <param name="IsFile">Whether <paramref name="Landed"/> is a file.</param>
     /// <param name="Files">How many files came out.</param>
-    /// <param name="Refused">Entries whose resolved path was not underneath
-    /// <paramref name="Folder"/>. Counted rather than swallowed, because an
-    /// archive quietly losing entries is the failure this whole check exists to
-    /// notice.</param>
-    public readonly record struct Extraction(string Folder, int Files, int Refused);
+    /// <param name="Folders">How many folders were made for them.</param>
+    /// <param name="Renamed">How many names were changed to be written —
+    /// unwritable characters replaced, or a second copy numbered.</param>
+    public readonly record struct Extraction(
+        string Landed, bool IsFile, int Files, int Folders, int Renamed, LeftOut LeftOut);
 
     /// <summary>
-    /// Unpacks <paramref name="archive"/> into a new folder in
-    /// <paramref name="destination"/>, named after the archive.
+    /// Into exactly one new folder — the archive's own single top-level folder
+    /// when it has exactly one, otherwise a folder named after the archive; a
+    /// compressed single file lands beside it; never loose into the
+    /// destination, never over anything already there.
     ///
-    /// **Into a folder of its own, always.** A zip is free to hold fifty loose
-    /// files at its top level, and unpacking those straight into the folder the
-    /// archive sits in scatters them among what was already there with no way
-    /// to tell which arrived.
+    /// **No double wrap.** An archive holding <c>trip/</c> and nothing else
+    /// extracts as <c>trip</c>, not <c>trip\trip</c> — the maintainer's
+    /// decision, and what every archiver's "extract here, smart" does.
     ///
-    /// The folder is created at a free name, so nothing that was already on
-    /// disk is written over; it is removed again if the unpacking throws, for
-    /// the reason the working file above exists — a folder holding half an
-    /// archive looks like one holding all of it.
+    /// **All or nothing.** The run writes into a working folder
+    /// (<c>.vaktari-extracting-…</c>) in the destination and renames it into
+    /// place at the end, so a folder holding half an archive never sits at a
+    /// name that looks finished. Cancelling, a damaged archive, a CRC that
+    /// does not match, a full disk: the working folder is discarded.
     /// </summary>
     public static Extraction Extract(
-        string archive, string destination, CancellationToken token = default)
+        string archive, string destination, OperationHandle? handle = null, CancellationToken token = default)
+        => Extract(archive, destination, handle, token, ArchiveRoom.Real, observer: null);
+
+    internal static Extraction Extract(
+        string archive, string destination, OperationHandle? handle, CancellationToken token,
+        ArchiveRoom room, IExtractionObserver? observer, int maxEntries = ArchiveLimits.MaxEntries)
     {
         destination = Path.GetFullPath(destination);
 
-        var folder = NewItemName.Free(destination, Stem(archive), "");
+        var leaf = Leaf(archive);
 
-        Directory.CreateDirectory(folder);
+        if (ArchiveFormats.IsSplitVolume(archive))
+            throw new ArchiveRefusedException(ArchiveSentences.Split(leaf));
 
-        var files = 0;
-        var refused = 0;
+        using var linked = handle is null
+            ? CancellationTokenSource.CreateLinkedTokenSource(token)
+            : CancellationTokenSource.CreateLinkedTokenSource(token, handle.Token);
+
+        var cancel = linked.Token;
+
+        using var pass = ArchiveReader.Open(archive, cancel);
+
+        // Everything that can be decided before a byte is written is decided
+        // here, in this order, so nothing is created for an archive that was
+        // never going to extract.
+        if (pass.AnyEncrypted) throw new ArchivePasswordRequiredException(ArchiveSentences.Password(leaf));
+
+        if (pass.Directory is { Overlapping: true }) throw new ArchiveRefusedException(ArchiveSentences.Overlap(leaf));
+
+        if (pass.DeclaredCount > maxEntries) throw new ArchiveRefusedException(ArchiveSentences.TooMany(leaf, maxEntries));
+
+        if (room.RefuseUpFront(destination, pass.DeclaredTotal ?? 0, pass.DeclaredCount ?? 0, leaf) is { } noRoom)
+            throw new ArchiveRefusedException(noRoom);
+
+        handle?.Begin(pass.DeclaredCount ?? 0, pass.DeclaredTotal ?? pass.ArchiveLength);
+
+        var working = Working(destination);
 
         try
         {
-            using var zip = ZipFile.OpenRead(archive);
+            var options = new ExtractionOptions(
+                ArchiveNames.WindowsRulesFor(room.DriveFormat(destination)),
+                SkipMacMetadata: true,
+                ZoneMarks.Read(archive),
+                room,
+                observer,
+                maxEntries);
 
-            foreach (var entry in zip.Entries)
-            {
-                token.ThrowIfCancellationRequested();
+            var done = ArchiveExtraction.Run(pass, working, options, handle, cancel);
 
-                if (IconThemeArchive.Contained(folder, entry.FullName) is not { } path)
-                {
-                    refused++;
-                    continue;
-                }
+            var (landed, isFile) = Publish(working, destination, archive, pass.Format);
 
-                // A directory is an entry whose name ends in a separator and so
-                // has nothing after it; every other directory is implied by the
-                // files inside it.
-                if (entry.Name.Length == 0)
-                {
-                    Directory.CreateDirectory(path);
-                    continue;
-                }
-
-                Directory.CreateDirectory(Path.GetDirectoryName(path)!);
-
-                // **Counted before it is written, and only when the name is
-                // still free.** An archive is free to hold two entries under
-                // one name — measured here: one written with two entries called
-                // notes.txt unpacked to a single file holding the second, while
-                // the count said two, so the status line promised two items in
-                // a folder holding one. The folder was made fresh a few lines
-                // above, so a name that is taken was taken by this same loop.
-                if (!File.Exists(path)) files++;
-
-                entry.ExtractToFile(path, overwrite: true);
-            }
-        }
-        catch (InvalidDataException e)
-        {
-            Discard(folder);
-
-            // **The runtime's own words for this are unusable, and this is the
-            // failure the verb will meet most.** The menu row decides by
-            // extension, so a download that arrived as an error page, a renamed
-            // .rar and a file that stopped halfway all reach here. Measured
-            // before this sentence existed: opening a text file named
-            // download.zip raised "End of Central Directory record could not be
-            // found.", and Failures.Describe handed that back unchanged — it is
-            // neither an IOException nor an ArgumentException, so it fell to
-            // the arm that shows the exception's own message.
-            //
-            // Said here rather than added to Failures, which keys on the
-            // exception's TYPE: InvalidDataException is raised at five other
-            // places in this project, all in IconThemeArchive, and each already
-            // carries a sentence written for a person. Only the code that
-            // opened the file knows it was opening a zip.
-            throw new InvalidDataException($"{Leaf(archive)} is not a zip file, or is damaged", e);
+            return new Extraction(landed, isFile, done.Files, done.Folders, done.Renamed, done.LeftOut);
         }
         catch
         {
-            Discard(folder);
+            Discard(working);
             throw;
         }
+    }
 
-        return new Extraction(folder, files, refused);
+    /// <summary>
+    /// A fresh working folder in the destination: a sibling of where the
+    /// result lands, so landing it is a rename and not a second copy.
+    /// </summary>
+    private static string Working(string destination)
+    {
+        while (true)
+        {
+            var working = Path.Combine(destination, ".vaktari-extracting-" + Guid.NewGuid().ToString("N")[..12]);
+
+            if (Directory.Exists(working) || File.Exists(working)) continue;
+
+            Directory.CreateDirectory(working);
+
+            return working;
+        }
+    }
+
+    /// <summary>
+    /// Moves what the run wrote to its final name, and says where that is.
+    /// </summary>
+    private static (string Landed, bool IsFile) Publish(
+        string working, string destination, string archive, ArchiveFormat format)
+    {
+        var top = Directory.GetFileSystemEntries(working);
+
+        // A bare compressed file is the file: report.txt.gz lands as
+        // report.txt, numbered if that is taken.
+        if (ArchiveFormats.IsBare(format) && top is [var only] && File.Exists(only))
+        {
+            var name = Path.GetFileName(only);
+            var (stem, extension) = PathRules.SplitLeaf(name, isDirectory: false);
+            var target = NewItemName.Free(destination, stem, extension);
+
+            Retrying(() => File.Move(only, target, overwrite: false));
+            Discard(working);
+
+            return (target, true);
+        }
+
+        // One folder and nothing beside it: that folder is the result.
+        if (top is [var folder] && Directory.Exists(folder))
+        {
+            var target = NewItemName.Free(destination, Path.GetFileName(folder), "");
+
+            Retrying(() => Directory.Move(folder, target));
+            Discard(working);
+
+            return (target, false);
+        }
+
+        var named = NewItemName.Free(destination, ArchiveFormats.Stem(archive), "");
+
+        Retrying(() => Directory.Move(working, named));
+
+        return (named, false);
     }
 
     /// <summary>
@@ -338,19 +423,53 @@ public static class Archives
 
     /// <summary>
     /// Removes something this class made and then could not finish. Never
-    /// anything that was already there: both callers pass a path that was free
-    /// a moment ago.
+    /// anything that was already there: every caller passes a path that was
+    /// free a moment ago.
+    ///
+    /// **Tried three more times, after 100, 300 and 900 ms** (Core-13): a
+    /// virus scanner opens each new file as it appears and holds it for a
+    /// moment, and a delete in that moment fails with a sharing or access
+    /// error that is gone a second later.
     /// </summary>
     private static void Discard(string path)
     {
-        try
+        Retrying(() =>
         {
             if (Directory.Exists(path)) Directory.Delete(path, recursive: true);
             else if (File.Exists(path)) File.Delete(path);
-        }
-        catch (Exception e) when (e is IOException or UnauthorizedAccessException)
+        }, swallow: true);
+    }
+
+    private static readonly int[] Backoff = [100, 300, 900];
+
+    private static void Retrying(Action act, bool swallow = false)
+    {
+        for (var attempt = 0; ; attempt++)
         {
-            // The original failure is the one worth reporting.
+            try
+            {
+                act();
+                return;
+            }
+            catch (Exception e) when (e is IOException or UnauthorizedAccessException)
+            {
+                if (attempt < Backoff.Length && Transient(e))
+                {
+                    Thread.Sleep(Backoff[attempt]);
+                    continue;
+                }
+
+                // The original failure is the one worth reporting.
+                if (swallow) return;
+
+                throw;
+            }
         }
     }
+
+    /// <summary>A sharing, lock or access-denied error: the shape a scanner
+    /// holding a file for a moment takes.</summary>
+    private static bool Transient(Exception e)
+        => e is UnauthorizedAccessException
+           || e.HResult is unchecked((int)0x80070020) or unchecked((int)0x80070021) or unchecked((int)0x80070005);
 }

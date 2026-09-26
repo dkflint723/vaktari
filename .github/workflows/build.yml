@@ -166,6 +166,17 @@ jobs:
           dotnet publish src/Vaktari.Ui -c Release -r linux-x64 -p:PublishAot=true \
             -p:Version="$VERSION_NUMBER"
 
+      # **The binary that ships, not the one the tests ran.** A NativeAOT
+      # publish with full trimming can drop a decoder the JIT-hosted tests
+      # never miss -- PPMd, BCJ2, Deflate64, the RAR unpackers are reached
+      # through registries the trimmer cannot see. This extracts every
+      # committed fixture with the published executable and compares the
+      # files, their SHA-256 and the counts with expected.tsv; any difference
+      # is a non-zero exit. It needs no display: the switch is answered before
+      # any window exists.
+      - name: Archive self-test
+        run: src/Vaktari.Ui/bin/Release/net10.0/linux-x64/publish/Vaktari.Ui --self-test-archives tests/Fixtures/Archives
+
       # The publish DIRECTORY is the deliverable, not the executable.
       # libSkiaSharp.so and libHarfBuzzSharp.so sit beside the binary and are
       # loaded from its own directory; shipping the executable alone produces
@@ -262,6 +273,15 @@ jobs:
 
           dotnet publish src/Vaktari.Ui -c Release -r win-x64 -p:PublishAot=true \
             -p:Version="$VERSION_NUMBER"
+
+      # The same check as the Linux job's, on the Windows binary. Under
+      # `shell: bash` GitHub runs `bash -eo pipefail`, so the tee cannot hide
+      # a failing exit.
+      - name: Archive self-test
+        shell: bash
+        run: |
+          P=src/Vaktari.Ui/bin/Release/net10.0/win-x64/publish
+          "$P/Vaktari.Ui.exe" --self-test-archives tests/Fixtures/Archives | tee selftest.txt
 
       # Same check the Linux job makes for libSkiaSharp.so, and for the same
       # reason: these sit beside the binary and are loaded from its own

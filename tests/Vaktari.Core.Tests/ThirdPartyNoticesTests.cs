@@ -67,6 +67,32 @@ public sealed class ThirdPartyNoticesTests
     }
 
     /// <summary>
+    /// **The code inside SharpCompress that is not SharpCompress's own**,
+    /// from the audit at the commit the 0.50.4 package was built from. The
+    /// unRAR licence is the one that insists: its paragraph 2 must be included
+    /// in full, starting from the words "UnRAR source code". One anchor per
+    /// component, so dropping any of them fails here by name.
+    /// </summary>
+    [Theory]
+    [InlineData("c083c6efd843a844b0c8f7878787360e815be781")]
+    [InlineData("UnRAR source code may be used in any software to handle RAR archives")]
+    [InlineData("full text of this paragraph, starting from \"UnRAR source code\" words, is")]
+    [InlineData("Copyright (c) 2007 innoSysTec (R) GmbH, Germany. All rights reserved.")]
+    [InlineData("Copyright (c) 2006-2010 Dino Chiesa and Microsoft Corporation.")]
+    [InlineData("Copyright (c) 2000,2001,2002,2003 ymnk, JCraft,Inc. All rights reserved.")]
+    [InlineData("Jean-loup Gailly")]
+    [InlineData("Copyright 2001,2004-2005 The Apache Software Foundation")]
+    [InlineData("Copyright (c) Six Labors.")]
+    [InlineData("Version 2.0, January 2004")]
+    [InlineData("Copyright (c) 2016 Claunia.com")]
+    [InlineData("Copyright (c) 2021 Oleg Stepanischev")]
+    [InlineData("Copyright (c) Meta Platforms, Inc. and affiliates. All rights reserved.")]
+    [InlineData("Dmitry Shkarin")]
+    [InlineData("the LZMA SDK is placed in the public domain")]
+    public void The_components_inside_SharpCompress_are_covered(string expected)
+        => Assert.Contains(expected, Notices, StringComparison.Ordinal);
+
+    /// <summary>
     /// Every way Vaktari leaves this repository carries the file.
     ///
     /// **The Arch package left it out while the README said it shipped

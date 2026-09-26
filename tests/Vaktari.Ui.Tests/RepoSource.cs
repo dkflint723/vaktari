@@ -37,6 +37,11 @@ internal static class RepoSource
         }
     }
 
+    /// <summary>A path under the repository root, for a test that needs a
+    /// committed file itself rather than its text — the archive
+    /// fixtures.</summary>
+    internal static string At(params string[] parts) => Path.Combine([Root, .. parts]);
+
     /// <summary>One file under src/Vaktari.Ui, with line endings normalised so
     /// the same scan means the same thing on either platform.</summary>
     internal static string Ui(params string[] parts)

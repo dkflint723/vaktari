@@ -71,6 +71,10 @@ public class FailureTests
     [InlineData(0x80070021, "something else has that file open")]
     [InlineData(0x80070070, "there is not enough room on the disk")]
     [InlineData(0x80070027, "there is not enough room on the disk")]
+    // Linux's ENOSPC and EDQUOT, which .NET hands over as the raw errno
+    // (E-38, measured under WSL: /dev/full raises HResult 28).
+    [InlineData(28, "there is not enough room on the disk")]
+    [InlineData(122, "there is not enough room on the disk")]
     public void The_common_io_failures_are_named(long hresult, string expected)
     {
         var failure = new IOException("some win32 text") { HResult = unchecked((int)hresult) };

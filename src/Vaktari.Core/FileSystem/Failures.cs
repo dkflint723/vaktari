@@ -45,6 +45,29 @@ public static class Failures
     /// '\\127.0.0.2\nosuchshare'."</summary>
     private const int NetworkUnreachable = unchecked((int)0x800704CF);
 
+    /// <summary>ENOSPC and EDQUOT. On Unix .NET puts the raw errno in the
+    /// HResult of an error it has no type for — measured under WSL (E-38):
+    /// writing to /dev/full raises IOException with HResult 28, "No space left
+    /// on device". EDQUOT is 122 on Linux; no quota was available to measure
+    /// it against.</summary>
+    private const int NoSpace = 28;
+    private const int QuotaExceeded = 122;
+
+    /// <summary>
+    /// Whether the disk is full, on either system.
+    ///
+    /// **One question with two spellings, asked in two places.** Extract all
+    /// has to tell a disk that is full — which stops the run, because nothing
+    /// after it will fit either — from a disk that refused one file's name,
+    /// which costs that file alone. Only Windows' two codes were known here,
+    /// so a full disk on Linux read as a single unwritable file and the run
+    /// carried on failing, one entry at a time.
+    /// </summary>
+    public static bool IsDiskFull(IOException e)
+        // Not gated on the platform: a Windows HResult for a file error is
+        // always 0x8007xxxx, so 28 and 122 can only ever be errno values.
+        => e.HResult is DiskFull or HandleDiskFull or NoSpace or QuotaExceeded;
+
     /// <summary>
     /// What to tell somebody, given what they were trying to do.
     /// </summary>
@@ -63,7 +86,7 @@ public static class Failures
         IOException io when io.HResult is SharingViolation or LockViolation =>
             "something else has that file open",
 
-        IOException io when io.HResult is DiskFull or HandleDiskFull =>
+        IOException io when IsDiskFull(io) =>
             "there is not enough room on the disk",
 
         IOException io when io.HResult == PathTooLong =>

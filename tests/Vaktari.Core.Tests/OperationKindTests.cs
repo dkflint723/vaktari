@@ -17,8 +17,9 @@ namespace Vaktari.Core.Tests;
 /// construct, and must NOT be given a verb it did not earn — the wrong verb on
 /// a row is worse than no verb.
 ///
-/// Measured, so the claim is not larger than the fact: every one of the seven
-/// <c>new OperationHandle</c> sites in the repository sets a kind, so nothing
+/// Measured, so the claim is not larger than the fact: every one of the eight
+/// <c>new OperationHandle</c> sites in the repository sets a kind — the eighth
+/// is Extract all's, of kind Extract — so nothing
 /// in the shipping application answers Other. What reaches it is a handle built
 /// in a test, and an implementor written outside this assembly.
 /// </summary>

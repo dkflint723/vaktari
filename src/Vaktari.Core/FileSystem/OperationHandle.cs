@@ -173,6 +173,23 @@ public sealed class OperationHandle : IOperationHandle
     }
 
     /// <summary>
+    /// The same gate, for a worker that is not async: blocks while paused,
+    /// and throws <see cref="OperationCanceledException"/> if the operation is
+    /// cancelled while it waits.
+    ///
+    /// **Extract all runs on one pool thread from start to finish**, because
+    /// SharpCompress's readers are synchronous: every decoder pulls from a
+    /// stream inside a plain <c>Read</c>. An async wait there would have to be
+    /// blocked on anyway.
+    /// </summary>
+    public void WaitIfPaused()
+    {
+        if (_gate.IsSet) return;
+
+        _gate.Wait(_cts.Token);
+    }
+
+    /// <summary>
     /// Answered at construction, because it is a property of the engine that
     /// opened the handle rather than of the moment. See
     /// <see cref="IOperationHandle.CanPause"/> for what said otherwise.

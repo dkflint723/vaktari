@@ -503,6 +503,15 @@ public sealed class RunningOperationsListTests : OwnedViewModels
                 OperationKind.Delete, [Path.Combine("D:", "notes.txt")]));
     }
 
+    /// <summary>Extract all names the archive and the folder it lands
+    /// beside, in the order a copy does.</summary>
+    [Fact]
+    public void An_extraction_names_the_archive_and_where_it_goes()
+        => Assert.Equal(
+            "Extracting a.zip to Downloads",
+            RunningOperationRow.Describe(
+                OperationKind.Extract, [Path.Combine("D:", "Downloads", "a.zip"), Path.Combine("D:", "Downloads")]));
+
     /// <summary>
     /// A handle from something that is not one of the file engines still gets a
     /// row — it is holding the drive and is worth cancelling — and it is not

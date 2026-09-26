@@ -394,8 +394,17 @@ split to the other always ask.
 and takes you inside, and *Unmount* when you are done. *New folder*, *New file*
 and *New from template*, each opening straight into the rename box. *Compress
 to ZIP* and *Extract all* — Vaktari's own, undoable, written beside what they
-act on, and refusing any archive entry that points outside the folder it is
-landing in. *Create shortcut*, made the way each platform makes them. *Open
+act on. *Extract all* opens zip, 7z, RAR and tar however it is compressed
+(`.tar.gz`, `.tar.bz2`, `.tar.xz`, `.tar.zst`, `.tar.lz`), and a single
+compressed file such as `report.txt.gz`. It lands as one new thing and never
+over anything already there: an archive holding one folder becomes that
+folder, a compressed single file becomes the file, and anything else goes into
+a folder named after the archive. It runs on the transfer bar with progress,
+pause and cancel, and a cancelled or failed run leaves nothing behind. Names
+Windows cannot hold, or that would display misleadingly, are written with `_`
+in place of the offending characters (`_CON.txt`, `inv_gpj.exe`), two entries
+with one name both arrive (the second numbered), and on Windows what comes out
+of a downloaded archive carries the archive's own mark of the web. *Create shortcut*, made the way each platform makes them. *Open
 with*, reading your system's own file-type database. *Run* and *Run as
 administrator* for a program. *Open terminal here* on `F4`, with *Open admin
 terminal here* beside it. Entries that need a selection are simply not offered
@@ -721,7 +730,26 @@ promise yet. Worth knowing before you decide:
 
 **Files and views**
 
-- Compress writes ZIP and nothing else, and *Extract all* only opens `.zip`.
+- Compress writes ZIP and nothing else. *Extract all* opens the formats listed
+  under [Working with files](#working-with-files), with these limits:
+  - **Password-protected archives are refused**, with a sentence saying so;
+    asking for the password comes in a later version.
+  - **Split archives** (`.part1.rar`, `.7z.001`, `.z01` and the like) are
+    refused.
+  - **Links, devices and pipes are never created.** They are left out and
+    counted on the status line; a hard link to a file in the same archive
+    arrives as a copy of it.
+  - **Sparse tar members are not extracted**: a GNU sparse tar is refused, and
+    a PAX sparse member is left out and counted.
+  - **Tar names that are not UTF-8** arrive with `�` in place of the bytes that
+    were not, because the tar reader does not hand over the raw bytes.
+  - **Zip names in a legacy code page** are read as code page 437 unless they
+    are valid UTF-8; a zip made on a machine set to another code page (Shift-JIS,
+    Cyrillic) extracts with the wrong characters, though every file arrives.
+  - **Paths longer than 260 characters are written**, but some Windows programs
+    cannot open them.
+  - On Linux nothing carries a mark of the web; there is no such thing to
+    carry.
 - Permissions, owner and group can only be edited on **Linux**. On Windows that
   belongs to the Security tab of Windows' own sheet.
 - Checksums are effectively Linux-only: on Windows, Properties for a single

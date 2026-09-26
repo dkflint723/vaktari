@@ -48,6 +48,58 @@ public sealed class RepoHygieneTests
     /// for exactly that reason; the first Linux run found twelve more tests
     /// asserting Windows facts. Nothing else notices this line going.
     /// </summary>
+    /// <summary>
+    /// **The archive self-test runs against the binary that ships, on both
+    /// platforms.** A NativeAOT publish with full trimming can drop a decoder
+    /// the JIT-hosted tests never miss; only the published executable can say
+    /// it still reads a PPMd 7z or a RAR5. Each job's step must come AFTER its
+    /// Publish step, or it would run nothing that was just built.
+    /// </summary>
+    [Fact]
+    public void Continuous_integration_runs_the_archive_self_test_on_the_published_binary_on_both_platforms()
+    {
+        var workflow = Read(".github", "workflows", "build.yml");
+        var split = workflow.IndexOf("  windows-x64:", StringComparison.Ordinal);
+
+        foreach (var (job, binary) in new[]
+                 {
+                     (workflow[..split], "linux-x64/publish/Vaktari.Ui --self-test-archives tests/Fixtures/Archives"),
+                     (workflow[split..], "\"$P/Vaktari.Ui.exe\" --self-test-archives tests/Fixtures/Archives"),
+                 })
+        {
+            var publish = job.IndexOf("- name: Publish", StringComparison.Ordinal);
+            var selfTest = job.IndexOf(binary, StringComparison.Ordinal);
+
+            Assert.True(publish > 0, "no Publish step");
+            Assert.True(selfTest > publish, $"no self-test after Publish: {binary}");
+        }
+    }
+
+    /// <summary>The Fedora package runs it against the INSTALLED binary, the
+    /// one build of the three that keeps RAR under a distribution's own
+    /// packaging.</summary>
+    [Fact]
+    public void The_Fedora_package_runs_the_archive_self_test()
+    {
+        var workflow = Read(".github", "workflows", "distro.yml");
+
+        Assert.Contains("vaktari --self-test-archives \"$GITHUB_WORKSPACE/tests/Fixtures/Archives\"", workflow);
+    }
+
+    /// <summary>
+    /// **With core.autocrlf on, git is free to rewrite a fixture it guesses is
+    /// text** — a tar is mostly ASCII — and then every CRC and every SHA-256
+    /// in expected.tsv is wrong on the machine that checked it out.
+    /// </summary>
+    [Fact]
+    public void Archive_fixtures_are_committed_as_binary()
+    {
+        var attributes = Read(".gitattributes");
+
+        Assert.Contains("tests/Fixtures/** binary", attributes);
+        Assert.Contains("tests/Fixtures/Archives/expected.tsv -text", attributes);
+    }
+
     [Fact]
     public void Continuous_integration_runs_the_Ui_suite_on_Linux()
     {

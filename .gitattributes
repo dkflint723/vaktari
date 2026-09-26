@@ -1,0 +1,15 @@
+# The archive fixtures are bytes. With core.autocrlf=true, a checkout would
+# otherwise be free to rewrite anything git guesses is text — a tar is mostly
+# ASCII — and the archive's CRCs and the SHA-256 in expected.tsv would stop
+# matching on one machine and not another.
+tests/Fixtures/** binary
+
+# expected.tsv is text, but it must not be converted either: the self-test
+# compares it with what the shipped binary reports, byte for byte per field,
+# on both platforms.
+tests/Fixtures/Archives/expected.tsv -text
+
+# The scripts and notes that rebuild the fixtures are ordinary text.
+tests/Fixtures/**/*.md text
+tests/Fixtures/**/*.py text
+tests/Fixtures/**/*.sh text eol=lf
