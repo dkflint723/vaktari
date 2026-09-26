@@ -11,7 +11,13 @@ should not be trusted for compatibility yet.
 
 ## [Unreleased]
 
-Nothing yet.
+### Fixed
+
+- **Upgrading from 0.9.x switched the recent lists off and took *Open in new
+  window* off the right-click menu.** Both settings arrived in 0.10.0 switched
+  on, and a settings file written before then read them as off. A setting a
+  file does not mention now gets its real default; a file that switched either
+  off keeps it off.
 
 ## [0.11.0] — 2026-09-25
 

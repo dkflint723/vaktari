@@ -311,4 +311,81 @@ public sealed class AbsentSettingsTests : IDisposable
         Assert.NotNull(AppSettings.Current.Views.Icons);
         Assert.Equal("", AppSettings.Current.General.ProtonDriveFolder);
     }
+
+    // ---- a key that is true by default, absent -----------------------------------
+
+    /// <summary>
+    /// The two groups that matter, exactly as 0.9.16 wrote them — the whole
+    /// file, generated from that tag's own Vaktari.Core, is in
+    /// Vaktari.Core.Tests.SettingsRepairDocumentTests. Neither group has
+    /// rememberRecent or showOpenInNewWindow: both arrived in 0.10.0.
+    /// </summary>
+    private const string Written0916 = """
+        {
+          "version": 1,
+          "general": {
+            "naturalSorting": true,
+            "caseSensitiveSorting": false,
+            "rememberViewPerFolder": false,
+            "showTooltips": true,
+            "tabSwitchesSplitPanes": true,
+            "useSystemIcons": false,
+            "iconThemeFolder": "",
+            "preferredTerminal": "",
+            "protonDriveFolder": "",
+            "closingSplitDiscardsOtherPane": false,
+            "showPreviews": true,
+            "maxLocalPreviewMegabytes": 0,
+            "maxRemotePreviewMegabytes": 0,
+            "confirmMoveToTrash": false,
+            "confirmPermanentDelete": true,
+            "confirmClosingMultipleTabs": false,
+            "onOpeningExecutable": "OpenInApplication",
+            "showStatusBar": true,
+            "showFreeSpace": true
+          },
+          "contextMenu": {
+            "showCopyTo": true,
+            "showMoveTo": true,
+            "showAddToPlaces": true,
+            "showSortBy": true,
+            "showOpenInNewTab": true,
+            "showCopyLocation": true,
+            "showDuplicate": true
+          }
+        }
+        """;
+
+    /// <summary>
+    /// **An upgrade from 0.9.x switched the recent lists off and took "Open in
+    /// new window" off the menu**, because an absent key reads as false and
+    /// both are declared true. Through the real store, from a file on disk:
+    /// both come back on — which is what the settings dialog then shows.
+    /// </summary>
+    [AvaloniaFact]
+    public void An_upgrade_from_0916_keeps_the_recent_lists_and_the_new_window_entry()
+    {
+        var state = Load(Written0916);
+
+        Assert.True(state.General.RememberRecent);
+        Assert.True(state.ContextMenu.ShowOpenInNewWindow);
+
+        var vm = new SettingsViewModel(state);
+
+        Assert.True(vm.RememberRecent);
+        Assert.True(vm.MenuOpenInNewWindow);
+    }
+
+    /// <summary>And a file that says false keeps false — the reason the fix
+    /// asks whether the key is there rather than re-defaulting it.</summary>
+    [Fact]
+    public void A_file_that_switched_them_off_keeps_them_off()
+    {
+        var state = Load("""
+            {"version":1,"general":{"rememberRecent":false},"contextMenu":{"showOpenInNewWindow":false}}
+            """);
+
+        Assert.False(state.General.RememberRecent);
+        Assert.False(state.ContextMenu.ShowOpenInNewWindow);
+    }
 }

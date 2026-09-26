@@ -1,3 +1,5 @@
+using System.Text.Json;
+using System.Text.Json.Nodes;
 using System.Text.Json.Serialization;
 using Vaktari.Core.FileSystem;
 using Vaktari.Core.Session;
@@ -203,6 +205,12 @@ public sealed record GeneralSettings
     /// Off stops new entries; it does not empty what is already there, because
     /// silently deleting somebody's list from a checkbox is not what the
     /// checkbox says. Emptying is its own button.
+    ///
+    /// **Positively named and declared true, and every 0.9.x install upgraded
+    /// into it switched OFF** — the file had no key, and an absent key reads
+    /// as false. <see cref="SettingsRepair.CompleteDocument"/> puts the
+    /// declared default back for an absent key before the file becomes a
+    /// record; a file that stores false keeps false.
     /// </summary>
     public bool RememberRecent { get; init; } = true;
 
@@ -769,6 +777,70 @@ public sealed record KeyboardSettings
 /// </summary>
 public static class SettingsRepair
 {
+    /// <summary>
+    /// **Every settings.json written by 0.9.x came back with the recent lists
+    /// switched off and "Open in new window" gone from the menu.**
+    /// <see cref="GeneralSettings.RememberRecent"/> and
+    /// <see cref="ContextMenuSettings.ShowOpenInNewWindow"/> arrived in 0.10.0
+    /// as positively named <c>= true</c> properties, a 0.9.x file has neither
+    /// key, and the source-generated context — as the class summary says —
+    /// hands an absent key <c>default(T)</c>. So an upgrade read both as false,
+    /// the dialog showed both unticked, and nothing said a choice had been
+    /// made for the person. <see cref="Complete(SettingsState)"/> could not
+    /// help: by the time a record exists, "absent" and "stored false" are the
+    /// same false.
+    ///
+    /// So the question is asked of the DOCUMENT, where absence is still
+    /// visible: every true-or-false and every number the model declares, that
+    /// a group the file does name leaves out, is written in with its declared
+    /// default before the file becomes a record. A key that IS there is never
+    /// touched, so a file that stores false on purpose keeps it — which rules
+    /// out the alternative of re-defaulting the two properties by name. And no
+    /// version bump: a 0.10 or 0.11 file always carries both keys, because the
+    /// writer serialises every property, so this changes nothing for any file
+    /// Vaktari wrote since, and an older build handed a file this one saved
+    /// still reads it.
+    ///
+    /// **Scalars only, and only inside a group the file names.** A missing
+    /// group, a missing nested layout and a missing string are left to
+    /// <see cref="Complete(SettingsState)"/>, which already puts each back —
+    /// filling them here as well would be a second guard on one condition,
+    /// and each would hide the other's mutation. Enums are strings in the file
+    /// and are skipped for the same reason; every enum the model declares
+    /// defaults to its zero member, which SettingsRepairDocumentTests holds,
+    /// so an absent one is already right.
+    /// </summary>
+    public static void CompleteDocument(JsonObject document)
+    {
+        ArgumentNullException.ThrowIfNull(document);
+
+        var defaults = (JsonObject)JsonSerializer.SerializeToNode(
+            new SettingsState(), SettingsJsonContext.Default.SettingsState)!;
+
+        // Groups only: the one scalar at the top, the version, belongs to the
+        // migrations, which have already stamped it by the time this runs.
+        foreach (var (key, node) in defaults)
+            if (node is JsonObject group && document[key] is JsonObject named)
+                FillScalars(named, group);
+    }
+
+    private static void FillScalars(JsonObject named, JsonObject defaults)
+    {
+        foreach (var (key, node) in defaults)
+        {
+            if (!named.ContainsKey(key))
+            {
+                if (node is JsonValue value
+                    && value.GetValueKind() is JsonValueKind.True or JsonValueKind.False or JsonValueKind.Number)
+                    named[key] = value.DeepClone();
+            }
+            else if (node is JsonObject inner && named[key] is JsonObject nested)
+            {
+                FillScalars(nested, inner);
+            }
+        }
+    }
+
     public static SettingsState Complete(SettingsState settings) => settings with
     {
         General = Complete(settings.General),
