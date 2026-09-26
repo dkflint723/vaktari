@@ -789,6 +789,21 @@ public partial class MainWindow : Window
             target.AdminRequested = e.KeyModifiers.HasFlag(KeyModifiers.Shift);
         }
 
+        // **A right-click on a group heading selected the group's first row**
+        // and then opened the background menu — a heading is drawn inside the
+        // row it stands over, so the list took the press as one on that row,
+        // while the menu (rightly) did not. The heading is not an item, the
+        // menu it gets is the folder's, and nothing about the selection should
+        // move. Claimed on the tunnel before the list sees it; the release is
+        // a separate event and still asks for the menu.
+        if (properties.PointerUpdateKind is PointerUpdateKind.RightButtonPressed
+            && GroupHeadingAt(e.Source) is not null)
+        {
+            ArmNothing();
+            e.Handled = true;
+            return;
+        }
+
         // **The mouse's own back and forward buttons.** Explorer navigates on
         // these, every browser navigates on these, and the convention is old
         // enough that the buttons are usually unlabelled — so an application

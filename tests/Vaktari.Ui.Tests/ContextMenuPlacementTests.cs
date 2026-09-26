@@ -147,9 +147,66 @@ public sealed class ContextMenuPlacementTests : OwnedViewModels
         }
     }
 
-    /// <summary>Presses the key that asks for the menu.</summary>
+    /// <summary>
+    /// Presses the key that asks for the menu, and lets it go — as a real key
+    /// is. **This pressed and never released**, and the release is what closed
+    /// the menu again: the key opened a menu that vanished as the finger came
+    /// up, and every test here passed while it did.
+    /// </summary>
     private static void PressMenuKey(Window window)
-        => window.KeyPress(Key.Apps, RawInputModifiers.None, PhysicalKey.ContextMenu, null);
+    {
+        window.KeyPress(Key.Apps, RawInputModifiers.None, PhysicalKey.ContextMenu, null);
+        window.KeyRelease(Key.Apps, RawInputModifiers.None, PhysicalKey.ContextMenu, null);
+    }
+
+    /// <summary>
+    /// **The menu stays open once the key is up**, for the Menu key and for
+    /// Shift+F10, on either menu. Measured on 0.11.0 and on the first split
+    /// of the menus: open on the press, closed on the release.
+    /// </summary>
+    [AvaloniaTheory]
+    [InlineData(false, true)]
+    [InlineData(false, false)]
+    [InlineData(true, true)]
+    [InlineData(true, false)]
+    public async Task The_menu_stays_open_after_the_key_is_let_go(bool shiftF10, bool selected)
+        => await InAWindow(3, async (window, pane) =>
+        {
+            var list = Listing(window, pane);
+
+            Assert.IsType<ListBoxItem>(list.ContainerFromIndex(1)).Focus();
+
+            if (selected) list.SelectedIndex = 1;
+            else
+            {
+                list.SelectedItems?.Clear();
+                pane.SelectedEntry = null;
+            }
+
+            await Layout(window);
+
+            var menu = ListingMenus.Above(list, selected ? ListingMenus.Item : ListingMenus.Background);
+
+            if (shiftF10)
+            {
+                window.KeyPress(Key.F10, RawInputModifiers.Shift, PhysicalKey.F10, null);
+                await Layout(window);
+                window.KeyRelease(Key.F10, RawInputModifiers.Shift, PhysicalKey.F10, null);
+            }
+            else
+            {
+                window.KeyPress(Key.Apps, RawInputModifiers.None, PhysicalKey.ContextMenu, null);
+                await Layout(window);
+                window.KeyRelease(Key.Apps, RawInputModifiers.None, PhysicalKey.ContextMenu, null);
+            }
+
+            await Layout(window);
+
+            Assert.True(menu.IsOpen, "the menu closed when the key came up");
+
+            menu.Close();
+            await Layout(window);
+        });
 
     // ---- the row ------------------------------------------------------------
 

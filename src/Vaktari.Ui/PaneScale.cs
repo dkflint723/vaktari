@@ -492,5 +492,37 @@ public static class PaneScale
     {
         foreach (var (key, value) in Compute(pane.FontScale, pane.IconScale))
             control.Resources[key] = value;
+
+        foreach (var (key, value) in Tails(pane.FontScale, pane.IconScale))
+            control.Resources[key] = value;
+    }
+
+    /// <summary>
+    /// The paddings of the three listings, each with a blank strip under its
+    /// last row.
+    ///
+    /// **The background menu could not be reached with a mouse in any Details
+    /// listing longer than the window.** The rows are full width and the list
+    /// had no padding, so once it scrolled, every pixel of it was a row: a
+    /// right-click anywhere opened the item menu, and the folder's menu —
+    /// Paste, New, View — was left to the Menu key with nothing selected.
+    /// Measured on a 120-file listing scrolled to the end: row hits and the
+    /// scrollbar, nothing else. A tile layout has gaps between tiles, but its
+    /// last full row reaches the bottom the same way.
+    ///
+    /// One and a half rows, which is enough to aim at without looking and
+    /// short of reading as a gap in the listing. Thicknesses rather than the
+    /// doubles <see cref="Compute"/> yields, because a Padding cannot be built
+    /// from a number by DynamicResource; they follow the same row height, so a
+    /// pane zoomed in gets a taller strip.
+    /// </summary>
+    public static IEnumerable<(string Key, Thickness Value)> Tails(double fontScale, double iconScale)
+    {
+        var row = Compute(fontScale, iconScale).First(m => m.Key == "RowHeight").Value;
+        var tail = Math.Round(row * 1.5, 1);
+
+        yield return ("DetailsPadding", new Thickness(0, 0, 0, tail));
+        yield return ("CompactPadding", new Thickness(4, 4, 4, 4 + tail));
+        yield return ("GridPadding", new Thickness(6, 6, 6, 6 + tail));
     }
 }

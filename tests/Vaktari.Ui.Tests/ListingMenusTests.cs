@@ -60,6 +60,7 @@ public sealed class ListingMenusTests(ITestOutputHelper output) : OwnedViewModel
         PaneViewModel.Recents = _recentsBefore;
         PaneViewModel.ShellMenu = _shellMenuBefore;
         PaneViewModel.FolderViews = _viewsBefore;
+        ShellViewModel.OperationsOverride = null;
 
         base.Dispose();
 
@@ -113,11 +114,14 @@ public sealed class ListingMenusTests(ITestOutputHelper output) : OwnedViewModel
     /// disk over anything set before it. The tab's path and layout are put
     /// back before the close, which flushes the developer's own session.
     /// </summary>
-    private async Task InAWindow(Func<MainWindow, ShellViewModel, PaneViewModel, Task> body)
+    private async Task InAWindow(Func<MainWindow, ShellViewModel, PaneViewModel, Task> body, int extra = 0)
     {
         Directory.CreateDirectory(Path.Combine(_root, "adir"));
         File.WriteAllText(Path.Combine(_root, "notes.txt"), "x");
         File.WriteAllText(Path.Combine(_root, "other.txt"), "y");
+
+        for (var i = 0; i < extra; i++)
+            File.WriteAllText(Path.Combine(_root, $"z{i:000}.txt"), "z");
 
         var window = new MainWindow();
 
@@ -154,6 +158,8 @@ public sealed class ListingMenusTests(ITestOutputHelper output) : OwnedViewModel
                 menu.Close();
 
             pane.View = wasView;
+            pane.GroupBy = GroupMode.None;
+            pane.IsPreviewVisible = false;
 
             if (!string.IsNullOrEmpty(was))
             {
@@ -214,6 +220,37 @@ public sealed class ListingMenusTests(ITestOutputHelper output) : OwnedViewModel
 
         Assert.Fail("hit testing never caught up with the layout, so no click here means anything");
     }
+
+    /// <summary>
+    /// Waits until the point about to be clicked hits what the test says is
+    /// there — polled at THAT point, rather than at some other one assumed to
+    /// catch up with it at the same time.
+    ///
+    /// **Rendered alone was not enough from a checkout under %TEMP%.** It waits
+    /// for a point on a row's name, and the empty-space tests then clicked a
+    /// different point, below the rows, which had not been rendered yet: the
+    /// press hit nothing and opened no menu, five runs in five.
+    /// </summary>
+    private static async Task Hits(Window window, Point at, Func<Visual, bool> expected, string what)
+    {
+        for (var i = 0; i < 50; i++)
+        {
+            AvaloniaHeadlessPlatform.ForceRenderTimerTick();
+            await Layout(window);
+
+            if (window.InputHitTest(at) is Visual hit && expected(hit)) return;
+
+            await Task.Delay(10);
+        }
+
+        Assert.Fail($"the point never hit {what}, so no click there means anything: "
+                    + $"it hits {(window.InputHitTest(at) as Visual)?.GetType().Name ?? "nothing"}");
+    }
+
+    /// <summary>A hit inside this listing and on none of its rows.</summary>
+    private static Func<Visual, bool> EmptySpaceOf(ListBox list)
+        => hit => hit.FindAncestorOfType<ListBoxItem>(includeSelf: true) is null
+                  && hit.FindAncestorOfType<ListBox>(includeSelf: true) == list;
 
     private static async Task RightClick(Window window, Point at)
     {
@@ -345,13 +382,9 @@ public sealed class ListingMenusTests(ITestOutputHelper output) : OwnedViewModel
 
             var below = At(list, list.Bounds.Width / 2, list.Bounds.Height - 12, window);
 
-            // Off every row, asserted on the rendered scene — see Rendered.
-            await Rendered(window, notes);
-
-            var hit = window.InputHitTest(below) as Visual;
-
-            Assert.NotNull(hit);
-            Assert.Null(hit.FindAncestorOfType<ListBoxItem>(includeSelf: true));
+            // Off every row, asserted on the rendered scene at the very point
+            // clicked — see Hits.
+            await Hits(window, below, EmptySpaceOf(list), "the listing's empty space");
 
             await RightClick(window, below);
 
@@ -387,17 +420,267 @@ public sealed class ListingMenusTests(ITestOutputHelper output) : OwnedViewModel
             var list = Listing(window, pane);
             var below = At(list, list.Bounds.Width / 2, list.Bounds.Height - 12, window);
 
-            await Rendered(window, tile);
-
-            var hit = window.InputHitTest(below) as Visual;
-
-            Assert.NotNull(hit);
-            Assert.Null(hit.FindAncestorOfType<ListBoxItem>(includeSelf: true));
+            await Hits(window, below, EmptySpaceOf(list), "the space below the tiles");
 
             await RightClick(window, below);
 
             Assert.True(Background(window, pane).IsOpen, "the space below the tiles opened no background menu");
             Assert.False(Item(window, pane).IsOpen);
+        });
+
+    /// <summary>
+    /// **A listing longer than the window had no empty space to right-click.**
+    /// Details rows are full width and the list had no padding, so once it
+    /// scrolled every pixel of it was a row, and the folder's menu — Paste,
+    /// New, View — was left to the Menu key with nothing selected. Measured by
+    /// the review on a 120-file listing scrolled to the end: rows and the
+    /// scrollbar, nothing else. A blank strip of a row and a half now sits
+    /// under the last row in every layout; see PaneScale.Tails.
+    /// </summary>
+    [AvaloniaTheory]
+    [InlineData(ViewMode.Details)]
+    [InlineData(ViewMode.Compact)]
+    [InlineData(ViewMode.Grid)]
+    public async Task A_long_listing_scrolled_to_its_end_has_empty_space_below_its_rows(ViewMode view)
+        => await InAWindow(async (window, _, pane) =>
+        {
+            pane.View = view;
+
+            await Until(window, () => pane.Entries.Count == 303 && Listing(window, pane).IsVisible,
+                        "the long listing never loaded");
+
+            // A layout switched to is templated on its first layout pass after
+            // it becomes visible, so its scroller is waited for.
+            await Until(window, () => Listing(window, pane).GetVisualDescendants().OfType<ScrollViewer>().Any(),
+                        "the listing drew no scroller");
+
+            var list = Listing(window, pane);
+            var scroller = list.GetVisualDescendants().OfType<ScrollViewer>().First();
+
+            // Longer than the window one way or the other: Details and the
+            // large grid scroll down, the small grid flows into columns and
+            // scrolls across — where every full column reaches the bottom.
+            await Until(window, () => scroller.Extent.Height > scroller.Viewport.Height + 100
+                                      || scroller.Extent.Width > scroller.Viewport.Width + 100,
+                        "the listing is not longer than the window, so this proves nothing");
+
+            scroller.Offset = new Vector(scroller.Extent.Width, scroller.Extent.Height);
+            await Layout(window);
+
+            // Inside the strip, and clear of a horizontal scrollbar under it.
+            var below = At(list, list.Bounds.Width / 3, list.Bounds.Height - 30, window);
+
+            await Hits(window, below, EmptySpaceOf(list), "empty space below the last row");
+
+            await RightClick(window, below);
+
+            Assert.True(Background(window, pane).IsOpen, "the end of a long listing opened no background menu");
+            Assert.False(Item(window, pane).IsOpen);
+        }, extra: 300);
+
+    /// <summary>
+    /// **A right-click on a group heading selected the group's first row** and
+    /// then opened the background menu: the heading is drawn inside that row,
+    /// so the list took the press as one on it. The heading is not an item;
+    /// the selection now stays exactly as it was, and the menu is the folder's.
+    /// </summary>
+    [AvaloniaFact]
+    public async Task A_right_click_on_a_group_heading_moves_no_selection()
+        => await InAWindow(async (window, _, pane) =>
+        {
+            pane.GroupBy = GroupMode.Kind;
+
+            await Until(window, () => Headings(window).Any(), "no group heading was drawn");
+
+            // A heading over a .txt row, and a folder selected — so the row the
+            // heading stands on is not the selected one.
+            var heading = Headings(window).First(h => h.FindAncestorOfType<ListBoxItem>()?.DataContext
+                                                      is FileEntry { IsDirectory: false });
+
+            var list = Listing(window, pane);
+
+            list.SelectedItem = pane.Entries.Single(e => e.Name == "adir");
+            await Layout(window);
+
+            var at = At(heading, heading.Bounds.Width * 0.6, heading.Bounds.Height / 2, window);
+
+            await Hits(window, at, hit => MainWindow.GroupHeadingAt(hit) is not null, "the heading");
+
+            await RightClick(window, at);
+
+            Assert.Equal("adir", pane.SelectedEntry?.Name);
+            Assert.Single(pane.Selection);
+            Assert.True(Background(window, pane).IsOpen, "a heading opened no background menu");
+            Assert.False(Item(window, pane).IsOpen);
+        });
+
+    private static IEnumerable<Control> Headings(Window window)
+        => window.GetVisualDescendants().OfType<Control>()
+            .Where(c => c.Classes.Contains(MainWindow.GroupHeadingClass) && c.IsVisible && c.Bounds.Height > 0);
+
+    /// <summary>
+    /// **A touch or pen long-press opened the item menu about the previous
+    /// selection.** It raises the context request while the finger is still
+    /// down, and the list selects on release; the mouse's press had always
+    /// selected first. A request from an unselected row selects that row
+    /// alone. Driven as a bare ContextRequested on the row — which is what a
+    /// long-press is to the window — since headless has no touch.
+    /// </summary>
+    [AvaloniaFact]
+    public async Task A_context_request_from_an_unselected_row_selects_it_first()
+        => await InAWindow(async (window, _, pane) =>
+        {
+            var list = Listing(window, pane);
+
+            list.SelectedItem = pane.Entries.Single(e => e.Name == "adir");
+            await Layout(window);
+
+            var row = Row(window, pane, "other.txt")!;
+
+            row.RaiseEvent(new ContextRequestedEventArgs());
+            await Layout(window);
+
+            Assert.Equal("other.txt", pane.SelectedEntry?.Name);
+            Assert.Single(pane.Selection);
+            Assert.True(Item(window, pane).IsOpen, "the request opened no item menu");
+
+            await Close(window, Item(window, pane));
+
+            // And a row already in a selection keeps the selection whole.
+            list.SelectedItems!.Add(pane.Entries.Single(e => e.Name == "notes.txt"));
+            await Layout(window);
+
+            Assert.Equal(2, pane.Selection.Count);
+
+            Row(window, pane, "notes.txt")!.RaiseEvent(new ContextRequestedEventArgs());
+            await Layout(window);
+
+            Assert.Equal(2, pane.Selection.Count);
+        });
+
+    /// <summary>
+    /// **The preview overlay shows one file, and its menu is that file's.** A
+    /// right-click on it opened the folder's menu. It previews exactly the
+    /// selected row, so the item menu is about what is on it.
+    /// </summary>
+    [AvaloniaFact]
+    public async Task A_right_click_on_the_preview_opens_the_previewed_files_menu()
+        => await InAWindow(async (window, _, pane) =>
+        {
+            Listing(window, pane).SelectedItem = pane.Entries.Single(e => e.Name == "notes.txt");
+            await Layout(window);
+
+            pane.TogglePreviewCommand.Execute(null);
+
+            await Until(window, () => Preview(window, pane) is { IsVisible: true, Bounds.Width: > 0 },
+                        "the preview never opened");
+
+            var overlay = Preview(window, pane)!;
+            var at = At(overlay, overlay.Bounds.Width / 2, overlay.Bounds.Height - 20, window);
+
+            await Hits(window, at, hit => hit.FindAncestorOfType<Border>(includeSelf: true) is { } b
+                                          && (b == overlay || b.GetVisualAncestors().Contains(overlay)),
+                       "the preview");
+
+            await RightClick(window, at);
+
+            Assert.True(Item(window, pane).IsOpen, "the preview opened no item menu");
+            Assert.False(Background(window, pane).IsOpen, "the preview counted as empty space");
+            Assert.Equal("notes.txt", pane.SelectedEntry?.Name);
+        });
+
+    private static Border? Preview(Window window, PaneViewModel pane)
+        => window.GetVisualDescendants().OfType<Border>()
+            .FirstOrDefault(b => b.Classes.Contains("previewOverlay") && ReferenceEquals(b.DataContext, pane));
+
+    /// <summary>
+    /// **Prepared before it is on screen, by either route.** The preparing —
+    /// every gate re-raised, the scripts and Share rows read — ran in Opened,
+    /// once the popup was up, so on Win32 a first frame could be drawn with
+    /// the previous opening's rows. The gates are raised now while the menu is
+    /// still shut: in Opening for a right-click, before Open() for the key.
+    /// CurrentFolderLabel is one NotifyMenuGates raises and nothing else does.
+    /// </summary>
+    [AvaloniaTheory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public async Task The_menu_is_prepared_before_it_opens(bool byKey)
+        => await InAWindow(async (window, _, pane) =>
+        {
+            var list = Listing(window, pane);
+            var row = Row(window, pane, "notes.txt")!;
+
+            list.SelectedItem = row.DataContext;
+            await Layout(window);
+
+            var menu = Item(window, pane);
+            var whileShut = 0;
+
+            pane.PropertyChanged += (_, change) =>
+            {
+                if (change.PropertyName == nameof(PaneViewModel.CurrentFolderLabel) && !menu.IsOpen) whileShut++;
+            };
+
+            if (byKey)
+            {
+                row.Focus();
+                await Layout(window);
+
+                window.KeyPress(Key.Apps, RawInputModifiers.None, PhysicalKey.ContextMenu, null);
+                window.KeyRelease(Key.Apps, RawInputModifiers.None, PhysicalKey.ContextMenu, null);
+            }
+            else
+            {
+                await Rendered(window, row);
+                await RightClick(window, At(row, 40, row.Bounds.Height / 2, window));
+            }
+
+            await Layout(window);
+
+            Assert.True(menu.IsOpen, "the menu did not open, so this proves nothing");
+            Assert.True(whileShut > 0, "nothing was prepared before the menu was on screen");
+        });
+
+    /// <summary>
+    /// **A row appearing on an open menu arrives with its rules.** The rules
+    /// were tidied once, as the menu opened; Undo turning up afterwards — an
+    /// operation finishing while the menu is up — found its block's rule
+    /// hidden for having had nothing to introduce, and sat against Refresh.
+    /// Measured in a search's background menu, where Paste is not offered and
+    /// Undo is its block's only row: "Select all | Undo | Refresh".
+    /// </summary>
+    [AvaloniaFact]
+    public async Task A_row_that_appears_while_the_menu_is_open_gets_its_rules()
+        => await InAWindow(async (window, _, pane) =>
+        {
+            var hit = new FileEntry("notes.txt", Path.Combine(_root, "notes.txt"), 1,
+                                    DateTimeOffset.Now, EntryFlags.None);
+
+            UseSearch(new Finds(hit));
+
+            await pane.NavigateAsync(VirtualPaths.Search("notes", _root, scoped: false));
+            await Until(window, () => pane.Entries.Count == 1, "the search never listed its hit");
+
+            var menu = Background(window, pane);
+
+            await Open(window, menu);
+
+            pane.CanUndo = false;
+            pane.CanRedo = false;
+            Settle();
+
+            Assert.DoesNotContain("Undo", ListingMenus.Read(menu));
+
+            pane.CanUndo = true;
+            Settle();
+
+            var rows = ListingMenus.Read(menu);
+            var undo = rows.IndexOf("Undo");
+
+            Assert.True(undo > 0, "Undo did not appear: " + string.Join(" | ", rows));
+            Assert.Equal("—", rows[undo - 1]);
+            Assert.Equal("—", rows[undo + 1]);
+            Assert.Empty(ListingMenus.StrayRules(menu, "background, search, Undo appeared"));
         });
 
     // ---- the Windows menu follows the menu ----------------------------------
@@ -491,6 +774,66 @@ public sealed class ListingMenusTests(ITestOutputHelper output) : OwnedViewModel
             Assert.DoesNotContain(Item(window, pane).Items.OfType<MenuItem>(),
                                   i => i.Command == pane.UndoCommand || i.Command == pane.RedoCommand);
         });
+
+    /// <summary>
+    /// **The Undo row's label is data, and a string header read it as markup.**
+    /// AccessText takes the first underscore as an access key: "Undo rename of
+    /// my_notes.txt" drew "mynotes.txt" and answered to 'n', which New holds.
+    /// The label is a TextBlock now, drawn as written and answering to no key.
+    /// The history is an engine that names that rename, handed to the window
+    /// before it is built.
+    /// </summary>
+    [AvaloniaFact]
+    public async Task An_underscore_in_the_undo_label_is_drawn_and_is_not_a_key()
+    {
+        ShellViewModel.OperationsOverride = _ => new Named("rename of my_notes.txt");
+
+        await InAWindow(async (window, _, pane) =>
+        {
+            var menu = Background(window, pane);
+
+            await Open(window, menu);
+
+            var undo = menu.Items.OfType<MenuItem>().Single(i => i.Command == pane.UndoCommand);
+
+            Assert.True(undo.IsVisible, "Undo is not offered, so this proves nothing");
+
+            var texts = undo.GetVisualDescendants().OfType<TextBlock>().ToList();
+
+            Assert.Contains(texts, t => t.Text == "Undo rename of my_notes.txt");
+            Assert.DoesNotContain(texts.OfType<Avalonia.Controls.Primitives.AccessText>(), t => t.AccessKey is not null);
+        });
+    }
+
+    /// <summary>An engine whose history names one step to undo, and does
+    /// nothing else.</summary>
+    private sealed class Named(string undo) : IFileOperations
+    {
+        private static IOperationHandle Done()
+        {
+            var handle = new OperationHandle();
+            handle.Complete();
+            return handle;
+        }
+
+        public IOperationHandle Copy(IReadOnlyList<string> sources, string destination,
+            Func<FileConflict, ValueTask<ConflictResolution>> onConflict) => Done();
+
+        public IOperationHandle Move(IReadOnlyList<string> sources, string destination,
+            Func<FileConflict, ValueTask<ConflictResolution>> onConflict) => Done();
+
+        public IOperationHandle Trash(IReadOnlyList<string> paths) => Done();
+        public IOperationHandle Delete(IReadOnlyList<string> paths) => Done();
+        public ValueTask RenameAsync(string path, string newName, CancellationToken ct) => ValueTask.CompletedTask;
+        public void RecordCreation(string path) { }
+        public IUndoGroup? BeginRenameGroup() => null;
+        public bool CanUndo => true;
+        public bool CanRedo => false;
+        public string? UndoDescription => undo;
+        public string? RedoDescription => null;
+        public ValueTask UndoAsync(CancellationToken ct) => ValueTask.CompletedTask;
+        public ValueTask RedoAsync(CancellationToken ct) => ValueTask.CompletedTask;
+    }
 
     // ---- what each menu shows, listing by listing ----------------------------
 

@@ -1,5 +1,7 @@
+using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Input;
+using Avalonia.VisualTree;
 using Avalonia.Interactivity;
 using Vaktari.Ui.ViewModels;
 
@@ -100,7 +102,81 @@ public partial class MainWindow
     /// still decides whether a menu opens at all.
     /// </summary>
     private void OnContextRequestedTunnel(object? sender, ContextRequestedEventArgs e)
-        => _contextOnRow = EntryAt(e.Source) is not null;
+    {
+        var entry = EntryAt(e.Source);
+
+        _contextGroup = GroupAt(e.Source);
+
+        // **The preview overlay is the selected file, drawn large**, and a
+        // right-click on it opened the folder's menu while it showed one file.
+        // It shows exactly SelectedEntry (PaneViewModel.RefreshPreviewAsync),
+        // so the item menu is about exactly what is on it — the answer a
+        // right-click on a thumbnail gives in every viewer. With nothing
+        // selected there is nothing previewed, and it is empty space.
+        _contextOnRow = entry is not null
+                        || (InPreview(e.Source) && PaneAt(e.Source) is { SelectedEntry: not null });
+
+        // **A long press on a touch screen opened the item menu about the
+        // PREVIOUS selection.** The mouse's right press selects the row before
+        // the menu is asked for; a touch or pen long-press raises this request
+        // while the finger is still down, and the list selects on release. So
+        // a row under the request that is not selected is selected here, alone
+        // — the same answer a right-click on it gives. A row already in the
+        // selection is left as it is: right-clicking inside a selection keeps
+        // it, and so must holding a finger on it.
+        if (entry is { } row && ListingAt(e.Source) is { SelectedItems: { } chosen } list
+            && !chosen.Contains(row))
+        {
+            chosen.Clear();
+            list.SelectedItem = row;
+        }
+    }
+
+    /// <summary>The class the preview overlay carries in the markup, and the
+    /// only thing tying it to <see cref="InPreview"/>.</summary>
+    private const string PreviewOverlayClass = "previewOverlay";
+
+    /// <summary>Whether a press landed on the preview overlay.</summary>
+    private static bool InPreview(object? source)
+    {
+        for (var visual = source as Visual; visual is not null; visual = visual.GetVisualParent())
+            if (visual is Control control && control.Classes.Contains(PreviewOverlayClass)) return true;
+
+        return false;
+    }
+
+    /// <summary>
+    /// The pane group the last context request came from, so a menu can be
+    /// prepared in its Opening — before it has inherited a DataContext of its
+    /// own. See <see cref="PrepareEarly"/>.
+    /// </summary>
+    private PaneGroupViewModel? _contextGroup;
+
+    /// <summary>
+    /// The menu prepared ahead of its opening, which its Opened then need not
+    /// prepare again.
+    /// </summary>
+    private ContextMenu? _preparedEarly;
+
+    /// <summary>
+    /// Prepares a menu before it is on screen.
+    ///
+    /// **Preparing only in Opened let the popup show a frame first.** Opened
+    /// is raised once the popup is up, and on Win32 that can be after a first
+    /// frame has been drawn with the previous opening's gates, Share rows and
+    /// rules — a flicker, and a popup that resizes under the pointer. So the
+    /// right-click route prepares in Opening and the Menu key before Open();
+    /// Opened keeps preparing as the safety net for any route that did neither,
+    /// and the rules are tidied there in any case, when the bindings have their
+    /// DataContext.
+    /// </summary>
+    private void PrepareEarly(ContextMenu menu, PaneGroupViewModel? group)
+    {
+        if (group is null) return;
+
+        PrepareListingMenu(menu, group);
+        _preparedEarly = menu;
+    }
 
     /// <summary>
     /// The item menu's half of the routing: it steps aside for a click that
@@ -126,23 +202,32 @@ public partial class MainWindow
         // click. The keyboard's route forgets it in OpenListingMenu. See
         // ForgetTheClick.
         ForgetTheClick();
+
+        if (sender is ContextMenu menu) PrepareEarly(menu, _contextGroup);
     }
 
     /// <summary>The background menu's right-click route: the same forgetting
-    /// the item menu does, for the same reason.</summary>
+    /// the item menu does, for the same reason, and the same early
+    /// preparing.</summary>
     private void OnBackgroundMenuOpening(object? sender, System.ComponentModel.CancelEventArgs e)
-        => ForgetTheClick();
+    {
+        ForgetTheClick();
+
+        if (sender is ContextMenu menu) PrepareEarly(menu, _contextGroup);
+    }
 
     /// <summary>
-    /// What every opening of either listing menu asks before it is seen, and
-    /// the rules it draws afterwards.
+    /// The rules of either listing menu, and the preparing any route skipped.
     ///
-    /// Opened rather than Opening because every route raises it: the Menu key
-    /// opens with Open(control), which raises no Opening — measured on 12.1.2 —
-    /// and a test opening a menu directly raises none either. Opened comes
-    /// after the bindings have resolved — measured: a row whose gate is false
-    /// already reads IsVisible false here, nested rows included — and before
-    /// the first frame, so nothing below is ever drawn stale.
+    /// The preparing happens earlier where it can — in Opening for a
+    /// right-click, before Open() for the Menu key; see PrepareEarly — and
+    /// Opened is the safety net because every route raises it: Open(control)
+    /// raises no Opening (measured on 12.1.2), and a test opening a menu
+    /// directly raises none either. The rules are tidied here rather than
+    /// early because only now do the rows' bindings have the menu's
+    /// DataContext — measured: a row whose gate is false reads IsVisible false
+    /// here, nested rows included — and they are tidied again whenever a row
+    /// changes while the menu is up; see WatchRules.
     /// </summary>
     private void OnListingMenuOpened(object? sender, RoutedEventArgs e)
     {
@@ -150,9 +235,45 @@ public partial class MainWindow
         // but a handler that assumed so would tidy the wrong list if one did.
         if (!ReferenceEquals(e.Source, sender) || sender is not ContextMenu menu) return;
 
-        PrepareListingMenu(menu, menu.DataContext as PaneGroupViewModel);
+        // The safety net: a route that prepared nothing ahead of the opening
+        // — a test opening the menu directly, one nobody has written yet.
+        if (!ReferenceEquals(_preparedEarly, menu))
+            PrepareListingMenu(menu, menu.DataContext as PaneGroupViewModel);
 
+        _preparedEarly = null;
+
+        WatchRules(menu);
         TidyRules(menu.Items);
+    }
+
+    /// <summary>The menus whose rows are already watched, so each is watched
+    /// once however often it opens.</summary>
+    private readonly HashSet<ContextMenu> _watchedForRules = [];
+
+    /// <summary>
+    /// Tidies the rules again whenever one of the menu's rows comes or goes
+    /// while it is open.
+    ///
+    /// **Undo appearing on an open menu left it butting against Refresh.**
+    /// The rules are decided as the menu opens, from what is drawn then; a row
+    /// whose gate changes afterwards — Undo once an operation finishes, Paste's
+    /// neighbours when the clipboard answers — arrives with no rule of its
+    /// block drawn, because that rule was hidden for having nothing to
+    /// introduce. Measured in a search's background menu: "Select all | Undo |
+    /// Refresh". A rule's own visibility is what the tidying writes, so only
+    /// the rows are listened to.
+    /// </summary>
+    private void WatchRules(ContextMenu menu)
+    {
+        if (!_watchedForRules.Add(menu)) return;
+
+        foreach (var row in menu.Items.OfType<Control>().Where(c => c is not Separator))
+        {
+            row.PropertyChanged += (_, change) =>
+            {
+                if (change.Property == Avalonia.Visual.IsVisibleProperty && menu.IsOpen) TidyRules(menu.Items);
+            };
+        }
     }
 
     /// <summary>
@@ -454,6 +575,10 @@ public partial class MainWindow
             menu.Placement = PlacementMode.Pointer;
             menu.PlacementTarget = null;
         }
+
+        // A Menu key that opened this and was never let go of while it was up
+        // must not swallow the release of the next one. See _menuKeyHeld.
+        _menuKeyHeld = null;
 
         if (sender is not Control { DataContext: PaneGroupViewModel { ActiveTab: { } pane } })
             return;

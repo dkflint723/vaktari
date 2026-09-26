@@ -152,19 +152,34 @@ public sealed partial class ShellViewModel
     // Close to the right. With a dozen open, closing them one at a time is the
     // only route, and both references offer all three.
 
+    //
+    // **Each acts on the side the tab belongs to, not the side that is
+    // active.** They all used ActiveGroup, and a tab's own menu is opened on
+    // either side: right-click a tab in the inactive half, choose "Close other
+    // tabs", and the ACTIVE half's tabs closed — measured with the left side
+    // active and the right side's tab handed in. CloseTab has always asked
+    // which side holds the tab; these ask the same, through GroupOf.
+
     [RelayCommand]
     private void DuplicateTab(PaneViewModel? pane)
     {
         var from = pane ?? ActiveTab;
 
-        if (from is not null) ActiveGroup.AddTab(from.CurrentPath, like: from);
+        if (from is not null) GroupOf(from).AddTab(from.CurrentPath, like: from);
     }
 
     [RelayCommand]
-    private void CloseOtherTabs(PaneViewModel? pane) => ActiveGroup.CloseOtherTabs(pane);
+    private void CloseOtherTabs(PaneViewModel? pane) => GroupOf(pane).CloseOtherTabs(pane);
 
     [RelayCommand]
-    private void CloseTabsToTheRight(PaneViewModel? pane) => ActiveGroup.CloseTabsToTheRight(pane);
+    private void CloseTabsToTheRight(PaneViewModel? pane) => GroupOf(pane).CloseTabsToTheRight(pane);
+
+    /// <summary>The side a tab belongs to — the active side for no tab at all,
+    /// which is what the keyboard's route hands in.</summary>
+    private PaneGroupViewModel GroupOf(PaneViewModel? pane)
+        => pane is null ? ActiveGroup
+            : Right is { } right && right.Tabs.Contains(pane) ? right
+            : Left;
 
     /// <summary>
     /// Ctrl+Shift+T. Closing a tab used to throw its whole state away — where
@@ -310,9 +325,7 @@ public sealed partial class ShellViewModel
     [RelayCommand]
     private void CloseTab(PaneViewModel? pane)
     {
-        var group = pane is null ? ActiveGroup
-            : Right is { } right && right.Tabs.Contains(pane) ? right
-            : Left;
+        var group = GroupOf(pane);
 
         // Closing the last tab of the right side collapses the split rather
         // than refusing, which is what the user actually means.

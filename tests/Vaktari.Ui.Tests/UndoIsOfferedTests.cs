@@ -181,8 +181,12 @@ public sealed class UndoIsOfferedTests : OwnedViewModels
         foreach (var row in rows)
         {
             // The label names what will happen, and the row is there only
-            // when something will.
-            Assert.Contains("Label", (string?)row.Attribute("Header") ?? "");
+            // when something will. A TextBlock rather than a header string:
+            // the label is data, and a string header would read its first
+            // underscore as an access key (ListingMenusTests has the case).
+            Assert.Null(row.Attribute("Header"));
+            var header = Assert.Single(row.Elements(Avalonia + "MenuItem.Header"));
+            Assert.Contains("Label", (string?)Assert.Single(header.Elements(Avalonia + "TextBlock")).Attribute("Text") ?? "");
             Assert.Contains("ActiveTab.Can", (string?)row.Attribute("IsVisible") ?? "");
             Assert.Null(row.Attribute("IsEnabled"));
             Assert.Contains((string?)row.Attribute(In + "KeyHint.Command"), new[] { "Undo", "Redo" });

@@ -206,6 +206,11 @@ public sealed partial class ShellViewModel
     {
         if (place is null || ActiveTab is not { } source) return;
 
+        // **Copy to and Move to on a drive.** The rows are hidden in This PC;
+        // the commands are reachable from the palette, so they refuse too —
+        // before the picker, so nothing is asked for that would be refused.
+        if (source.RefusedOnVolumes(SelectionOf(source))) return;
+
         // The first row of the submenu is not a folder at all.
         if (place.Id == OtherPaneTargetId)
         {
@@ -321,6 +326,9 @@ public sealed partial class ShellViewModel
 
         var paths = SelectionOf(source);
         if (paths.Count == 0) return;
+
+        // A drive is not sent to the other pane either — see TransferTo.
+        if (source.RefusedOnVolumes(paths)) return;
 
         // **The one route with no containment check at all.** Sending a folder
         // to the other pane while that pane is showing somewhere inside it

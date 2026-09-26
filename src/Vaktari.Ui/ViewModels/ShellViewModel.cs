@@ -481,7 +481,14 @@ public sealed partial class ShellViewModel : ObservableObject, IDisposable
     public event EventHandler? BatchRenameRequested;
 
     [RelayCommand]
-    private void BatchRename() => BatchRenameRequested?.Invoke(this, EventArgs.Empty);
+    private void BatchRename()
+    {
+        // Shift+F2 reaches here with no menu row in the way: a drive in This
+        // PC is refused the way F2 refuses it. See PaneViewModel.RefusedOnVolumes.
+        if (ActiveTab is { } pane && pane.RefusedOnVolumes(pane.SelectionPaths())) return;
+
+        BatchRenameRequested?.Invoke(this, EventArgs.Empty);
+    }
 
     /// <summary>
     /// F2 on more than one row asks for the batch dialog rather than renaming

@@ -49,6 +49,9 @@ public partial class MainWindow
 
         foreach (var (key, value) in PaneScale.Compute(fontScale, iconScale))
             target[key] = value;
+
+        foreach (var (key, value) in PaneScale.Tails(fontScale, iconScale))
+            target[key] = value;
     }
 
     /// <summary>

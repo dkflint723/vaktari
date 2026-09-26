@@ -390,6 +390,12 @@ public partial class MainWindow
 
         if (chosen.Count == 0) return;
 
+        // **The question was asked about a drive, and a yes deleted what was
+        // on it.** Refused before it is asked, with the reason — the command
+        // behind the yes refuses too, but a prompt naming "D:" is itself the
+        // wrong thing to show.
+        if (pane.RefusedOnVolumes([.. chosen.Select(e => e.FullPath)])) return;
+
         _prompt = PromptMode.ConfirmDelete;
         _confirmPane = pane;
         _confirmChosen = chosen;
@@ -431,6 +437,9 @@ public partial class MainWindow
         var chosen = Chosen(pane);
 
         if (chosen.Count == 0) return;
+
+        // Nor a drive, for the reason AskConfirmDelete gives.
+        if (pane.RefusedOnVolumes([.. chosen.Select(e => e.FullPath)])) return;
 
         _prompt = PromptMode.ConfirmTrash;
         _confirmPane = pane;

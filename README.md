@@ -438,8 +438,9 @@ where the files disagree.
 
 **Scripts.** Drop a script in Vaktari's scripts folder and it appears under
 *Scripts* on the right-click menus: from a row's menu it runs on the selection,
-from the folder's menu on the folder alone, and either way in the current
-folder. The folder's *Scripts ▸ Open scripts folder* takes you to where they
+from the folder's menu on the folder alone, and either way with the folder you
+are in as its working directory — so scripts are offered in a folder, not in
+search results, a recent list, the bin or *This PC*. The folder's *Scripts ▸ Open scripts folder* takes you to where they
 live, making it first if it has gone.
 
 ## Sharing and the network

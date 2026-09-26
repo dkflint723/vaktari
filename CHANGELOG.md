@@ -37,12 +37,35 @@ should not be trusted for compatibility yet.
   PC*; *Open with*, *Copy* and *Scripts* are not offered in the bin; *Paste*,
   *New* and *Duplicate* only appear in a real folder; *Select what differs*
   and *Copy what is newer or missing* only when both sides are folders;
-  *Share* on a file no longer shares the folder around it; and a tab's
-  *Close other tabs* and
+  *Share* on a file no longer shares the folder around it; *Scripts* are
+  offered in a folder and not in a search, a recent list or *This PC*,
+  where they could not start; and a tab's *Close other tabs* and
   *Close tabs to the right* appear only when there is a tab to close. Every
-  menu row is 24 pixels tall rather than 30, so a file's menu on Windows is
-  under half the height it was. The *Context menu* settings page's sort
-  checkbox now reads *Sorting, grouping and columns in View*.
+  listing now ends in a blank strip below its last row, so the folder's menu
+  can be reached with the mouse however long the folder is; a right-click on
+  a group heading opens it without selecting the row under the heading, and
+  one on the preview opens the previewed file's menu. Every menu row is 24
+  pixels tall rather than 30, so a file's menu on Windows is under half the
+  height it was. The *Context menu* settings page's sort checkbox now reads
+  *Sorting, grouping and columns in View*.
+
+### Fixed
+
+- **`Shift+Delete` on a drive in *This PC* deleted what was on it.** The
+  delete cleared and removed the drive's files one by one before refusing
+  the drive itself at the end. `Delete`, `Ctrl+X` then `Ctrl+V`, `F2`,
+  `Shift+F2`, *Copy to*, *Move to* and sending to the other pane reached a
+  drive the same way. Every one of them now says a drive cannot be moved,
+  renamed or deleted, and the file operations themselves refuse the root of
+  a drive — on Linux any mount point — whatever asks. `Ctrl+C` in the bin no
+  longer puts the path a binned file used to have on the clipboard.
+
+- **The Menu key's menu closed as soon as the key was let go.** It opened on
+  the press, and the release put it away again.
+
+- **A tab's *Close other tabs*, *Close tabs to the right* and *Duplicate*
+  acted on the other side of a split** when the tab was on the side that was
+  not active.
 
 ## [0.11.0] — 2026-09-25
 

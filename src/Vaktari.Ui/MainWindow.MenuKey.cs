@@ -1,5 +1,6 @@
 using Avalonia;
 using Avalonia.Controls;
+using Avalonia.Input;
 using Avalonia.VisualTree;
 
 namespace Vaktari.Ui;
@@ -95,6 +96,11 @@ public partial class MainWindow
 
         menu.PlacementTarget = row ?? list;
 
+        // Prepared before it opens, as the right-click route is in Opening, so
+        // no frame of it is drawn with the last opening's rows. See
+        // PrepareEarly.
+        PrepareEarly(menu, host.DataContext as ViewModels.PaneGroupViewModel);
+
         // **Open() takes the control the menu is ATTACHED to and refuses
         // any other**, so the row cannot be handed to it — the host is.
         // The anchor is PlacementTarget, set above, and it does reach the
@@ -106,10 +112,50 @@ public partial class MainWindow
         // **And Open() does not raise Opening** — measured, a headless
         // ContextMenu opened this way raised it zero times. So the click
         // memory the right-click route clears in Opening is cleared here for
-        // the keyboard's menu (see ForgetTheClick), and everything an opening
-        // re-reads is re-read in OnListingMenuOpened, which Open() does raise.
+        // the keyboard's menu (see ForgetTheClick), and the preparing the
+        // right-click route does in Opening is done above.
         ForgetTheClick();
         menu.Open(host);
+    }
+
+    /// <summary>
+    /// The key that opened a menu, while it is still down.
+    ///
+    /// **The Menu key opened the menu on its press and closed it on its
+    /// release.** Measured headless on this tree and on 0.11.0: KeyPress(Apps)
+    /// opened the listing's menu and the KeyRelease that follows every real
+    /// press closed it again, so the key flashed a menu at best. The closing is
+    /// Avalonia's own: ContextMenu.PopupKeyUp shuts an open menu on the Menu
+    /// key's release, because Avalonia's route OPENS on that release and a
+    /// second one means "put it away". This window opens on the press, where
+    /// the rest of its keys are answered, so the release that follows reaches
+    /// a menu that is already open — the menu has the keyboard by then, so the
+    /// release is routed through the menu rather than the window, and it is
+    /// swallowed there, by <see cref="OnMenuKeyUp"/>, before the popup's own
+    /// handler hears it. Shift+F10 is held the same way, though
+    /// PopupKeyUp was measured to close on the Menu key alone.
+    /// </summary>
+    private Key? _menuKeyHeld;
+
+    /// <summary>Remembers the key that is opening a menu, so its release can
+    /// be kept from reaching the menu. See <see cref="_menuKeyHeld"/>.</summary>
+    private void HoldMenuKey(Key key) => _menuKeyHeld = key;
+
+    /// <summary>
+    /// Swallows the release of the key that just opened a menu — once. Any
+    /// other key's release, and a later release of the same key, go through:
+    /// pressing the Menu key again on an open menu still puts it away.
+    ///
+    /// On the menu, from the markup: the release starts at the menu or a row in
+    /// it and bubbles up to the popup, whose own handler is the one that
+    /// closes, so the menu is the one place that hears it first.
+    /// </summary>
+    private void OnMenuKeyUp(object? sender, KeyEventArgs e)
+    {
+        if (_menuKeyHeld is not { } held || e.Key != held) return;
+
+        _menuKeyHeld = null;
+        e.Handled = true;
     }
 
     /// <summary>The name the markup gives the item menu.</summary>

@@ -101,7 +101,10 @@ public sealed class WindowsFileOperations : IFileOperations
     public IOperationHandle Move(
         IReadOnlyList<string> sources, string destination,
         Func<FileConflict, ValueTask<ConflictResolution>> onConflict)
-        => Run(sources, destination, onConflict, move: true);
+        // A volume's root is never moved — see VolumeRoots, which is also
+        // asked by the pane before anything gets this far.
+        => VolumeRoots.RefusedOperation(sources, OperationKind.Move)
+           ?? Run(sources, destination, onConflict, move: true);
 
     /// <summary>
     /// Reads the bin, so a recycle can be undone.
@@ -216,6 +219,9 @@ public sealed class WindowsFileOperations : IFileOperations
 
     private IOperationHandle Trash(IReadOnlyList<string> paths, bool remember)
     {
+        // Never a volume's root, whoever asks. See VolumeRoots.
+        if (VolumeRoots.RefusedOperation(paths, OperationKind.Trash) is { } refusedTrash) return refusedTrash;
+
         // **Neither, and the recycle below is why.** The whole batch goes
         // through ONE SHFileOperation, which blocks until the shell is done
         // with it: there is no loop between items to await the pause gate in,
@@ -563,6 +569,11 @@ public sealed class WindowsFileOperations : IFileOperations
     /// </summary>
     public IOperationHandle Delete(IReadOnlyList<string> paths)
     {
+        // **Never a volume's root, whoever asks.** The walk below clears and
+        // deletes a tree before it gets to the root, so a drive handed here
+        // lost its files before the refusal at the end. See VolumeRoots.
+        if (VolumeRoots.RefusedOperation(paths, OperationKind.Delete) is { } refusedDelete) return refusedDelete;
+
         var handle = new OperationHandle { Paths = paths, Kind = OperationKind.Delete };
 
         _ = Task.Run(async () =>

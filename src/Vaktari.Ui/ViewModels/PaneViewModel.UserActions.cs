@@ -19,13 +19,20 @@ public sealed partial class PaneViewModel
     public bool HasScripts => Scripts.Count > 0;
 
     /// <summary>
-    /// The item menu's Scripts, which run on the selection.
+    /// The item menu's Scripts, which run on the selection — in a real folder.
     ///
     /// **Not in the bin**, where a row's path is where the item used to be: a
     /// script handed it acts on whatever lives there now, the fault every
     /// other selection verb in that listing already refuses.
+    ///
+    /// **Nor in a search, Recent, This PC or a scan**, where the row was
+    /// offered and the script could not start: a script runs with the folder
+    /// on screen as its working directory, and there the folder is
+    /// "vaktari:search:…", which both runners hand to the process as its
+    /// WorkingDirectory — and the process fails to start. Refused in
+    /// <see cref="RunAsync"/> as well, for the same reason.
     /// </summary>
-    public bool CanRunScriptsOnSelection => HasScripts && CanActOnSelection;
+    public bool CanRunScriptsOnSelection => HasScripts && CanActOnSelection && IsRealFolder;
 
     /// <summary>
     /// The background menu's Scripts, which run in the folder with nothing
@@ -105,6 +112,14 @@ public sealed partial class PaneViewModel
     private async Task RunAsync(ScriptCommand script, IReadOnlyList<string> selection)
     {
         if (_scripts is null) return;
+
+        // The working directory is the folder on screen; a listing that is not
+        // one has no directory to start in. See CanRunScriptsOnSelection.
+        if (!IsRealFolder)
+        {
+            Status = $"{script.Name} runs in a folder — open one first";
+            return;
+        }
 
         Status = $"running {script.Name}…";
 

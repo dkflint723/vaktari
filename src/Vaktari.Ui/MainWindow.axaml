@@ -1883,6 +1883,7 @@
                  refuse where the menu opened is not drawn. Paste is the one
                  exception, and says why on its own row. -->
             <ContextMenu x:Name="BackgroundMenu" x:DataType="vm:PaneGroupViewModel"
+                         KeyUp="OnMenuKeyUp"
                          Opening="OnBackgroundMenuOpening"
                          Opened="OnListingMenuOpened"
                          Closed="OnListingMenuClosed">
@@ -2113,14 +2114,26 @@
                    On the background menu rather than an item's: what it takes
                    back is the last operation, which is rarely about the row
                    under the pointer. -->
-              <MenuItem Header="{Binding ActiveTab.UndoLabel}"
-                        Command="{Binding ActiveTab.UndoCommand}"
+              <!-- **The label is data, so it is a TextBlock, not a header
+                   string.** A string header goes through AccessText, which
+                   reads its first underscore as an access key: "Undo rename of
+                   my_notes.txt" drew "mynotes.txt" and answered to 'n' — the
+                   key New already holds. The history flyouts on Back and
+                   Forward draw folder names the same way for the same reason. -->
+              <MenuItem Command="{Binding ActiveTab.UndoCommand}"
                         IsVisible="{Binding ActiveTab.CanUndo}"
-                        in:KeyHint.Command="Undo"/>
-              <MenuItem Header="{Binding ActiveTab.RedoLabel}"
-                        Command="{Binding ActiveTab.RedoCommand}"
+                        in:KeyHint.Command="Undo">
+                <MenuItem.Header>
+                  <TextBlock Text="{Binding ActiveTab.UndoLabel}"/>
+                </MenuItem.Header>
+              </MenuItem>
+              <MenuItem Command="{Binding ActiveTab.RedoCommand}"
                         IsVisible="{Binding ActiveTab.CanRedo}"
-                        in:KeyHint.Command="Redo"/>
+                        in:KeyHint.Command="Redo">
+                <MenuItem.Header>
+                  <TextBlock Text="{Binding ActiveTab.RedoLabel}"/>
+                </MenuItem.Header>
+              </MenuItem>
               <Separator/>
               <!-- One "New" rather than three top-level entries that all create
                    something. Only in a real folder: all three commands write
@@ -2409,6 +2422,7 @@
                  folder — is not drawn: each gate says which refusal it
                  answers. -->
             <ContextMenu x:Name="ItemMenu" x:DataType="vm:PaneGroupViewModel"
+                         KeyUp="OnMenuKeyUp"
                          Opening="OnItemMenuOpening"
                          Opened="OnListingMenuOpened"
                          Closed="OnListingMenuClosed">
@@ -3417,7 +3431,8 @@
                        DragDrop.AllowDrop="True"
                        SizeChanged="OnListSizeChanged"
                        Focusable="True"
-                       IsVisible="{Binding IsDetailsView}" SelectionMode="Multiple" Background="Transparent" Padding="0">
+                       IsVisible="{Binding IsDetailsView}" SelectionMode="Multiple" Background="Transparent"
+                       Padding="{DynamicResource DetailsPadding}">
                 <ListBox.Styles>
                   <!-- **A row read out as the record's ToString.** A container
                        with no name of its own and a template that is not one
@@ -3939,7 +3954,7 @@
                        IsVisible="{Binding IsCompactView}"
                        DragDrop.AllowDrop="True"
                        Focusable="True"
-                       SelectionMode="Multiple" Background="Transparent" Padding="4"
+                       SelectionMode="Multiple" Background="Transparent" Padding="{DynamicResource CompactPadding}"
                        ScrollViewer.HorizontalScrollBarVisibility="Auto"
                        ScrollViewer.VerticalScrollBarVisibility="Disabled">
                 <ListBox.Styles>
@@ -4194,7 +4209,7 @@
                        IsVisible="{Binding IsGridView}"
                        DragDrop.AllowDrop="True"
                        Focusable="True"
-                       SelectionMode="Multiple" Background="Transparent" Padding="6">
+                       SelectionMode="Multiple" Background="Transparent" Padding="{DynamicResource GridPadding}">
                 <ListBox.Styles>
                   <!-- Named for a reader: see the details listing. -->
                   <Style Selector="ListBoxItem" x:DataType="fs:FileEntry">
@@ -4505,8 +4520,12 @@
 
               <!-- Preview sits over the listing rather than beside it: at this
                    width a side panel would squeeze the list to nothing, and
-                   the overlay dismisses with the same key that opened it. -->
-              <Border IsVisible="{Binding IsPreviewVisible}"
+                   the overlay dismisses with the same key that opened it.
+
+                   Its class is what a right-click on it is recognised by: the
+                   overlay shows the selected file, so its menu is that file's
+                   — see OnContextRequestedTunnel. -->
+              <Border Classes="previewOverlay" IsVisible="{Binding IsPreviewVisible}"
                       Background="{DynamicResource ViewBackground}" BorderThickness="0.5,0,0,0"
                       BorderBrush="{DynamicResource SeparatorColour}" HorizontalAlignment="Right"
                       Width="360" Padding="12">

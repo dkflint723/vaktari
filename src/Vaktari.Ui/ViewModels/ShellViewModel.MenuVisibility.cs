@@ -95,8 +95,10 @@ public sealed partial class ShellViewModel
 
     /// <summary>
     /// Every gate in this file, raised at once. Called by the listing menus as
-    /// they open — see PaneViewModel.NotifyMenuGates for why that is the moment
-    /// that matters — and by <see cref="NotifySelectionMenu"/>.
+    /// they are prepared — see PaneViewModel.NotifyMenuGates for why that is
+    /// the moment that matters. <see cref="NotifySelectionMenu"/> raises most
+    /// of the same gates on its own list, for the selection and the active tab
+    /// changing; it does not call this.
     /// </summary>
     public void NotifyMenuGates()
     {

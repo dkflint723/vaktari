@@ -155,6 +155,40 @@ public sealed class ListingMenuGatesTests : OwnedViewModels
         Assert.True(folder.CanRunScriptsOnSelection);
     }
 
+    /// <summary>
+    /// **A script offered in a search could not start.** The item menu showed
+    /// Scripts wherever a row was selected outside the bin, and the run hands
+    /// the script the folder on screen as its working directory — in a
+    /// search, Recent, This PC or a scan, the listing's internal path, which
+    /// the process refuses to start in. Not offered there, and refused there
+    /// if reached, with nothing handed to the runner.
+    /// </summary>
+    [AvaloniaTheory]
+    [InlineData("vaktari:search:report::everywhere")]
+    [InlineData(VirtualPaths.Files)]
+    [InlineData(VirtualPaths.Computer)]
+    public async Task Scripts_run_only_where_there_is_a_folder_to_run_in(string listing)
+    {
+        var runner = new Scripts(Path.Combine(Temp, "vaktari-gates-" + Guid.NewGuid().ToString("N")[..8]));
+        var script = runner.Add("tidy");
+
+        var view = Pane(listing, scripts: runner);
+        view.RefreshScripts();
+        view.SelectedEntry = File(Path.Combine(Temp, "here.txt"));
+
+        Assert.False(view.CanRunScriptsOnSelection);
+
+        await view.RunScriptCommand.ExecuteAsync(script);
+
+        Assert.Empty(runner.Handed);
+
+        var folder = Pane(Temp, scripts: runner);
+        folder.RefreshScripts();
+        folder.SelectedEntry = File(Path.Combine(Temp, "here.txt"));
+
+        Assert.True(folder.CanRunScriptsOnSelection);
+    }
+
     // ---- listings that are not folders ------------------------------------------
 
     /// <summary>
@@ -436,6 +470,52 @@ public sealed class ListingMenuGatesTests : OwnedViewModels
 
         Assert.False(first.HasOtherTabs);
         Assert.False(first.HasTabsToTheRight);
+    }
+
+    /// <summary>
+    /// **A tab's menu in the inactive half acted on the active half.** Close
+    /// other tabs, Close tabs to the right and Duplicate all used ActiveGroup,
+    /// so with the left side active, "Close other tabs" on a right-side tab
+    /// closed the LEFT side's tabs. They act on the side the tab belongs to.
+    /// </summary>
+    [AvaloniaFact]
+    public void A_tab_menu_acts_on_the_side_its_tab_is_on()
+    {
+        var shell = Own(new ShellViewModel(new Inert()));
+        shell.Start(null, Temp);
+
+        shell.ToggleSplitCommand.Execute(null);
+        Avalonia.Threading.Dispatcher.UIThread.RunJobs();
+
+        shell.Left.AddTab(Temp);
+        shell.Left.AddTab(Temp);
+        shell.Right!.AddTab(Temp);
+
+        shell.ActivateGroup(shell.Left);
+
+        var left = shell.Left.Tabs.Count;
+        var right = shell.Right.Tabs[0];
+
+        Assert.Equal(2, shell.Right.Tabs.Count);
+        Assert.True(left >= 3);
+
+        shell.DuplicateTabCommand.Execute(right);
+
+        Assert.Equal(left, shell.Left.Tabs.Count);
+        Assert.Equal(3, shell.Right.Tabs.Count);
+
+        shell.CloseTabsToTheRightCommand.Execute(right);
+
+        Assert.Equal(left, shell.Left.Tabs.Count);
+        Assert.Single(shell.Right.Tabs);
+
+        shell.Right.AddTab(Temp);
+        shell.ActivateGroup(shell.Left);
+
+        shell.CloseOtherTabsCommand.Execute(right);
+
+        Assert.Equal(left, shell.Left.Tabs.Count);
+        Assert.Same(right, Assert.Single(shell.Right.Tabs));
     }
 
     // ---- doubles -----------------------------------------------------------------------
