@@ -10,6 +10,6 @@ tests/Fixtures/** binary
 tests/Fixtures/Archives/expected.tsv -text
 
 # The scripts and notes that rebuild the fixtures are ordinary text.
-tests/Fixtures/**/*.md text
-tests/Fixtures/**/*.py text
-tests/Fixtures/**/*.sh text eol=lf
+tests/Fixtures/**/*.md text diff merge
+tests/Fixtures/**/*.py text diff merge
+tests/Fixtures/**/*.sh text diff merge eol=lf

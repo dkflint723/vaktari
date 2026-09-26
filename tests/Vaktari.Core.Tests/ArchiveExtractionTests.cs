@@ -362,15 +362,38 @@ public sealed class ArchiveExtractionTests : IDisposable
         Assert.Empty(Directory.EnumerateFileSystemEntries(At("out")));
     }
 
-    /// <summary>The directory says ten bytes; the data inflates to a
-    /// megabyte. Stopped as it is written, not afterwards.</summary>
+    /// <summary>
+    /// The directory says ten bytes; the data inflates to sixteen megabytes.
+    /// **Stopped as it is written, not afterwards** — not one byte past the
+    /// declared ten reaches the disk, which is what the handle's count of
+    /// written bytes says.
+    /// </summary>
     [Fact]
-    public void An_entry_longer_than_it_declared_is_damage()
+    public void An_entry_longer_than_it_declared_is_stopped_before_it_is_written()
     {
         File.WriteAllBytes(At("long.zip"), ZipBytes.Build(
-            new ZipBytes.Entry("a.bin") { Data = new byte[1 << 20], Method = 8, Size = 10 }));
+            new ZipBytes.Entry("a.bin") { Data = new byte[16 << 20], Method = 8, Size = 10 }));
 
-        Assert.Throws<ArchiveDamagedException>(() => Extract(At("long.zip"), Dir("out")));
+        var handle = new OperationHandle();
+        long written = 0;
+
+        handle.Progressed += (_, p) => written = Math.Max(written, p.BytesDone);
+
+        Assert.Throws<ArchiveDamagedException>(() => Extract(At("long.zip"), Dir("out"), handle: handle));
+        Assert.Equal(0, written);
+        Assert.Empty(Directory.EnumerateFileSystemEntries(At("out")));
+    }
+
+    /// <summary>The other side of the same rule: an entry that ends before
+    /// its declared size is damage too — a truncated member, not a small
+    /// file.</summary>
+    [Fact]
+    public void An_entry_shorter_than_it_declared_is_damage()
+    {
+        File.WriteAllBytes(At("short.zip"), ZipBytes.Build(
+            new ZipBytes.Entry("a.bin") { Data = new byte[100], Method = 8, Size = 5000 }));
+
+        Assert.Throws<ArchiveDamagedException>(() => Extract(At("short.zip"), Dir("out")));
         Assert.Empty(Directory.EnumerateFileSystemEntries(At("out")));
     }
 

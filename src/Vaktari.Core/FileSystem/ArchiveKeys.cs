@@ -5,9 +5,10 @@ namespace Vaktari.Core.FileSystem;
 ///
 /// **Which separator an archive uses depends on the format, and only two of
 /// them may use a backslash.** A zip written on Windows by an old tool says
-/// <c>docs\a.txt</c>, and SharpCompress hands RAR keys over with backslashes
-/// whatever the archive stored — measured on both RAR4 and RAR5 fixtures:
-/// <c>exe\test.exe</c>. In tar and 7z a backslash is an ordinary character of
+/// <c>docs\a.txt</c>, and SharpCompress hands RAR keys over with the
+/// platform's own separator whatever the archive stored — measured (E-23) on
+/// RAR4 and RAR5 fixtures: <c>exe\test.exe</c> on Windows, <c>exe/test.exe</c>
+/// under Linux. In tar and 7z a backslash is an ordinary character of
 /// a name; on Windows it stays inside its segment and
 /// <see cref="ArchiveNames.Land"/> turns it into <c>_</c>, so <c>a\..\b</c>
 /// from a tar becomes one file called <c>a_.._b</c> rather than a walk up a

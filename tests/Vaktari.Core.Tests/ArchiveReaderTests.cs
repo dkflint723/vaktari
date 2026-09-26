@@ -51,14 +51,23 @@ public sealed class ArchiveReaderTests : IDisposable
         Assert.Equal(21390, items.Single(i => i.RawKey.EndsWith("c.txt", StringComparison.Ordinal)).Size);
     }
 
+    /// <summary>
+    /// **SharpCompress hands RAR keys over with the platform's own
+    /// separator** (E-23, measured on both): <c>exe\test.exe</c> on Windows,
+    /// <c>exe/test.exe</c> under Linux, from the same archive. Either way the
+    /// key cuts into the same two segments.
+    /// </summary>
     [Theory]
     [InlineData("rar4.rar")]
     [InlineData("rar5-solid.rar")]
-    public void A_rar_lists_its_names_with_backslashes(string fixture)
+    public void A_rar_names_its_folders_with_the_platform_separator(string fixture)
     {
         var items = List(ArchiveTestData.Fixture(fixture));
+        var exe = items.Single(i => i.Size == 45056);
 
-        Assert.Contains(items, i => i.RawKey == "exe\\test.exe" && i.Size == 45056 && !i.CrcIsOurs);
+        Assert.Equal($"exe{Path.DirectorySeparatorChar}test.exe", exe.RawKey);
+        Assert.Equal(["exe", "test.exe"], ArchiveKeys.Split(exe.RawKey, ArchiveFormat.Rar, out _)!);
+        Assert.False(exe.CrcIsOurs);
         Assert.Contains(items, i => i.RawKey == "тест.txt");
     }
 

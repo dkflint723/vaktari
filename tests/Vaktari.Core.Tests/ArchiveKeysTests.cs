@@ -38,8 +38,8 @@ public sealed class ArchiveKeysTests
     }
 
     /// <summary>
-    /// **A backslash separates only in zip and RAR** (E-23: SharpCompress
-    /// hands RAR keys over as <c>exe\test.exe</c>). In tar and 7z it is part
+    /// **A backslash separates only in zip and RAR** (E-23: on Windows
+    /// SharpCompress hands RAR keys over as <c>exe\test.exe</c>). In tar and 7z it is part
     /// of the name, and a <c>..</c> between two of them is not a climb.
     /// </summary>
     [Theory]
