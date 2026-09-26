@@ -260,6 +260,30 @@ public sealed class ArchiveReaderTests : IDisposable
     }
 
     /// <summary>
+    /// **The token is asked before the exception is.** Measured (E-7), a
+    /// cancellation arriving through a 7-Zip-made LZMA or LZMA2 stream comes
+    /// out as <c>DataErrorException: Data Error</c>. Classified by its type
+    /// it would tell somebody who pressed Stop that their archive is damaged.
+    ///
+    /// Pinned directly because the end-to-end test below cannot hold it:
+    /// measured by revert-check, SharpCompress's own 7z writer produces a
+    /// stream whose decoder lets the cancellation through unwrapped, so that
+    /// test stays green with this rule removed; and a 7-Zip-made fixture that
+    /// shows the wrapping needs megabytes of input to reach a second read.
+    /// </summary>
+    [Fact]
+    public void A_failure_while_cancelled_is_a_cancellation_whatever_it_says()
+    {
+        using var cts = new CancellationTokenSource();
+        using var pass = ArchiveReader.Open(ArchiveTestData.Fixture("7z-ppmd.7z"), cts.Token);
+
+        cts.Cancel();
+
+        Assert.IsAssignableFrom<OperationCanceledException>(
+            ArchiveReader.Classify(new InvalidDataException("Data Error"), pass, 3));
+    }
+
+    /// <summary>
     /// **LZMA2 reports a cancellation arriving through its input as
     /// "Data Error"** (E-7). Asked of the token first, it is still a
     /// cancellation — not an archive somebody is told is damaged.
