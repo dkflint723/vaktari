@@ -1372,4 +1372,158 @@ public sealed class SettingsPagesTests : OwnedViewModels
             Core.Naming.Adopt(previousBin, previousPlatform);
         }
     }
+
+    // ---- the review fixes, from the corners their own tests did not reach ----------------
+
+    /// <summary>
+    /// **The desktop decides only with the flag, and only when there is a
+    /// desktop to ask.** The lightness fix was pinned in one direction — a
+    /// forced Light under a DARK desktop — which a rule reading "dark whenever
+    /// either says dark" passes too. These are the other corners: a forced
+    /// Dark under a LIGHT desktop palette (a light Plasma scheme, Windows in
+    /// light mode) is drawn light; with no palette at all — a Linux desktop
+    /// with no kdeglobals — the stored lightness still holds rather than
+    /// falling to dark; and without the flag the forced lightness wins over
+    /// the desktop as it always did.
+    /// </summary>
+    [AvaloniaTheory]
+    [InlineData(true, ThemeMode.Dark, 0, false)]
+    [InlineData(true, ThemeMode.FollowDesktop, 0, false)]
+    [InlineData(true, ThemeMode.Light, -1, false)]
+    [InlineData(true, ThemeMode.Dark, -1, true)]
+    [InlineData(false, ThemeMode.Dark, 0, true)]
+    [InlineData(false, ThemeMode.FollowDesktop, 0, false)]
+    [InlineData(false, ThemeMode.FollowDesktop, -1, true)]
+    public void Lightness_with_and_without_a_desktop_palette(bool desktopColours, ThemeMode mode, int paletteDark, bool expectDark)
+    {
+        AppSettings.Apply(new SettingsState
+        {
+            Views = new ViewSettings { FollowDesktopColours = desktopColours, ThemeMode = mode },
+        });
+
+        var window = Shown(new Window());
+
+        ThemeApplier.Apply(window, paletteDark < 0
+            ? null
+            : new Vaktari.Core.ThemePalette { IsDark = paletteDark == 1, Colours = new Dictionary<string, string>() });
+
+        Assert.Equal(
+            expectDark ? Avalonia.Styling.ThemeVariant.Dark : Avalonia.Styling.ThemeVariant.Light,
+            Avalonia.Application.Current!.RequestedThemeVariant);
+    }
+
+    /// <summary>
+    /// **A key assigned after an Apply is a change.** What an unchanged Save
+    /// is compared against is the bytes the store would write, and the
+    /// Keyboard page's bindings are part of them: a comparison that looked
+    /// only at what the other six pages show would drop a key given to a
+    /// command between the Apply and the Save.
+    /// </summary>
+    [AvaloniaFact]
+    public void A_key_assigned_after_apply_is_committed_by_the_save()
+    {
+        var model = new SettingsViewModel(new SettingsState());
+
+        model.ApplyCommand.Execute(null);
+
+        var row = model.Keyboard.Rows.First(r => r.Command.Id == "SortBySize");
+
+        row.AddCommand.Execute(null);
+        Assert.True(model.Keyboard.Offer(Key.F7, KeyModifiers.Control | KeyModifiers.Shift));
+
+        model.SaveCommand.Execute(null);
+
+        Assert.True(model.CommitNeeded);
+        Assert.True(model.Result.Keyboard.Bindings.ContainsKey("SortBySize"));
+    }
+
+    /// <summary>
+    /// And through the real window, the half of the Apply-then-Save rule the
+    /// untouched case cannot see: a change made after the Apply is committed
+    /// by the Save — once for the Apply, once more for the Save.
+    /// </summary>
+    [AvaloniaFact]
+    public void Through_the_window_a_change_after_apply_is_saved()
+    {
+        UseSearch(PaneViewModel.Search);
+
+        var main = Shown(new MainWindow());
+
+        main.ShowSettings(SettingsPage.General);
+        Pump();
+
+        var model = Assert.IsType<SettingsViewModel>(
+            Assert.Single(main.OwnedWindows.OfType<SettingsWindow>()).DataContext);
+
+        var commits = 0;
+        void Count(object? sender, EventArgs e) => commits++;
+
+        AppSettings.Changed += Count;
+
+        try
+        {
+            model.ConfirmClosingMultipleTabs = !model.ConfirmClosingMultipleTabs;
+            model.ApplyCommand.Execute(null);
+            Pump();
+
+            var tooltips = !model.ShowTooltips;
+
+            model.ShowTooltips = tooltips;
+            model.SaveCommand.Execute(null);
+            Pump();
+
+            Assert.Equal(2, commits);
+            Assert.Equal(tooltips, AppSettings.Current.General.ShowTooltips);
+        }
+        finally
+        {
+            AppSettings.Changed -= Count;
+        }
+    }
+
+    /// <summary>A state each merged chooser can show but not write back as
+    /// itself, if it rewrote what it was handed.</summary>
+    private static SettingsState Unusual(string name) => name switch
+    {
+        "desktop colours, forced light" => new() { Views = new ViewSettings { FollowDesktopColours = true, ThemeMode = ThemeMode.Light } },
+        "desktop colours, forced dark" => new() { Views = new ViewSettings { FollowDesktopColours = true, ThemeMode = ThemeMode.Dark } },
+        "natural, case-sensitive kept" => new() { General = new GeneralSettings { NaturalSorting = true, CaseSensitiveSorting = true } },
+        "panel greyed, keep-wide kept" => new() { Views = new ViewSettings { NarrowDetailsPanel = NarrowPanelBehaviour.DisableToggle, KeepWidthAfterPanelClose = true } },
+        "folder size as contents" => new() { Views = new ViewSettings { Details = new DetailsViewSettings { FolderSize = FolderSizeMode.ContentSize } } },
+        "the drive listing, a folder kept" => new() { Startup = new StartupSettings { ShowOnStartup = StartupLocation.Computer, StartupFolder = Path.Combine(Path.GetTempPath(), "vaktari-kept-startup") } },
+        "desktop icons asked for, none here" => new() { General = new GeneralSettings { UseSystemIcons = true } },
+        "a theme that has gone" => new() { General = new GeneralSettings { IconThemeFolder = Path.Combine(Path.GetTempPath(), "vaktari-no-such-theme-kept") } },
+        _ => throw new ArgumentOutOfRangeException(nameof(name)),
+    };
+
+    /// <summary>
+    /// **An untouched Save through every page writes back what it was given.**
+    /// The merged choosers each read two keys and promise not to rewrite a
+    /// pairing nobody changed; their tests drive the view model, where no
+    /// ComboBox ever binds. Here the real window is shown, every page is
+    /// visited so every binding is live, and the saved state must be the
+    /// state handed in, byte for byte.
+    /// </summary>
+    [AvaloniaTheory]
+    [InlineData("desktop colours, forced light")]
+    [InlineData("desktop colours, forced dark")]
+    [InlineData("natural, case-sensitive kept")]
+    [InlineData("panel greyed, keep-wide kept")]
+    [InlineData("folder size as contents")]
+    [InlineData("the drive listing, a folder kept")]
+    [InlineData("desktop icons asked for, none here")]
+    [InlineData("a theme that has gone")]
+    public void An_untouched_save_through_every_page_writes_back_what_it_was_given(string name)
+    {
+        var state = Unusual(name);
+        var (window, model) = Dialog(state: state);
+
+        foreach (var page in Enum.GetValues<SettingsPage>()) Show(window, model, page);
+
+        model.SaveCommand.Execute(null);
+
+        Assert.Equal(
+            System.Text.Json.JsonSerializer.Serialize(SettingsRepair.Complete(state), SettingsJsonContext.Default.SettingsState),
+            System.Text.Json.JsonSerializer.Serialize(model.Result, SettingsJsonContext.Default.SettingsState));
+    }
 }
