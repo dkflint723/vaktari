@@ -78,7 +78,7 @@ public static class ArchiveNames
         // upstream — the tar reader hands over U+FFFD for bytes that were not
         // UTF-8 and keeps no raw bytes — so it counts as renamed even though
         // nothing here changed it.
-        var changed = !string.Equals(landed, segment, StringComparison.Ordinal) || segment.Contains('�');
+        var changed = !string.Equals(landed, segment, StringComparison.Ordinal) || segment.Contains('\uFFFD');
 
         return new Landed(landed, changed);
     }
