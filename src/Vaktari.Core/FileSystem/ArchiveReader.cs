@@ -347,7 +347,7 @@ internal sealed class ArchivePass : IDisposable
                 if (_entries.Count != Directory.Records.Count)
                     throw new InvalidDataException("central directory and entries disagree");
 
-                DeclaredTotal = Directory.Records.Sum(r => r.UncompressedSize);
+                DeclaredTotal = Total(Directory.Records.Select(r => r.UncompressedSize));
                 DeclaredCount = Directory.Records.Count;
                 DeclaredItems = Directory.Records.Count(r => ZipKind(r) != ArchiveEntryKind.Folder);
                 AnyEncrypted = Directory.AnyEncrypted;
@@ -371,7 +371,7 @@ internal sealed class ArchivePass : IDisposable
                 if (Format == ArchiveFormat.Rar && _archive.Volumes.FirstOrDefault() is RarVolume { IsMultiVolume: true })
                     throw new ArchiveRefusedException(ArchiveSentences.Split(Leaf));
 
-                DeclaredTotal = _entries.Where(e => !e.IsDirectory).Sum(e => e.Size);
+                DeclaredTotal = Total(_entries.Where(e => !e.IsDirectory).Select(e => e.Size));
                 DeclaredCount = _entries.Count;
                 DeclaredItems = _entries.Count(e => !e.IsDirectory);
                 AnyEncrypted = _entries.Any(e => e.IsEncrypted) || _archive.IsEncrypted;
@@ -401,6 +401,30 @@ internal sealed class ArchivePass : IDisposable
         public override void Flush() { }
         public override void SetLength(long value) => throw new NotSupportedException();
         public override void Write(byte[] buffer, int offset, int count) => throw new NotSupportedException();
+    }
+
+    /// <summary>
+    /// The declared sizes added up, or damage in words.
+    ///
+    /// **A size past long.MaxValue reads as negative, and a sum of honest
+    /// ones can overflow** — LINQ's checked Sum threw, and the refusal read
+    /// "x.zip is not a zip file", which is not what is wrong with it (second
+    /// verification of Stage A). An archive that declares sizes no disk can
+    /// hold is damaged, and says so.
+    /// </summary>
+    private long Total(IEnumerable<long> sizes)
+    {
+        long total = 0;
+
+        foreach (var size in sizes)
+        {
+            if (size < 0 || size > long.MaxValue - total)
+                throw new ArchiveDamagedException(ArchiveSentences.ImpossibleSizes(Leaf), 0);
+
+            total += size;
+        }
+
+        return total;
     }
 
     /// <summary>The entries, in archive order.</summary>

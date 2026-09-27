@@ -407,6 +407,14 @@ public static class Archives
     private static (string Landed, bool IsFile) Publish(
         string working, string destination, string archive, ArchiveFormat format, IExtractionObserver? observer)
     {
+        // **Re-opened by name, so asked again.** The working folder can be
+        // renamed away and a link to somewhere else put in its place while
+        // the run writes; what is listed and moved below would then be that
+        // somewhere else. The chain check stops every file written through
+        // such a link; this stops the landing moving what it points at.
+        if (IsLink(working))
+            throw new UnauthorizedAccessException("the extraction's working folder was replaced by a link while it ran");
+
         var top = Directory.GetFileSystemEntries(working);
 
         // A bare compressed file is the file: report.txt.gz lands as
@@ -614,6 +622,18 @@ public static class Archives
     /// </summary>
     internal static void DeleteTree(string root)
     {
+        // **The root first**: a working folder can itself be a link. Sweep
+        // found `.vaktari-extracting-…` names with EnumerateDirectories,
+        // which returns a junction or a symbolic link to a folder, and this
+        // walked straight into whatever it pointed at — every file there was
+        // deleted (second verification of Stage A). Anybody who can write
+        // into a destination could plant one and wait.
+        if (IsLink(root))
+        {
+            DeleteLink(root);
+            return;
+        }
+
         var folders = new List<string>();
         var pending = new Stack<string>();
 
@@ -621,6 +641,13 @@ public static class Archives
 
         while (pending.TryPop(out var folder))
         {
+            // **A read-only folder cannot be emptied or removed**, on either
+            // system: Windows refuses to remove a folder marked ReadOnly, and
+            // Linux refuses to unlink anything from a folder without write
+            // permission. Opened up before it is listed; safe, because it is
+            // not a link and it lies inside a tree already checked.
+            Writable(folder);
+
             folders.Add(folder);
 
             foreach (var entry in new DirectoryInfo(folder).EnumerateFileSystemInfos().ToList())
@@ -652,6 +679,36 @@ public static class Archives
         }
 
         for (var i = folders.Count - 1; i >= 0; i--) Directory.Delete(folders[i]);
+    }
+
+    /// <summary>A link of any kind: a symbolic link, a junction, any
+    /// reparse point.</summary>
+    internal static bool IsLink(string path)
+    {
+        var info = new DirectoryInfo(path);
+
+        return (info.Attributes & FileAttributes.ReparsePoint) != 0 || info.LinkTarget is not null;
+    }
+
+    /// <summary>Removes the link itself, never what it points at.</summary>
+    private static void DeleteLink(string path)
+    {
+        if (OperatingSystem.IsWindows()) Directory.Delete(path);
+        else File.Delete(path);
+    }
+
+    private static void Writable(string folder)
+    {
+        if (OperatingSystem.IsWindows())
+        {
+            var attributes = File.GetAttributes(folder);
+
+            if ((attributes & FileAttributes.ReadOnly) != 0) File.SetAttributes(folder, attributes & ~FileAttributes.ReadOnly);
+        }
+        else
+        {
+            File.SetUnixFileMode(folder, File.GetUnixFileMode(folder) | UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute);
+        }
     }
 
     private static readonly int[] Backoff = [100, 300, 900];

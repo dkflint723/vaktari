@@ -127,6 +127,7 @@ internal sealed class ZipDirectory
         long cdSize = BinaryPrimitives.ReadUInt32LittleEndian(end[12..]);
         long cdOffset = BinaryPrimitives.ReadUInt32LittleEndian(end[16..]);
         var cdEnd = endOffset;
+        long? locatorShift = null;
 
         if (count == 0xFFFF || cdSize == 0xFFFFFFFF || cdOffset == 0xFFFFFFFF)
         {
@@ -139,7 +140,22 @@ internal sealed class ZipDirectory
             if (BinaryPrimitives.ReadUInt32LittleEndian(locator) != Zip64LocatorSignature)
                 throw new InvalidDataException("zip64 locator missing");
 
-            var z64Offset = Long(locator.AsSpan(8));
+            // **Read where BOTH readers will read it** (second verification
+            // of Stage A). The locator's offset is written without any bytes
+            // put in front of the archive, and SharpCompress — handed the
+            // file from the shift on — reads it that far along. This read it
+            // as written, so a second end record planted a shift further on
+            // meant one directory was checked and another decoded. The record
+            // is where it always sits, right before the locator, and the
+            // distance from the locator's offset to it is the shift; when it
+            // is not there, the offset is taken as written, with no shift.
+            var written = Long(locator.AsSpan(8));
+            var beside = endOffset - 20 - 56;
+            var z64Offset = beside >= 0 && BinaryPrimitives.ReadUInt32LittleEndian(ReadAt(s, beside, 4)) == Zip64EndSignature
+                ? beside
+                : written;
+            locatorShift = z64Offset - written;
+
             var z64 = ReadAt(s, z64Offset, 56);
 
             if (BinaryPrimitives.ReadUInt32LittleEndian(z64) != Zip64EndSignature)
@@ -157,6 +173,11 @@ internal sealed class ZipDirectory
         var shift = cdEnd - cdSize - cdOffset;
 
         if (shift < 0 || cdSize > cdEnd) throw new InvalidDataException("central directory out of place");
+
+        // The locator's shift and the directory's must be one shift: the
+        // view SharpCompress is given uses the second, and reads the locator
+        // with it.
+        if (locatorShift is { } fromLocator && fromLocator != shift) throw new InvalidDataException("zip64 locator and directory disagree");
 
         var directory = ReadAt(s, cdOffset + shift, checked((int)cdSize));
         var records = new List<ZipRecord>((int)Math.Min(count, 1 << 20));

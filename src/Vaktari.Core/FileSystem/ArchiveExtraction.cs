@@ -411,7 +411,9 @@ internal static class ArchiveExtraction
             if (pass.DeclaredTotal is null
                 && info.Size is { } size
                 && options.Room.FreeBytes(root) is { } free
-                && size + ArchiveRoom.StreamFloor > free)
+                // Subtracted, never added: a PAX size of long.MaxValue plus
+                // the floor wrapped negative and passed (second verification).
+                && size > free - ArchiveRoom.StreamFloor)
                 throw new ArchiveRefusedException(ArchiveSentences.Floor(pass.Leaf, Place));
         }
 

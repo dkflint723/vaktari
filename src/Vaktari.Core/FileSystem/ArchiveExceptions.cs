@@ -74,6 +74,9 @@ internal static class ArchiveSentences
     internal static string TooMany(string leaf, int cap)
         => $"{leaf} holds more than {cap:N0} entries — Vaktari does not extract archives that large";
 
+    internal static string ImpossibleSizes(string leaf)
+        => $"{leaf} is damaged — it declares sizes no archive can hold";
+
     internal static string NothingWritten(string leaf, string leftOut)
         => $"nothing in {leaf} could be written: {leftOut}";
 
