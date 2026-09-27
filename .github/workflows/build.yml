@@ -46,7 +46,13 @@ jobs:
     # fell in the middle of it. A hung TEST no longer needs this bound to be
     # tight: the test step's --blame-hang-timeout ends it in ten minutes and
     # names it. This bound is for a hung step, which is what it was for.
-    timeout-minutes: 50
+    #
+    # **90 for now, because 50 cancelled the menu merge's run (2026-09-27)
+    # with its tests still passing**, the Linux test step past 49 minutes
+    # against 29 the run before, and no per-test time in the log to say why.
+    # The test step now prints each test's duration; bring this back down
+    # once the slow tests are fixed.
+    timeout-minutes: 90
 
     steps:
       - uses: actions/checkout@v7
@@ -115,9 +121,9 @@ jobs:
       # cancelled with no name. Ten minutes is far past any single test.
       - name: Test
         run: |
-          dotnet test tests/Vaktari.Core.Tests --configuration Debug --blame-hang-timeout 10m --blame-hang-dump-type none
-          dotnet test tests/Vaktari.Linux.Tests --configuration Debug --blame-hang-timeout 10m --blame-hang-dump-type none
-          dotnet test tests/Vaktari.Ui.Tests --configuration Debug --blame-hang-timeout 10m --blame-hang-dump-type none
+          dotnet test tests/Vaktari.Core.Tests --configuration Debug --blame-hang-timeout 10m --blame-hang-dump-type none --logger "console;verbosity=normal"
+          dotnet test tests/Vaktari.Linux.Tests --configuration Debug --blame-hang-timeout 10m --blame-hang-dump-type none --logger "console;verbosity=normal"
+          dotnet test tests/Vaktari.Ui.Tests --configuration Debug --blame-hang-timeout 10m --blame-hang-dump-type none --logger "console;verbosity=normal"
 
       # **A gate, not a report.** Nothing audited what the binary carries, and
       # a published advisory against a transitive package — which is where
@@ -261,7 +267,10 @@ jobs:
     # test step went from 35 minutes to past 43 (2026-09-27) with every test
     # passing. A hung test is ended by --blame-hang-timeout in ten minutes and
     # named, so this bound only has to catch a hung step.
-    timeout-minutes: 70
+    #
+    # **120 for now, for the same run:** past 67 minutes against 51 the run
+    # before. Bring it back down once the slow tests are fixed.
+    timeout-minutes: 120
 
     steps:
       - uses: actions/checkout@v7
@@ -285,7 +294,7 @@ jobs:
       # job on a Windows machine rather than cross-compiling.
       # A hung test is named rather than waited out; see the Linux job.
       - name: Test
-        run: dotnet test vaktari.slnx -c Debug --blame-hang-timeout 10m --blame-hang-dump-type none
+        run: dotnet test vaktari.slnx -c Debug --blame-hang-timeout 10m --blame-hang-dump-type none --logger "console;verbosity=normal"
 
       - name: Publish
         shell: bash
