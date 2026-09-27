@@ -430,4 +430,121 @@ public sealed partial class VolumeRootOnDiskTests
             Directory.Delete(into, recursive: true);
         }
     }
+
+    /// <summary>
+    /// **More spellings of a real (subst) drive, each refused by every verb**
+    /// — the fourth review round's: the NT form "\??\X:\" that Win32 and .NET
+    /// both pass through as written, forward slashes throughout, "." and ".."
+    /// folded, "??" inside an ordinary path, and a path past 260 characters
+    /// that folds back to the root. Each is opened by Win32 as the drive's
+    /// root; to the file system a subst root is a folder, so these rest on the
+    /// text, and the drive's file is there at the end.
+    /// </summary>
+    [WindowsTheory]
+    [InlineData(@"\??\{0}:\")]
+    [InlineData(@"\??\{0}:")]
+    [InlineData(@"{0}:\.\")]
+    [InlineData(@"{0}:/./")]
+    [InlineData(@"//?/{0}:/")]
+    [InlineData(@"/\?\{0}:\")]
+    [InlineData(@"{0}:\x\..\??\..")]
+    [InlineData(@"{0}:\x\.\..\")]
+    [InlineData(@"long")]
+    public async Task Every_verb_refuses_more_spellings_of_a_subst_drive(string shape)
+    {
+        using var drive = new SubstDrive();
+
+        var marker = Path.Combine(drive.Folder, "marker.txt");
+        File.WriteAllText(marker, "the drive's own file");
+        Directory.CreateDirectory(Path.Combine(drive.Folder, "x"));
+
+        var root = shape == "long"
+            ? drive.Root + string.Concat(Enumerable.Repeat(@"x\..\", 80))
+            : string.Format(System.Globalization.CultureInfo.InvariantCulture, shape, drive.Letter);
+
+        Assert.True(Directory.Exists(root), $"{root} does not reach the drive, so it proves nothing");
+
+        await AssertEveryVerbRefuses(root, VolumeRoots.Refusal, marker);
+    }
+
+    /// <summary>
+    /// **A junction to a drive, named with a trailing separator, is still the
+    /// junction to every verb.** "j\" and "j\." name what the link leads to,
+    /// and neither guard calls them a root — the text sees a folder, and the
+    /// file system is asked of the link itself — so what keeps the drive safe
+    /// is that each verb acts on the link: Delete and Move take the link away
+    /// or elsewhere, Copy copies a link, and the bin is handed the link's own
+    /// path. Measured in the fourth review round; the drive is a subst of a
+    /// temporary folder, and its file and folder are there after each verb.
+    /// </summary>
+    [WindowsTheory]
+    [InlineData(@"\")]
+    [InlineData(@"\.")]
+    public async Task Each_verb_on_a_junction_to_a_drive_named_through_it_acts_on_the_link(string tail)
+    {
+        using var drive = new SubstDrive();
+
+        var marker = Path.Combine(drive.Folder, "marker.txt");
+        File.WriteAllText(marker, "the drive's own file");
+        Directory.CreateDirectory(Path.Combine(drive.Folder, "x"));
+
+        var holder = Directory.CreateTempSubdirectory("vaktari-junction-tail").FullName;
+        var into = Directory.CreateTempSubdirectory("vaktari-junction-into").FullName;
+        var asked = new List<string>();
+
+        var ops = new WindowsFileOperations
+        {
+            RecycleOverride = paths =>
+            {
+                lock (asked) asked.AddRange(paths);
+                return new RecycleResult(0, false);
+            },
+        };
+
+        string Junction(string name)
+        {
+            var at = Path.Combine(holder, name);
+            Directory.CreateDirectory(at);
+            Native.CreateJunction(at, drive.Root);
+            return at;
+        }
+
+        try
+        {
+            var deleted = Junction("deleted");
+            Assert.Equal(OperationState.Completed, (await Settled(ops.Delete([deleted + tail]))).State);
+            Assert.False(Path.Exists(deleted), "Delete left the junction");
+
+            var binned = Junction("binned");
+            Assert.Equal(OperationState.Completed, (await Settled(ops.Trash([binned + tail]))).State);
+            Assert.Single(asked);
+            Assert.Equal(binned, asked[0].TrimEnd('\\', '.'), ignoreCase: true);
+
+            var moved = Junction("moved");
+            Assert.Equal(OperationState.Completed,
+                (await Settled(ops.Move([moved + tail], into, _ => ValueTask.FromResult(ConflictResolution.Skip)))).State);
+
+            var copied = Junction("copied");
+            Assert.Equal(OperationState.Completed,
+                (await Settled(ops.Copy([copied + tail], into, _ => ValueTask.FromResult(ConflictResolution.Skip)))).State);
+
+            // What landed is two links, not the drive's contents.
+            var landed = Directory.EnumerateFileSystemEntries(into).Select(e => new DirectoryInfo(e)).ToList();
+            Assert.Equal(["copied", "moved"], landed.Select(d => d.Name).Order(StringComparer.OrdinalIgnoreCase));
+            Assert.All(landed, d => Assert.NotNull(d.LinkTarget));
+
+            Assert.True(File.Exists(marker), "the drive's file went through a junction to it");
+            Assert.True(Directory.Exists(Path.Combine(drive.Folder, "x")), "the drive's folder went through a junction to it");
+        }
+        finally
+        {
+            // Links first, as links, so nothing is removed through one.
+            foreach (var dir in new[] { holder, into })
+                foreach (var entry in Directory.EnumerateDirectories(dir))
+                    if (new DirectoryInfo(entry).LinkTarget is not null) Directory.Delete(entry);
+
+            Directory.Delete(holder, recursive: true);
+            Directory.Delete(into, recursive: true);
+        }
+    }
 }

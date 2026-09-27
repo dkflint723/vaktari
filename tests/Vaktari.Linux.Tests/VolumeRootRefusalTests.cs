@@ -221,6 +221,47 @@ public sealed class VolumeRootRefusalTests : IDisposable
     }
 
     /// <summary>
+    /// **More ways through a link to the root, and the names that only look
+    /// like a device.** The fourth review round's spellings of /proc — a "."
+    /// or a doubled separator after the link, this process's own root under
+    /// /proc by its number — are mounts to the pane as they are to the kernel.
+    /// And the Windows device-path refusal is Windows' alone: a folder here
+    /// called "a::b", "C:" or "\\?\GLOBALROOT" is an ordinary folder. With
+    /// the machine's own table; asked, never acted on.
+    /// </summary>
+    [PosixFact]
+    public void Through_a_dot_after_a_link_to_the_root_proc_is_a_mount_and_windows_names_are_folders()
+    {
+        VolumeRoots.MountPointsOverride = null;
+
+        var holder = Directory.CreateTempSubdirectory("vaktari-links").FullName;
+        var toRoot = Path.Combine(holder, "toroot");
+
+        File.CreateSymbolicLink(toRoot, "/");
+
+        try
+        {
+            foreach (var spelling in new[]
+                     {
+                         toRoot + "/./proc", toRoot + "/.//proc", toRoot + "//proc", toRoot + "/proc/./",
+                         $"/proc/{Environment.ProcessId}/root/proc", "/proc/self/root/./proc", "/proc/self/root/proc/.",
+                     })
+                Assert.True(VolumeRoots.IsVolumeRoot(spelling), $"{spelling} was not taken for a mount point");
+
+            foreach (var name in new[] { "a::b", "C:", @"\\?\GLOBALROOT", "??", "x::$INDEX_ALLOCATION" })
+            {
+                var folder = Directory.CreateDirectory(Path.Combine(holder, name)).FullName;
+
+                Assert.Null(VolumeRoots.Refuse([folder]));
+            }
+        }
+        finally
+        {
+            Directory.Delete(holder, recursive: true);
+        }
+    }
+
+    /// <summary>
     /// **The kernel's own answer**, which the engines ask in their workers:
     /// statx's mount-root attribute, and where the kernel does not report it,
     /// the device against the parent's. "/", /proc, /dev/shm and each reached
