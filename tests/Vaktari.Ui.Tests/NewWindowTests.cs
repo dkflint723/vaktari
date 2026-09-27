@@ -1269,6 +1269,98 @@ public sealed class NewWindowTests : OwnedViewModels
     }
 
     /// <summary>
+    /// Opens a second window on the founder's folder, waits for its rows to be
+    /// on screen, closes it, and hands back nothing but a weak reference — in a
+    /// method of its own so no local of the caller's can be what keeps it.
+    /// </summary>
+    [System.Runtime.CompilerServices.MethodImpl(System.Runtime.CompilerServices.MethodImplOptions.NoInlining)]
+    private static async Task<WeakReference> OpenAndCloseAPeerAsync(MainWindow founder, int rows)
+    {
+        founder.Shell.NewWindowCommand.Execute(null);
+        Settle();
+
+        var peer = founder.Services.Windows.Single(w => !ReferenceEquals(w, founder));
+        var deadline = DateTime.UtcNow + Ceiling;
+
+        while (peer.Shell.ActiveTab?.Entries.Count != rows)
+        {
+            Assert.True(DateTime.UtcNow < deadline, "the second window never listed the folder");
+
+            Settle();
+            await Task.Delay(5);
+        }
+
+        peer.UpdateLayout();
+        Settle();
+
+        await CloseAndWaitAsync(peer);
+
+        return new WeakReference(peer);
+    }
+
+    /// <summary>
+    /// **And the window itself goes**, which is what somebody using Vaktari
+    /// actually had: every window closed in a session stayed in memory until
+    /// Vaktari quit, and each one made every later window slower to open.
+    /// The listener test above says why; this one says the window is free.
+    ///
+    /// A third window is opened after the closed one, because two things
+    /// outside this fault hold a window on purpose and would otherwise be what
+    /// this measured: PaneViewModel.AskConflict answers through the window
+    /// built LAST, and a new window keeps the tab it was opened from as
+    /// ShellViewModel.LikeTab. The closed window is neither.
+    /// </summary>
+    [AvaloniaFact]
+    public async Task A_closed_window_is_collected()
+    {
+        await SaveAsync();
+        PaneViewModel.Search = null;
+
+        var folder = Directory.CreateTempSubdirectory("vaktari-collected").FullName;
+
+        foreach (var name in new[] { "a.txt", "b.txt", "c.txt" })
+            System.IO.File.WriteAllText(Path.Combine(folder, name), name);
+
+        var founder = new MainWindow();
+
+        try
+        {
+            founder.Show();
+            Settle();
+
+            await founder.Shell.ActiveTab!.NavigateAsync(folder);
+            founder.UpdateLayout();
+            Settle();
+
+            var closed = await OpenAndCloseAPeerAsync(founder, rows: 3);
+
+            founder.Shell.NewWindowCommand.Execute(null);
+            Settle();
+
+            var collected = false;
+
+            for (var i = 0; i < 50 && !collected; i++)
+            {
+                Settle();
+                GC.Collect();
+                GC.WaitForPendingFinalizers();
+                GC.Collect();
+
+                collected = !closed.IsAlive;
+
+                if (!collected) await Task.Delay(5);
+            }
+
+            Assert.True(collected, "a closed window is still in memory after fifty collections");
+        }
+        finally
+        {
+            CloseAll(founder.Services);
+            Directory.Delete(folder, recursive: true);
+        }
+    }
+
+    /// <summary>
     /// The eject veto asks the FAMILY, so a window has to be able to see what
     /// the others are doing. This is the wiring that makes that possible; the
     /// veto itself is tested above, over two shells.
