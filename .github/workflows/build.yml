@@ -38,8 +38,15 @@ jobs:
     # **A bound, because a hung step once burned the whole six-hour
     # ceiling.** apt on the hosted runner could not reach a mirror and
     # retried in silence; the job was killed at the limit and the
-    # release that needed it never ran. This job takes minutes.
-    timeout-minutes: 30
+    # release that needed it never ran.
+    #
+    # **50, because 30 cancelled a run whose tests were all still passing.**
+    # The Ui suite grew by some 130 tests (drops, the settings pages) and the
+    # test step went from 23 minutes to past 29 (2026-09-27); the limit then
+    # fell in the middle of it. A hung TEST no longer needs this bound to be
+    # tight: the test step's --blame-hang-timeout ends it in ten minutes and
+    # names it. This bound is for a hung step, which is what it was for.
+    timeout-minutes: 50
 
     steps:
       - uses: actions/checkout@v7
@@ -103,11 +110,14 @@ jobs:
       # is headless, needs no display, and runs here in under five minutes;
       # the tests that assert something only Windows offers say so with
       # OnlyOn.Windows and skip.
+      # **A hung test is named, not waited out.** With nothing but the job's
+      # bound, a test that never finished looked like a slow suite and was
+      # cancelled with no name. Ten minutes is far past any single test.
       - name: Test
         run: |
-          dotnet test tests/Vaktari.Core.Tests --configuration Debug
-          dotnet test tests/Vaktari.Linux.Tests --configuration Debug
-          dotnet test tests/Vaktari.Ui.Tests --configuration Debug
+          dotnet test tests/Vaktari.Core.Tests --configuration Debug --blame-hang-timeout 10m --blame-hang-dump-type none
+          dotnet test tests/Vaktari.Linux.Tests --configuration Debug --blame-hang-timeout 10m --blame-hang-dump-type none
+          dotnet test tests/Vaktari.Ui.Tests --configuration Debug --blame-hang-timeout 10m --blame-hang-dump-type none
 
       # **A gate, not a report.** Nothing audited what the binary carries, and
       # a published advisory against a transitive package — which is where
@@ -218,7 +228,12 @@ jobs:
     # job takes about 24 minutes, 20 of them the test step; on a slow
     # runner that step took 27 and the limit landed in Publish (30m13s,
     # 2026-09-11). 45 still stops a hang long before the six hours.
-    timeout-minutes: 45
+    #
+    # **70, because 45 did the same thing again once the suite grew.** The
+    # test step went from 35 minutes to past 43 (2026-09-27) with every test
+    # passing. A hung test is ended by --blame-hang-timeout in ten minutes and
+    # named, so this bound only has to catch a hung step.
+    timeout-minutes: 70
 
     steps:
       - uses: actions/checkout@v7
@@ -240,8 +255,9 @@ jobs:
       # Both projects, unlike the Linux job: Vaktari.Windows.Tests is where the
       # file operations are actually exercised, and it is the reason to run this
       # job on a Windows machine rather than cross-compiling.
+      # A hung test is named rather than waited out; see the Linux job.
       - name: Test
-        run: dotnet test vaktari.slnx -c Debug
+        run: dotnet test vaktari.slnx -c Debug --blame-hang-timeout 10m --blame-hang-dump-type none
 
       - name: Publish
         shell: bash
