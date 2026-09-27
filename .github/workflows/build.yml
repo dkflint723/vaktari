@@ -40,19 +40,16 @@ jobs:
     # retried in silence; the job was killed at the limit and the
     # release that needed it never ran.
     #
-    # **50, because 30 cancelled a run whose tests were all still passing.**
-    # The Ui suite grew by some 130 tests (drops, the settings pages) and the
-    # test step went from 23 minutes to past 29 (2026-09-27); the limit then
-    # fell in the middle of it. A hung TEST no longer needs this bound to be
-    # tight: the test step's --blame-hang-timeout ends it in ten minutes and
-    # names it. This bound is for a hung step, which is what it was for.
-    #
-    # **90 for now, because 50 cancelled the menu merge's run (2026-09-27)
-    # with its tests still passing**, the Linux test step past 49 minutes
-    # against 29 the run before, and no per-test time in the log to say why.
-    # The test step now prints each test's duration; bring this back down
-    # once the slow tests are fixed.
-    timeout-minutes: 90
+    # **The limit went 30 → 50 → 90 as the test step grew, and the growth was
+    # a leak, not the tests.** Every closed window stayed in memory and each
+    # later one repainted them all, so the suite slowed itself as it ran: the
+    # per-test time printed below showed the median climbing from 2 s to 20 s
+    # through a run (2026-09-27). With the leak fixed the test step takes
+    # about 5 minutes. 30 is six times that and still stops a hung step long
+    # before the six hours; a hung TEST is ended and named by the test step's
+    # --blame-hang-timeout in ten minutes. If this is ever hit again, read the
+    # per-test times before raising it.
+    timeout-minutes: 30
 
     steps:
       - uses: actions/checkout@v7
@@ -258,19 +255,13 @@ jobs:
     # retried in silence; the job was killed at the limit and the
     # release that needed it never ran.
     #
-    # **45, because 30 cancelled a run whose every test had passed.** The
-    # job takes about 24 minutes, 20 of them the test step; on a slow
-    # runner that step took 27 and the limit landed in Publish (30m13s,
-    # 2026-09-11). 45 still stops a hang long before the six hours.
-    #
-    # **70, because 45 did the same thing again once the suite grew.** The
-    # test step went from 35 minutes to past 43 (2026-09-27) with every test
-    # passing. A hung test is ended by --blame-hang-timeout in ten minutes and
-    # named, so this bound only has to catch a hung step.
-    #
-    # **120 for now, for the same run:** past 67 minutes against 51 the run
-    # before. Bring it back down once the slow tests are fixed.
-    timeout-minutes: 120
+    # **The limit went 30 → 45 → 70 → 120 as the test step grew, for the
+    # reason given on the Linux job: a window leak made the suite slow itself
+    # down.** With it fixed the test step takes about 9 minutes and the job
+    # about 13 (2026-09-27). 40 leaves room for a slow runner and the publish after it; a
+    # hung test is ended and named by --blame-hang-timeout in ten minutes. If
+    # this is hit again, read the per-test times before raising it.
+    timeout-minutes: 40
 
     steps:
       - uses: actions/checkout@v7
