@@ -150,4 +150,55 @@ public sealed class VolumeRootsTests
 
         Assert.Null(VolumeRoots.RefusedOperation([Path.Combine(root, "folder")], OperationKind.Delete));
     }
+
+    /// <summary>
+    /// **An odd path is answered, never thrown.** Every guard asks this first,
+    /// on a key press and again as an engine starts, so an exception here
+    /// would come out of a command rather than a sentence. Path.GetFullPath
+    /// refuses a NUL on both platforms and, on Windows, a path too long to
+    /// resolve and one that is only a space — each is asked here, and each is
+    /// a folder as far as a refusal is concerned; the filesystem refuses it
+    /// with its own words when it gets there.
+    /// </summary>
+    [Fact]
+    public void A_path_that_cannot_be_resolved_is_answered_rather_than_thrown()
+    {
+        var before = VolumeRoots.MountPointsOverride;
+
+        VolumeRoots.MountPointsOverride = () => ["/", "/media/me/STICK"];
+
+        try
+        {
+            var odd = OperatingSystem.IsWindows()
+                ? new[] { "C:\\a\0b", " ", "C:\\" + new string('a', 40000) }
+                : ["/tmp/a\0b", "/tmp/" + new string('a', 40000)];
+
+            foreach (var path in odd)
+            {
+                Assert.False(VolumeRoots.IsVolumeRoot(path), $"{path[..Math.Min(path.Length, 12)]}… was taken for a root");
+                Assert.Null(VolumeRoots.Refuse([path]));
+            }
+        }
+        finally
+        {
+            VolumeRoots.MountPointsOverride = before;
+        }
+    }
+
+    /// <summary>
+    /// **The trimmed spelling asked as written, alone.** VolumeRoots asks a
+    /// path with its trailing separators taken off both as written and
+    /// resolved, and each hides the other's absence for every ordinary
+    /// spelling. The written one is the only answer for a root that
+    /// Path.GetFullPath refuses: a drive letter followed by more backslashes
+    /// than the resolver will take, which it throws on as too long.
+    /// </summary>
+    [WindowsFact]
+    public void A_root_the_resolver_refuses_is_still_a_root()
+    {
+        var root = "Q:" + new string('\\', 40000);
+
+        Assert.Throws<PathTooLongException>(() => Path.GetFullPath(root));
+        Assert.True(VolumeRoots.IsVolumeRoot(root));
+    }
 }
