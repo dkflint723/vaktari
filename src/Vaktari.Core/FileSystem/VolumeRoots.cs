@@ -49,7 +49,8 @@ public static class VolumeRoots
     public static Func<IReadOnlyList<string>>? MountPointsOverride { get; set; }
 
     /// <summary>Whether this path is the root of a volume.</summary>
-    public static bool IsVolumeRoot(string? path) => IsVolumeRootIn(path, MountPoints(), new(StringComparer.Ordinal));
+    public static bool IsVolumeRoot(string? path)
+        => IsVolumeRootIn(AsWin32Reads(path).Path, MountPoints(), new(StringComparer.Ordinal));
 
     /// <summary>The refusal if any of these paths is a volume's root, or null.
     ///
@@ -70,8 +71,14 @@ public static class VolumeRoots
         IReadOnlyList<string>? points = null;
         Dictionary<string, string>? folders = null;
 
-        foreach (var path in paths)
+        foreach (var written in paths)
         {
+            var (path, climbed) = AsWin32Reads(written);
+
+            if (climbed) return DeviceRefusal;
+
+            if (string.IsNullOrEmpty(path)) continue;
+
             if (IsVolumeRootIn(path, points ??= MountPoints(), folders ??= new(StringComparer.Ordinal)))
                 return Refusal;
 
@@ -88,7 +95,60 @@ public static class VolumeRoots
     /// opened. For the engine's file-system answer, which reads back the path
     /// a handle reached and asks this of it.
     /// </summary>
-    public static bool IsRootSpelling(string? path) => IsVolumeRootIn(path, [], new(StringComparer.Ordinal));
+    public static bool IsRootSpelling(string? path) => IsVolumeRootIn(AsWin32Reads(path).Path, [], new(StringComparer.Ordinal));
+
+    /// <summary>
+    /// A Windows device path as Win32 will open it, and whether reading it so
+    /// climbed out of the device it was written under. Anything else — and
+    /// every path on Linux — comes back as written.
+    ///
+    /// **Only a literal "\\?\" or "\??\" is opened as written.** Every other
+    /// device spelling — "\\.\", and each slash variant of "\\?\" ("//?/",
+    /// "\\?/", "/\?\", "\/?/") — is folded by Win32 first, with "\\.\" as a
+    /// root: trailing spaces and dots go and "." and ".." are taken, and ".."
+    /// right after the device takes the DEVICE away. So "\\.\W:\..\NAME\"
+    /// opens "\\.\NAME\", while this class read the first name as "W:" and
+    /// folded nothing past it: the fifth review round had Delete remove a
+    /// folder that a colon-free DOS device named, and Trash hand "\\.\NAME\"
+    /// to the recycler, through exactly that. And "//?/X:/ " opens X:'s root
+    /// while it was read as the literal name " ".
+    ///
+    /// So such a path is read after Path.GetFullPath, which folds it the way
+    /// Win32 does — and leaves a literal "\\?\" or "\??\" exactly as written,
+    /// as Win32 does (.NET's PathInternal.IsExtended) — and a path whose
+    /// device changed on the way is reported as climbed: it is refused as a
+    /// device path, whatever it now names; a ".." that leaves the device it is
+    /// written under is not a spelling this class reads. A path GetFullPath
+    /// will not fold is reported climbed too.
+    /// </summary>
+    private static (string? Path, bool Climbed) AsWin32Reads(string? path)
+    {
+        if (!OperatingSystem.IsWindows() || string.IsNullOrEmpty(path)) return (path, false);
+
+        var unified = path.Replace('/', '\\');
+
+        if (!unified.StartsWith(@"\\?\", StringComparison.Ordinal) && !unified.StartsWith(@"\\.\", StringComparison.Ordinal))
+            return (path, false);
+
+        string folded;
+
+        try
+        {
+            folded = Path.GetFullPath(path);
+        }
+        catch (Exception e) when (e is ArgumentException or NotSupportedException or PathTooLongException
+                                      or System.Security.SecurityException)
+        {
+            return (path, true);
+        }
+
+        // As a person reads it — "\\.\X: \" is written under X: — so a fold
+        // that lands on the device "X: " instead has left the one written.
+        var written = unified[4..].Split('\\')[0].TrimEnd(' ', '.');
+        var reached = folded.Length > 4 ? folded[4..].Split('\\')[0] : "";
+
+        return (folded, !written.Equals(reached, StringComparison.OrdinalIgnoreCase));
+    }
 
     /// <summary>
     /// Whether a path is in the Win32 device namespace ("\\?\…", "\\.\…") but
@@ -115,7 +175,15 @@ public static class VolumeRoots
     {
         if (DevicePrefix(path) is not { } prefix) return false;
 
-        var first = DeviceNames(path, prefix)[0];
+        var names = DeviceNames(path);
+        var first = names[0];
+
+        // A literal "\\?\" or "\??\" is opened as written, so a "." or ".."
+        // in it is a NAME the file system is asked for, not a step — never
+        // one a folder here has. Unless the whole reads as a drive's root,
+        // which is refused as that first, it is refused as a device path:
+        // deliberately, rather than guess what the file system makes of it.
+        if (prefix == @"\\?\" && names.Skip(1).Any(name => name is "." or "..")) return true;
 
         if (first.Length == 2 && char.IsAsciiLetter(first[0]) && first[1] == ':') return false;
 
@@ -177,26 +245,13 @@ public static class VolumeRoots
     }
 
     /// <summary>
-    /// The names after a device prefix, as Win32 reads them.
-    ///
-    /// **"\\.\" is normalised on the way in and "\\?\" is not.** Win32 takes
-    /// trailing spaces and dots off each name after "\\.\" — so "\\.\G:\ " and
-    /// "\\.\G:\..." open G:'s root, and the review's probe had Delete empty a
-    /// subst drive through each while the text read a folder named " " — and
-    /// takes nothing off after "\\?\", where "\\?\G:\ " is a name of its own.
-    /// "." and ".." are left for <see cref="Folded"/>.
+    /// The names after a device prefix. A "\\.\" path has already been folded
+    /// the way Win32 folds it — its trailing spaces and dots taken, "\\.\G:\ "
+    /// read as G:'s root — by <see cref="AsWin32Reads"/>; "\\?\" is opened as
+    /// written, where "\\?\G:\ " is a name of its own. "." and ".." are left
+    /// for <see cref="Folded"/>.
     /// </summary>
-    private static string[] DeviceNames(string path, string prefix)
-    {
-        var names = path.Replace('/', '\\')[4..].Split('\\');
-
-        if (prefix == @"\\.\")
-            for (var i = 0; i < names.Length; i++)
-                if (names[i] is not ("." or ".."))
-                    names[i] = names[i].TrimEnd(' ', '.');
-
-        return names;
-    }
+    private static string[] DeviceNames(string path) => path.Replace('/', '\\')[4..].Split('\\');
 
     /// <summary>
     /// The refusal if the filesystem itself says one of these paths is a
@@ -298,9 +353,9 @@ public static class VolumeRoots
     /// </summary>
     private static (bool Root, string? Plain)? DevicePath(string path)
     {
-        if (DevicePrefix(path) is not { } prefix) return null;
+        if (DevicePrefix(path) is null) return null;
 
-        var names = DeviceNames(path, prefix);
+        var names = DeviceNames(path);
 
         if (names[0].Equals("UNC", StringComparison.OrdinalIgnoreCase))
             return (false, @"\\" + string.Join('\\', names[1..]));

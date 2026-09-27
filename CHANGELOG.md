@@ -65,9 +65,12 @@ should not be trusted for compatibility yet.
   the Linux kernel itself before it starts. A Windows device path other than
   a drive letter's, a share's or a volume's (`\\?\GLOBALROOT\…`,
   `\??\GLOBALROOT\…`, `\\?\Global\…`) is not copied, moved or deleted
-  through at all — open the folder by its ordinary name — and nor is a name
-  with a colon after the drive, which is a stream (`Z:\::$INDEX_ALLOCATION`
-  is the drive itself). Each refusal says which of these it was. *Duplicate* on a
+  through at all — open the folder by its ordinary name — and nor is one
+  whose `..` climbs out of the device it names (`\\.\W:\..\NAME\`), nor a
+  name with a colon after the drive, which is a stream
+  (`Z:\::$INDEX_ALLOCATION` is the drive itself). A device path is read the
+  way Windows opens it, so `//?/Z:/ ` is the drive. Each refusal says which
+  of these it was. *Duplicate* on a
   drive says so too. `Ctrl+C` in the bin no longer puts the path a binned
   file used to have on the clipboard.
 

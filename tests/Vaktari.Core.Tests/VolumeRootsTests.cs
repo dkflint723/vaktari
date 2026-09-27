@@ -337,10 +337,17 @@ public sealed class VolumeRootsTests
     /// device path gets the device sentence — a file under a shadow copy
     /// included, because what such a name leads to is the question refused.
     ///
-    /// "\\.\" is read the way Win32 reads it, trailing spaces and dots taken
-    /// off each name, so "\\.\X:\ " and "\\.\X:\..." are the drive's root and
-    /// get the drive's sentence. And a folder by a form that IS read is left
-    /// alone. Text only: the letters, LUID and GUIDs answer to nothing.
+    /// "\\.\" is read the way Win32 reads it — through Path.GetFullPath — so
+    /// "\\.\X:\ " and "\\.\X:\..." are the drive's root and get the drive's
+    /// sentence. And a folder by a form that IS read is left alone. Text only:
+    /// the letters, LUID and GUIDs answer to nothing.
+    ///
+    /// *(Corrected 2026-09-27.)* Two rows here were written from a model of
+    /// Win32 rather than from Win32, and GetFullPath measured both wrong:
+    /// "\\.\X: \. " folds to "\\.\X: \" — the DEVICE "X: ", space and all, not
+    /// X: — so it is refused as a device path that left the one it was
+    /// written under; and "\\.\X:\x\...\.." folds to "\\.\X:\x", the folder x,
+    /// which is not a root and is not refused.
     /// </summary>
     [WindowsFact]
     public void A_device_path_outside_the_forms_read_here_is_refused_whatever_it_names()
@@ -361,10 +368,20 @@ public sealed class VolumeRootsTests
         foreach (var path in unread)
             Assert.True(VolumeRoots.Refuse([path]) == VolumeRoots.DeviceRefusal, $"{path} was not refused as a device path");
 
-        foreach (var root in new[] { $@"\\.\{q}:\ ", $@"\\.\{q}:\...", $@"\\.\{q}: \. ", $@"\\.\{q}:\x\..." + @"\.." })
+        foreach (var root in new[] { $@"\\.\{q}:\ ", $@"\\.\{q}:\...", $@"\\.\{q}:\x\..\. " })
             Assert.True(VolumeRoots.Refuse([root]) == VolumeRoots.Refusal, $"{root} was not refused as a drive");
 
-        foreach (var folder in new[] { $@"\\?\{q}:\data", $@"\\.\{q}:\data", @"\\?\UNC\server\share\dir", $@"\\?\{guid}\data", $@"{q}:\data" })
+        Assert.True(VolumeRoots.Refuse([$@"\\.\{q}: \. "]) == VolumeRoots.DeviceRefusal, "\\\\.\\X: \\. was not refused as a device path");
+
+        // A device path Win32's folding will not take — a NUL in it — cannot
+        // be read, so it is refused as one rather than read as written.
+        Assert.True(VolumeRoots.Refuse([$"\\\\.\\{q}:\\a\0b"]) == VolumeRoots.DeviceRefusal, "an unfoldable device path was not refused");
+
+        foreach (var folder in new[]
+                 {
+                     $@"\\?\{q}:\data", $@"\\.\{q}:\data", @"\\?\UNC\server\share\dir", $@"\\?\{guid}\data", $@"{q}:\data",
+                     $@"\\.\{q}:\x\..." + @"\..",
+                 })
             Assert.Null(VolumeRoots.Refuse([folder]));
     }
 
