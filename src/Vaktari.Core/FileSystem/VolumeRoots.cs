@@ -48,9 +48,17 @@ public static class VolumeRoots
     /// </summary>
     public static Func<IReadOnlyList<string>>? MountPointsOverride { get; set; }
 
-    /// <summary>Whether this path is the root of a volume.</summary>
+    /// <summary>Whether this path is the root of a volume, read as written
+    /// and as it resolves — see <see cref="Readings"/>.</summary>
     public static bool IsVolumeRoot(string? path)
-        => IsVolumeRootIn(AsWin32Reads(path).Path, MountPoints(), new(StringComparer.Ordinal));
+    {
+        if (string.IsNullOrEmpty(path)) return false;
+
+        var points = MountPoints();
+        var folders = new Dictionary<string, string>(StringComparer.Ordinal);
+
+        return Readings(path).Any(reading => IsVolumeRootIn(AsWin32Reads(reading).Path, points, folders));
+    }
 
     /// <summary>The refusal if any of these paths is a volume's root, or null.
     ///
@@ -65,29 +73,75 @@ public static class VolumeRoots
     /// it is now; it is a few dozen lines of a file the kernel writes.
     ///
     /// **A device path outside the forms read here is refused too**, with its
-    /// own sentence — see <see cref="IsUnreadDevicePath"/>.</summary>
+    /// own sentence — see <see cref="IsUnreadDevicePath"/>.
+    ///
+    /// **A path that is not written out in full is asked as it resolves as
+    /// well** — see <see cref="Readings"/>.</summary>
     public static string? Refuse(IEnumerable<string> paths)
     {
         IReadOnlyList<string>? points = null;
         Dictionary<string, string>? folders = null;
 
         foreach (var written in paths)
-        {
-            var (path, climbed) = AsWin32Reads(written);
+            foreach (var reading in Readings(written))
+            {
+                var (path, climbed) = AsWin32Reads(reading);
 
-            if (climbed) return DeviceRefusal;
+                if (climbed) return DeviceRefusal;
 
-            if (string.IsNullOrEmpty(path)) continue;
+                if (string.IsNullOrEmpty(path)) continue;
 
-            if (IsVolumeRootIn(path, points ??= MountPoints(), folders ??= new(StringComparer.Ordinal)))
-                return Refusal;
+                if (IsVolumeRootIn(path, points ??= MountPoints(), folders ??= new(StringComparer.Ordinal)))
+                    return Refusal;
 
-            if (OperatingSystem.IsWindows() && IsUnreadDevicePath(path)) return DeviceRefusal;
+                if (OperatingSystem.IsWindows() && IsUnreadDevicePath(path)) return DeviceRefusal;
 
-            if (OperatingSystem.IsWindows() && NamesAStream(path)) return StreamRefusal;
-        }
+                if (OperatingSystem.IsWindows() && NamesAStream(path)) return StreamRefusal;
+            }
 
         return null;
+    }
+
+    /// <summary>
+    /// A path as written and, on Windows when it is not fully qualified, as
+    /// Win32 will resolve it — each is asked, and either one refuses.
+    ///
+    /// **A relative path was read as written, and Win32 reads it against the
+    /// current directory.** With that directory under
+    /// "\\.\GLOBALROOT\??\X:\x" — a device path every rule here refuses when
+    /// it is written out — ".." has no prefix to read, so it was a folder, and
+    /// the engine's handle check calls a subst drive's root a folder too: the
+    /// sixth review round's Delete emptied a subst drive through it, Trash
+    /// handed "\\.\GLOBALROOT\??\X:" to the recycler, and Copy and Move took a
+    /// DOS-device alias's entries. The same holds for "X:foo" (X:'s own
+    /// current folder) and "\foo" (the current directory's root). Nothing in
+    /// Vaktari sets the current directory or hands an engine such a path; the
+    /// guards' contract is that no route reaches a root all the same.
+    ///
+    /// **Resolved, not refused outright.** Path.GetFullPath is the resolution
+    /// Win32 itself applies before it opens a path (GetFullPathNameW), so
+    /// every rule below then reads what the engine will reach. Refusing would
+    /// have refused "\foo" as well — rooted, and drive-relative only in name —
+    /// which is the spelling platform-neutral callers and tests hand in for an
+    /// ordinary folder on the current drive. The written reading stays, so
+    /// "Z:" is still Z:'s root, as <see cref="IsVolumeRootIn"/> reads it,
+    /// whatever folder Z: happens to be in. A path GetFullPath will not
+    /// resolve is left to the written reading; the file system refuses it in
+    /// its own words.
+    ///
+    /// **Not on Linux**: a Linux current directory is an ordinary absolute
+    /// path, and a relative path is already read against it —
+    /// <see cref="Followed"/> joins it, <see cref="Resolved"/> folds it.
+    /// </summary>
+    private static IEnumerable<string> Readings(string written)
+    {
+        yield return written;
+
+        if (!OperatingSystem.IsWindows() || string.IsNullOrEmpty(written) || Path.IsPathFullyQualified(written))
+            yield break;
+
+        if (Resolved(written) is { } full && !string.Equals(full, written, StringComparison.Ordinal))
+            yield return full;
     }
 
     /// <summary>

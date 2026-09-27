@@ -250,6 +250,16 @@ should not be trusted for compatibility yet.
   acted on the other side of a split** when the tab was on the side that was
   not active.
 
+- **On Windows, a file whose name ends in a space or a dot is no longer
+  acted on as the file beside it through a `\\.\` path.** With `report`,
+  `report ` and `report.` in one folder, deleting, moving, copying or
+  binning `\\.\C:\…\report ` acted on `report`. Only a literal `\\?\` or
+  `\??\` path reaches such a name as written; every other spelling now
+  refuses it, as an ordinary path always did. And the file operations read
+  a relative path against the current folder, the way Windows opens it, so
+  none reaches a drive's root through a current folder named by a device
+  path.
+
 ## [0.11.0] — 2026-09-25
 
 ### Added

@@ -47,17 +47,38 @@ public static class ReachablePath
         if (!OperatingSystem.IsWindows()) return null;
         if (string.IsNullOrEmpty(path)) return null;
 
-        // Already extended: whoever built it took responsibility for the rules.
+        // **Only a literal "\\?\" or "\??\" is opened as written** — exact
+        // backslashes, as .NET's PathInternal.IsExtended asks — so only there
+        // is "report " a name of its own. "\\.\" was let through as well, and
+        // Win32 folds it like any other path: with "report", "report " and
+        // "report." in one folder, Delete, Move, Copy and Trash of
+        // "\\.\C:\…\report " all acted on "report" (sixth review round). So
+        // every other spelling — "\\.\", "//./", "//?/", "\\?/", "/\?\" and
+        // the rest — has its names read here as a plain path's are.
         if (path.StartsWith(@"\\?\", StringComparison.Ordinal)
-            || path.StartsWith(@"\\.\", StringComparison.Ordinal))
+            || path.StartsWith(@"\??\", StringComparison.Ordinal))
             return null;
 
-        foreach (var segment in path.Split('\\', '/'))
+        var segments = path.Split('\\', '/');
+
+        for (var i = 0; i < segments.Length; i++)
         {
+            var segment = segments[i];
+
             // "." and ".." end in a dot and are ordinary path syntax, not names.
             if (segment is "" or "." or "..") continue;
 
             var last = segment[^1];
+
+            if (last is not (' ' or '.')) continue;
+
+            // **Read as Win32 will open it: a name the next step takes away is
+            // never opened.** Win32 folds "\\.\X:\x\...\.." to x before it
+            // opens anything — measured, and every verb acts on x alone — so
+            // "..." there names nothing to hit. Only a ".." right after it
+            // (past "." and doubled separators, which the fold drops) is
+            // excused; anything further is refused, which errs the safe way.
+            if (segments.Skip(i + 1).FirstOrDefault(next => next is not ("" or ".")) == "..") continue;
 
             if (last == ' ')
                 return $"\"{segment}\" ends with a space, and Windows cannot open it by name "
