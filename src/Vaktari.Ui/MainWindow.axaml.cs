@@ -462,6 +462,11 @@ public partial class MainWindow : Window
             _suppressContextMenu = false;
             e.Handled = true;
         }, RoutingStrategies.Tunnel);
+
+        // Which of the listing's two menus a right-click is for is decided by
+        // where it landed, and only the way down knows — see
+        // OnContextRequestedTunnel in MainWindow.ListingMenu.cs.
+        AddHandler(ContextRequestedEvent, OnContextRequestedTunnel, RoutingStrategies.Tunnel);
         AddHandler(PointerMovedEvent, OnPointerMovedAnywhere, RoutingStrategies.Tunnel);
         AddHandler(
             PointerReleasedEvent,
@@ -792,6 +797,26 @@ public partial class MainWindow : Window
             && PaneAt(e.Source) is { } target)
         {
             target.AdminRequested = e.KeyModifiers.HasFlag(KeyModifiers.Shift);
+        }
+
+        // **A right-click on a group heading selected the group's first row**
+        // and then opened the background menu — a heading is drawn inside the
+        // row it stands over, so the list took the press as one on that row,
+        // while the menu (rightly) did not. The heading is not an item, the
+        // menu it gets is the folder's, and nothing about the selection should
+        // move. Claimed on the tunnel before the list sees it; the release is
+        // a separate event and still asks for the menu.
+        if (properties.PointerUpdateKind is PointerUpdateKind.RightButtonPressed
+            && GroupHeadingAt(e.Source) is not null)
+        {
+            // Still a press in THIS half: returning before the activation at
+            // the end of this handler left the other half active, and the
+            // background menu's rows bound through the shell acted on its
+            // folder instead of this one.
+            ActivateGroupAt(e.Source);
+            ArmNothing();
+            e.Handled = true;
+            return;
         }
 
         // **The mouse's own back and forward buttons.** Explorer navigates on

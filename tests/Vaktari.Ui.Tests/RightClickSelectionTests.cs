@@ -10,11 +10,13 @@ namespace Vaktari.Ui.Tests;
 /// <summary>
 /// **Does a right-click select the row it lands on?**
 ///
-/// The whole of "hide the entries that need a selection" rests on this. One
-/// context menu serves both a file row and the empty space below it, so the
-/// entries that act on a selection are gated on there being one — and if a
-/// right-click on an unselected file does not select it first, that gating
-/// hides Open, Copy and Cut at exactly the moment somebody is asking for them.
+/// The item menu rests on this. It opens for a right-click on a row and acts
+/// on the selection, and its rows are gated on what is selected — so if a
+/// right-click on an unselected file did not select it first, the menu would
+/// open about the PREVIOUS selection, or with Open, Copy and Cut hidden, at
+/// exactly the moment somebody is asking for them. (It used to be one menu for
+/// a row and the empty space below it, and this was what told the two apart;
+/// where the click landed does that now — ListingMenusTests.)
 ///
 /// Asserted rather than assumed. This is Avalonia's own behaviour, not
 /// something this application writes, so it is precisely the kind of thing that
@@ -77,7 +79,8 @@ public sealed class RightClickSelectionTests
 
     /// <summary>
     /// And the other half: a right-click on empty space below the rows must NOT
-    /// invent a selection, or the gating would never hide anything.
+    /// invent a selection — it opens the folder's menu, and a row picked up on
+    /// the way would be a selection nobody made.
     /// </summary>
     [AvaloniaFact]
     public void A_right_click_on_empty_space_selects_nothing()

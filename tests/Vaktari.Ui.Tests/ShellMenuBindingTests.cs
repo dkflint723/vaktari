@@ -154,7 +154,7 @@ public sealed class ShellMenuBindingTests : OwnedViewModels
     {
         var pane = Pane();
 
-        await pane.OpenShellMenuAsync();
+        await pane.OpenShellMenuAsync(background: true);
 
         Assert.NotEmpty(pane.ShellMenuItems);
     }
@@ -184,7 +184,7 @@ public sealed class ShellMenuBindingTests : OwnedViewModels
         var pane = Pane();
         _provider.Slow = true;
 
-        var opening = pane.OpenShellMenuAsync();
+        var opening = pane.OpenShellMenuAsync(background: true);
 
         await Task.Delay(TimeSpan.FromMilliseconds(250));
 
@@ -220,7 +220,7 @@ public sealed class ShellMenuBindingTests : OwnedViewModels
         _provider.Slow = true;
         _provider.OffersNothing = true;
 
-        var opening = pane.OpenShellMenuAsync();
+        var opening = pane.OpenShellMenuAsync(background: true);
         _provider.Answer();
         await opening;
 
@@ -256,7 +256,7 @@ public sealed class ShellMenuBindingTests : OwnedViewModels
     public async Task The_rows_are_never_empty_while_they_are_replaced()
     {
         var pane = Pane();
-        await pane.OpenShellMenuAsync();
+        await pane.OpenShellMenuAsync(background: true);
 
         var emptied = new List<string>();
 
@@ -271,7 +271,7 @@ public sealed class ShellMenuBindingTests : OwnedViewModels
 
         // And the rebuild, which is the other.
         pane.CurrentPath = Path.Combine(Path.GetTempPath(), "elsewhere");
-        await pane.OpenShellMenuAsync();
+        await pane.OpenShellMenuAsync(background: true);
 
         Assert.Empty(emptied);
         Assert.Contains(pane.ShellMenuItems, i => i is ShellMenuEntry { Label: "7-Zip" });
@@ -296,7 +296,7 @@ public sealed class ShellMenuBindingTests : OwnedViewModels
 
         _provider.OffersNothing = true;
 
-        await pane.OpenShellMenuAsync();
+        await pane.OpenShellMenuAsync(background: true);
 
         Assert.Empty(emptied);
         Assert.Contains(pane.ShellMenuItems,
@@ -315,7 +315,7 @@ public sealed class ShellMenuBindingTests : OwnedViewModels
     {
         var pane = Pane();
 
-        await pane.OpenShellMenuAsync();
+        await pane.OpenShellMenuAsync(background: true);
 
         Assert.Contains(pane.ShellMenuItems, item => item is Separator);
         Assert.Contains(pane.ShellMenuItems, item => item is ShellMenuEntry { Label: "7-Zip" });
@@ -334,7 +334,7 @@ public sealed class ShellMenuBindingTests : OwnedViewModels
         Assert.Single(pane.ShellMenuItems);
         Assert.Equal(0, _provider.Builds);
 
-        await pane.OpenShellMenuAsync();
+        await pane.OpenShellMenuAsync(background: true);
 
         Assert.Equal(1, _provider.Builds);
     }
@@ -343,7 +343,7 @@ public sealed class ShellMenuBindingTests : OwnedViewModels
     public async Task Closing_it_releases_the_shell_objects()
     {
         var pane = Pane();
-        await pane.OpenShellMenuAsync();
+        await pane.OpenShellMenuAsync(background: true);
         var built = _provider.Last!;
 
         pane.CloseShellMenu();
@@ -367,11 +367,11 @@ public sealed class ShellMenuBindingTests : OwnedViewModels
     public async Task Opening_for_a_new_selection_releases_the_one_before()
     {
         var pane = Pane();
-        await pane.OpenShellMenuAsync();
+        await pane.OpenShellMenuAsync(background: true);
         var first = _provider.Last!;
 
         pane.CurrentPath = Path.Combine(Path.GetTempPath(), "elsewhere");
-        await pane.OpenShellMenuAsync();
+        await pane.OpenShellMenuAsync(background: true);
 
         Assert.Equal(2, _provider.Builds);
         Assert.True(first.Disposed);
@@ -397,9 +397,9 @@ public sealed class ShellMenuBindingTests : OwnedViewModels
     public async Task Opening_it_again_does_not_empty_the_menu_underneath_itself()
     {
         var pane = Pane();
-        await pane.OpenShellMenuAsync();
+        await pane.OpenShellMenuAsync(background: true);
 
-        var reopened = pane.OpenShellMenuAsync();
+        var reopened = pane.OpenShellMenuAsync(background: true);
 
         Assert.Contains(pane.ShellMenuItems, i => i is ShellMenuEntry { Label: "7-Zip" });
 
@@ -415,7 +415,7 @@ public sealed class ShellMenuBindingTests : OwnedViewModels
     public async Task Choosing_an_entry_invokes_its_id()
     {
         var pane = Pane();
-        await pane.OpenShellMenuAsync();
+        await pane.OpenShellMenuAsync(background: true);
 
         pane.InvokeShellEntry(new ShellMenuEntry("Open", 1));
 
@@ -431,7 +431,7 @@ public sealed class ShellMenuBindingTests : OwnedViewModels
     public async Task A_row_that_only_opens_a_submenu_invokes_nothing()
     {
         var pane = Pane();
-        await pane.OpenShellMenuAsync();
+        await pane.OpenShellMenuAsync(background: true);
 
         pane.InvokeShellEntry(pane.ShellMenuItems
             .OfType<ShellMenuEntry>()
@@ -441,38 +441,48 @@ public sealed class ShellMenuBindingTests : OwnedViewModels
     }
 
     /// <summary>
-    /// With nothing selected the click was on empty space, so the folder's
-    /// BACKGROUND is what the shell should be asked for — the menu the folder
-    /// offers about itself as a place.
+    /// The background menu's row asks the shell for the folder's BACKGROUND —
+    /// the menu the folder offers about itself as a place — and it does so
+    /// with a file selected.
     ///
-    /// **This is the fault.** The pane asked for the folder's own menu, which
-    /// is the one its row carries in the parent listing: the entries that act
-    /// on the folder from outside — Pin to Quick access, Send to, Create
-    /// shortcut — offered for a click that was on nothing. The two menus are
-    /// separately bound in the shell and measurably different; the difference
-    /// is pinned against the real shell in Vaktari.Windows.Tests, and what is
-    /// pinned here is that the pane asks the right one.
+    /// **The first fault was asking for the folder's own menu**, the one its
+    /// row carries in the parent listing: the entries that act on the folder
+    /// from outside — Pin to Quick access, Send to, Create shortcut — offered
+    /// for a click that was on nothing. The two menus are separately bound in
+    /// the shell and measurably different; the difference is pinned against
+    /// the real shell in Vaktari.Windows.Tests.
+    ///
+    /// **The second is the one the split into two menus made possible.** The
+    /// choice used to be "background when nothing is selected", which was
+    /// right while one menu served both; but a right-click on empty space
+    /// keeps the selection, so the background menu opened beside a selected
+    /// file would have asked for THAT file's menu under a row about the
+    /// folder. The file is selected here for that reason.
     /// </summary>
     [AvaloniaFact]
-    public async Task With_no_selection_the_folders_background_is_what_gets_asked_for()
+    public async Task The_background_menu_asks_for_the_folders_background_whatever_is_selected()
     {
         var pane = Pane();
 
-        await pane.OpenShellMenuAsync();
+        pane.SelectedEntry = new FileEntry(
+            "notes.txt", Path.Combine(Path.GetTempPath(), "notes.txt"), 0,
+            DateTimeOffset.UnixEpoch, EntryFlags.None);
+
+        await pane.OpenShellMenuAsync(background: true);
 
         Assert.True(_provider.AskedForBackground, "the folder's own menu was asked for");
         Assert.Equal([Path.GetTempPath()], _provider.AskedFor);
     }
 
     /// <summary>
-    /// The other half of the same choice: a click that landed on a row wants
-    /// that row's own menu. A background is a question about a place you are
-    /// inside, and a selected file is not one, so this half of the branch has
-    /// to be pinned too — a pane that asked for a background whatever was
-    /// selected would still pass the test above.
+    /// The other half of the same choice: the item menu's row wants the
+    /// selected row's own menu. A background is a question about a place you
+    /// are inside, and a selected file is not one, so this half has to be
+    /// pinned too — a pane that asked for a background whatever the menu would
+    /// still pass the test above.
     /// </summary>
     [AvaloniaFact]
-    public async Task With_a_selection_the_selections_own_menu_is_what_gets_asked_for()
+    public async Task The_item_menu_asks_for_the_selections_own_menu()
     {
         var pane = Pane();
         var file = Path.Combine(Path.GetTempPath(), "notes.txt");
@@ -480,10 +490,28 @@ public sealed class ShellMenuBindingTests : OwnedViewModels
         pane.SelectedEntry = new FileEntry(
             "notes.txt", file, 0, DateTimeOffset.UnixEpoch, EntryFlags.None);
 
-        await pane.OpenShellMenuAsync();
+        await pane.OpenShellMenuAsync(background: false);
 
         Assert.False(_provider.AskedForBackground, "a selected file was treated as empty space");
         Assert.Equal([file], _provider.AskedFor);
+    }
+
+    /// <summary>
+    /// And an item menu with nothing selected — a selection lost between the
+    /// menu opening and the hover — asks the shell nothing, rather than
+    /// passing the folder's menu off as the items'. The row says so, and is
+    /// never empty, for the reason the placeholder gives.
+    /// </summary>
+    [AvaloniaFact]
+    public async Task The_item_menu_with_nothing_selected_asks_for_nothing()
+    {
+        var pane = Pane();
+
+        await pane.OpenShellMenuAsync(background: false);
+
+        Assert.Equal(0, _provider.Builds);
+        Assert.Contains(pane.ShellMenuItems,
+            i => i is ShellMenuEntry { Label: "Nothing offered here" });
     }
 
     /// <summary>The bin and Recent hold rows whose paths are not where the file
@@ -498,5 +526,27 @@ public sealed class ShellMenuBindingTests : OwnedViewModels
             { CurrentPath = VirtualPaths.Files }).HasShellMenu);
 
         Assert.True(Pane().HasShellMenu);
+    }
+
+    /// <summary>
+    /// **The background menu's row is only where there is a folder to ask
+    /// about.** A search and This PC keep the item menu's row — their rows are
+    /// real paths — but with nothing picked the one menu there was used to
+    /// build the shell's background menu for "vaktari:search:…" or
+    /// "vaktari:computer", which no shell can parse. HasShellMenu is the item
+    /// gate and stays true in both; the background one is not.
+    /// </summary>
+    [AvaloniaFact]
+    public void The_background_row_needs_a_real_folder_where_the_item_row_does_not()
+    {
+        foreach (var listing in new[] { VirtualPaths.Computer, "vaktari:search:report::everywhere" })
+        {
+            var pane = Own(new PaneViewModel(new InertFileSystem()) { CurrentPath = listing });
+
+            Assert.True(pane.HasShellMenu, $"{listing} lost the item menu's row");
+            Assert.False(pane.HasBackgroundShellMenu, $"{listing} offered a folder menu for no folder");
+        }
+
+        Assert.True(Pane().HasBackgroundShellMenu);
     }
 }

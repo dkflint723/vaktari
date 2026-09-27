@@ -1,80 +1,463 @@
+using Avalonia;
 using Avalonia.Controls;
+using Avalonia.Input;
+using Avalonia.VisualTree;
 using Avalonia.Interactivity;
 using Vaktari.Ui.ViewModels;
 
 namespace Vaktari.Ui;
 
 /// <summary>
-/// The listing's right-click menu, from the moment it opens to the moment it
-/// closes.
+/// The listing's two right-click menus, from the moment one is asked for to
+/// the moment it closes.
 ///
-/// **One ContextMenu, declared once in markup, serves every right-click in a
-/// listing and the Menu key as well.** That is what joins these: a menu built
-/// once but opened thousands of times has to ask, at each opening, the
-/// questions a binding cannot answer for it — and then put back whatever the
-/// opening changed.
+/// **There were not two: one ContextMenu served every right-click in a
+/// listing, on a row or on nothing, and the Menu key as well.** So it carried
+/// everything either could want — twenty-eight rows and six rules for a plain
+/// file on Windows, 904 pixels tall — and ten of those rows were about the
+/// FOLDER and sat on every file's menu. They could not be gated away, because
+/// a right-click on empty space deliberately keeps the selection (see
+/// FocusListIfEmptySpace): "nothing is selected" never meant "this click was
+/// on nothing", so the one test that could have separated the two menus'
+/// rows did not exist.
 ///
-/// The questions come in three kinds, and each one is why a member here exists
-/// rather than a binding in the markup. Per-machine and per-item at once: is
-/// the Proton CLI installed, is this path inside the drive folder, has a link
-/// already been made. Too expensive to pay for unasked: building the desktop's
-/// own submenu gives every shell extension on the machine a turn, so it waits
-/// for a hover instead of every right-click. And stale by the time anyone
-/// looks: scripts and templates are re-read on each opening, because the menu
-/// itself invites you to go and add one and then used to never notice what you
-/// put there.
+/// **Two ContextMenus now, rather than one menu with a mode flag its gates
+/// read**, and the choice was made on four things:
 ///
-/// **Not because the menu has no DataContext.** It has one — OnListingMenuOpening
-/// reads <c>menu.DataContext</c> as a PaneGroupViewModel and hands it to
-/// PrepareListingMenu, where the whole Proton block depends on that being
-/// there (the Menu key hands in its host's instead, because before Open the
-/// menu's own is still null), PaneFromMenuItem says so in as many
-/// words, and the markup declares the menu with an x:DataType and compiled
-/// bindings against it. The claim is true of the PLACE row's menu, which is
-/// declared inside a DataTemplate and now has its own file,
-/// MainWindow.PlaceMenu.cs, where that sentence sits beside the menu it is
-/// true of. Filing both menus together under one true-of-one sentence is the
-/// mistake this file exists not to make.
+/// The markup. With one menu, every one of the forty-odd rows would have
+/// carried its own gate AND the mode — a MultiBinding apiece, or a second
+/// property per gate on two view models. With two, each row sits in the menu
+/// it belongs to and keeps the gate it had.
 ///
-/// Every member here is reached only from markup, except PaneFromMenuItem,
-/// whose four references in the whole repository are the three Proton handlers
-/// and its own declaration. It has to come along; left behind it would be a
-/// member in MainWindow.axaml.cs that nothing in MainWindow.axaml.cs calls.
+/// Each pane-half's menu. Both are declared in the pane group's template, like
+/// the one menu was, so each half of a split has its own pair and nothing here
+/// has to ask which half it is.
 ///
-/// **Two things the closing puts back have their other end elsewhere**, and
-/// they are named here because after this move nothing else names them.
+/// The Windows menu. Its item-or-background question has to follow the MENU,
+/// and a menu with a mode would have had to carry the mode to the hover that
+/// builds it. Two menus have two rows with two names, and the name is the
+/// answer — see <see cref="OnShellMenuOpening"/>.
 ///
-/// The menu's Placement is set in MainWindow.MenuKey.cs, in OpenListingMenu,
-/// for the Menu-key route only — and put back here, because the right-click
-/// route must still open at the pointer and there is only the one menu to set
-/// it on. That file's own summary points at OnListingMenuClosed by name and
-/// should now be read as pointing at this file.
+/// Placement and the tests. Each menu keeps its own Placement, so the Menu
+/// key setting one cannot leak into the other, and a test names the menu it
+/// means instead of setting a mode first.
 ///
-/// <c>AdminRequested</c> is cleared here and ARMED in OnPointerPressedAnywhere,
-/// which stays in MainWindow.axaml.cs and cannot move — it is the shared press
-/// dispatcher. The comment explaining why the Shift has to be caught at the
-/// press, rather than when the menu builds, stays with the arm. Of the three
-/// things the closing restores, only CloseShellMenu has its counterpart inside
-/// this file.
+/// **How a click reaches the right one is Avalonia's routing, used as it
+/// stands.** The item menu hangs on the ItemsControl that holds the tabs and
+/// the background menu on the Panel around it. A right-click raises
+/// ContextRequested from whatever it hit, bubbling up; the ItemsControl's menu
+/// is asked first, and <see cref="OnItemMenuOpening"/> cancels it when the
+/// click was off every row. Measured on 12.1.2 in a headless probe: a
+/// cancelled Opening leaves the request unhandled, it carries on up, and the
+/// Panel's menu opens at the pointer the way any right-click's does. Where the
+/// click landed is recorded on the way DOWN, by
+/// <see cref="OnContextRequestedTunnel"/>, because the Opening event carries no
+/// source.
 ///
-/// One piece of debt carried unchanged, because a pure move may not edit what
-/// it carries: OnListingMenuClosed's summary begins "Releases it", and the
-/// "it" lost its antecedent long ago. The two were born thirteen lines apart
-/// in bf9ce4b, where "it" was the shell menu OnShellMenuOpening had just
-/// opened; everything now standing between them was inserted afterwards. The
-/// summary is also short of what the member does, which is three things
-/// rather than one. Keeping source order here preserves the fault rather than
-/// repairing it — repairing it means reordering members, which is an edit to
-/// the narrative and not a move.
+/// **What every opening asks, whichever menu and whichever route**, is in
+/// <see cref="OnListingMenuOpened"/>: the scripts, templates, undo history,
+/// clipboard and Proton rows re-read, every gate re-raised, and then the rules
+/// tidied to what is drawn. Opened rather than Opening because Opened is the
+/// one event every route raises — measured, ContextMenu.Open(control) raises
+/// no Opening at all, which is how the keyboard's menu once showed whatever
+/// the last right-click had left.
+///
+/// **Two things the closing puts back have their other end elsewhere.** The
+/// Placement is set in MainWindow.MenuKey.cs, in OpenListingMenu, for the Menu
+/// key only, and put back here because a right-click must still open at the
+/// pointer. <c>AdminRequested</c> is armed in OnPointerPressedAnywhere, in
+/// MainWindow.axaml.cs — the shared press dispatcher, where the Shift has to be
+/// caught because nothing later can see it — and cleared here.
 /// </summary>
 public partial class MainWindow
 {
+    /// <summary>
+    /// Whether the last context request in this window came from a row — the
+    /// question <see cref="OnItemMenuOpening"/> answers with.
+    /// </summary>
+    private bool _contextOnRow;
+
+    /// <summary>
+    /// Records whether a context request came from a row, on its way down.
+    ///
+    /// **A row is anything EntryAt finds a FileEntry above**, which is the
+    /// whole of a row: the blank half of a full-width details row included,
+    /// because the row's own background is what is there — and a right-click
+    /// there on an unselected row selects it, as on its name. A group heading
+    /// is drawn inside a row and is not one (EntryAt says why), nor is the
+    /// space between tiles, below the last row, or a band above the listing.
+    ///
+    /// EntryAt rather than the band's ListForEmptySpace, which reads the same
+    /// pixels differently — it calls the blank half of an unselected
+    /// full-width row empty space, so a band can start there. Measured with
+    /// that walk swapped in: every right-click test stays green, because the
+    /// press has already selected the row by the time the request arrives and
+    /// the walk answers "not empty" for a selected row. The two part on a
+    /// group heading, which the band's walk refuses to call empty space and
+    /// EntryAt refuses to call a row; a heading is not an item, so it gets the
+    /// background menu.
+    ///
+    /// Tunnelled, so it runs before any menu is asked; it records and never
+    /// handles, so the right-drag suppression beside it in the constructor
+    /// still decides whether a menu opens at all.
+    /// </summary>
+    private void OnContextRequestedTunnel(object? sender, ContextRequestedEventArgs e)
+    {
+        var entry = EntryAt(e.Source);
+
+        _contextGroup = GroupAt(e.Source);
+
+        // **The preview overlay is the selected file, drawn large**, and a
+        // right-click on it opened the folder's menu while it showed one file.
+        // It shows exactly SelectedEntry (PaneViewModel.RefreshPreviewAsync),
+        // so the item menu is about exactly what is on it — the answer a
+        // right-click on a thumbnail gives in every viewer. With nothing
+        // selected there is nothing previewed, and it is empty space.
+        _contextOnRow = entry is not null
+                        || (InPreview(e.Source) && PaneAt(e.Source) is { SelectedEntry: not null });
+
+        // **A long press on a touch screen opened the item menu about the
+        // PREVIOUS selection.** The mouse's right press selects the row before
+        // the menu is asked for; a touch or pen long-press raises this request
+        // while the finger is still down, and the list selects on release. So
+        // a row under the request that is not selected is selected here, alone
+        // — the same answer a right-click on it gives. A row already in the
+        // selection is left as it is: right-clicking inside a selection keeps
+        // it, and so must holding a finger on it.
+        if (entry is { } row && ListingAt(e.Source) is { SelectedItems: { } chosen } list
+            && !chosen.Contains(row))
+        {
+            chosen.Clear();
+            list.SelectedItem = row;
+        }
+    }
+
+    /// <summary>The class the preview overlay carries in the markup, and the
+    /// only thing tying it to <see cref="InPreview"/>.</summary>
+    private const string PreviewOverlayClass = "previewOverlay";
+
+    /// <summary>Whether a press landed on the preview overlay.</summary>
+    private static bool InPreview(object? source)
+    {
+        for (var visual = source as Visual; visual is not null; visual = visual.GetVisualParent())
+            if (visual is Control control && control.Classes.Contains(PreviewOverlayClass)) return true;
+
+        return false;
+    }
+
+    /// <summary>
+    /// The pane group the last context request came from, so a menu can be
+    /// prepared in its Opening — before it has inherited a DataContext of its
+    /// own. See <see cref="PrepareEarly"/>.
+    /// </summary>
+    private PaneGroupViewModel? _contextGroup;
+
+    /// <summary>
+    /// The menu prepared ahead of its opening, which its Opened then need not
+    /// prepare again.
+    /// </summary>
+    private ContextMenu? _preparedEarly;
+
+    /// <summary>
+    /// Prepares a menu before it is on screen.
+    ///
+    /// **Preparing only in Opened let the popup show a frame first.** Opened
+    /// is raised once the popup is up, and on Win32 that can be after a first
+    /// frame has been drawn with the previous opening's gates, Share rows and
+    /// rules — a flicker, and a popup that resizes under the pointer. So the
+    /// right-click route prepares in Opening and the Menu key before Open();
+    /// Opened keeps preparing as the safety net for any route that did neither,
+    /// and the rules are tidied there in any case, when the bindings have their
+    /// DataContext.
+    /// </summary>
+    private void PrepareEarly(ContextMenu menu, PaneGroupViewModel? group)
+    {
+        if (group is null) return;
+
+        PrepareListingMenu(menu, group);
+        _preparedEarly = menu;
+    }
+
+    /// <summary>
+    /// The item menu's half of the routing: it steps aside for a click that
+    /// landed off every row, and the request goes on up to the background
+    /// menu.
+    ///
+    /// **Only the right-click route comes through here.** Avalonia raises
+    /// Opening on the way to a menu it opens itself, for a ContextRequested;
+    /// ContextMenu.Open(control) does not raise it at all — measured on 12.1.2
+    /// in a headless probe, zero times — and the Menu key chooses its menu
+    /// itself, in OpenListingMenu.
+    /// </summary>
+    private void OnItemMenuOpening(object? sender, System.ComponentModel.CancelEventArgs e)
+    {
+        if (!_contextOnRow)
+        {
+            e.Cancel = true;
+            return;
+        }
+
+        // The menu's Open does not pass through TryOpen, so the row it opens
+        // would otherwise stay "clicked once" and open again on a single later
+        // click. The keyboard's route forgets it in OpenListingMenu. See
+        // ForgetTheClick.
+        ForgetTheClick();
+
+        if (sender is ContextMenu menu) PrepareEarly(menu, _contextGroup);
+    }
+
+    /// <summary>The background menu's right-click route: the same forgetting
+    /// the item menu does, for the same reason, and the same early
+    /// preparing.</summary>
+    private void OnBackgroundMenuOpening(object? sender, System.ComponentModel.CancelEventArgs e)
+    {
+        ForgetTheClick();
+
+        if (sender is ContextMenu menu) PrepareEarly(menu, _contextGroup);
+    }
+
+    /// <summary>
+    /// The rules of either listing menu, and the preparing any route skipped.
+    ///
+    /// The preparing happens earlier where it can — in Opening for a
+    /// right-click, before Open() for the Menu key; see PrepareEarly — and
+    /// Opened is the safety net because every route raises it: Open(control)
+    /// raises no Opening (measured on 12.1.2), and a test opening a menu
+    /// directly raises none either. The rules are tidied here rather than
+    /// early because only now do the rows' bindings have the menu's
+    /// DataContext — measured: a row whose gate is false reads IsVisible false
+    /// here, nested rows included — and they are tidied again whenever a row
+    /// changes while the menu is up; see WatchRules.
+    /// </summary>
+    private void OnListingMenuOpened(object? sender, RoutedEventArgs e)
+    {
+        // Only the menu's own opening: a submenu opening does not raise this,
+        // but a handler that assumed so would tidy the wrong list if one did.
+        if (!ReferenceEquals(e.Source, sender) || sender is not ContextMenu menu) return;
+
+        // The safety net: a route that prepared nothing ahead of the opening
+        // — a test opening the menu directly, one nobody has written yet.
+        if (!ReferenceEquals(_preparedEarly, menu))
+            PrepareListingMenu(menu, menu.DataContext as PaneGroupViewModel);
+
+        _preparedEarly = null;
+
+        WatchRules(menu);
+        TidyRules(menu.Items);
+    }
+
+    /// <summary>The menus whose rows are already watched, so each is watched
+    /// once however often it opens.</summary>
+    private readonly HashSet<ContextMenu> _watchedForRules = [];
+
+    /// <summary>
+    /// Tidies the rules again whenever one of the menu's rows comes or goes
+    /// while it is open.
+    ///
+    /// **Undo appearing on an open menu left it butting against Refresh.**
+    /// The rules are decided as the menu opens, from what is drawn then; a row
+    /// whose gate changes afterwards — Undo once an operation finishes, Paste's
+    /// neighbours when the clipboard answers — arrives with no rule of its
+    /// block drawn, because that rule was hidden for having nothing to
+    /// introduce. Measured in a search's background menu: "Select all | Undo |
+    /// Refresh". A rule's own visibility is what the tidying writes, so only
+    /// the rows are listened to.
+    /// </summary>
+    private void WatchRules(ContextMenu menu)
+    {
+        if (!_watchedForRules.Add(menu)) return;
+
+        foreach (var row in menu.Items.OfType<Control>().Where(c => c is not Separator))
+        {
+            row.PropertyChanged += (_, change) =>
+            {
+                if (change.Property == Avalonia.Visual.IsVisibleProperty && menu.IsOpen) TidyRules(menu.Items);
+            };
+        }
+    }
+
+    /// <summary>
+    /// What an opening re-reads, because nothing tells the menu it changed.
+    ///
+    /// The scripts and templates folders, the engine's undo history and the
+    /// clipboard; every gate the two menus added, re-raised so the one moment
+    /// a stale answer would be seen is a moment it cannot be stale; and the
+    /// Share rows, decided here rather than bound because the questions are
+    /// per item and per machine at once — is the Proton CLI installed, is THIS
+    /// path inside the drive folder, has a link already been made, is it a
+    /// folder a network share would serve.
+    /// </summary>
+    private void PrepareListingMenu(ContextMenu menu, PaneGroupViewModel? group)
+    {
+        // **Re-read on every menu open, which is what their own comments always
+        // claimed.** Both were called once, from the pane's constructor, so
+        // adding a script or a template needed a restart to appear — while the
+        // background menu invites you to go and add one ("Open scripts folder")
+        // and then used to never notice what you put there. Reading two small
+        // directories is cheap next to building a menu at all.
+        if (group is not { ActiveTab: { } tab }) return;
+
+        tab.RefreshScripts();
+        tab.RefreshScriptRows();
+        tab.RefreshTemplates();
+
+        // The Undo row names what it will take back, and shows only when there
+        // is something — and the history is the engine's, shared by every
+        // pane, so it is read when the menu opens rather than tracked here.
+        tab.RefreshUndoState();
+
+        // Not awaited: a menu opens now. The Paste row shows what the last
+        // answer was and corrects itself a round trip later.
+        _ = tab.RefreshClipboardAsync();
+
+        tab.NotifyMenuGates();
+        _shell.NotifyMenuGates();
+
+        var background = menu.Name == BackgroundMenuName;
+
+        PrepareShare(menu, tab, background);
+    }
+
+    /// <summary>
+    /// Which of a Share submenu's rows apply, for the one path the menu is
+    /// about: the selected item on the item menu, the folder on screen on the
+    /// background's.
+    ///
+    /// **A file's menu shared its parent folder.** The network rows serve a
+    /// folder, and on a file they served the one around it — so they show for
+    /// a folder only now, and the folder being looked at is shared from the
+    /// background menu. Not a drive root either: the share refuses one
+    /// outright. See ShellViewModel.CanNetworkShare.
+    ///
+    /// The walk has to descend and has to see more than MenuItems: the rows
+    /// live inside the Share submenu. The first version of it walked
+    /// OfType&lt;MenuItem&gt; only, could never find the rule it then looked
+    /// for, and returned early — an eye test on a machine WITH copyparty is
+    /// what caught it. There is no early return now: every row is found by the
+    /// name the markup gives it, and a missing one throws in the tests rather
+    /// than silently keeping a submenu hidden.
+    /// </summary>
+    private void PrepareShare(ContextMenu menu, PaneViewModel tab, bool background)
+    {
+        var prefix = background ? "Folder" : "";
+
+        MenuItem Row(string name) => Find(menu.Items, name)
+            ?? throw new InvalidOperationException($"the listing menu has no {name}");
+
+        var shareMenu = Row(background ? "FolderShareMenu" : "ShareMenu");
+
+        // The path the menu is about, and never a binned row's: that names
+        // where an item USED to be.
+        var path = background
+            ? (tab.IsRealFolder ? tab.CurrentPath : null)
+            : (tab.IsTrashListing ? null : tab.SelectedEntry?.FullPath);
+
+        // Linkable is about WHERE the item is, not whether the tool exists —
+        // the share click installs what is missing. The busy row takes the
+        // share row's seat while that download runs.
+        var linkable = path is not null && _shell.CanLinkShare(path);
+        var existing = linkable ? _shell.LinkFor(path!) : null;
+        var busy = linkable && _shell.ShowDriveInstallBusy(path!);
+
+        Row(prefix + "ProtonShareItem").IsVisible = linkable && existing is null && !busy;
+        Row(prefix + "ProtonCopyLinkItem").IsVisible = existing is not null;
+        Row(prefix + "ProtonUnshareItem").IsVisible = existing is not null;
+        Row(prefix + "ProtonInstallingItem").IsVisible = busy;
+
+        // A folder a network share would serve.
+        var folder = background
+            ? path is not null && _shell.CanNetworkShare(path)
+            : tab.SelectedEntry is { IsDirectory: true } && _shell.CanNetworkShare(path);
+
+        // Three states that cover each other: ready, missing, installing.
+        Row(prefix + "ShareRow").IsVisible = folder && _shell.CanShare;
+        Row(prefix + "ShareWritableRow").IsVisible = folder && _shell.CanShare;
+        Row(prefix + "ShareInstallRow").IsVisible = folder && _shell.CanInstallSharing;
+        Row(prefix + "ShareInstallingRow").IsVisible = folder && _shell.IsInstalling;
+
+        shareMenu.IsVisible = linkable || folder;
+    }
+
+    /// <summary>The name the markup gives the background menu, which is how an
+    /// opening knows which of the two it is.</summary>
+    private const string BackgroundMenuName = "BackgroundMenu";
+
+    /// <summary>A row by name, however deep in the submenus it sits.</summary>
+    private static MenuItem? Find(IEnumerable<object?> items, string name)
+    {
+        foreach (var item in items.OfType<MenuItem>())
+        {
+            if (item.Name == name) return item;
+            if (Find(item.Items, name) is { } nested) return nested;
+        }
+
+        return null;
+    }
+
+    /// <summary>
+    /// Shows a rule only where it separates two things that are drawn.
+    ///
+    /// **Avalonia draws every separator it is given and collapses none**, so
+    /// the one listing menu gated each rule on the block it introduced, copied
+    /// by hand from the rows under it — and got it wrong often enough that
+    /// three comments in the old markup recorded a stray rule measured in one
+    /// listing or another. With the rows split across two menus a block's gate
+    /// became the OR of up to seven rows' gates on two view models. This reads
+    /// what is actually drawn instead: a rule with no visible row since the
+    /// last one, or none after it, is hidden, which covers a leading rule, a
+    /// trailing rule and two rules meeting in one pass.
+    ///
+    /// Into static submenus as well, where the same thing happens on a smaller
+    /// scale — View's rule above Sort by has nothing under it with the sort
+    /// preference off. Not into a submenu built from an ItemsSource: those
+    /// rules are the shell's, or the scripts list's, and are placed by whoever
+    /// built the list.
+    /// </summary>
+    internal static void TidyRules(IEnumerable<object?> items)
+    {
+        Separator? pending = null;
+        var rowSinceRule = false;
+
+        foreach (var item in items.OfType<Control>())
+        {
+            if (item is Separator rule)
+            {
+                rule.IsVisible = false;
+
+                if (rowSinceRule)
+                {
+                    pending = rule;
+                    rowSinceRule = false;
+                }
+
+                continue;
+            }
+
+            if (!item.IsVisible) continue;
+
+            if (pending is not null)
+            {
+                pending.IsVisible = true;
+                pending = null;
+            }
+
+            rowSinceRule = true;
+
+            if (item is MenuItem { ItemsSource: null } parent) TidyRules(parent.Items);
+        }
+    }
+
     /// <summary>
     /// Builds the desktop's own menu, at the moment its submenu opens.
     ///
     /// Not on a binding: building it gives every shell extension on the machine
     /// a turn, and no ordinary right-click should pay for something behind one
     /// more hover.
+    ///
+    /// **Which of the shell's two menus is decided by which row this is**, not
+    /// by the selection: the background menu's row asks for the folder's own
+    /// menu even with files selected, because a right-click on empty space
+    /// keeps them selected and the row is about the folder.
     /// </summary>
     private void OnShellMenuOpening(object? sender, RoutedEventArgs e)
     {
@@ -88,145 +471,54 @@ public partial class MainWindow
         // Only this item's own opening counts.
         if (!ReferenceEquals(e.Source, sender)) return;
 
-        if (sender is Control { DataContext: PaneGroupViewModel { ActiveTab: { } pane } })
-            _ = pane.OpenShellMenuAsync();
-    }
-
-    /// <summary>
-    /// The right-click route into <see cref="PrepareListingMenu"/>.
-    ///
-    /// **Only the right-click route.** Avalonia raises Opening on the way to a
-    /// menu it opens itself, for a ContextRequested; ContextMenu.Open(control)
-    /// does not raise it at all — measured on 12.1.2 in a headless probe, zero
-    /// times. So the Menu key, which opens the menu with Open in
-    /// OpenListingMenu, never came through here, and the keyboard's menu
-    /// showed the scripts, templates, Undo label, Paste row and Proton rows as
-    /// the previous right-click had left them: with no right-click yet, no
-    /// Proton row at all.
-    /// OpenListingMenu now calls PrepareListingMenu itself.
-    /// </summary>
-    private void OnListingMenuOpening(object? sender, System.ComponentModel.CancelEventArgs e)
-    {
-        // First: the menu's Open does not pass through TryOpen, so the row it
-        // opens would otherwise stay "clicked once" and open again on a single
-        // later click. The keyboard's route forgets it in OpenListingMenu. See
-        // ForgetTheClick.
-        ForgetTheClick();
-
-        if (sender is ContextMenu menu)
-            PrepareListingMenu(menu, menu.DataContext as PaneGroupViewModel);
-    }
-
-    /// <summary>
-    /// What every opening of the listing's menu asks before it is shown,
-    /// whichever route opened it.
-    ///
-    /// The rows a binding keeps current are not the question. The ones here
-    /// are read afresh because nothing tells the menu they changed: the
-    /// scripts and templates folders, the engine's undo history and the
-    /// clipboard. And the Proton entries, which are shown per item, decided
-    /// here rather than bound, because the questions are per-item and
-    /// per-machine at once: is the CLI installed, is the path inside the drive
-    /// folder, and did Vaktari already make a link for it. Three hidden items
-    /// cost nothing when the answer is no.
-    ///
-    /// **The group is handed in rather than read off the menu**, because on
-    /// the keyboard route there is nothing on the menu to read yet. Measured
-    /// in a headless MainWindow: before Open(host), menu.DataContext is null.
-    /// The menu inherits the group from its host only once it opens, so a body
-    /// that asked the menu for it did nothing at all when OpenListingMenu
-    /// called it first, without a word said.
-    /// </summary>
-    private void PrepareListingMenu(ContextMenu menu, PaneGroupViewModel? group)
-    {
-        // **Re-read on every menu open, which is what their own comments always
-        // claimed.** Both were called once, from the pane's constructor, so
-        // adding a script or a template needed a restart to appear — while the
-        // menu itself invites you to go and add one ("Add your own scripts"
-        // opens the folder) and then never notices what you put there. Reading
-        // two small directories is cheap next to building this menu at all.
-        if (group is { ActiveTab: { } tab })
-        {
-            tab.RefreshScripts();
-            tab.RefreshTemplates();
-
-            // The Undo row names what it will take back, and the history is
-            // the engine's — shared by every pane — so it is read when the
-            // menu opens rather than tracked here.
-            tab.RefreshUndoState();
-
-            // Not awaited: a menu opens now. The Paste row shows what the last
-            // answer was and corrects itself a round trip later. Deliberately
-            // in THIS block, above the early return further down that has
-            // silently swallowed work in this handler before.
-            _ = tab.RefreshClipboardAsync();
-        }
-
-        // The Proton entries live inside the Share submenu now, so the walk
-        // has to descend — and it has to see more than MenuItems, because the
-        // rule between the two sharing methods is a Separator. The first
-        // version walked OfType<MenuItem> only, could never find it, and the
-        // early return below silently kept the whole submenu hidden: an eye
-        // test on a machine WITH copyparty is what caught it.
-        static T? Find<T>(IEnumerable<object?> items, string name) where T : Control
-        {
-            foreach (var item in items.OfType<Control>())
-            {
-                if (item is T match && match.Name == name) return match;
-                if (item is MenuItem parent && Find<T>(parent.Items, name) is { } nested)
-                    return nested;
-            }
-
-            return null;
-        }
-
-        if (Find<MenuItem>(menu.Items, "ShareMenu") is not { } shareMenu
-            || Find<MenuItem>(menu.Items, "ProtonShareItem") is not { } share
-            || Find<MenuItem>(menu.Items, "ProtonCopyLinkItem") is not { } copy
-            || Find<MenuItem>(menu.Items, "ProtonUnshareItem") is not { } unshare
-            || Find<MenuItem>(menu.Items, "ProtonInstallingItem") is not { } installing
-            || Find<Separator>(menu.Items, "ShareMethodSeparator") is not { } separatorHost) return;
-
-        var entry = group?.ActiveTab?.SelectedEntry;
-        var path = entry?.FullPath;
-
-        // Linkable is about WHERE the item is, not whether the tool exists —
-        // the share click installs what is missing. The busy row takes the
-        // share row's seat while that download runs.
-        var linkable = path is not null && _shell.CanLinkShare(path);
-        var existing = path is not null ? _shell.LinkFor(path) : null;
-        var busy = path is not null && _shell.ShowDriveInstallBusy(path);
-
-        share.IsVisible = linkable && existing is null && !busy;
-        copy.IsVisible = linkable && existing is not null;
-        unshare.IsVisible = linkable && existing is not null;
-        installing.IsVisible = busy;
-
-        // The submenu earns its place when EITHER way of sharing applies; the
-        // rule between them only when both do.
-        shareMenu.IsVisible = linkable || _shell.HasSharingEntry;
-        separatorHost.IsVisible = linkable && _shell.HasSharingEntry;
+        if (sender is Control { DataContext: PaneGroupViewModel { ActiveTab: { } pane } } row)
+            _ = pane.OpenShellMenuAsync(background: row.Name == "BackgroundShellMenu");
     }
 
     private void OnProtonShareClicked(object? sender, RoutedEventArgs e)
-    {
-        if (PaneFromMenuItem(sender)?.SelectedEntry is { } entry)
-            _ = _shell.CreateDriveLinkAsync(entry.FullPath);
-    }
+        => ShareViaProton(sender, SelectedPath(sender));
 
     private void OnProtonCopyLinkClicked(object? sender, RoutedEventArgs e)
+        => CopyProtonLink(SelectedPath(sender));
+
+    private void OnProtonUnshareClicked(object? sender, RoutedEventArgs e)
+        => StopProtonLink(SelectedPath(sender));
+
+    private void OnFolderProtonShareClicked(object? sender, RoutedEventArgs e)
+        => ShareViaProton(sender, FolderPath(sender));
+
+    private void OnFolderProtonCopyLinkClicked(object? sender, RoutedEventArgs e)
+        => CopyProtonLink(FolderPath(sender));
+
+    private void OnFolderProtonUnshareClicked(object? sender, RoutedEventArgs e)
+        => StopProtonLink(FolderPath(sender));
+
+    private void ShareViaProton(object? sender, string? path)
     {
-        if (PaneFromMenuItem(sender)?.SelectedEntry is { } entry
-            && _shell.LinkFor(entry.FullPath) is { } link)
+        if (path is not null && PaneFromMenuItem(sender) is not null)
+            _ = _shell.CreateDriveLinkAsync(path);
+    }
+
+    private void CopyProtonLink(string? path)
+    {
+        if (path is not null && _shell.LinkFor(path) is { } link)
             _shell.CopyDriveLinkCommand.Execute(link);
     }
 
-    private void OnProtonUnshareClicked(object? sender, RoutedEventArgs e)
+    private void StopProtonLink(string? path)
     {
-        if (PaneFromMenuItem(sender)?.SelectedEntry is { } entry
-            && _shell.LinkFor(entry.FullPath) is { } link)
+        if (path is not null && _shell.LinkFor(path) is { } link)
             _shell.StopDriveLinkCommand.Execute(link);
     }
+
+    /// <summary>The item menu's Proton rows act on the selected item.</summary>
+    private static string? SelectedPath(object? sender)
+        => PaneFromMenuItem(sender)?.SelectedEntry?.FullPath;
+
+    /// <summary>The background menu's act on the folder on screen, whatever is
+    /// selected.</summary>
+    private static string? FolderPath(object? sender)
+        => PaneFromMenuItem(sender) is { IsRealFolder: true } pane ? pane.CurrentPath : null;
 
     /// <summary>
     /// The pane whose menu the clicked item belongs to — read from the item's
@@ -238,28 +530,21 @@ public partial class MainWindow
     /// did nothing without a word said. Inheritance does not care how deep the
     /// row sits.
     /// </summary>
-    private static ViewModels.PaneViewModel? PaneFromMenuItem(object? sender)
-        => (sender as Control)?.DataContext is ViewModels.PaneGroupViewModel group
+    private static PaneViewModel? PaneFromMenuItem(object? sender)
+        => (sender as Control)?.DataContext is PaneGroupViewModel group
             ? group.ActiveTab
             : null;
 
     /// <summary>
-    /// Puts back the three things opening the menu changed.
-    ///
-    /// The summary here read "Releases it when the menu closes" for a long
-    /// while. The "it" was the desktop's shell menu, which OnShellMenuOpening
-    /// had opened thirteen lines above when both were written; a hundred and
-    /// more lines have since been inserted between them, and the member has
-    /// grown two more jobs, so the sentence had lost both its antecedent and
-    /// its count.
+    /// Puts back the three things opening a listing menu changed. Either menu:
+    /// both name this handler.
     ///
     /// **The shell menu.** Its ids are offsets into one live menu, so they are
     /// meaningless once it is gone — and each menu owns an STA thread, so
-    /// never releasing would leak one per right-click. This is the only one of
-    /// the three whose other half is in this file.
+    /// never releasing would leak one per right-click.
     ///
     /// **The placement**, set by the Menu-key route in MainWindow.MenuKey.cs
-    /// and put back here because the same ContextMenu serves the pointer.
+    /// and put back here because the same menu serves the pointer.
     ///
     /// **The elevation flag**, armed on the right-button press in
     /// MainWindow.axaml.cs and cleared here, so a Shift held a minute ago
@@ -267,23 +552,20 @@ public partial class MainWindow
     /// </summary>
     private void OnListingMenuClosed(object? sender, RoutedEventArgs e)
     {
-        // **Placement belongs to the menu, and ONE menu serves both routes.**
-        // OpenListingMenu sets BottomEdgeAlignedLeft for the Menu key; left
-        // set, it outlives the keystroke, and the next right-click anywhere in
-        // the listing opens with it. Measured, driving a real right-button
-        // press at a row in a headless MainWindow with that placement left
-        // behind: the popup came up BottomEdgeAlignedLeft anchored on a 30px
-        // panel inside the tab strip — not at the cursor, and not on any row.
-        // Every right-click after a keyboard one would have put the menu up
-        // there under the tabs until the next keyboard one.
+        // **Placement belongs to the menu, and each menu serves both routes.**
+        // OpenListingMenu sets BottomEdgeAlignedLeft or Center for the Menu
+        // key; left set, it outlives the keystroke, and the next right-click
+        // opens with it. Measured, driving a real right-button press at a row
+        // in a headless MainWindow with that placement left behind: the popup
+        // came up BottomEdgeAlignedLeft anchored on a 30px panel inside the tab
+        // strip — not at the cursor, and not on any row.
         //
-        // The same measurement is why the target is cleared rather than
-        // restored to something: the right-click route never reads
-        // PlacementTarget at all — it re-anchors on the attached control's own
-        // panel, with the menu's target still pointing at the keyboard's row —
-        // and the Menu-key route always assigns it before opening. So nulling
-        // it changes no placement; it drops the menu's reference to a
-        // ListBoxItem the virtualizing panel is free to recycle.
+        // The target is cleared rather than restored to something: the
+        // right-click route never reads PlacementTarget — it re-anchors on the
+        // attached control's own panel — and the Menu-key route always assigns
+        // it before opening. So nulling it changes no placement; it drops the
+        // menu's reference to a ListBoxItem the virtualizing panel is free to
+        // recycle.
         //
         // Ahead of the pane block below, which returns early: what is being put
         // back is a property of the menu, and it has to be put back whether or
@@ -293,6 +575,10 @@ public partial class MainWindow
             menu.Placement = PlacementMode.Pointer;
             menu.PlacementTarget = null;
         }
+
+        // A Menu key that opened this and was never let go of while it was up
+        // must not swallow the release of the next one. See _menuKeyHeld.
+        _menuKeyHeld = null;
 
         if (sender is not Control { DataContext: PaneGroupViewModel { ActiveTab: { } pane } })
             return;

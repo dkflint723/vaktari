@@ -292,17 +292,17 @@ public sealed class UsageListingTests : OwnedViewModels
     [AvaloniaFact]
     public void The_row_is_offered_only_in_a_real_folder()
     {
-        var markup = RepoSource.Ui("MainWindow.axaml");
-        var at = markup.IndexOf("Header=\"Show space usage\"", StringComparison.Ordinal);
+        // Parsed, and found by its words through MenuLabels: the row carries
+        // an access key since it moved into the background menu's Analyse,
+        // which had a letter free for it.
+        var row = System.Xml.Linq.XDocument.Parse(RepoSource.Ui("MainWindow.axaml"))
+            .Descendants(System.Xml.Linq.XNamespace.Get("https://github.com/avaloniaui") + "MenuItem")
+            .SingleOrDefault(m => MenuLabels.Plain((string?)m.Attribute("Header")) == "Show space usage");
 
-        Assert.True(at >= 0, "the listing menu no longer offers the row at all");
+        Assert.True(row is not null, "the listing menu no longer offers the row at all");
 
-        var row = markup[at..];
-
-        row = row[..row.IndexOf("/>", StringComparison.Ordinal)];
-
-        Assert.Contains("IsVisible=\"{Binding ActiveTab.IsRealFolder}\"", row);
-        Assert.Contains("Command=\"{Binding ActiveTab.ShowSpaceUsageCommand}\"", row);
+        Assert.Equal("{Binding ActiveTab.IsRealFolder}", (string?)row!.Attribute("IsVisible"));
+        Assert.Equal("{Binding ActiveTab.ShowSpaceUsageCommand}", (string?)row.Attribute("Command"));
     }
 
     /// <summary>

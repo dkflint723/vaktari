@@ -43,6 +43,33 @@ public sealed partial class PaneViewModel
     public bool IsTrashListing => CurrentPath == VirtualPaths.Trash;
 
     /// <summary>
+    /// True in This PC, whose rows are volumes rather than files.
+    ///
+    /// **The item menu offered to cut, rename, bin, duplicate and send a
+    /// drive.** <see cref="CanActOnSelection"/> excludes only the bin, so a
+    /// right-click on C: listed every verb a folder row gets. None of them
+    /// means anything for a volume: the rename engine refuses a root ("A drive
+    /// root cannot be renamed."), Duplicate refuses a drive in the words
+    /// every other verb uses for one, and Copy to and Move to answer "that folder cannot be sent into
+    /// itself" for every place that lives on the drive being sent — which on
+    /// most machines is most of them. See
+    /// <see cref="CanMoveSelection"/>, which is where this is read.
+    /// </summary>
+    public bool IsComputerListing => CurrentPath == VirtualPaths.Computer;
+
+    /// <summary>
+    /// The current folder's own name, for the rows of the background menu
+    /// that act on it — "Share Documents over network" — so the target is on
+    /// the row rather than inferred from the result afterwards.
+    ///
+    /// **Not <see cref="ShareTargetLabel"/>**, which names the selected folder
+    /// when there is one. The background menu acts on the folder whatever is
+    /// selected, because a right-click on empty space keeps the selection.
+    /// </summary>
+    public string CurrentFolderLabel
+        => PathRules.LeafName(CurrentPath) is { Length: > 0 } name ? name : "this folder";
+
+    /// <summary>
     /// True while this pane is showing a search, which is what puts the band
     /// above the listing.
     /// </summary>

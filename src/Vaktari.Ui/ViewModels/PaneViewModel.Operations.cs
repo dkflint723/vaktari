@@ -30,6 +30,23 @@ public sealed partial class PaneViewModel
         var paths = SelectionPaths();
         if (paths.Count == 0) { Status = "nothing selected"; return; }
 
+        // **Copy in the bin put the old path on the clipboard.** A binned row
+        // names where the file USED to be, so the next Paste copied whatever
+        // lives there now, or failed on a name that is gone. The menu row was
+        // hidden; Ctrl+C was not. Refused for Cut too, which reads the same
+        // paths.
+        if (RefusedInBin()) return;
+
+        // **Ctrl+X on a drive, then Ctrl+V, moved the drive — and Ctrl+C then
+        // Ctrl+V copied it onto itself.** A root has no name of its own to
+        // land under: PathRules.LeafName("Z:\") is "Z:\", so a paste into any
+        // folder combined to "Z:\" again, the target was the source, and
+        // Replace or Keep both duplicated files in place on the SOURCE drive
+        // while the free-space check measured the wrong volume. Explorer
+        // offers Copy on a drive; this refuses it, as the engines now do, and
+        // copying what is ON a drive is a select-all away. See VolumeRoots.
+        if (RefusedOnVolumes(paths)) return;
+
         try
         {
             var ok = await _clipboard.SetFilesAsync(action, paths).ConfigureAwait(false);
@@ -236,14 +253,20 @@ public sealed partial class PaneViewModel
 
     /// <summary>Copy or move into a specific folder — used when a drop lands on
     /// a folder row rather than on the listing's background.</summary>
-    public void PasteIntoFolder(string destination, IReadOnlyList<string> paths, bool move)
+    /// <returns>Whether a copy or move was started — see
+    /// <see cref="PasteInto"/>.</returns>
+    public bool PasteIntoFolder(string destination, IReadOnlyList<string> paths, bool move)
     {
+        // A drive dropped onto a folder row is a move of the drive, or a copy
+        // of it onto itself — see WriteClipboardAsync.
+        if (RefusedVolumePaths(paths)) return false;
+
         // The DESTINATION, not CurrentPath. Dropping onto a real folder row
         // while a virtual listing is showing is legitimate — Recent rows carry
         // real paths — and guarding on CurrentPath would break it.
-        if (RefusedVirtualDestination(destination)) return;
+        if (RefusedVirtualDestination(destination)) return false;
 
-        if (_ops is null || paths.Count == 0) return;
+        if (_ops is null || paths.Count == 0) return false;
 
         var conflicts = Conflicts();
 
@@ -252,13 +275,21 @@ public sealed partial class PaneViewModel
             : _ops.Copy(paths, destination, conflicts);
 
         Track(handle);
+        return true;
     }
 
     /// <summary>Runs a copy or move into this directory, from the view's paste.</summary>
-    public void PasteInto(IReadOnlyList<string> paths, bool move)
+    /// <returns>
+    /// Whether a copy or move was started. **A drop reports what it did to the
+    /// source**, and a refused one did nothing: reporting Move for a drive the
+    /// guard turned away tells an X11 source to delete what it dragged. False
+    /// for a refusal and for nothing to do, so the drop can answer None.
+    /// </returns>
+    public bool PasteInto(IReadOnlyList<string> paths, bool move)
     {
-        if (_ops is null || paths.Count == 0) return;
-        if (RefusedVirtualDestination(CurrentPath)) return;
+        if (_ops is null || paths.Count == 0) return false;
+        if (RefusedVolumePaths(paths)) return false;
+        if (RefusedVirtualDestination(CurrentPath)) return false;
 
         var conflicts = Conflicts();
 
@@ -267,6 +298,7 @@ public sealed partial class PaneViewModel
             : _ops.Copy(paths, CurrentPath, conflicts);
 
         Track(handle);
+        return true;
     }
 
     /// <summary>
@@ -351,7 +383,58 @@ public sealed partial class PaneViewModel
     {
         if (RefusedInBin()) return;
 
-        TrashChosen(SelectionPaths());
+        var paths = SelectionPaths();
+
+        if (RefusedOnVolumes(paths)) return;
+
+        TrashChosen(paths);
+    }
+
+    /// <summary>
+    /// Refuses a verb that would copy, move, rename, bin or delete what is
+    /// selected, when what is selected is a volume.
+    ///
+    /// **Hiding a row does not gate its key.** The menu stopped offering Cut,
+    /// Rename and the bin on This PC's drives; Delete, Shift+Delete, Ctrl+X
+    /// and F2 went on reaching them, and Shift+Delete on a drive walked it
+    /// deleting files — see VolumeRoots for the whole account. So the commands
+    /// refuse, which is where every route meets.
+    ///
+    /// **Two halves, each a guard the other cannot stand in for.** This PC
+    /// by the LISTING, because a place there need not look like a root — a
+    /// Linux mount point is a directory, and a test's drive is a folder; and
+    /// by the PATH anywhere, because a drive can be named from elsewhere.
+    /// Public so the shell's transfers and the window's prompts ask the same
+    /// question before they act.
+    /// </summary>
+    public bool RefusedOnVolumes(IReadOnlyList<string> paths)
+    {
+        // Nothing to refuse, so nothing is said: with nothing selected in This
+        // PC, Delete answered "a drive cannot be…" where every other listing
+        // gives its usual nothing-selected answer. The caller gives it here too.
+        if (paths.Count == 0) return false;
+
+        // This PC's rows are drives, whatever their paths; elsewhere the path
+        // says why, and in its own words — a file under a device path is not
+        // "a drive", which is what this said of it for every key.
+        if ((IsComputerListing ? VolumeRoots.Refusal : VolumeRoots.Refuse(paths)) is not { } why) return false;
+
+        Status = why;
+        return true;
+    }
+
+    /// <summary>
+    /// The path half of <see cref="RefusedOnVolumes"/> alone, for the routes
+    /// that act on paths named elsewhere — a confirmation answered after the
+    /// pane moved, a drop, a paste — where the listing on screen is not the
+    /// question. Copies as well as moves: see WriteClipboardAsync.
+    /// </summary>
+    private bool RefusedVolumePaths(IReadOnlyList<string> paths)
+    {
+        if (VolumeRoots.Refuse(paths) is not { } why) return false;
+
+        Status = why;
+        return true;
     }
 
     /// <summary>
@@ -375,6 +458,10 @@ public sealed partial class PaneViewModel
         if (_ops is null) return;
 
         if (paths.Count == 0) return;
+
+        // By the paths it was handed, not by where the pane is now — the
+        // reason above for not refusing the bin here.
+        if (RefusedVolumePaths(paths)) return;
 
         // **Delete, Delete, Delete did not work.** After the rows went, nothing
         // was selected, so the next Delete had nothing to act on and the
@@ -437,11 +524,19 @@ public sealed partial class PaneViewModel
     /// Sends specific paths to the bin — what dropping onto the bin's row
     /// means, as distinct from the Delete key acting on a selection.
     /// </summary>
-    public void TrashPaths(IReadOnlyList<string> paths)
+    /// <returns>
+    /// Whether the bin was asked to take them. **The bin's row reports a drop
+    /// as a Move it performed**, which on X11 tells the source to delete what
+    /// it dragged — so a drive turned away here must not be reported as one.
+    /// False for a refusal and for nothing to do; see <see cref="PasteInto"/>.
+    /// </returns>
+    public bool TrashPaths(IReadOnlyList<string> paths)
     {
-        if (_ops is null || paths.Count == 0) return;
+        if (_ops is null || paths.Count == 0) return false;
+        if (RefusedVolumePaths(paths)) return false;
 
         Track(_ops.Trash(paths));
+        return true;
     }
 
     /// <summary>Shift+Delete. Irreversible — the view must confirm first.</summary>
@@ -450,7 +545,11 @@ public sealed partial class PaneViewModel
     {
         if (RefusedInBin()) return;
 
-        DeleteChosen(SelectionPaths());
+        var paths = SelectionPaths();
+
+        if (RefusedOnVolumes(paths)) return;
+
+        DeleteChosen(paths);
     }
 
     /// <summary>
@@ -466,6 +565,9 @@ public sealed partial class PaneViewModel
 
         if (paths.Count == 0) return;
 
+        // By the paths it was handed, not by where the pane is now.
+        if (RefusedVolumePaths(paths)) return;
+
         Track(_ops.Delete(paths));
     }
 
@@ -475,6 +577,10 @@ public sealed partial class PaneViewModel
         // Renaming a bin row would rename whatever now occupies the original
         // path, which is the same hazard delete has and is just as invisible.
         if (RefusedInBin()) return;
+
+        // And a drive is not renamed from here: the engine refuses a root, and
+        // a Linux mount point would be moved rather than relabelled.
+        if (RefusedOnVolumes(SelectionPaths())) return;
 
         // **Four of five selections used to vanish.** F2 renamed the focused
         // row and ignored the rest without a word. Explorer renumbers them all
@@ -737,11 +843,19 @@ public sealed partial class PaneViewModel
         // a folder called vaktari:recent-files in the working directory and
         // copied into it. In the bin the row names where a file USED to be, so
         // the copy is of whatever occupies that path now.
-        if (RefusedInBin() || RefusedVirtualDestination(CurrentPath)) return;
+        if (RefusedInBin()) return;
+
+        var paths = SelectionPaths();
+
+        // A drive in This PC says what every other verb says of a drive,
+        // rather than "this listing is a view, not a folder" — true, but not
+        // why a drive cannot be duplicated. See RefusedOnVolumes.
+        if (RefusedOnVolumes(paths)) return;
+
+        if (RefusedVirtualDestination(CurrentPath)) return;
 
         if (_ops is null) return;
 
-        var paths = SelectionPaths();
         if (paths.Count == 0) { Status = "select something to duplicate"; return; }
 
         // **KeepBoth without asking, and this is the one place that is right.**

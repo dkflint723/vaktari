@@ -73,7 +73,7 @@ public sealed class ReachUpBindingTests : OwnedViewModels
     /// <summary>
     /// A gate that says "hide this" hides it.
     ///
-    /// Arrange is gated on ShowSortByInMenu, which is <c>ContextMenu.ShowSortBy</c>
+    /// View's Sort by is gated on ShowSortByInMenu, which is <c>ContextMenu.ShowSortBy</c>
     /// and nothing else — no selection state, no platform, so it can be driven
     /// to false and stay there. With the preference off the row must be
     /// invisible. If the reach-up stops resolving, IsVisible falls back to its
@@ -106,9 +106,13 @@ public sealed class ReachUpBindingTests : OwnedViewModels
 
         try
         {
-            var arrange = Row(menu, "Arrange");
+            // Arrange's gate went onto its rows when View and Arrange merged,
+            // so the row this watches is one level down. A nested row reports
+            // its binding's answer while the menu is open — measured on 12.1 —
+            // without its own submenu being opened.
+            var sortBy = Row(Row(menu, "View"), "Sort by");
 
-            Assert.False(arrange.IsVisible,
+            Assert.False(sortBy.IsVisible,
                          "the row is showing with its preference off — either the gate is not "
                          + "bound, or the reach-up through $parent[Window] no longer resolves. "
                          + "A failed binding leaves IsVisible at its default of true and says "
@@ -129,11 +133,14 @@ public sealed class ReachUpBindingTests : OwnedViewModels
     /// found some other object with a command of the same name. A broken
     /// reach-up leaves Command null, which fails here too.
     ///
-    /// Open in new tab carries a gate of its own (ShowOpenInNewTabInMenu,
-    /// which also wants a directory selected), and that is deliberately not
-    /// what is under test here: a Command binding resolves whether or not the
-    /// row is showing, so the row is looked up regardless of IsVisible and
-    /// only its Command is asserted. The gate is the other test's subject.
+    /// "Add this folder to places" carries a gate of its own
+    /// (ShowAddCurrentToPlaces), and that is deliberately not what is under
+    /// test here: a Command binding resolves whether or not the row is
+    /// showing, so the row is looked up regardless of IsVisible and only its
+    /// Command is asserted. The gate is the other test's subject. It was Open
+    /// in new tab while one menu served everything; that row is on the item
+    /// menu now, which the key opens only with a selection, and this window's
+    /// folder is whatever the developer's session left — possibly empty.
     /// </summary>
     [AvaloniaFact]
     public void A_menu_row_reaching_up_for_a_command_gets_the_shell_s_own()
@@ -144,11 +151,11 @@ public sealed class ReachUpBindingTests : OwnedViewModels
 
         try
         {
-            var row = Row(menu, "Open in new tab");
+            var row = Row(menu, "Add this folder to places");
 
             Assert.NotNull(row.Command);
 
-            Assert.Same(shell.OpenInNewTabCommand, row.Command);
+            Assert.Same(shell.PinCurrentCommand, row.Command);
         }
         finally
         {
@@ -180,15 +187,21 @@ public sealed class ReachUpBindingTests : OwnedViewModels
     }
 
     /// <summary>
-    /// Opens the listing's own menu with Shift+F10, the way ColumnChooserTests
-    /// does — including sending the keyboard away and back first, because where
-    /// focus sits decides which arm of OnWindowKeyDown answers that key, and
-    /// the window parks it in the listing by itself at Background priority.
+    /// Opens the listing's BACKGROUND menu with Shift+F10, the way
+    /// ColumnChooserTests does — including sending the keyboard away and back
+    /// first, because where focus sits decides which arm of OnWindowKeyDown
+    /// answers that key, and the window parks it in the listing by itself at
+    /// Background priority. With nothing selected, which is cleared here, the
+    /// key opens the background menu rather than an item's.
     /// </summary>
     private static ContextMenu OpenListingMenu(MainWindow window, PaneViewModel pane)
     {
         var list = Listing(window, pane);
-        var menu = MenuAbove(list);
+        var menu = ListingMenus.Above(list, ListingMenus.Background);
+
+        list.SelectedItems?.Clear();
+        pane.SelectedEntry = null;
+        Dispatcher.UIThread.RunJobs();
 
         var sidebar = window.FindControl<Border>("SidebarPanel");
 
@@ -223,18 +236,9 @@ public sealed class ReachUpBindingTests : OwnedViewModels
                               && ReferenceEquals(l.DataContext, pane)
                               && l.SelectionMode.HasFlag(SelectionMode.Multiple));
 
-    private static ContextMenu MenuAbove(Visual from)
-    {
-        for (Visual? visual = from; visual is not null; visual = visual.GetVisualParent())
-            if (visual is Control { ContextMenu: { } menu })
-                return menu;
-
-        throw new InvalidOperationException("nothing above the listing carries a context menu");
-    }
-
     /// <summary>
     /// Read through MenuLabels because these rows carry access-key markers —
-    /// "Arran_ge", "Open in new _tab" — and which letter each takes is
+    /// "_View", "Add this fo_lder to places" — and which letter each takes is
     /// ContextMenuKeysTests' business, not this file's.
     ///
     /// Searched with IsVisible ignored, unlike the walk in ColumnChooserTests:

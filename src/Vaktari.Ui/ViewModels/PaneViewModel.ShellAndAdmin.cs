@@ -25,8 +25,22 @@ namespace Vaktari.Ui.ViewModels;
 /// </summary>
 public sealed partial class PaneViewModel
 {
-    /// <summary>Whether to offer the entry at all.</summary>
+    /// <summary>Whether to offer the entry at all — on the ITEM menu, where it
+    /// asks the shell about the selected rows, which are real paths in a search
+    /// and in This PC as well as in a folder.</summary>
     public bool HasShellMenu => ShellMenu is not null && !IsTrashListing && !IsRecentListing;
+
+    /// <summary>
+    /// The same entry on the BACKGROUND menu, which asks the shell about the
+    /// folder itself — and so only where there is one.
+    ///
+    /// **A search and This PC offered a folder menu for a path that is not a
+    /// folder.** HasShellMenu excludes only the bin and Recent, which was right
+    /// for a row and wrong for the listing: with nothing selected in either,
+    /// the hosted row built the shell's background menu for
+    /// "vaktari:search:…" or "vaktari:computer", a string no shell can parse.
+    /// </summary>
+    public bool HasBackgroundShellMenu => HasShellMenu && IsRealFolder;
 
     /// <summary>
     /// Mounting disk images, or null where this machine cannot. Static like the
@@ -89,6 +103,11 @@ public sealed partial class PaneViewModel
     /// rather than rebuilt and a stale one is still replaced.</summary>
     private IReadOnlyList<string>? _shellPaths;
 
+    /// <summary>Which of the shell's two menus the live one is — part of the
+    /// key, because a folder's own menu and its row's menu are asked about the
+    /// same single path.</summary>
+    private bool _shellBackground;
+
     private bool _shellBuilding;
 
     /// <summary>
@@ -144,23 +163,37 @@ public sealed partial class PaneViewModel
     /// Lazily for a second reason: no ordinary right-click should pay for
     /// something that lives behind one more hover.
     /// </summary>
-    public async Task OpenShellMenuAsync()
+    public async Task OpenShellMenuAsync(bool background)
     {
         if (ShellMenu is not { } provider) return;
 
-        // The selection, or the folder when the click was on empty space — the
-        // same rule the rest of the menu follows.
+        // The selection for the item menu, the folder for the background one.
         //
-        // **Empty means a different QUESTION, not the same question about the
-        // folder.** A click on nothing wants what the folder offers about
-        // itself as a place; asking for the folder's own menu answers with what
-        // its row in the parent listing offers, which acts on it from outside.
-        // The shell keeps those as two separately bound menus and this used to
-        // ask for the first one either way.
-        var paths = SelectionPaths();
-        var background = paths.Count == 0;
+        // **Empty space means a different QUESTION, not the same question
+        // about the folder.** A click on nothing wants what the folder offers
+        // about itself as a place; asking for the folder's own menu answers
+        // with what its row in the parent listing offers, which acts on it
+        // from outside. The shell keeps those as two separately bound menus.
+        //
+        // **Which one is decided by the MENU, not by the selection.** It used
+        // to be "background when nothing is selected", which was the right
+        // test while one menu served both — and is the wrong one now, because
+        // a right-click on empty space keeps the selection: the background
+        // menu would have asked the shell about the selected files and put
+        // their verbs under a menu that is about the folder.
+        var paths = background ? [CurrentPath] : SelectionPaths();
 
-        if (background) paths = [CurrentPath];
+        // An item menu with nothing selected cannot happen by a click — it
+        // opens on the row the click selects — so this is a selection lost
+        // between the menu opening and the hover. Nothing is asked for rather
+        // than the folder's menu being passed off as the items'.
+        if (paths.Count == 0)
+        {
+            CloseShellMenu();
+            ShowShellRows([new Vaktari.Core.FileSystem.ShellMenuEntry(
+                "Nothing offered here", -1, IsEnabled: false)]);
+            return;
+        }
 
         // **Built once for a given selection, and never rebuilt underneath
         // itself.** The caller guards its own event, but this is the property
@@ -170,12 +203,14 @@ public sealed partial class PaneViewModel
         // that a menu left behind by a close event that never arrived is still
         // replaced when the selection moves on.
         if (_shellPaths is { } built && built.SequenceEqual(paths, StringComparer.Ordinal)
+            && _shellBackground == background
             && (_shellMenu is not null || _shellBuilding))
             return;
 
         CloseShellMenu();
 
         _shellPaths = paths;
+        _shellBackground = background;
         _shellBuilding = true;
 
         var generation = _shellGeneration;
@@ -309,9 +344,18 @@ public sealed partial class PaneViewModel
         OnPropertyChanged(nameof(CanUnmountSelection));
     }
 
-    /// <summary>Whether to show the section at all.</summary>
+    /// <summary>
+    /// Whether to show the section at all.
+    ///
+    /// **Only in a real folder**, which is where the terminal opens. The bin
+    /// and Recent were excluded and a search, This PC and the two scan
+    /// listings were not, so a Shift+right-click there offered an elevated
+    /// terminal "here" and handed the terminal the listing's internal path —
+    /// the ordinary terminal row beside it has always been gated on
+    /// IsRealFolder, through ShowOneTerminal, for exactly that reason.
+    /// </summary>
     public bool ShowAdminEntries =>
-        AdminRequested && _launcher?.CanElevate == true && !IsTrashListing && !IsRecentListing;
+        AdminRequested && _launcher?.CanElevate == true && IsRealFolder;
 
     /// <summary>
     /// Whether "run as administrator" would mean anything for what is selected.

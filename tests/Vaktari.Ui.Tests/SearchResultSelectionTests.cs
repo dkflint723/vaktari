@@ -180,21 +180,22 @@ public sealed class SearchResultSelectionTests : OwnedViewModels
     [Fact]
     public void The_menu_offers_it_wherever_rows_come_from_somewhere_else()
     {
-        var item = XDocument.Parse(RepoSource.Ui("MainWindow.axaml"))
-            .Descendants(XNamespace.Get("https://github.com/avaloniaui") + "MenuItem")
-            .Single(m => (string?)m.Attribute("Header") == "Open file location");
+        // On the item menu, found by its words through MenuLabels — it carries
+        // an access key now the split menus freed a letter.
+        var item = ListingMenus.MarkupRow(ListingMenus.Markup(ListingMenus.Item), "Open file location");
 
         Assert.Equal("{Binding ActiveTab.GoToLocationCommand}", (string?)item.Attribute("Command"));
         Assert.Equal("{Binding ActiveTab.CanGoToLocation}", (string?)item.Attribute("IsVisible"));
 
-        // Its rule carries the same gate, or it is the stray line at the top of
-        // an ordinary folder's menu.
-        var rule = item.ElementsBeforeSelf().Last();
+        // **Beside Open now, in Open's group, rather than a group of its own
+        // near the bottom** — so it has no rule to carry. It used to carry
+        // CanGoToLocation on the rule above it, or that rule was a stray line
+        // in an ordinary folder's menu; the rules are decided as the menu
+        // opens now, and ListingMenusTests walks Recent and a search for a
+        // stray one.
+        Assert.Equal("MenuItem", item.ElementsBeforeSelf().Last().Name.LocalName);
 
-        Assert.Equal("Separator", rule.Name.LocalName);
-        Assert.Equal("{Binding ActiveTab.CanGoToLocation}", (string?)rule.Attribute("IsVisible"));
-
-        // And Forget follows it directly: one group, one rule.
+        // And Forget follows it directly: one group.
         var next = item.ElementsAfterSelf().First();
 
         Assert.Equal("MenuItem", next.Name.LocalName);

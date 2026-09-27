@@ -49,7 +49,8 @@ A few things you would notice in the first ten minutes:
 **Tabs, splits and windows.** Open as many tabs as you like — drag to reorder
 them, middle-click to close one, double-click the empty strip for a new one.
 Right-click a tab for *Duplicate*, *Close other tabs*, *Close tabs to the
-right* and *Reopen closed tab*; each side of the window remembers its last ten.
+right* and *Reopen closed tab* — the closing rows only when there is a tab for
+them to close; each side of the window remembers its last ten.
 `F3` splits the window in two, each half with its own tabs, history, selection
 and zoom, and `Tab` moves between them. `Ctrl+N` opens a whole second window on
 the folder you are in. Every window is a peer, and all of them come back when
@@ -112,7 +113,8 @@ view-options menu has *Text size* and *Icon size* as steppers, with a chooser
 above them saying whether they act on the left pane, the right one or both.
 
 **The two sides of a split can be compared.** *Compare the two sides*, in the
-view-options menu, the listing's *Compare* menu or the command box, marks
+view-options menu, under *Analyse* on the folder's right-click menu, or in the
+command box, marks
 every row that differs from the other side's folder: *Only here*, *Newer*,
 *Older*, or *Different* for a file and a folder of one name, or two files
 changed at the same moment at different sizes. Two files the same size
@@ -129,8 +131,8 @@ could not be read, nothing is marked and the status bar says why. Closing the
 split stops it.
 
 **What is newer or missing on one side can be copied to the other.** Right-click
-the side to copy from and choose *Compare ▸ Copy what is newer or missing here
-to the other side*, or run it from the command box. It copies the rows marked
+the empty space of the side to copy from and choose *Analyse ▸ Copy what is
+newer or missing here to the other side*, or run it from the command box. It copies the rows marked
 *Only here* and *Newer* that the listing shows into the other side's folder,
 after a prompt that says how many it copies, to which folder, and how many
 older files it replaces for good. Rows marked *Older* or *Different* stay
@@ -143,7 +145,7 @@ Ctrl+Z takes the copies back, though not the older files they replaced.
 
 **The List layout chooses its columns.** Name, Type, Size, Modified and
 Created, with Type and Created off until you ask for them; right-click the
-headings or use *Arrange ▸ Columns*. Drag the right edge of any heading but Name
+headings or use *View ▸ Columns*. Drag the right edge of any heading but Name
 to make its column wider or narrower — Name takes whatever is left — and every
 pane follows; *Reset column widths*, in the same two menus, puts them all back.
 All five sort. Clicking Size, Modified or Created starts descending, so the
@@ -152,8 +154,8 @@ download that just finished is at the top. `file2` sorts before `file10`, and
 files is a switch you can turn off, which is what finally lets "sort by
 Modified" answer *what changed here* when the answer is a folder.
 
-**What is using the space in a folder.** *Show space usage*, in the listing's
-menu or the command box, replaces the listing with one row for each item in the
+**What is using the space in a folder.** *Show space usage*, under *Analyse* on
+the folder's right-click menu or in the command box, replaces the listing with one row for each item in the
 folder, each carrying everything underneath it. Click the *Size* heading and the
 biggest thing is at the top, folder or file — folders are not banded above the
 files here, because the question is what is large rather than what is a folder.
@@ -164,13 +166,13 @@ followed, so a folder of shortcuts is its own size rather than the size of what
 it points at. Hidden items count towards the total and appear as rows only while
 hidden files are shown. It measures when you ask and never on its own, since
 walking a tree costs what it costs. It is a view of one folder rather than a
-folder itself: comparing, copying across, properties and pinning are not offered
-in it. *Open file location*, on a row's right-click menu, goes into a folder
+folder itself: copying across, the folder's properties and pinning are not
+offered in it, and comparing marks nothing there. *Open file location*, on a row's right-click menu, goes into a folder
 row and shows a file row lit in its folder, and Back (`Alt+←`) returns to the
 folder that was measured.
 
-**The files that are copies of each other.** *Show duplicate files*, in the
-listing's menu or the command box, replaces the listing with every file below
+**The files that are copies of each other.** *Show duplicate files*, under
+*Analyse* on the folder's right-click menu or in the command box, replaces the listing with every file below
 this folder that another file holds the same bytes as — whatever it has been
 renamed to, and whatever its date says. The bar above says how many sets there
 are and what deleting all but one of each would give back. Every copy is a row,
@@ -191,7 +193,7 @@ folder row — or `→` with the row selected — and its contents appear undern
 it, indented, without the listing moving. `←` closes it again. What you opened
 survives a sort, a refresh, a rename and a paste.
 
-**Grouping** by name, size, type or date, from *Arrange ▸ Group by*. Each
+**Grouping** by name, size, type or date, from *View ▸ Group by*. Each
 band's heading says how many rows are under it — TXT (12) — and clicking a
 heading selects the whole band. This is a List-layout feature; the grids draw
 no bands.
@@ -391,11 +393,28 @@ choose whether moving to the bin asks, which it does not until you turn it on,
 and whether deleting for good does. Emptying the bin and copying one side of a
 split to the other always ask.
 
-**Also on the right-click menu:** *Mount* for a disk image, which attaches it
-and takes you inside, and *Unmount* when you are done. *New folder*, *New file*
-and *New from template*, each opening straight into the rename box. *Compress
-to ZIP* and *Extract all* — Vaktari's own, undoable, written beside what they
-act on. *Extract all* opens zip, 7z, RAR and tar however it is compressed
+**Two right-click menus: one for what you clicked, one for the folder.**
+Right-click a file, a folder or a tile — anywhere on its row — and the menu is
+about that: open it, cut, copy, send it somewhere, rename it, bin it, compress
+it, share a folder, and its properties. Right-click the empty space around the rows
+and the menu is about the folder: *View* (the layouts, hidden files, and
+sorting, grouping and columns), *Select all*, *Paste*, *Undo* and *Redo* when
+there is something to take back, *New*, *Refresh*, the terminal, *Analyse* for
+the space and duplicate scans and, in a split, comparing the sides, *Scripts*,
+*Add this folder to places*, *Share* and the folder's own *Properties*.
+Right-clicking empty space keeps your selection; the folder's menu simply does
+not act on it. The Menu key and `Shift+F10` open the first when something is
+selected and the second when nothing is. A row is left off wherever it would
+refuse or do the wrong thing — nothing copies, moves, renames or bins a drive
+in *This PC*, and nothing writes into a search, a recent list or the bin — and the rows
+are compact, 24 pixels to the toolkit's 30.
+
+**Also on those menus:** *Mount* for a disk image, which attaches it and takes
+you inside, and *Unmount* when you are done. *New folder*, *New file* and *New
+from template*, each opening straight into the rename box. *Compress to ZIP*
+and *Extract all* — Vaktari's own, undoable, written beside what they act on,
+and refusing any archive entry that points outside the folder it is landing
+in. *Extract all* opens zip, 7z, RAR and tar however it is compressed
 (`.tar.gz`, `.tar.bz2`, `.tar.xz`, `.tar.zst`, `.tar.lz`), and a single
 compressed file such as `report.txt.gz`. It lands as one new thing and never
 over anything already there: an archive holding one folder becomes that
@@ -407,12 +426,11 @@ the hidden `.vaktari-extracting-…` folder it left). Names Windows cannot hold,
 or that would display misleadingly, are written with `_` in place of the
 offending characters (`_CON.txt`, `inv_gpj.exe`), two entries with one name
 both arrive (the second numbered), and on Windows what comes out of a
-downloaded archive carries the archive's own mark of the web. *Create
-shortcut*, made the way each platform makes them. *Open
-with*, reading your system's own file-type database. *Run* and *Run as
-administrator* for a program. *Open terminal here* on `F4`, with *Open admin
-terminal here* beside it. Entries that need a selection are simply not offered
-when there is none, and you can switch off the ones you never use.
+downloaded archive carries the archive's own mark of the web. *Create shortcut*, made the way each platform makes them. *Open with*,
+reading your system's own file-type database. *Run* and *Run as administrator*
+for a program. *Open terminal here* on `F4`, with *Open admin terminal here*
+beside it when you Shift+right-click. You can switch off the entries you never
+use.
 
 On Linux, double-clicking a program asks before running it — *Run*, *Open* or
 *Cancel* — because double-click has meant "open this" everywhere else and a
@@ -431,8 +449,12 @@ own sheet instead — the one with Security, Details and the Unblock checkbox �
 while Vaktari's own window answers a multi-item selection, reading *mixed*
 where the files disagree.
 
-**Scripts.** Drop a script in Vaktari's scripts folder and it appears in the
-right-click menu, receiving the current folder and the selection.
+**Scripts.** Drop a script in Vaktari's scripts folder and it appears under
+*Scripts* on the right-click menus: from a row's menu it runs on the selection,
+from the folder's menu on the folder alone, and either way with the folder you
+are in as its working directory — so scripts are offered in a folder, not in
+search results, a recent list, the bin or *This PC*. The folder's *Scripts ▸ Open scripts folder* takes you to where they
+live, making it first if it has gone.
 
 ## Sharing and the network
 
@@ -528,10 +550,10 @@ a Windows function that opens an Explorer window directly rather than asking
 the system what should open a folder. On Linux there is no such problem —
 Vaktari answers the standard interface those buttons use.
 
-**On Windows the right-click menu hosts the machine's own** — 7-Zip, VLC, *Send
+**On Windows the right-click menus host the machine's own** — 7-Zip, VLC, *Send
 to*, *Restore previous versions*, whatever your programs registered. It is the
-last row, called *Windows menu*, exactly where Windows 11 puts *Show more
-options*. It is built only when you open it, so an ordinary right-click never
+last row of each, called *Windows menu*, exactly where Windows 11 puts *Show
+more options*: the item's own menu on a row, and the folder's on empty space. It is built only when you open it, so an ordinary right-click never
 pays for other people's code.
 
 **Where Vaktari opens is yours to choose** — last session's folders, tabs and

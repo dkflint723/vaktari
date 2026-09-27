@@ -28,9 +28,34 @@ public sealed partial class PaneGroupViewModel : ObservableObject
     /// </summary>
     public event EventHandler? LocationChanged;
 
-    public PaneGroupViewModel(Func<PaneViewModel> createPane) => _createPane = createPane;
+    public PaneGroupViewModel(Func<PaneViewModel> createPane)
+    {
+        _createPane = createPane;
+
+        Tabs.CollectionChanged += (_, _) => NotifyTabNeighbours();
+    }
 
     public ObservableCollection<PaneViewModel> Tabs { get; } = new();
+
+    /// <summary>
+    /// Tells every tab whether it has company, and whether any of it is to its
+    /// right — what the tab menu's two closing rows are gated on.
+    ///
+    /// **On every change to the collection**, because each of them moves the
+    /// answer for tabs that were not touched: opening one gives the lone tab
+    /// company, closing the last one takes the right-hand neighbour away from
+    /// the tab before it, and a drag reorders every tab's right. A Move raises
+    /// CollectionChanged like an Add does, so reordering is covered by the same
+    /// line.
+    /// </summary>
+    private void NotifyTabNeighbours()
+    {
+        for (var i = 0; i < Tabs.Count; i++)
+        {
+            Tabs[i].HasOtherTabs = Tabs.Count > 1;
+            Tabs[i].HasTabsToTheRight = i < Tabs.Count - 1;
+        }
+    }
 
     [ObservableProperty] private PaneViewModel? _activeTab;
 

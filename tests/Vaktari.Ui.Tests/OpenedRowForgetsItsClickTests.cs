@@ -27,8 +27,9 @@ namespace Vaktari.Ui.Tests;
 /// again. On a program it launched it a second time.
 ///
 /// Driven with real presses on a real window, because what is under test is
-/// four members agreeing on one field: OnTapped, OnWindowKeyDown,
-/// OnListingMenuOpening and OpenListingMenu. The model in PointerGestureTests
+/// members agreeing on one field: OnTapped, OnWindowKeyDown,
+/// OnItemMenuOpening (and the background menu's twin) and OpenListingMenu. The
+/// model in PointerGestureTests
 /// restates the rule and cannot see a route that forgets to apply it.
 /// </summary>
 public sealed class OpenedRowForgetsItsClickTests : OwnedViewModels
@@ -227,7 +228,8 @@ public sealed class OpenedRowForgetsItsClickTests : OwnedViewModels
     ///
     /// **Both ways the menu opens**, because they do not meet: a right-click
     /// raises the menu's Opening, and the Menu key opens it through
-    /// ContextMenu.Open, which raises no Opening at all.
+    /// ContextMenu.Open, which raises no Opening at all. Either way on a
+    /// selected row, it is the item menu.
     /// </summary>
     [AvaloniaTheory]
     [InlineData(false)]

@@ -72,6 +72,7 @@ public sealed partial class PaneViewModel
         OnPropertyChanged(nameof(CanUnmountSelection));
         OnPropertyChanged(nameof(CanCompressSelection));
         OnPropertyChanged(nameof(CanExtractSelection));
+        NotifyMenuGates();
 
         // The heading's box is a function of the selection and nothing else, so
         // it belongs on the one notification every route to a selection change
@@ -91,19 +92,87 @@ public sealed partial class PaneViewModel
     public IReadOnlyList<FileEntry> Selection => SelectedEntries.ToList();
 
     /// <summary>
-    /// True when the right-click landed on something. One menu serves both a
-    /// row and the empty space below it, so the entries that act on a selection
-    /// hide there rather than sit enabled and do nothing — which is what they
-    /// did: every one of them guards on the selection and returns quietly.
+    /// Whether anything is picked, the focused row counting on its own.
     ///
-    /// Gating on the selection is safe because a right-click on a row selects
-    /// that row first, so the entries are still there when you want them.
+    /// **This used to be what separated a row's menu from the background's.**
+    /// One menu served both, so every entry that acts on a selection was gated
+    /// on this to hide it from an empty-space right-click. There are two menus
+    /// now — see MainWindow.ListingMenu.cs — and which one opens is decided by
+    /// where the click landed, not by this: a right-click on empty space keeps
+    /// the selection, so this is still true under the BACKGROUND menu, which
+    /// is why no row there is allowed to read the selection at all.
+    ///
+    /// The item menu still carries the gates that rest on this. They are no
+    /// longer about which menu it is but about what the rows are — the bin's,
+    /// This PC's — and the item menu opens only on a row a right-click has
+    /// just selected, or on the Menu key with a selection, so they hold there.
     /// </summary>
     public bool HasSelection => SelectedEntry is not null || SelectedEntries.Count > 0;
 
-    /// <summary>Cut, Rename and Move to bin: needs a selection, and the bin
-    /// listing is a view rather than a folder.</summary>
+    /// <summary>Open, Copy and the rows that read a selection's paths: needs a
+    /// selection, and the bin listing is a view rather than a folder — its rows
+    /// carry the path an item USED to have.</summary>
     public bool CanActOnSelection => HasSelection && !IsTrashListing;
+
+    /// <summary>
+    /// Cut, Copy, Rename, Move to the bin, Copy to and Move to: the verbs
+    /// that copy, move or rename what is selected, which a VOLUME cannot be.
+    ///
+    /// <see cref="CanActOnSelection"/> excluded the bin and nothing else, so
+    /// right-clicking C: in This PC offered every one of them — and each was a
+    /// refusal or worse. Measured on Windows: the rename engine throws "A drive
+    /// root cannot be renamed." (Windows.Tests' VolumeRootRefusalTests asks
+    /// it); on Linux a
+    /// mount point is a directory rename(2) refuses as busy. Copy to and Move
+    /// to send the drive into a place, and TransferInto refuses every place
+    /// that lives on that drive as "cannot be sent into itself" — which on most
+    /// machines is most of the list. Explorer's menu on a drive has no Cut and
+    /// no Delete, and its Rename relabels the volume, which is not what this
+    /// one does. Open, Copy as path and Properties stay: those read a drive's
+    /// path without changing it. **Copy went too**, though Explorer offers it:
+    /// a root has no leaf name to land under, so a paste combined back to the
+    /// drive itself and duplicated its files in place — see
+    /// WriteClipboardAsync.
+    /// </summary>
+    public bool CanMoveSelection => CanActOnSelection && !IsComputerListing;
+
+    /// <summary>
+    /// "Open with", where it would open something.
+    ///
+    /// **The bin drew it and the command refused.** HasOpenWithOptions fills
+    /// for any file selection and never asks where the row is, while
+    /// OpenWithApp refuses in the bin — a binned row's path is where the file
+    /// used to be, so opening it would open whatever lives there now. The row
+    /// was a chevron onto a list of applications, every one of which answered
+    /// "already in the bin" in the status line.
+    /// </summary>
+    public bool CanOpenWith => HasOpenWithOptions && !IsTrashListing;
+
+    /// <summary>
+    /// **The gates the two listing menus read, raised together.**
+    ///
+    /// Every one of these is computed from the path, the selection or both,
+    /// and this class has a long record of a gate that nobody announced — see
+    /// the comments on CanGoToLocation and HasShellMenu in OnCurrentPathChanged.
+    /// A menu lives in the tree between openings, so an unannounced gate keeps
+    /// whatever answer the first opening got. So the gates added with the two
+    /// menus are raised from here, which is called by the selection's
+    /// notifications, by the path's, and by the menu itself as it opens —
+    /// MainWindow.OnListingMenuOpened — so the one moment a stale answer would
+    /// be SEEN is a moment it cannot be stale.
+    /// </summary>
+    public void NotifyMenuGates()
+    {
+        OnPropertyChanged(nameof(IsComputerListing));
+        OnPropertyChanged(nameof(CanMoveSelection));
+        OnPropertyChanged(nameof(CanOpenWith));
+        OnPropertyChanged(nameof(CanRenameInBulk));
+        OnPropertyChanged(nameof(CanRunScriptsOnSelection));
+        OnPropertyChanged(nameof(CanRunScriptsHere));
+        OnPropertyChanged(nameof(HasBackgroundShellMenu));
+        OnPropertyChanged(nameof(ShowAdminEntries));
+        OnPropertyChanged(nameof(CurrentFolderLabel));
+    }
 
     /// <summary>
     /// Whether to offer "Create shortcut".
@@ -135,7 +204,7 @@ public sealed partial class PaneViewModel
     /// anyone who read it as "the thorough one". F2 already sends more than one
     /// row here on its own.
     /// </summary>
-    public bool CanRenameInBulk => CanActOnSelection && SelectedEntries.Count > 1;
+    public bool CanRenameInBulk => CanMoveSelection && SelectedEntries.Count > 1;
 
     /// <summary>
     /// Whether a FOLDER is selected, which is the only case where adding "the

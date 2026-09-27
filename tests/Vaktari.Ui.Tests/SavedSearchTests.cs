@@ -253,9 +253,10 @@ public sealed class SavedSearchTests : OwnedViewModels
     // ---- the routes ----------------------------------------------------------------
 
     /// <summary>
-    /// The listing menu's slot reads "save this search" in a search and "add
-    /// this folder" in a folder — never both, never neither — and the band
-    /// above the results has a button for it.
+    /// The background menu's slot reads "save this search" in a search and
+    /// "add this folder" in a folder — never both, never neither — and the band
+    /// above the results has a button for it. On the background menu because
+    /// both rows are about the listing, not about a row in it.
     /// </summary>
     [AvaloniaFact]
     public async Task The_menu_and_the_band_offer_to_save_a_search()
@@ -297,8 +298,10 @@ public sealed class SavedSearchTests : OwnedViewModels
 
             var doc = XDocument.Parse(RepoSource.Ui("MainWindow.axaml"));
 
-            var row = doc.Descendants(Avalonia + "MenuItem")
-                         .Single(m => (string?)m.Attribute("Header") == "Save this search to places");
+            // Through MenuLabels: the row carries an access key since the
+            // split menus freed a letter for it.
+            var row = ListingMenus.MarkupRow(ListingMenus.Markup(ListingMenus.Background),
+                                             "Save this search to places");
 
             Assert.Contains("PinCurrentCommand", (string?)row.Attribute("Command"), StringComparison.Ordinal);
             Assert.Contains("ShowSaveSearchToPlaces", (string?)row.Attribute("IsVisible"), StringComparison.Ordinal);

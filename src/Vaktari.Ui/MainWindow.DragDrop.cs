@@ -1090,7 +1090,10 @@ public partial class MainWindow
 
                 if (offered.Count > 0)
                 {
-                    binPane.TrashPaths(offered);
+                    // A drive the bin turned away was not moved: None, which
+                    // the handler set first. See PaneViewModel.TrashPaths.
+                    if (!binPane.TrashPaths(offered)) return;
+
                     e.DragEffects = MovedByUs(OperatingSystem.IsWindows());
                     _virtualDrop?.MovedByTarget(e.DataTransfer);
                 }
@@ -1226,7 +1229,10 @@ public partial class MainWindow
                 return;
             }
 
-            Paste(pane, target, paths, move);
+            // A refused paste started nothing, so the source is told None:
+            // a Move for a drive the guard turned away would tell an X11
+            // source to delete what it dragged. See PaneViewModel.PasteInto.
+            if (!Paste(pane, target, paths, move)) return;
 
             // Asked of the effect, not of `move`: a rescue moves our own
             // staged copies, which to the source was a copy of its files.
@@ -1276,14 +1282,12 @@ public partial class MainWindow
 
     /// <summary>The one place a drop's files actually go somewhere, so the
     /// direct path and the right-drag menu cannot drift apart.</summary>
-    private static void Paste(
+    /// <returns>Whether a copy or move was started.</returns>
+    private static bool Paste(
         ViewModels.PaneViewModel pane, string? target, IReadOnlyList<string> paths, bool move)
-    {
-        if (target is not null)
-            pane.PasteIntoFolder(target, paths.ToList(), move);
-        else
-            pane.PasteInto(paths.ToList(), move);
-    }
+        => target is not null
+            ? pane.PasteIntoFolder(target, paths.ToList(), move)
+            : pane.PasteInto(paths.ToList(), move);
 
     /// <summary>
     /// Makes a shortcut per dropped item, and says what happened — including

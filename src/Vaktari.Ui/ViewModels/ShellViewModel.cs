@@ -481,7 +481,14 @@ public sealed partial class ShellViewModel : ObservableObject, IDisposable
     public event EventHandler? BatchRenameRequested;
 
     [RelayCommand]
-    private void BatchRename() => BatchRenameRequested?.Invoke(this, EventArgs.Empty);
+    private void BatchRename()
+    {
+        // Shift+F2 reaches here with no menu row in the way: a drive in This
+        // PC is refused the way F2 refuses it. See PaneViewModel.RefusedOnVolumes.
+        if (ActiveTab is { } pane && pane.RefusedOnVolumes(pane.SelectionPaths())) return;
+
+        BatchRenameRequested?.Invoke(this, EventArgs.Empty);
+    }
 
     /// <summary>
     /// F2 on more than one row asks for the batch dialog rather than renaming
@@ -542,6 +549,27 @@ public sealed partial class ShellViewModel : ObservableObject, IDisposable
            && !ActiveTab.IsTrashListing
            && !ActiveTab.IsRecentListing
            && (ActiveTab.HasSelection || ActiveTab.IsRealFolder);
+
+    /// <summary>
+    /// The background menu's Properties: the folder on screen, whatever is
+    /// selected.
+    ///
+    /// **Not ShowProperties, which describes the selection when there is
+    /// one.** A right-click on empty space keeps the selection, so the same
+    /// command from the background menu would have described the files the
+    /// menu is not about. Through the request a sidebar place's Properties
+    /// already uses, which names one path and nothing else.
+    ///
+    /// Only in a real folder, where there is a folder to describe — the
+    /// refusal ShowProperties explains for This PC and a search applies here
+    /// with nothing selected to fall back on.
+    /// </summary>
+    [RelayCommand]
+    private void ShowFolderProperties()
+    {
+        if (ActiveTab is { IsRealFolder: true } pane)
+            ShowPropertiesRequested?.Invoke(this, pane.CurrentPath);
+    }
 
     /// <summary>Widen the window by this many pixels, to make room for a panel
     /// that would not otherwise fit.</summary>

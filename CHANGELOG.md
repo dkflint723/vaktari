@@ -109,6 +109,42 @@ should not be trusted for compatibility yet.
   was last closed on. The tour's line about changing keys opens it straight on
   the Keyboard page.
 
+- **The right-click menu is two smaller menus: one for what you clicked,
+  one for the folder.** A right-click on a file, a folder or a tile —
+  anywhere on its row — opens a menu about it: *Open*, *Open with*, the
+  clipboard, *Copy to* and *Move to*, *Rename*, the bin, *Compress to ZIP*,
+  *Duplicate*, *Create shortcut*, *Share*, *Properties* and the *Windows
+  menu*. A right-click on the empty space around the rows opens the folder's
+  menu: *View*, which now holds sorting, grouping and columns as well as the
+  layouts and hidden files; *Select all*; *Paste*; *New*; *Refresh*; the
+  terminal; *Analyse*, holding the space and duplicate scans and, in a split,
+  comparing the sides; *Scripts*, ending in *Open scripts folder*; *Add this
+  folder to places*; *Share*; the folder's own *Properties*; and the
+  *Windows menu* for the folder. Right-clicking empty space still keeps
+  your selection; the folder's menu just does not act on it. The Menu key
+  and `Shift+F10` open the first with something selected and the second
+  without. *Undo* and *Redo* now appear only when there is something to take
+  back or put back, *Open file location* and *Forget* sit beside *Open*,
+  *Select nothing* and *Invert the selection* lose their rows but stay in
+  the command box, inverting on `Ctrl+Shift+A` as before,
+  and *Add your own scripts* is gone — *Scripts ▸ Open scripts folder* makes
+  the folder if it is missing. Rows are left off wherever they would refuse
+  or do the wrong thing: nothing copies, moves, renames or bins a drive in
+  *This PC*; *Open with*, *Copy* and *Scripts* are not offered in the bin; *Paste*,
+  *New* and *Duplicate* only appear in a real folder; *Select what differs*
+  and *Copy what is newer or missing* only when both sides are folders;
+  *Share* on a file no longer shares the folder around it; *Scripts* are
+  offered in a folder and not in a search, a recent list or *This PC*,
+  where they could not start; and a tab's *Close other tabs* and
+  *Close tabs to the right* appear only when there is a tab to close. Every
+  listing now ends in a blank strip below its last row, so the folder's menu
+  can be reached with the mouse however long the folder is; a right-click on
+  a group heading opens it without selecting the row under the heading, and
+  one on the preview opens the previewed file's menu. Every menu row is 24
+  pixels tall rather than 30, so a file's menu on Windows is under half the
+  height it was. The *Context menu* settings page's sort checkbox now reads
+  *Sorting, grouping and columns in View*.
+
 ### Fixed
 
 - **A drag out of a zip open in Explorer is no longer called off by one
@@ -183,6 +219,36 @@ should not be trusted for compatibility yet.
   lands on Save like everything else; the Proton Drive box had no label and
   suggested a `D:\` path on Linux; and on Linux the icon list offered
   *Vaktari's own icons* for the row that draws your desktop's icon theme.
+
+- **`Shift+Delete` on a drive in *This PC* deleted what was on it.** The
+  delete cleared and removed the drive's files one by one before refusing
+  the drive itself at the end. `Delete`, `Ctrl+X` then `Ctrl+V`, `F2`,
+  `Shift+F2`, *Copy to*, *Move to* and sending to the other pane reached a
+  drive the same way, and `Ctrl+C` then `Ctrl+V` or a drag copied one,
+  though a drive has no name of its own for the copy to take. Every one of
+  them now says a drive cannot be copied, moved, renamed or deleted, and
+  the file operations themselves refuse the root of a drive — on Linux any
+  mount point — whatever asks and however it is spelled (`Z:\.`,
+  `\\server\share\`, `\\.\Z:\ `, `/media/me/STICK/.`), through a linked
+  folder, or mounted a moment before; each operation also asks Windows or
+  the Linux kernel itself before it starts. A Windows device path other than
+  a drive letter's, a share's or a volume's (`\\?\GLOBALROOT\…`,
+  `\??\GLOBALROOT\…`, `\\?\Global\…`) is not copied, moved or deleted
+  through at all — open the folder by its ordinary name — and nor is one
+  whose `..` climbs out of the device it names (`\\.\W:\..\NAME\`), nor a
+  name with a colon after the drive, which is a stream
+  (`Z:\::$INDEX_ALLOCATION` is the drive itself). A device path is read the
+  way Windows opens it, so `//?/Z:/ ` is the drive. Each refusal says which
+  of these it was. *Duplicate* on a
+  drive says so too. `Ctrl+C` in the bin no longer puts the path a binned
+  file used to have on the clipboard.
+
+- **The Menu key's menu closed as soon as the key was let go.** It opened on
+  the press, and the release put it away again.
+
+- **A tab's *Close other tabs*, *Close tabs to the right* and *Duplicate*
+  acted on the other side of a split** when the tab was on the side that was
+  not active.
 
 ## [0.11.0] — 2026-09-25
 

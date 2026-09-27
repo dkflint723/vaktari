@@ -338,12 +338,42 @@ public sealed partial class ShellViewModel
     /// difference is "people can look" versus "people can overwrite".
     /// </summary>
     [RelayCommand]
-    private Task ShareFolderAsync() => ShareAsync(writable: false);
+    private Task ShareFolderAsync() => ShareAsync(writable: false, here: false);
 
     [RelayCommand]
-    private Task ShareFolderWritableAsync() => ShareAsync(writable: true);
+    private Task ShareFolderWritableAsync() => ShareAsync(writable: true, here: false);
 
-    private async Task ShareAsync(bool writable)
+    /// <summary>
+    /// The background menu's share: the folder on screen, whatever is
+    /// selected. A right-click on empty space keeps the selection, so the item
+    /// menu's command — which prefers a selected folder — would have shared
+    /// the wrong one from here.
+    /// </summary>
+    [RelayCommand]
+    private Task ShareCurrentFolderAsync() => ShareAsync(writable: false, here: true);
+
+    [RelayCommand]
+    private Task ShareCurrentFolderWritableAsync() => ShareAsync(writable: true, here: true);
+
+    /// <summary>
+    /// Whether a network share of this folder would be attempted at all —
+    /// the half of the Share submenu's gate that is about the path rather than
+    /// about the backend's state.
+    ///
+    /// **The Share rows used to appear on every row and every background**,
+    /// sharing the parent of whatever file was right-clicked, and in a search
+    /// or This PC the listing's own internal path. A folder only, and not a
+    /// drive root: CopypartyShare.StartAsync refuses a root outright, "refusing
+    /// to share the whole filesystem", so offering it there was offering a
+    /// refusal.
+    /// </summary>
+    public bool CanNetworkShare(string? path)
+        => _sharing is not null
+           && path is { Length: > 0 }
+           && !VirtualPaths.IsVirtual(path)
+           && !Vaktari.Core.FileSystem.PathRules.IsRoot(path);
+
+    private async Task ShareAsync(bool writable, bool here)
     {
         if (ActiveTab is not { } pane) return;
 
@@ -356,7 +386,8 @@ public sealed partial class ShellViewModel
         // The folder that was right-clicked, not the one being listed. Sharing
         // the parent when a subfolder was selected exposes every sibling too,
         // which is both surprising and a much larger surface than intended.
-        var target = pane.SelectedEntry is { IsDirectory: true } selected
+        // The background menu names the folder being listed on purpose.
+        var target = !here && pane.SelectedEntry is { IsDirectory: true } selected
             ? selected.FullPath
             : pane.CurrentPath;
 

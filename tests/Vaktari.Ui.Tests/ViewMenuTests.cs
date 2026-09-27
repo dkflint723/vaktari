@@ -13,13 +13,18 @@ using Xunit;
 namespace Vaktari.Ui.Tests;
 
 /// <summary>
-/// The View submenu on the listing's own context menu.
+/// The View submenu on the listing's background menu.
 ///
 /// **How a listing is drawn had no menu anywhere in the application.** The
 /// three layouts were the chip at the top right of the pane and
 /// Ctrl+Shift+1..3; hidden files were Ctrl+H and a checkbox inside the view
 /// options flyout. Nothing in the right-click menu said either existed — its
 /// Arrange submenu held Sort by and Group by and stopped there.
+///
+/// **View and Arrange are one submenu now**, on the background menu only: how
+/// the listing is drawn and how it is ordered are one question about the
+/// folder, and neither is about the row a right-click lands on.
+/// <see cref="Arrange_is_the_lower_half_of_view"/> pins the merge.
 ///
 /// The flyout is the part that made it a hole rather than an inconvenience:
 /// its button carries <c>IsVisible="{Binding ShowsWindowControls}"</c>, and
@@ -121,17 +126,13 @@ public sealed class ViewMenuTests : OwnedViewModels
     // ---- reading the markup -------------------------------------------------
 
     /// <summary>
-    /// The listing's context menu, which is the only one in the file whose
-    /// DataType is the pane group. The same anchor ArchiveMenuTests and
-    /// CreateShortcutTests use for the same menu.
+    /// The listing's background menu, by the name the markup gives it — the
+    /// pane group is the DataType of both listing menus now.
     /// </summary>
-    private static XElement ListingMenu()
-        => XDocument.Parse(RepoSource.Ui("MainWindow.axaml"))
-            .Descendants(Avalonia + "ContextMenu")
-            .Single(m => (string?)m.Attribute(Xaml + "DataType") == "vm:PaneGroupViewModel");
+    private static XElement ListingMenu() => ListingMenus.Markup(ListingMenus.Background);
 
     /// <summary>
-    /// A DIRECT child of the listing menu, not a descendant. A "View" nested
+    /// A DIRECT child of the background menu, not a descendant. A "View" nested
     /// two hovers deep would satisfy a scan of the whole file and would not be
     /// the thing this exists to add.
     /// </summary>
@@ -229,10 +230,74 @@ public sealed class ViewMenuTests : OwnedViewModels
     /// to say how the listing should be drawn.
     /// </summary>
     [Fact]
-    public void The_listing_menu_carries_a_view_submenu()
+    public void The_background_menu_carries_a_view_submenu()
     {
         Assert.Single(ListingMenu().Elements(Avalonia + "MenuItem"),
                       m => MenuLabels.Plain((string?)m.Attribute("Header")) == "View");
+
+        // And the item menu does not: how the listing is drawn is not a
+        // question about the row a right-click landed on.
+        Assert.DoesNotContain(ListingMenus.Markup(ListingMenus.Item).Descendants(Avalonia + "MenuItem"),
+                              m => MenuLabels.Plain((string?)m.Attribute("Header")) == "View");
+    }
+
+    /// <summary>
+    /// **View and Arrange merged.** Arrange — Sort by, Group by and Columns —
+    /// was a submenu of its own beside View, which made one question about how
+    /// the listing reads look like two and cost the menu a row. Its three rows
+    /// are the lower half of View now, below a rule, in that order; Arrange is
+    /// gone from both menus. The settings page's Sort by preference gates the
+    /// three rows rather than View: ReachUpBindingTests drives it off and
+    /// watches them hide on a real window.
+    /// </summary>
+    [Fact]
+    public void Arrange_is_the_lower_half_of_view()
+    {
+        var rows = ViewSubmenu().Elements()
+            .Select(e => e.Name.LocalName == "Separator"
+                ? "—"
+                : MenuLabels.Plain((string?)e.Attribute("Header")))
+            .ToList();
+
+        Assert.Equal(
+            ["List", "Small grid", "Large grid", "—", "Show hidden files", "—",
+             "Sort by", "Group by", "Columns"],
+            rows);
+
+        foreach (var name in new[] { ListingMenus.Item, ListingMenus.Background })
+            Assert.DoesNotContain(ListingMenus.Markup(name).Descendants(Avalonia + "MenuItem"),
+                                  m => MenuLabels.Plain((string?)m.Attribute("Header")) == "Arrange");
+
+        Assert.EndsWith(".ShowSortByInMenu}", (string?)Row("Sort by").Attribute("IsVisible"));
+        Assert.EndsWith(".ShowDetailsArrangeInMenu}", (string?)Row("Group by").Attribute("IsVisible"));
+        Assert.EndsWith(".ShowDetailsArrangeInMenu}", (string?)Row("Columns").Attribute("IsVisible"));
+    }
+
+    /// <summary>
+    /// The gate Group by and Columns share carries both of its halves: the
+    /// Sort by preference, because the two were Arrange's and it hid them, and
+    /// Details, because no other layout draws a heading or a column.
+    /// </summary>
+    [AvaloniaFact]
+    public void Group_by_and_columns_want_details_and_the_sort_preference()
+    {
+        var shell = Shell();
+        var pane = shell.ActiveTab!;
+
+        pane.View = ViewMode.Details;
+        Assert.True(shell.ShowDetailsArrangeInMenu);
+
+        pane.View = ViewMode.Grid;
+        Assert.False(shell.ShowDetailsArrangeInMenu, "grouping was offered where nothing draws it");
+
+        pane.View = ViewMode.Details;
+
+        Vaktari.Ui.Settings.AppSettings.Apply(Vaktari.Ui.Settings.AppSettings.Current with
+        {
+            ContextMenu = Vaktari.Ui.Settings.AppSettings.Current.ContextMenu with { ShowSortBy = false },
+        });
+
+        Assert.False(shell.ShowDetailsArrangeInMenu, "the Sort by preference no longer hides them");
     }
 
     /// <summary>
@@ -276,10 +341,10 @@ public sealed class ViewMenuTests : OwnedViewModels
     /// <summary>
     /// **The rule between the layouts and hidden files.** They are two
     /// different questions — which of three, and yes or no — and the three
-    /// radios read as a set only while nothing else is inside their run. The
-    /// rule is ungated because the whole submenu is: unlike the separators
-    /// higher in this menu there is no selection state that can empty either
-    /// side of it.
+    /// radios read as a set only while nothing else is inside their run. Both
+    /// sides are ungated, so the opening's tidying always leaves it drawn; the
+    /// rule under hidden files is the one it hides, with the sort preference
+    /// off — ListingMenusTests watches that on a real window.
     /// </summary>
     [Fact]
     public void A_rule_separates_the_layouts_from_hidden_files()

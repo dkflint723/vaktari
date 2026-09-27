@@ -288,10 +288,14 @@ public sealed class ColumnChooserTests : OwnedViewModels
     /// ToggleTypeColumnCommand appeared exactly once in the markup — measured
     /// at the commit before this one — in the menu that opens on the column
     /// headings, and the Arrange submenu had no Columns entry at all. The only
-    /// menu a keyboard can open in a listing is the one OpenListingMenu walks
-    /// up to, which is the pane group's and never the header's, and the header
-    /// band is a plain Border with no Focusable of its own, so no key press
-    /// could land on it either. That was the whole of finding 129.
+    /// menus a keyboard can open in a listing are the ones OpenListingMenu
+    /// walks up to, which are the pane group's and never the header's, and the
+    /// header band is a plain Border with no Focusable of its own, so no key
+    /// press could land on it either. That was the whole of finding 129.
+    ///
+    /// **With nothing selected the key opens the BACKGROUND menu**, which is
+    /// where the chooser lives now — View > Columns, since View and Arrange
+    /// merged — so the selection is cleared before the press.
     ///
     /// The real key on the real window, and then the row is driven: a menu
     /// entry proves nothing until the command behind it moves the pane the
@@ -326,9 +330,15 @@ public sealed class ColumnChooserTests : OwnedViewModels
             Dispatcher.UIThread.RunJobs();
 
             var list = Listing(window, pane);
-            var menu = ListingMenu(window, pane);
+            var menu = ListingMenus.Above(list, ListingMenus.Background);
 
             pane.ShowTypeColumn = false;
+
+            // Nothing selected, so the key asks for the folder's menu. The
+            // session this window was built from may have left a row picked.
+            list.SelectedItems?.Clear();
+            pane.SelectedEntry = null;
+            Dispatcher.UIThread.RunJobs();
 
             // **The keyboard is sent AWAY first, and that is not ceremony.**
             // Where focus is decides which arm of OnWindowKeyDown answers
@@ -386,7 +396,7 @@ public sealed class ColumnChooserTests : OwnedViewModels
                             $"the menu anchored on {menu.PlacementTarget?.GetType().Name ?? "nothing"} "
                             + "rather than on the listing");
 
-                var type = Row(Row(Row(menu, "Arrange"), "Columns"), "Type");
+                var type = Row(Row(Row(menu, "View"), "Columns"), "Type");
 
                 // Non-null only because the menu is open: a shut ContextMenu
                 // has no DataContext, so every Command in it reads null.
@@ -427,20 +437,6 @@ public sealed class ColumnChooserTests : OwnedViewModels
                               && ReferenceEquals(l.DataContext, pane)
                               && l.SelectionMode.HasFlag(SelectionMode.Multiple));
 
-    /// <summary>The menu the key is supposed to open, found the way
-    /// OpenListingMenu finds it: up from the listing to the first control that
-    /// carries one.</summary>
-    private static ContextMenu ListingMenu(Window window, PaneViewModel pane)
-    {
-        for (Visual? visual = Listing(window, pane);
-             visual is not null;
-             visual = visual.GetVisualParent())
-            if (visual is Control { ContextMenu: { } menu })
-                return menu;
-
-        throw new InvalidOperationException("nothing above the listing carries a context menu");
-    }
-
     /// <summary>One row of a menu by the words a person reads on it, which is
     /// the header with its access-key marker taken out — see
     /// <see cref="MenuLabels"/>. `as string` rather than a cast: several
@@ -453,13 +449,15 @@ public sealed class ColumnChooserTests : OwnedViewModels
     /// <summary>
     /// Beside Sort by and Group by, and last of the three: sort and group were
     /// already one decision about how the listing reads and this is the third.
+    /// The three were Arrange; they are the lower half of View now, after the
+    /// layouts and hidden files, since the two submenus merged.
     ///
     /// Gated on Details for Group by's measured reason — the other two layouts
     /// lay out fixed-size cells in a wrap panel and draw no columns at all, so
     /// every row of the chooser would tick and none of them would do anything.
     ///
     /// Read through <see cref="MenuLabels"/> rather than against the raw
-    /// headers: these rows carry access-key markers — "Arran_ge", "_Sort by" —
+    /// headers: these rows carry access-key markers — "_View", "S_ort by" —
     /// and which letter each one takes is ContextMenuKeysTests' business, not
     /// this test's. Spelling a marker into the expected list here would redden
     /// this the first time a key moved.
@@ -467,17 +465,18 @@ public sealed class ColumnChooserTests : OwnedViewModels
     [AvaloniaFact]
     public void Columns_stands_with_sort_and_group_and_only_in_details()
     {
-        var arrange = Markup()
-            .Descendants(Avalonia + "MenuItem")
-            .Single(m => MenuLabels.Plain((string?)m.Attribute("Header")) == "Arrange");
+        var view = ListingMenus.MarkupRow(ListingMenus.Markup(ListingMenus.Background), "View");
 
-        var inside = arrange.Elements(Avalonia + "MenuItem").ToList();
+        var inside = view.Elements(Avalonia + "MenuItem").ToList();
 
         Assert.Equal(["Sort by", "Group by", "Columns"],
-                     inside.Select(m => MenuLabels.Plain((string?)m.Attribute("Header"))));
+                     inside.TakeLast(3).Select(m => MenuLabels.Plain((string?)m.Attribute("Header"))));
 
-        Assert.Equal("{Binding ActiveTab.IsDetailsView}",
-                     (string?)inside[2].Attribute("IsVisible"));
+        // Details and the Sort by preference in one shell property — see
+        // ShellViewModel.ShowDetailsArrangeInMenu, whose two halves
+        // ViewMenuTests drives.
+        Assert.Equal("{Binding $parent[Window].((vm:ShellViewModel)DataContext).ShowDetailsArrangeInMenu}",
+                     (string?)inside[^1].Attribute("IsVisible"));
     }
 
     /// <summary>
@@ -528,8 +527,8 @@ public sealed class ColumnChooserTests : OwnedViewModels
         => (binding ?? "").Replace("{Binding ActiveTab.", "{Binding ", StringComparison.Ordinal);
 
     /// <summary>
-    /// **The checkbox that hides Arrange now hides three things and named
-    /// two.** Columns joined Sort by and Group by under that one gate, so the
+    /// **The checkbox that hides Arrange — the lower half of View, now — hides
+    /// three things and once named two.** Columns joined Sort by and Group by under that one gate, so the
     /// label understated it again — the same defect the label was last widened
     /// to fix — and the note under the list, which exists because the old
     /// wording promised shortcuts that do not exist, would have gone on saying
@@ -579,8 +578,8 @@ public sealed class ColumnChooserTests : OwnedViewModels
     /// **The escape route that page offers is drawn in one layout of three.**
     /// The settings note says the column headings go on sorting and go on
     /// choosing columns while Arrange is hidden, and both of those live in one
-    /// Border gated on IsDetailsView — while Arrange's own Sort by carries no
-    /// gate and is offered in all three layouts. So with the box unticked and
+    /// Border gated on IsDetailsView — while View's Sort by carries only the
+    /// preference's gate and is offered in all three layouts. So with the box unticked and
     /// the pane in Grid or Compact, sorting has no route at all, and a note
     /// that said "only the grouping half goes" would be false there.
     ///
@@ -602,7 +601,10 @@ public sealed class ColumnChooserTests : OwnedViewModels
             .Descendants(Avalonia + "MenuItem")
             .Single(m => MenuLabels.Plain((string?)m.Attribute("Header")) == "Sort by");
 
-        Assert.Null(sortBy.Attribute("IsVisible"));
+        // Gated on the preference alone — which Arrange carried for it before
+        // the merge put the gate on the row itself — and on no layout.
+        Assert.Equal("{Binding $parent[Window].((vm:ShellViewModel)DataContext).ShowSortByInMenu}",
+                     (string?)sortBy.Attribute("IsVisible"));
 
         // And the note is written to that scope rather than to "the column
         // headers", which is the sentence the gate above makes true.

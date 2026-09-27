@@ -115,12 +115,13 @@ public partial class MainWindow
     ///
     /// A method rather than a bare assignment at each caller, so every write of
     /// the pair's memory stays in this file, as the summary above promises.
-    /// Called from OnWindowKeyDown's Enter, and wherever the listing's menu
-    /// opens — the menu opening at all, not its Open row, because a menu
+    /// Called from OnWindowKeyDown's Enter, and wherever one of the listing's
+    /// menus opens — the menu opening at all, not its Open row, because a menu
     /// between two clicks is no more a double-click than a Ctrl+click is. That
-    /// is two callers, not one: a right-click raises the menu's Opening and
-    /// reaches OnListingMenuOpening, but the Menu key opens it through
-    /// ContextMenu.Open in OpenListingMenu, which raises no Opening at all.
+    /// is three callers, not one: a right-click raises a menu's Opening and
+    /// reaches OnItemMenuOpening or OnBackgroundMenuOpening, but the Menu key
+    /// opens one through ContextMenu.Open in OpenListingMenu, which raises no
+    /// Opening at all.
     /// </summary>
     private void ForgetTheClick() => _lastTapPath = null;
 

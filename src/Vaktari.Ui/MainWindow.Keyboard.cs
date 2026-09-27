@@ -454,7 +454,7 @@ public partial class MainWindow : ICommandHost
                 return;
             }
 
-            OpenListingMenu();
+            OpenListingMenu(e.Key);
             return;
         }
 

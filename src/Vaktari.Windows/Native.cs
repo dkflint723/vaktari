@@ -243,6 +243,14 @@ internal static partial class Native
     [return: MarshalAs(UnmanagedType.Bool)]
     internal static partial bool AssignProcessToJobObject(SafeJobHandle job, nint process);
 
+    // ---- Volume roots ------------------------------------------------------
+
+    /// <summary>The path an open handle reaches, in characters written — or,
+    /// when the buffer is too small, the size it needs. See
+    /// <see cref="VolumeRootOnDisk"/>.</summary>
+    [LibraryImport("kernel32.dll", EntryPoint = "GetFinalPathNameByHandleW", SetLastError = true)]
+    internal static unsafe partial uint GetFinalPathNameByHandle(nint file, char* buffer, uint length, uint flags);
+
     // ---- Reparse tags ------------------------------------------------------
 
     internal const uint FILE_READ_ATTRIBUTES = 0x00000080;

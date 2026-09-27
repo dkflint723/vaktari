@@ -70,15 +70,30 @@ public sealed class LinuxFileOperations : IFileOperations
 
     public bool CanUndo => _walking == 0 && !_undo.IsEmpty;
 
+    /// <summary>
+    /// **Whether the kernel calls a path the root of a mount**, asked as the
+    /// first act of each operation's worker — see VolumeRoots.RefuseOnDisk and
+    /// <see cref="MountRootOnDisk"/>. A seam, so the tests can have a
+    /// temporary folder answer as a mount and watch every verb refuse it:
+    /// trying a guard's absence on a real mount is never done.
+    /// </summary>
+    internal Func<string, bool> RootOnDisk { get; init; } = MountRootOnDisk.Is;
+
     public IOperationHandle Copy(
         IReadOnlyList<string> sources, string destination,
         Func<FileConflict, ValueTask<ConflictResolution>> onConflict)
-        => Run(sources, destination, onConflict, move: false);
+        // Nor copied: a root has no name to land under, so its copy lands on
+        // itself. See VolumeRoots.
+        => VolumeRoots.RefusedOperation(sources, OperationKind.Copy)
+           ?? Run(sources, destination, onConflict, move: false);
 
     public IOperationHandle Move(
         IReadOnlyList<string> sources, string destination,
         Func<FileConflict, ValueTask<ConflictResolution>> onConflict)
-        => Run(sources, destination, onConflict, move: true);
+        // A volume's root is never moved — see VolumeRoots, which is also
+        // asked by the pane before anything gets this far.
+        => VolumeRoots.RefusedOperation(sources, OperationKind.Move)
+           ?? Run(sources, destination, onConflict, move: true);
 
     public IOperationHandle Trash(IReadOnlyList<string> paths) => Trash(paths, remember: true);
 
@@ -92,10 +107,16 @@ public sealed class LinuxFileOperations : IFileOperations
 
     private IOperationHandle Trash(IReadOnlyList<string> paths, bool remember)
     {
+        // Never a volume's root, whoever asks. See VolumeRoots.
+        if (VolumeRoots.RefusedOperation(paths, OperationKind.Trash) is { } refusedTrash) return refusedTrash;
+
         var handle = new OperationHandle { Paths = paths, Kind = OperationKind.Trash };
 
         _ = Task.Run(async () =>
         {
+            // The kernel's own answer as well, off the key's thread. See VolumeRoots.RefuseOnDisk.
+            if (VolumeRoots.RefuseOnDisk(paths, RootOnDisk) is { } rootTrash) { handle.Failed(new IOException(rootTrash)); return; }
+
             var restored = new List<(string TrashName, string Original)>();
 
             try
@@ -157,10 +178,18 @@ public sealed class LinuxFileOperations : IFileOperations
     /// </summary>
     public IOperationHandle Delete(IReadOnlyList<string> paths)
     {
+        // **Never a volume's root, whoever asks.** The walk below clears and
+        // deletes a tree before it gets to the root, so a drive handed here
+        // lost its files before the refusal at the end. See VolumeRoots.
+        if (VolumeRoots.RefusedOperation(paths, OperationKind.Delete) is { } refusedDelete) return refusedDelete;
+
         var handle = new OperationHandle { Paths = paths, Kind = OperationKind.Delete };
 
         _ = Task.Run(async () =>
         {
+            // The kernel's own answer as well, off the key's thread. See VolumeRoots.RefuseOnDisk.
+            if (VolumeRoots.RefuseOnDisk(paths, RootOnDisk) is { } rootDelete) { handle.Failed(new IOException(rootDelete)); return; }
+
             try
             {
                 handle.Begin(paths.Count, totalBytes: 0);
@@ -403,6 +432,9 @@ public sealed class LinuxFileOperations : IFileOperations
 
         _ = Task.Run(async () =>
         {
+            // The kernel's own answer as well, off the key's thread. See VolumeRoots.RefuseOnDisk.
+            if (VolumeRoots.RefuseOnDisk(sources, RootOnDisk) is { } rootRun) { handle.Failed(new IOException(rootRun)); return; }
+
             try
             {
                 // Enumerating first means the progress bar is honest from the

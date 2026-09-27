@@ -854,7 +854,9 @@ public sealed class CompareSidesTests : OwnedViewModels
     /// **Copying across is offered by the listing's menu, which each half of a
     /// split carries.** It was in the view-options flyout, whose button only
     /// the right half shows and whose press makes the right half active, so
-    /// from a menu it could only ever copy right to left.
+    /// from a menu it could only ever copy right to left. The background menu,
+    /// now the listing's menu is two: comparing is about the two folders, and
+    /// the row sits flat in its Analyse submenu.
     /// </summary>
     [Fact]
     public void Copying_across_is_on_the_menu_both_halves_carry()
@@ -868,6 +870,8 @@ public sealed class CompareSidesTests : OwnedViewModels
         var offer = Assert.Single(offers);
 
         Assert.Equal("MenuItem", offer.Name.LocalName);
-        Assert.Contains(offer.Ancestors(), a => a.Name.LocalName == "ContextMenu");
+        Assert.Contains(offer.Ancestors(), a => a.Name.LocalName == "ContextMenu"
+            && (string?)a.Attribute(System.Xml.Linq.XNamespace.Get("http://schemas.microsoft.com/winfx/2006/xaml") + "Name")
+               == ListingMenus.Background);
     }
 }
