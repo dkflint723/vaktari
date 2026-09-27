@@ -46,11 +46,24 @@ public sealed class SearchViewStoreTests : OwnedViewModels
             before with { General = before.General with { RememberViewPerFolder = on } });
     }
 
-    private async Task<PaneViewModel> Standing(string path)
+    /// <summary>
+    /// A pane standing at <paramref name="path"/>, with its load still running.
+    ///
+    /// **Awaiting the navigation waited for the search to finish, and a search
+    /// is a real walk.** The provider below is fake, but a search path walks
+    /// the disk itself, and the unscoped one walks every drive: this class took
+    /// 18 minutes of a 41-minute suite and pushed CI's test step past its time
+    /// limit on both platforms. Remembering a view needs only CurrentPath,
+    /// which the navigation sets before its first await when called on the UI
+    /// thread; the walk is then stopped by Own disposing the pane.
+    /// </summary>
+    private PaneViewModel Standing(string path)
     {
         var pane = Own(new PaneViewModel(new Silent()) { ViewportWidth = 1400 });
 
-        await pane.NavigateAsync(path);
+        _ = pane.NavigateAsync(path);
+
+        Assert.True(VirtualPaths.SamePlace(pane.CurrentPath, path), pane.CurrentPath);
 
         return pane;
     }
@@ -61,7 +74,7 @@ public sealed class SearchViewStoreTests : OwnedViewModels
     /// store still sees a single key.
     /// </summary>
     [AvaloniaFact]
-    public async Task Two_different_searches_share_one_view_record()
+    public void Two_different_searches_share_one_view_record()
     {
         var store = new Recording();
 
@@ -70,8 +83,8 @@ public sealed class SearchViewStoreTests : OwnedViewModels
 
         var folder = Path.GetTempPath();
 
-        (await Standing(VirtualPaths.Search("alpha", folder, scoped: true))).RememberFolderView();
-        (await Standing(VirtualPaths.Search("beta", folder, scoped: false, matchCase: true))).RememberFolderView();
+        Standing(VirtualPaths.Search("alpha", folder, scoped: true)).RememberFolderView();
+        Standing(VirtualPaths.Search("beta", folder, scoped: false, matchCase: true)).RememberFolderView();
 
         Assert.NotEmpty(store.Written);
         Assert.Equal([VirtualPaths.SearchViewKey], store.Written.Distinct());
@@ -84,14 +97,14 @@ public sealed class SearchViewStoreTests : OwnedViewModels
     /// before anything is written.
     /// </summary>
     [AvaloniaFact]
-    public async Task An_ordinary_folder_still_keeps_its_own_record()
+    public void An_ordinary_folder_still_keeps_its_own_record()
     {
         var store = new Recording();
 
         PaneViewModel.FolderViews = store;
         RememberViews(true);
 
-        (await Standing(Path.GetTempPath())).RememberFolderView();
+        Standing(Path.GetTempPath()).RememberFolderView();
 
         var key = Assert.Single(store.Written);
 
