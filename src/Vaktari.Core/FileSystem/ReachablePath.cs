@@ -101,7 +101,46 @@ public static class ReachablePath
               + $"— it would land as \"{kept}\", which is another name, so it is not copied or moved there.";
     }
 
-    private const string Nul = "a path with a NUL character in it names nothing Windows can open "
+    /// <summary>
+    /// Why this path cannot be handed to another program — in a drag, or on
+    /// the clipboard as a file — or null when it can.
+    ///
+    /// **A drag out of a plainly opened pane carried the neighbour.** The
+    /// payload was built through the storage provider, a FileInfo underneath,
+    /// which folds "…\report " to "…\report": a Shift-drop moved "report",
+    /// which nobody dragged, and a Ctrl-drop copied it, both reported
+    /// Completed; the bin row reads the same payload (seventh review round,
+    /// 7-D). The clipboard's file list is built the same way, and is what
+    /// Explorer pastes from.
+    ///
+    /// **Asked of the name with any "\\?\" taken off**, which is stricter than
+    /// <see cref="Refuse"/>: what the receiver does with "\\?\…\report " is
+    /// its own business — Explorer, or anything that strips the prefix, would
+    /// open "report" — so a name Win32 would fold is never handed on, however
+    /// it is spelled here.
+    /// </summary>
+    public static string? RefuseHandedOut(string? path)
+    {
+        if (!OperatingSystem.IsWindows()) return null;
+        if (string.IsNullOrEmpty(path)) return null;
+
+        var plain = path.StartsWith(@"\\?\UNC\", StringComparison.OrdinalIgnoreCase) ? @"\\" + path[8..]
+                  : path.StartsWith(@"\??\UNC\", StringComparison.OrdinalIgnoreCase) ? @"\\" + path[8..]
+                  : path.StartsWith(@"\\?\", StringComparison.Ordinal) || path.StartsWith(@"\??\", StringComparison.Ordinal) ? path[4..]
+                  : path;
+
+        if (Refuse(plain) is not { } why) return null;
+
+        return Unopenable(plain) is { } segment
+            ? $"\"{segment}\" cannot be handed to another program — its name ends with "
+              + (segment[^1] == ' ' ? "a space" : "a dot")
+              + ", and whatever opens it by name would open "
+              + (segment.TrimEnd(' ', '.') is { Length: > 0 } kept ? $"\"{kept}\"" : "something else")
+              + " instead."
+            : why;
+    }
+
+    private const string Nul ="a path with a NUL character in it names nothing Windows can open "
                                + "— acting on it would hit whatever comes before the NUL.";
 
     /// <summary>

@@ -257,7 +257,7 @@ public static class Archives
             if (done.LeftOut.Total > 0 && !Directory.EnumerateFileSystemEntries(working).Any())
                 throw new ArchiveRefusedException(ArchiveSentences.NothingWritten(leaf, done.LeftOut.Describe()!));
 
-            var (landed, isFile) = Publish(working, destination, archive, pass.Format, observer);
+            var (landed, isFile) = Publish(working, destination, archive, pass.Format, options.WindowsRules, observer);
 
             return new Extraction(landed, isFile, done.Files, done.Folders, done.Renamed, done.LeftOut);
         }
@@ -405,7 +405,7 @@ public static class Archives
     /// Moves what the run wrote to its final name, and says where that is.
     /// </summary>
     private static (string Landed, bool IsFile) Publish(
-        string working, string destination, string archive, ArchiveFormat format, IExtractionObserver? observer)
+        string working, string destination, string archive, ArchiveFormat format, bool windowsRules, IExtractionObserver? observer)
     {
         // **Re-opened by name, so asked again.** The working folder can be
         // renamed away and a link to somewhere else put in its place while
@@ -443,7 +443,17 @@ public static class Archives
         // The working folder itself becomes the result, so it stops hiding.
         Hide(working, false);
 
-        return (Land(destination, ArchiveFormats.Stem(archive), isFolder: true,
+        // **Named by the same rule as every entry.** The archive's own name
+        // was used as it stood, so "report .zip" landed — under Windows' rules
+        // — as "report": Win32 took the space off as the folder was made,
+        // while the result, the selection and the undo all named "report ",
+        // and the undo was then refused as a name Windows cannot open (fix-7
+        // round-2 verification). An entry's name has its trailing space or
+        // dot escaped, so the folder's is too: "report_", which is what lands
+        // and what everything after says.
+        var stem = ArchiveNames.Land(ArchiveFormats.Stem(archive), windowsRules)?.Name ?? "Archive";
+
+        return (Land(destination, stem, isFolder: true,
             to => Directory.Move(working, to), observer), false);
     }
 

@@ -659,6 +659,18 @@ public sealed class WindowsFileOperations : IFileOperations
                     // half of what the user asked to remove standing. One
                     // cloned repository is enough to hit that — git writes its
                     // pack files read-only.
+                    // **And nothing inside it that its spelling cannot reach**,
+                    // asked before a mark is cleared, so a refused folder is left
+                    // exactly as it was: "x..." inside was deleted through "x",
+                    // and the delete then stopped half-way (seventh review
+                    // round, 7-C). DeleteTree asks again for its other callers.
+                    if (Directory.Exists(path) && !IsLink(path)
+                        && Unreachable(Descend(path, CancellationToken.None).Select(e => e.Path)) is { } inside)
+                    {
+                        handle.ItemFailed(path, new IOException(inside));
+                        continue;
+                    }
+
                     ClearReadOnlyTree(path);
 
                     // **Per item, the way the copy engine already does it.**
@@ -726,6 +738,16 @@ public sealed class WindowsFileOperations : IFileOperations
     /// bin came to half-destroy read-only payloads while this path handled them
     /// correctly.
     /// </summary>
+    /// <summary>ReachablePath's refusal of the first of these names Win32
+    /// would open as another, or null.</summary>
+    private static string? Unreachable(IEnumerable<string> paths)
+    {
+        foreach (var path in paths)
+            if (ReachablePath.Refuse(path) is { } why) return why;
+
+        return null;
+    }
+
     internal static void ClearReadOnlyTree(string path)
     {
         ClearReadOnly(path);
@@ -796,7 +818,18 @@ public sealed class WindowsFileOperations : IFileOperations
 
         var folders = new List<string>();
 
-        foreach (var (entry, kind, _) in Descend(path, CancellationToken.None))
+        // **Read whole before anything goes, and refused by name if any of it
+        // cannot be.** "x..." beside "x" in the folder was deleted through its
+        // plain spelling — "x" — and "notes " listed and emptied "notes"; the
+        // tree then stopped half-destroyed on the name it could not reach
+        // (seventh review round, 7-C). A tree that stays whole can be deleted
+        // through "\\?\"; one half gone cannot be put back.
+        var entries = Descend(path, CancellationToken.None).ToList();
+
+        if (Unreachable(entries.Select(e => e.Path)) is { } unreachable)
+            throw new IOException(unreachable);
+
+        foreach (var (entry, kind, _) in entries)
         {
             if (kind == ItemKind.Directory) folders.Add(entry);
             else DeleteLink(entry);
@@ -1207,10 +1240,21 @@ public sealed class WindowsFileOperations : IFileOperations
                 // byte moves, a folder's contents included, and on a retry
                 // too, whose plan can reach a folder the first run could not
                 // read. See ReachablePath.RefuseLanding.
+                //
+                // **And every name as it will be READ.** An item's source was
+                // asked only at the top: a plainly spelled folder holding "x..."
+                // beside "x" planned "x..." to be read, moved and deleted through
+                // its plain spelling — which is "x". The run reported Completed
+                // with the neighbour's bytes written twice, a prompt that named
+                // one file against the other, and a skipped "x" moved anyway
+                // (seventh review round, 7-C). Refused whole, naming the child,
+                // rather than read through "\\?\": one missed call site on the
+                // way down is a file nobody named, and a folder opened through
+                // "\\?\" already reads every name as it is.
                 foreach (var item in plan)
-                    if (ReachablePath.RefuseLanding(item.Target) is { } landing)
+                    if ((ReachablePath.Refuse(item.Source) ?? ReachablePath.RefuseLanding(item.Target)) is { } unreachable)
                     {
-                        handle.Failed(new IOException(landing));
+                        handle.Failed(new IOException(unreachable));
                         return;
                     }
 
@@ -2220,9 +2264,7 @@ public sealed class WindowsFileOperations : IFileOperations
                 plan.Add(new PlannedItem(full, target, 0, ItemKind.Directory, IsRoot: true));
 
                 foreach (var (path, kind, length) in Descend(full, ct, unreadable))
-                    plan.Add(new PlannedItem(
-                        path, Path.Combine(target, Path.GetRelativePath(full, path)),
-                        length, kind, IsRoot: false));
+                    plan.Add(new PlannedItem(path, Path.Combine(target, Beneath(full, path)), length, kind, IsRoot: false));
             }
             else if (File.Exists(full))
             {
@@ -2232,6 +2274,25 @@ public sealed class WindowsFileOperations : IFileOperations
         }
 
         return plan;
+    }
+
+    /// <summary>
+    /// The part of <paramref name="path"/> below <paramref name="root"/>, as
+    /// enumerated — every name exactly as the directory listing gave it.
+    ///
+    /// **Not Path.GetRelativePath**, which resolves both paths first and so
+    /// folds a name the way Win32 would: "album\x..." came back as "x", and
+    /// the copy of "x..." was planned to land on "x" — past the landing check,
+    /// which was then asked about a perfectly good name (seventh review round,
+    /// 7-C). The walk yields each path as its root joined to the names it
+    /// listed, so the text below the root is what it listed.
+    /// </summary>
+    internal static string Beneath(string root, string path)
+    {
+        if (!path.StartsWith(root, StringComparison.Ordinal))
+            throw new IOException($"\"{PathRules.LeafName(path)}\" was listed outside the folder being copied.");
+
+        return path[root.Length..].TrimStart('\\', '/');
     }
 
     /// <summary>
@@ -2821,6 +2882,15 @@ public sealed class WindowsFileOperations : IFileOperations
         private void RunTravel(
             Travel travel, List<Step> inverses, List<Step> left, List<(string Name, string? Why)> blocked, List<string> notes)
         {
+            // **Never through a name Win32 would fold**, at either end: a child
+            // "x..." listed by the walk below would be renamed through its plain
+            // spelling — its neighbour "x". The step waits, saying why.
+            if ((ReachablePath.Refuse(travel.From) ?? ReachablePath.RefuseLanding(travel.To)) is { } unreachable)
+            {
+                Remaining(travel, new IOException(unreachable), left, blocked);
+                return;
+            }
+
             FileAttributes attributes;
 
             try

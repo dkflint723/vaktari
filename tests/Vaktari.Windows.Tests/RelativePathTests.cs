@@ -212,13 +212,13 @@ public sealed partial class RelativePathTests
         }
     }
 
-    /// <summary>A letter for a subst of this folder, from ones no other class
-    /// here takes: VolumeRootRefusalTests substs from G, VolumeRootOnDiskTests
-    /// from Q to U, and the unused-letter probes count down from Z.</summary>
+    /// <summary>A letter for a subst of this folder, from
+    /// <see cref="CurrentDirectoryCollection.SubstLetters"/>, which no other
+    /// test picks.</summary>
     private static char SubstOf(string folder)
     {
         var taken = DriveInfo.GetDrives().Select(d => char.ToUpperInvariant(d.Name[0])).ToHashSet();
-        var letter = "NOV".First(c => !taken.Contains(c));
+        var letter = CurrentDirectoryCollection.SubstLetters.First(c => !taken.Contains(c));
 
         Subst($"{letter}: \"{folder}\"");
 
@@ -269,4 +269,13 @@ public sealed partial class RelativePathTests
 public sealed class CurrentDirectoryCollection
 {
     public const string Name = "CurrentDirectory";
+
+    /// <summary>
+    /// The letters this collection's classes subst temporary folders onto:
+    /// ones no other test in the repository picks, for a subst or as a
+    /// letter that answers to nothing (VolumeRootRefusalTests G–P,
+    /// VolumeRootOnDiskTests M–W, the unused-letter probes V–Z). The classes
+    /// here run alone, so they never meet each other.
+    /// </summary>
+    public const string SubstLetters = "EFBA";
 }

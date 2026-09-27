@@ -273,6 +273,21 @@ should not be trusted for compatibility yet.
   any path that is not written out in full or has a NUL character in it,
   and never hand one to the Recycle Bin.
 
+- **On Windows, a folder holding a name that ends in a space or a dot was
+  copied, moved or deleted through the file beside it.** Copying a folder
+  that held `x...` next to `x` wrote `x` twice and never copied `x...`; a
+  prompt set to keep `x` could still have it replaced, a move could take a
+  skipped `x` along, *Duplicate* made `x (2)` from the wrong file, and a
+  delete removed `x` and stopped half-way. Copy, move, *Duplicate*, delete
+  and their retries now refuse such a folder before anything happens,
+  naming the file; opened through `\\?\`, the folder is copied exactly. A
+  drag that would carry such a name is refused too — it carried the file
+  beside it, so a Shift-drop moved a file nobody dragged — and *Copy* and
+  *Cut* leave it out of what other programs can paste, saying so, while
+  still pasting it inside Vaktari. *Extract all* of `report .zip` now lands
+  as `report_`, the name it reports, where it landed as `report` and said
+  `report `.
+
 ## [0.11.0] — 2026-09-25
 
 ### Added

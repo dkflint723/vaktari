@@ -48,12 +48,20 @@ public sealed class RefusedDropTests : OwnedViewModels
 
         var window = new MainWindow { Width = 1200, Height = 1000 };
 
+        // The control drop's copy or move runs on after the assertions; the
+        // folders are taken away only once it has finished, or it lands in
+        // (and recreates) a folder the clean-up already removed — which left
+        // an empty "vaktari-refuseddrop-into-*" in the test host's folder.
+        var started = new List<IOperationHandle>();
+
         try
         {
             window.Show();
             Pump();
 
             var pane = Own(ShellOf(window)).ActiveTab!;
+
+            pane.OperationStarted += (_, h) => started.Add(h);
 
             await pane.NavigateAsync(into);
             Pump();
@@ -81,10 +89,15 @@ public sealed class RefusedDropTests : OwnedViewModels
         finally
         {
             VolumeRoots.MountPointsOverride = before;
+
+            foreach (var handle in started)
+                await handle.Completion.WaitAsync(TimeSpan.FromSeconds(30)).ContinueWith(_ => { }, TaskScheduler.Default);
+
             window.Close();
-            Delete(drive);
-            Delete(into);
-            Delete(from);
+            Pump();
+            await Delete(drive);
+            await Delete(into);
+            await Delete(from);
         }
     }
 
@@ -130,13 +143,26 @@ public sealed class RefusedDropTests : OwnedViewModels
         {
             VolumeRoots.MountPointsOverride = before;
             window.Close();
-            Delete(drive);
+            Pump();
+            await Delete(drive);
         }
     }
-    private static void Delete(string dir)
+
+    /// <summary>Takes a folder this class made away, asking again while the
+    /// closed window's watcher lets go of it; one left behind fails the test.</summary>
+    private static async Task Delete(string dir)
     {
-        try { Directory.Delete(dir, recursive: true); }
-        catch (Exception) { }
+        for (var i = 0; i < 100 && Directory.Exists(dir); i++)
+        {
+            try { Directory.Delete(dir, recursive: true); }
+            catch (Exception e) when (e is IOException or UnauthorizedAccessException)
+            {
+                await Task.Delay(20);
+                Pump();
+            }
+        }
+
+        Assert.False(Directory.Exists(dir), $"{dir} was left behind");
     }
 
     private static void Pump()

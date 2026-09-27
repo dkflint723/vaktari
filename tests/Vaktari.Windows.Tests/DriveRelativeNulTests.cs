@@ -44,7 +44,7 @@ public sealed partial class DriveRelativeNulTests
         File.WriteAllText(marker, "the drive's own file");
 
         var taken = DriveInfo.GetDrives().Select(d => char.ToUpperInvariant(d.Name[0])).ToHashSet();
-        var letter = "WX".First(c => !taken.Contains(c));
+        var letter = CurrentDirectoryCollection.SubstLetters.First(c => !taken.Contains(c));
         Subst($"{letter}: \"{folder}\"");
 
         var asked = new List<string>();
@@ -101,7 +101,7 @@ public sealed partial class DriveRelativeNulTests
     {
         var folder = Directory.CreateTempSubdirectory("vaktari-hole7").FullName;
         var taken = DriveInfo.GetDrives().Select(d => char.ToUpperInvariant(d.Name[0])).ToHashSet();
-        var letter = "WX".First(c => !taken.Contains(c));
+        var letter = CurrentDirectoryCollection.SubstLetters.First(c => !taken.Contains(c));
         var path = string.Format(System.Globalization.CultureInfo.InvariantCulture, shape, letter);
         string resolved;
         string? refusal;
