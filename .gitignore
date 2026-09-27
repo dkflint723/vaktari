@@ -421,6 +421,9 @@ aclocal.m4
 install-sh
 autom4te.cache/
 *.tar.gz
+# The archive fixtures are test data, not build output: the rule above kept
+# tree.tar.gz out of the repository, and every test that reads it failed on CI.
+!tests/Fixtures/Archives/*.tar.gz
 tarballs/
 test-results/
 
