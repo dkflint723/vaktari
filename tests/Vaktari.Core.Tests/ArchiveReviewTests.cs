@@ -18,7 +18,9 @@ public sealed class ArchiveReviewTests : IDisposable
 
     public void Dispose()
     {
-        try { Directory.Delete(_root, recursive: true); }
+        // Not Directory.Delete: a revert-check that lets a deep tree be made
+        // must fail its test, not crash the host in the clean-up.
+        try { Archives.DeleteTree(_root); }
         catch (Exception e) when (e is IOException or UnauthorizedAccessException)
         {
             // A temp directory left behind is not worth failing a green run over.
@@ -41,8 +43,9 @@ public sealed class ArchiveReviewTests : IDisposable
     private sealed class Hooks : IExtractionObserver
     {
         public Action<string>? Landing { get; init; }
+        public Action<string>? Before { get; init; }
 
-        public void BeforeCreate(string path) { }
+        public void BeforeCreate(string path) => Before?.Invoke(path);
         public void WhileWriting(string temporary, string final) { }
         public void BeforeLanding(string target) => Landing?.Invoke(target);
     }
@@ -75,6 +78,89 @@ public sealed class ArchiveReviewTests : IDisposable
         Assert.Equal(1, done.LeftOut.Unwritable);
         Assert.Equal(["ok.txt"], Tree(done.Landed));
         Assert.Equal(["deep", "deep/ok.txt"], Tree(At("out")));
+    }
+
+    /// <summary>
+    /// **Deleting a deep tree must not recurse either.** The runtime's own
+    /// recursive delete overflowed the stack on a tree ten thousand levels
+    /// deep; the discard and the sweep use an iterative one. Ten thousand
+    /// levels take minutes to make and remove on Windows, so this measures it
+    /// cheaply: 1,500 levels, deleted with all but a sliver of a 256 KiB
+    /// stack already used — room an iterative delete fits in and the
+    /// runtime's recursion does not. Windows only, because Linux will not
+    /// make a path that long in the first place.
+    /// </summary>
+    [WindowsFact]
+    public void A_tree_thousands_of_levels_deep_is_deleted_without_recursion()
+    {
+        // An abandoned working folder, 1,500 levels deep, swept away the way
+        // any discard removes one.
+        var into = Dir("out");
+        var top = Path.Combine(into, ".vaktari-extracting-deepdeepdeep");
+        var path = Path.Combine([top, .. Enumerable.Repeat("d", 1_500)]);
+
+        Directory.CreateDirectory(path);
+        File.WriteAllText(Path.Combine(path, "f.txt"), "bottom");
+        Directory.SetLastWriteTimeUtc(top, DateTime.UtcNow.AddHours(-2));
+
+        Exception? failed = null;
+        var thread = new Thread(() =>
+        {
+            try { OnAShortStack(() => Archives.Sweep(into)); }
+            catch (Exception e) { failed = e; }
+        }, maxStackSize: 256 * 1024);
+
+        thread.Start();
+        thread.Join();
+
+        Assert.Null(failed);
+        Assert.False(Directory.Exists(top));
+    }
+
+    /// <summary>Runs <paramref name="then"/> with 200 KB of the stack
+    /// already taken.</summary>
+    [System.Runtime.CompilerServices.MethodImpl(System.Runtime.CompilerServices.MethodImplOptions.NoInlining)]
+    private static void OnAShortStack(Action then)
+    {
+        Span<byte> taken = stackalloc byte[200 * 1024];
+
+        taken[^1] = 1;
+        then();
+        GC.KeepAlive(taken[0]);
+    }
+
+    /// <summary>
+    /// A discard never goes through a link. A folder swapped for a link to
+    /// somewhere else during a run that then fails is removed as a link;
+    /// what it pointed at is untouched.
+    /// </summary>
+    [Fact]
+    public void Discarding_a_failed_run_does_not_follow_a_link_inside_it()
+    {
+        var outside = Dir("outside");
+
+        File.WriteAllText(Path.Combine(outside, "keep.txt"), "not the archive's");
+
+        var archive = Zip("fails.zip",
+            new ZipBytes.Entry("sub/a.txt") { Data = "a"u8.ToArray() },
+            new ZipBytes.Entry("sub/b.txt") { Data = "b"u8.ToArray() },
+            new ZipBytes.Entry("z.txt") { Data = "wrong"u8.ToArray(), Crc = 0xDEADBEEF });
+
+        Assert.Throws<ArchiveDamagedException>(() => Extract(archive, Dir("out"), hooks: new Hooks
+        {
+            Before = path =>
+            {
+                if (!path.EndsWith("b.txt", StringComparison.Ordinal)) return;
+
+                var sub = Path.GetDirectoryName(path)!;
+
+                Directory.Move(sub, sub + "-moved");
+                TestLinks.FolderLink(sub, outside);
+            },
+        }));
+
+        Assert.Equal("not the archive's", File.ReadAllText(Path.Combine(outside, "keep.txt")));
+        Assert.Empty(Directory.EnumerateFileSystemEntries(At("out")));
     }
 
     /// <summary>Too long a path, however few folders: nothing of it is

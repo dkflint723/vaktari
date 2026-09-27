@@ -586,9 +586,45 @@ public static class Archives
     {
         Retrying(() =>
         {
-            if (Directory.Exists(path)) Directory.Delete(path, recursive: true);
+            if (Directory.Exists(path)) DeleteTree(path);
             else if (File.Exists(path)) File.Delete(path);
         }, swallow: true);
+    }
+
+    /// <summary>
+    /// A folder and everything under it, without recursion.
+    ///
+    /// **The runtime's recursive delete recurses once per level**, and a
+    /// folder thousands of levels deep overflowed the stack inside it —
+    /// measured by revert-check on the depth cap, whose absence let such a
+    /// tree be created, and whose discard then killed the process. Nothing
+    /// this run makes is deeper than <see cref="ArchiveLimits.MaxDepth"/>,
+    /// but <see cref="Sweep"/> deletes what it finds, and what it finds was
+    /// not necessarily made by this build. A link inside is removed as a link
+    /// and never entered.
+    /// </summary>
+    internal static void DeleteTree(string root)
+    {
+        var folders = new List<string>();
+        var pending = new Stack<string>();
+
+        pending.Push(root);
+
+        while (pending.TryPop(out var folder))
+        {
+            folders.Add(folder);
+
+            foreach (var entry in new DirectoryInfo(folder).EnumerateFileSystemInfos().ToList())
+            {
+                if ((entry.Attributes & FileAttributes.ReadOnly) != 0) entry.Attributes &= ~FileAttributes.ReadOnly;
+
+                if (entry is DirectoryInfo sub && (entry.Attributes & FileAttributes.ReparsePoint) == 0) pending.Push(sub.FullName);
+                else if (entry is DirectoryInfo link) link.Delete();
+                else entry.Delete();
+            }
+        }
+
+        for (var i = folders.Count - 1; i >= 0; i--) Directory.Delete(folders[i]);
     }
 
     private static readonly int[] Backoff = [100, 300, 900];
