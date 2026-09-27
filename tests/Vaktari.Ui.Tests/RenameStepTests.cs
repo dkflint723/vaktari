@@ -176,7 +176,7 @@ public sealed class RenameStepTests : OwnedViewModels
     /// window starts no rename at all, and the step is decided inside the key
     /// press itself.
     /// </summary>
-    private static async Task Refused(Rig rig, FileEntry row, string to)
+    private static async Task Refused(Rig rig, FileEntry row, string to, bool byTheDisk)
     {
         rig.Shell.ActiveTab!.SelectedEntry = row;
         rig.Shell.ActiveTab.BeginRenameCommand.Execute(null);
@@ -195,8 +195,26 @@ public sealed class RenameStepTests : OwnedViewModels
 
         rig.Window.KeyPress(Key.Tab, RawInputModifiers.None, PhysicalKey.Tab, null);
 
-        if (LastRename(rig) is { } pending && !ReferenceEquals(pending, before))
+        // **The premise of a refusal by the disk is that the disk was asked.**
+        // What the test asserts afterwards is that nothing moved on, which a
+        // Tab that never reached the step satisfies just as well. MEASURED: with
+        // the Tab handler's call to the step replaced by nothing, the taken-name
+        // test passed, on this branch and at 5c9b8a7.
+        //
+        // A name refused in the box has no such premise to check: there, doing
+        // nothing IS what Tab does, and the box already says why as it is typed.
+        if (byTheDisk)
+        {
+            var pending = LastRename(rig);
+
+            Assert.True(pending is not null && !ReferenceEquals(pending, before),
+                        "Tab started no rename, so the file system refused nothing");
             Assert.False(await pending, "the file system took the name, so this refused nothing");
+        }
+        else
+        {
+            Assert.Same(before, LastRename(rig));
+        }
 
         Settle();
     }
@@ -286,7 +304,7 @@ public sealed class RenameStepTests : OwnedViewModels
         using var rig = await BuildAsync();
         var pane = rig.Shell.ActiveTab!;
 
-        await Refused(rig, pane.Entries.Single(e => e.Name == "a.txt"), "c.txt");
+        await Refused(rig, pane.Entries.Single(e => e.Name == "a.txt"), "c.txt", byTheDisk: true);
 
         // Still a.txt on disk, and the editor has not moved on to anything.
         Assert.True(File.Exists(Path.Combine(rig.Root, "a.txt")));
@@ -304,7 +322,7 @@ public sealed class RenameStepTests : OwnedViewModels
         using var rig = await BuildAsync();
         var pane = rig.Shell.ActiveTab!;
 
-        await Refused(rig, pane.Entries.Single(e => e.Name == "a.txt"), "   ");
+        await Refused(rig, pane.Entries.Single(e => e.Name == "a.txt"), "   ", byTheDisk: false);
 
         // The premise: the box really is still open on the row with the refused
         // text in it. Without this the test would pass just as well if the box
