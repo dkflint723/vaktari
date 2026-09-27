@@ -108,10 +108,16 @@ public sealed class ArchiveReviewTests : IDisposable
         {
             try { OnAShortStack(() => Archives.Sweep(into)); }
             catch (Exception e) { failed = e; }
-        }, maxStackSize: 256 * 1024);
+        }, maxStackSize: 256 * 1024) { IsBackground = true };
 
         thread.Start();
-        thread.Join();
+
+        // **Bounded, because a recursive delete does not always crash.**
+        // Measured with the runtime's recursive delete put back: the host
+        // neither crashed nor finished — it sat idle for half an hour with
+        // the thread gone quiet inside the overflow. A hang is not a failure
+        // anybody is told about, so it is made one here.
+        Assert.True(thread.Join(TimeSpan.FromMinutes(2)), "the sweep of a deep tree never finished");
 
         Assert.Null(failed);
         Assert.False(Directory.Exists(top));
