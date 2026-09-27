@@ -282,7 +282,15 @@ public sealed class XdgTrashMaintenance : ITrashMaintenance
 
         if (List().FirstOrDefault(i => i.TrashName == key) is not { } item) return;
 
-        Remove(new Entry(InfoPathOf(item), item.Payload, item.Deleted.DateTime, item.Size));
+        // **A delete that did not happen was reported as one that did.** Remove
+        // answers false when it could not — a folder inside it that may not be
+        // written, a busy mount — and the answer was dropped, so "Delete for
+        // good" said it had deleted an item still in the trash (the seventh
+        // round's hunt, on Windows; the same line here). Thrown, naming it,
+        // so the pane counts it as failed.
+        if (!Remove(new Entry(InfoPathOf(item), item.Payload, item.Deleted.DateTime, item.Size)))
+            throw new IOException(
+                $"\"{Path.GetFileName(item.OriginalPath)}\" could not be deleted for good; it is still in the trash.");
     }
 
     public ValueTask<TrashSweepResult> EmptyAsync(CancellationToken ct)
