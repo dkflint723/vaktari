@@ -47,6 +47,70 @@ public static class ReachablePath
         if (!OperatingSystem.IsWindows()) return null;
         if (string.IsNullOrEmpty(path)) return null;
 
+        // **A NUL ends the path for whatever reads it next**: the shell's
+        // double-NUL list stopped "W:\0" at "W:" and deleted that drive's
+        // folder (seventh review round). No name holds one.
+        if (path.Contains('\0')) return Nul;
+
+        if (Unopenable(path) is not { } segment) return null;
+
+        return segment[^1] == ' '
+            ? $"\"{segment}\" ends with a space, and Windows cannot open it by name "
+              + "— acting on it would hit a different file."
+            : $"\"{segment}\" ends with a dot, and Windows cannot open it by name "
+              + "— acting on it would hit a different file.";
+    }
+
+    /// <summary>
+    /// Why a copy or move cannot land at this path, or null when it can: the
+    /// same rule as <see cref="Refuse"/>, asked of where an item will be
+    /// WRITTEN — the destination joined with the item's own name, and so on
+    /// down a folder's contents.
+    ///
+    /// **Only the destination folder was asked, never the name joined to it.**
+    /// A source reached through "\\?\" or "\??\" keeps "report " as its own
+    /// name, and the copy then wrote it into a plainly spelled destination as
+    /// "report": Win32 folded the target. When the destination already held
+    /// "report", the conflict was raised for "dst\report " and Overwrite
+    /// replaced the destination's own "report" — a file nobody named — and a
+    /// move then removed the source (seventh review round). A folder's child
+    /// "x..." landed as "x" the same way.
+    ///
+    /// **Refused rather than landed under another name.** A plain destination
+    /// cannot hold the name as written, and any name chosen instead is a name
+    /// the person did not choose, which may belong to a file already there —
+    /// the very clash the prompt would then misname. A destination opened
+    /// through "\\?\" holds the name as it is, and is not refused.
+    /// </summary>
+    public static string? RefuseLanding(string? target)
+    {
+        if (!OperatingSystem.IsWindows()) return null;
+        if (string.IsNullOrEmpty(target)) return null;
+
+        if (target.Contains('\0')) return Nul;
+
+        if (Unopenable(target) is not { } segment) return null;
+
+        var kept = segment.TrimEnd(' ', '.');
+        var why = segment[^1] == ' ' ? "ends with a space" : "ends with a dot";
+
+        return kept.Length == 0
+            ? $"\"{segment}\" {why}, and a folder opened by its ordinary name cannot take that name "
+              + "— Windows would drop it, so it is not copied or moved there."
+            : $"\"{segment}\" {why}, and a folder opened by its ordinary name cannot take that name "
+              + $"— it would land as \"{kept}\", which is another name, so it is not copied or moved there.";
+    }
+
+    private const string Nul = "a path with a NUL character in it names nothing Windows can open "
+                               + "— acting on it would hit whatever comes before the NUL.";
+
+    /// <summary>
+    /// The first name in the path that Win32 would open without its trailing
+    /// space or dot, or null when there is none — or when the path is a
+    /// literal "\\?\" or "\??\" one, which Win32 opens as written.
+    /// </summary>
+    private static string? Unopenable(string path)
+    {
         // **Only a literal "\\?\" or "\??\" is opened as written** — exact
         // backslashes, as .NET's PathInternal.IsExtended asks — so only there
         // is "report " a name of its own. "\\.\" was let through as well, and
@@ -68,9 +132,7 @@ public static class ReachablePath
             // "." and ".." end in a dot and are ordinary path syntax, not names.
             if (segment is "" or "." or "..") continue;
 
-            var last = segment[^1];
-
-            if (last is not (' ' or '.')) continue;
+            if (segment[^1] is not (' ' or '.')) continue;
 
             // **Read as Win32 will open it: a name the next step takes away is
             // never opened.** Win32 folds "\\.\X:\x\...\.." to x before it
@@ -80,18 +142,11 @@ public static class ReachablePath
             // excused; anything further is refused, which errs the safe way.
             if (segments.Skip(i + 1).FirstOrDefault(next => next is not ("" or ".")) == "..") continue;
 
-            if (last == ' ')
-                return $"\"{segment}\" ends with a space, and Windows cannot open it by name "
-                       + "— acting on it would hit a different file.";
-
-            if (last == '.')
-                return $"\"{segment}\" ends with a dot, and Windows cannot open it by name "
-                       + "— acting on it would hit a different file.";
+            return segment;
         }
 
         return null;
     }
-
     /// <summary>Convenience for the many call sites that only branch on it.</summary>
     public static bool IsReachable(string? path) => Refuse(path) is null;
 }

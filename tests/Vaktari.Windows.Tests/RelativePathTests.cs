@@ -122,8 +122,13 @@ public sealed partial class RelativePathTests
             Assert.True(File.Exists(marker), "the drive was emptied through a relative path");
             Assert.Empty(Directory.GetFileSystemEntries(into));
 
-            foreach (var refusal in refusals)
-                Assert.True(refusal is VolumeRoots.Refusal or VolumeRoots.DeviceRefusal, $"not refused as a root: {refusal ?? "(nothing)"}");
+            // The pane reads the path as it resolves, and refuses it as the
+            // root it reaches; the engines do not act on a path that is not
+            // full at all (seventh review round), so each refuses it as that.
+            Assert.True(refusals[0] is VolumeRoots.Refusal or VolumeRoots.DeviceRefusal, $"the pane did not refuse a root: {refusals[0] ?? "(nothing)"}");
+
+            foreach (var refusal in refusals.Skip(1))
+                Assert.Equal(VolumeRoots.NotFullRefusal, refusal);
         }
         finally
         {

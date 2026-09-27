@@ -98,7 +98,7 @@ public sealed class WindowsFileOperations : IFileOperations
         Func<FileConflict, ValueTask<ConflictResolution>> onConflict)
         // Nor copied: a root has no name to land under, so its copy lands on
         // itself. See VolumeRoots.
-        => VolumeRoots.RefusedOperation(sources, OperationKind.Copy)
+        => VolumeRoots.RefusedOperation(sources, OperationKind.Copy, destination)
            ?? Run(sources, destination, onConflict, move: false);
 
     public IOperationHandle Move(
@@ -106,7 +106,7 @@ public sealed class WindowsFileOperations : IFileOperations
         Func<FileConflict, ValueTask<ConflictResolution>> onConflict)
         // A volume's root is never moved — see VolumeRoots, which is also
         // asked by the pane before anything gets this far.
-        => VolumeRoots.RefusedOperation(sources, OperationKind.Move)
+        => VolumeRoots.RefusedOperation(sources, OperationKind.Move, destination)
            ?? Run(sources, destination, onConflict, move: true);
 
     /// <summary>
@@ -217,6 +217,12 @@ public sealed class WindowsFileOperations : IFileOperations
     /// </summary>
     public IOperationHandle Trash(IReadOnlyList<string> paths) => Trash(paths, remember: true);
 
+    /// <summary>Why this list cannot go to SHFileOperation, or null: a path
+    /// with a NUL in it, which the shell's NUL-separated list cuts short, or
+    /// one that is not full, which the shell resolves against the current
+    /// folder. See the call in <see cref="Trash(IReadOnlyList{string}, bool)"/>.</summary>
+    internal static string? Unrecyclable(IReadOnlyList<string> full) => VolumeRoots.RefuseNotFull(full);
+
     /// <summary>
     /// The bin, for an undo taking back what it put somewhere: nothing is
     /// recorded, because this is not a delete the person asked for.
@@ -282,6 +288,19 @@ public sealed class WindowsFileOperations : IFileOperations
                     }
 
                 var full = paths.Select(Path.GetFullPath).ToList();
+
+                // **Never a NUL, and never a path that is not full, to the
+                // shell.** Its list is NUL-separated and ends in two, so
+                // "W:\0" — what GetFullPath made of "W:..\.." under a
+                // malformed "=W:" — reached it as "W:", and the drive's folder
+                // was deleted outright rather than binned (seventh review
+                // round). The entry refuses such a path already; this is the
+                // last word before the shell, whatever reached it.
+                if (Unrecyclable(full) is { } unfit)
+                {
+                    handle.Failed(new IOException(unfit));
+                    return;
+                }
 
                 RecycleResult Attempt(IReadOnlyList<string> some)
                     => RecycleOverride is { } fake ? fake(some) : Recycle(some);
@@ -800,6 +819,10 @@ public sealed class WindowsFileOperations : IFileOperations
         if (FileNames.Refuse(newName) is { } why)
             throw new ArgumentException(why, nameof(newName));
 
+        // A full path only, as every verb here asks. See VolumeRoots.RefuseNotFull.
+        if (VolumeRoots.RefuseNotFull([path]) is { } notFull)
+            throw new IOException(notFull);
+
         // The name being renamed FROM matters more than the one typed: a
         // trailing space on the existing name means File.Move would rename the
         // neighbour instead, and the row that was clicked would sit there
@@ -895,7 +918,10 @@ public sealed class WindowsFileOperations : IFileOperations
     /// </summary>
     public void RecordCreation(string path)
     {
-        if (path.Length > 0) Remember(new UndoCreate(TrashForUndo ?? TrashQuietly, path));
+        // A path that is not full is not remembered: its undo would bin
+        // whatever it resolves to then. See VolumeRoots.RefuseNotFull.
+        if (path.Length > 0 && VolumeRoots.RefuseNotFull([path]) is null)
+            Remember(new UndoCreate(TrashForUndo ?? TrashQuietly, path));
     }
 
     /// <summary>
@@ -1173,6 +1199,20 @@ public sealed class WindowsFileOperations : IFileOperations
                       }).ToList();
 
                 var plan = BuildPlan(roots, handle.Token, unreadable);
+
+                // **Every name as it will be written, not only the folder it
+                // goes into**: "report " from a "\\?\" source into a plainly
+                // spelled destination landed as "report", over the file of
+                // that name already there. Asked of the whole plan before a
+                // byte moves, a folder's contents included, and on a retry
+                // too, whose plan can reach a folder the first run could not
+                // read. See ReachablePath.RefuseLanding.
+                foreach (var item in plan)
+                    if (ReachablePath.RefuseLanding(item.Target) is { } landing)
+                    {
+                        handle.Failed(new IOException(landing));
+                        return;
+                    }
 
                 // **Asked before a byte moves.** A fifty-gigabyte copy onto a
                 // drive with room for thirty filled the disk and then failed

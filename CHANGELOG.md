@@ -260,6 +260,19 @@ should not be trusted for compatibility yet.
   none reaches a drive's root through a current folder named by a device
   path.
 
+- **On Windows, pasting a file whose name ends in a space or a dot could
+  overwrite a different file.** With the source folder opened through
+  `\\?\` or `\??\`, copying or moving `report ` into a folder opened by its
+  ordinary name wrote it as `report`: when that folder already had a
+  `report`, the prompt asked about `report ` and *Replace* overwrote
+  `report`. The same went for such a name inside a copied folder. Every
+  name is now checked as it will be written, and a copy or move that would
+  land a name the destination cannot hold is refused before anything is
+  asked or moved, naming the file; into a folder opened through `\\?\` it
+  still lands as it is. The file operations also refuse, in so many words,
+  any path that is not written out in full or has a NUL character in it,
+  and never hand one to the Recycle Bin.
+
 ## [0.11.0] — 2026-09-25
 
 ### Added

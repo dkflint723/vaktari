@@ -84,7 +84,7 @@ public sealed class LinuxFileOperations : IFileOperations
         Func<FileConflict, ValueTask<ConflictResolution>> onConflict)
         // Nor copied: a root has no name to land under, so its copy lands on
         // itself. See VolumeRoots.
-        => VolumeRoots.RefusedOperation(sources, OperationKind.Copy)
+        => VolumeRoots.RefusedOperation(sources, OperationKind.Copy, destination)
            ?? Run(sources, destination, onConflict, move: false);
 
     public IOperationHandle Move(
@@ -92,7 +92,7 @@ public sealed class LinuxFileOperations : IFileOperations
         Func<FileConflict, ValueTask<ConflictResolution>> onConflict)
         // A volume's root is never moved — see VolumeRoots, which is also
         // asked by the pane before anything gets this far.
-        => VolumeRoots.RefusedOperation(sources, OperationKind.Move)
+        => VolumeRoots.RefusedOperation(sources, OperationKind.Move, destination)
            ?? Run(sources, destination, onConflict, move: true);
 
     public IOperationHandle Trash(IReadOnlyList<string> paths) => Trash(paths, remember: true);
@@ -257,6 +257,10 @@ public sealed class LinuxFileOperations : IFileOperations
         if (FileNames.Refuse(newName) is { } why)
             throw new ArgumentException(why, nameof(newName));
 
+        // A full path only, as every verb here asks. See VolumeRoots.RefuseNotFull.
+        if (VolumeRoots.RefuseNotFull([path]) is { } notFull)
+            throw new IOException(notFull);
+
         var directory = Path.GetDirectoryName(Path.GetFullPath(path))!;
         var target = Path.Combine(directory, newName);
 
@@ -282,7 +286,10 @@ public sealed class LinuxFileOperations : IFileOperations
     /// Windows implementation for why.</summary>
     public void RecordCreation(string path)
     {
-        if (path.Length > 0) Remember(new UndoCreate(TrashQuietly, path));
+        // A path that is not full is not remembered: its undo would bin
+        // whatever it resolves to then. See VolumeRoots.RefuseNotFull.
+        if (path.Length > 0 && VolumeRoots.RefuseNotFull([path]) is null)
+            Remember(new UndoCreate(TrashQuietly, path));
     }
 
     /// <summary>Bumped by every operation that records itself. A walk reads it

@@ -350,9 +350,12 @@ public sealed partial class VolumeRootOnDiskTests
 
         var path = string.Format(System.Globalization.CultureInfo.InvariantCulture, shape, drive.Letter);
 
-        Assert.NotNull(VolumeRoots.Refuse([path]));
+        Assert.Equal(VolumeRoots.StreamRefusal, VolumeRoots.Refuse([path]));
 
-        await AssertEveryVerbRefuses(path, VolumeRoots.StreamRefusal, marker);
+        // "X::$INDEX_ALLOCATION" is drive-relative as well: the engines refuse
+        // it as a path that is not full before reading it as a stream.
+        await AssertEveryVerbRefuses(
+            path, Path.IsPathFullyQualified(path) ? VolumeRoots.StreamRefusal : VolumeRoots.NotFullRefusal, marker);
     }
 
     /// <summary>

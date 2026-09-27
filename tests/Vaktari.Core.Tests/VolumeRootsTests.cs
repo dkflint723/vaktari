@@ -225,9 +225,15 @@ public sealed class VolumeRootsTests
     /// on a key press and again as an engine starts, so an exception here
     /// would come out of a command rather than a sentence. Path.GetFullPath
     /// refuses a NUL on both platforms and, on Windows, a path too long to
-    /// resolve and one that is only a space — each is asked here, and each is
-    /// a folder as far as a refusal is concerned; the filesystem refuses it
-    /// with its own words when it gets there.
+    /// resolve and one that is only a space — each is asked here, and none is
+    /// a root.
+    ///
+    /// *(Changed 2026-09-27.)* The NUL was "a folder as far as a refusal is
+    /// concerned", left to the filesystem. It is refused now, in its own
+    /// words: the seventh review round had GetFullPath answer "W:\0" for a
+    /// drive-relative path, and the shell's NUL-separated list read it as
+    /// "W:" and deleted that drive's folder. The other two are still folders
+    /// to the refusal, which the filesystem refuses when it gets there.
     /// </summary>
     [Fact]
     public void A_path_that_cannot_be_resolved_is_answered_rather_than_thrown()
@@ -245,7 +251,9 @@ public sealed class VolumeRootsTests
             foreach (var path in odd)
             {
                 Assert.False(VolumeRoots.IsVolumeRoot(path), $"{path[..Math.Min(path.Length, 12)]}… was taken for a root");
-                Assert.Null(VolumeRoots.Refuse([path]));
+
+                if (path.Contains('\0')) Assert.Equal(VolumeRoots.NulRefusal, VolumeRoots.Refuse([path]));
+                else Assert.Null(VolumeRoots.Refuse([path]));
             }
         }
         finally
