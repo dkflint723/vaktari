@@ -74,10 +74,6 @@ public partial class MainWindow : Window
 
     private readonly Vaktari.Core.FileSystem.IApplicationLauncher? _launcher;
 
-    // Preferences, as distinct from the session. Read before it, because the
-    // startup setting decides whether the session is consulted at all.
-    private readonly SettingsState _settings;
-
     private readonly IThemeProvider? _theme;
 
     /// <summary>
@@ -142,7 +138,6 @@ public partial class MainWindow : Window
         _platform = platform;
         _virtualDrop = platform.VirtualFileDrop;
         _shortcuts = platform.Shortcuts;
-        _settings = _services.Settings;
 
         // Applied before anything else paints, and re-applied whenever Plasma's
         // scheme changes, so the window follows the desktop live.
@@ -341,7 +336,14 @@ public partial class MainWindow : Window
             new ConnectionWindow(info).ShowDialog(this);
 
         _shell.ShortcutsRequested += (_, _) => new ShortcutsWindow().ShowDialog(this);
-        _shell.TourRequested += (_, _) => new TourWindow().ShowDialog(this);
+        _shell.TourRequested += (_, _) =>
+        {
+            var tour = new TourWindow();
+
+            // The one line that names a settings page opens it there.
+            tour.SettingsPageRequested += (_, page) => ShowSettings(page);
+            tour.ShowDialog(this);
+        };
         _shell.PaletteRequested += (_, _) => _ = RunFromPaletteAsync();
 
         _shell.RenamePlaceRequested += OnRenamePlaceRequested;
@@ -581,7 +583,15 @@ public partial class MainWindow : Window
         // which is the whole reason settings are loaded before it. Restoring
         // stays the default: forgetting open folders is the complaint this
         // project exists to answer.
-        var startup = _settings.Startup;
+        //
+        // **From the live settings, not the family's launch snapshot.** A
+        // window opened with Ctrl+N read the snapshot WindowServices took at
+        // launch, which nothing ever updated — so split view, the filter bar
+        // and the full-path title chosen in Settings, applied, reached no new
+        // window until a restart, while the dialog said they would. For the
+        // founder the two are the same: Create applies what it loaded before
+        // this runs.
+        var startup = AppSettings.Current.Startup;
 
         var restore = startup.ShowOnStartup == StartupLocation.RestoreSession;
 

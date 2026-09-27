@@ -55,9 +55,26 @@
                          FontFamily="{DynamicResource AppMonoFamily}"
                          FontSize="{DynamicResource FontSizeSmall}"/>
               <TextBlock Grid.Column="1" Text="{Binding Does}"
+                         IsVisible="{Binding !OpensSettings}"
                          TextWrapping="Wrap"
                          FontSize="{DynamicResource FontSizeSmall}"
                          Foreground="{DynamicResource ViewDimText}"/>
+              <!-- A line about a settings page opens that page: the tour
+                   closes and the dialog comes up where the line said. -->
+              <Button Grid.Column="1"
+                      IsVisible="{Binding OpensSettings}"
+                      AutomationProperties.Name="{Binding Does}"
+                      Click="OnOpenSettings"
+                      Padding="0"
+                      Background="Transparent" BorderThickness="0"
+                      HorizontalAlignment="Left"
+                      Cursor="Hand">
+                <TextBlock Text="{Binding Does}"
+                           TextWrapping="Wrap"
+                           TextDecorations="Underline"
+                           FontSize="{DynamicResource FontSizeSmall}"
+                           Foreground="{DynamicResource AccentText}"/>
+              </Button>
             </Grid>
           </DataTemplate>
         </ItemsControl.ItemTemplate>

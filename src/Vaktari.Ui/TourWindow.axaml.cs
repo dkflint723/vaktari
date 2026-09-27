@@ -60,6 +60,21 @@ public partial class TourWindow : Window
         NextButton.Content = index + 1 == Tour.Cards.Count ? "Done" : "Next";
     }
 
+    /// <summary>
+    /// A line naming a settings page was pressed. The window that opened the
+    /// tour opens the dialog there; the tour closes first, because both are
+    /// modal to the same window.
+    /// </summary>
+    public event EventHandler<SettingsPage>? SettingsPageRequested;
+
+    private void OnOpenSettings(object? sender, RoutedEventArgs e)
+    {
+        if ((sender as Control)?.DataContext is not TourLine { OpensSettingsAt: { } page }) return;
+
+        Close();
+        SettingsPageRequested?.Invoke(this, page);
+    }
+
     private void OnBack(object? sender, RoutedEventArgs e) => Back();
 
     private void OnNext(object? sender, RoutedEventArgs e) => Next();

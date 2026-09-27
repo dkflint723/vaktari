@@ -15,7 +15,7 @@ public partial class ShortcutsWindow : Window
         //
         // **This used to say the list was a constant, and it is not any
         // more.** Backspace is a preference now — Back by default, up one
-        // folder when the Navigation page says so — so Shortcuts.All is built
+        // folder when the General page says so — so Shortcuts.All is built
         // per read. Assigning it here is still right, and for a better reason
         // than "it never changes": a window is built fresh for every F1 press,
         // so the sheet is composed against the settings in force at the moment

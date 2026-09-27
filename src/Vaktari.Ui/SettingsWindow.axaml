@@ -2,6 +2,7 @@
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:vm="clr-namespace:Vaktari.Ui.ViewModels"
         xmlns:fs="clr-namespace:Vaktari.Core.FileSystem;assembly=Vaktari.Core"
+        xmlns:local="clr-namespace:Vaktari.Ui"
         x:Class="Vaktari.Ui.SettingsWindow"
         x:DataType="vm:SettingsViewModel"
         Title="Vaktari settings"
@@ -21,10 +22,11 @@
        the full 700 with its last column starting past the right edge of the
        window, where that page cannot be reached at all.
 
-       The footer is the one thing that never gives. It is docked Bottom, so the
-       DockPanel hands it its 47px first and takes the entire shortfall out of
-       the pages: measured from 560px down to 120px it stayed 47 while the
-       TabControl went 513, 373, 253, 153, 73.
+       The footer is the one thing that never gives. Its row is Auto and the
+       pages' row is star, so the grid hands the footer its 47px first and
+       takes the entire shortfall out of the pages — exactly what the DockPanel
+       this used to be did, measured from 560px down to 120px: the footer
+       stayed 47 while the TabControl went 513, 373, 253, 153, 73.
 
        520 leaves about 340px of page beside the 176px strip, and each page
        carries 20px margins inside that, so the reading column is the same order
@@ -36,163 +38,70 @@
        Both numbers are checked against the chrome as it actually measures, in
        WindowFloorTests, rather than left to rot when another page is added. -->
 
+  <Window.Styles>
+    <!-- **Help moved off the page and into the control it explains.** Some
+         four hundred words of notes were always on screen — the General page
+         alone was four screens at the default size, and most of its height was
+         paragraphs under check boxes somebody had already understood. Each
+         explanation is now the control's AutomationProperties.HelpText, which a
+         screen reader offers on request, and this style makes the same text
+         its tooltip. One copy in the markup, read two ways, so the tooltip
+         and what a screen reader hears cannot drift apart.
+
+         A control with no help has a null HelpText, and a null tip shows no
+         tooltip. A tip written on the control itself — the Browse buttons, the
+         font rows — is a local value and wins over this. -->
+    <Style Selector="CheckBox, RadioButton, ComboBox, TextBox, TextBlock.note">
+      <Setter Property="ToolTip.Tip" Value="{Binding $self.(AutomationProperties.HelpText)}"/>
+      <!-- **Help a disabled control has is help nobody could reach.** The
+           preview limits are greyed while thumbnails are off, and ToolTip
+           does not show on a disabled control unless told to. -->
+      <Setter Property="ToolTip.ShowOnDisabled" Value="True"/>
+    </Style>
+
+    <!-- A label that is longer than its column wraps inside the check box
+         rather than running under the next one: at the dialog's floor a
+         column is the whole 300px page, and at the default it is half. -->
+    <Style Selector="CheckBox /template/ ContentPresenter#PART_ContentPresenter, RadioButton /template/ ContentPresenter#PART_ContentPresenter">
+      <Setter Property="TextWrapping" Value="Wrap"/>
+    </Style>
+
+    <Style Selector="TextBlock.heading">
+      <Setter Property="FontSize" Value="{DynamicResource FontSizeTiny}"/>
+      <Setter Property="Foreground" Value="{DynamicResource ViewDimText}"/>
+    </Style>
+
+    <!-- The one line a note is allowed now. The rest is the control's help. -->
+    <Style Selector="TextBlock.note">
+      <Setter Property="FontSize" Value="{DynamicResource FontSizeTiny}"/>
+      <Setter Property="Foreground" Value="{DynamicResource ViewDimText}"/>
+      <Setter Property="TextWrapping" Value="Wrap"/>
+    </Style>
+
+    <!-- A setting with a word or two of label beside its box: the label takes
+         what the box leaves, and both sit on one line. -->
+    <Style Selector="TextBlock.label">
+      <Setter Property="FontSize" Value="{DynamicResource FontSizeSmall}"/>
+      <Setter Property="VerticalAlignment" Value="Center"/>
+      <Setter Property="TextWrapping" Value="Wrap"/>
+      <Setter Property="Margin" Value="0,0,12,0"/>
+    </Style>
+  </Window.Styles>
+
   <!-- NO margin on the shell. It used to be 16 all round, which inset the tab
        strip from the window edges so the sidebar colour read as a floating box
        instead of a surface. Spacing now lives INSIDE each region, the way the
-       main window does it. -->
-  <DockPanel>
+       main window does it.
 
-    <Border DockPanel.Dock="Bottom"
-            Background="{DynamicResource AppBackground}"
-            BorderBrush="{DynamicResource SeparatorColour}"
-            BorderThickness="0,1,0,0"
-            Padding="16,10">
-      <DockPanel>
-        <!-- Docked first so the buttons keep their natural width and the
-             version takes what is left; a horizontal StackPanel would give the
-             text unlimited width and push them off the edge. -->
-        <StackPanel DockPanel.Dock="Right"
-                    Orientation="Horizontal" Spacing="8">
-          <Button Content="Cancel" Padding="14,4" IsCancel="True" Command="{Binding CancelCommand}"/>
-
-          <!-- **Escape left this window and Enter did not.** Cancel took
-               IsCancel when the dialogs learnt Escape, and Save was left
-               behind — so the key that throws the page away worked from the
-               keyboard while the key that keeps it did nothing at all. Six
-               pages of boxes and check boxes, and the only way to commit them
-               was to find the mouse.
-
-               Safe from the rest of the page because Avalonia hands its
-               default button an UNHANDLED Enter only, and every control on
-               these pages that wants the key takes it first: a focused
-               button, a check box, a combo box and a radio button all mark it
-               handled and never reach this. What is left is the single-line
-               boxes, where Enter has nothing else to mean; the tab headers,
-               where it means what it means in any property sheet; the version
-               line, which is selectable and so takes focus without wanting the
-               key; and a window nobody has tabbed into yet, which has no focus
-               at all. Each of those four saves what is already on screen,
-               which is what the button says. Counted and pressed on every
-               tab, not reasoned about — the Keyboard page's too, which came
-               later: its buttons press and its search box saves, and a row
-               there that is listening for a key is handed every key before
-               this button can see one (KeyboardPageTests). -->
-          <Button Content="Save" Padding="14,4" IsDefault="True" Command="{Binding SaveCommand}"/>
-        </StackPanel>
-
-        <!-- **Nothing in this dialog could say where the choices go.** The
-             version line beside this shows a path on hover and it is the path
-             of the BINARY; settings.json could only be found by knowing where
-             the platform keeps config, or by searching for it. Which also
-             meant there was no way to keep a copy of a set-up, or to put one
-             back on another machine.
-
-             In the footer with the version rather than on a page, because it
-             is about the file rather than about anything in it — the same kind
-             of thing as the build number it sits next to.
-
-             One button with a menu rather than three buttons: three would push
-             the version line off a narrow window, and these are rare actions
-             next to Save and Cancel, which are not. -->
-        <Button DockPanel.Dock="Left"
-                Content="Settings file"
-                Padding="10,4"
-                Margin="0,0,12,0"
-                IsEnabled="{Binding HasSettingsFile}"
-                ToolTip.Tip="{Binding SettingsFile}">
-          <Button.Flyout>
-            <MenuFlyout Placement="TopEdgeAlignedLeft">
-              <MenuItem Header="_Show settings file"
-                        Command="{Binding ShowSettingsFileCommand}"/>
-              <MenuItem Header="Save a _copy…"
-                        Command="{Binding ExportSettingsCommand}"/>
-              <MenuItem Header="_Replace from a copy…"
-                        Command="{Binding ImportSettingsCommand}"/>
-              <Separator/>
-              <!-- Version, platform, how the interface is set, and the tail of
-                   the log, with paths already redacted — the paste a bug
-                   report needs. Here rather than on its own button because it
-                   is about the same file's neighbours. -->
-              <MenuItem Header="Copy _diagnostics"
-                        Command="{Binding CopyDiagnosticsCommand}"/>
-            </MenuFlyout>
-          </Button.Flyout>
-        </Button>
-
-        <!-- **There was no way back to the defaults.** Nine sections on the
-             General page and five more pages, each remembering what it was
-             last set to, and the only route out was to close Vaktari, find
-             settings.json, delete it and start again.
-
-             Beside the settings-file button rather than next to Save, because
-             both are about the settings AS A WHOLE rather than about any one
-             of them — and because a destructive-looking button next to the
-             one that commits is the wrong pair to put a thumb between. -->
-        <Button DockPanel.Dock="Left"
-                Content="Restore defaults"
-                Padding="10,4"
-                Margin="0,0,12,0"
-                Command="{Binding RestoreDefaultsCommand}"/>
-
-        <!-- Takes the space the version line would have had, and only when
-             there is something to say. A refusal — a file this version cannot
-             read — has to be readable somewhere, and none of these three is
-             worth a dialog of its own. -->
-        <SelectableTextBlock DockPanel.Dock="Left"
-                             Text="{Binding SettingsFileStatus}"
-                             IsVisible="{Binding SettingsFileStatus, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"
-                             FontSize="{DynamicResource FontSizeTiny}"
-                             Foreground="{DynamicResource ViewDimText}"
-                             VerticalAlignment="Center"
-                             Margin="0,0,12,0"
-                             TextTrimming="CharacterEllipsis"/>
-
-        <!-- **The version line was the whole of the About box, and a dead
-             end.** A number, and on hover the path of the binary — nothing
-             saying what changed in that version, nothing naming the project,
-             and no way to reach either without knowing where to look.
-
-             A flyout on the number itself rather than a page of its own: the
-             page strip is a WrapPanel with no scroller, so every row it
-             gains is height a short window takes out of the width every page
-             has (see the floor note at the top of this file), and this is
-             three lines of content. -->
-        <Button Content="{Binding VersionLine}"
-                AutomationProperties.Name="About this version"
-                Padding="0"
-                Background="Transparent"
-                BorderThickness="0"
-                FontSize="{DynamicResource FontSizeTiny}"
-                Foreground="{DynamicResource ViewDimText}"
-                VerticalAlignment="Center"
-                HorizontalAlignment="Left">
-          <Button.Flyout>
-            <MenuFlyout Placement="TopEdgeAlignedLeft">
-              <MenuItem Header="_What is new in this version"
-                        Command="{Binding OpenReleasesCommand}"/>
-              <MenuItem Header="_The project"
-                        Command="{Binding OpenProjectCommand}"/>
-            </MenuFlyout>
-          </Button.Flyout>
-        </Button>
-
-        <!-- Selectable, because the reason anyone reads a version is to quote
-             it somewhere — an issue, a message. A number you can see and not
-             copy makes them type it out and get it wrong. Kept beside the
-             button rather than replaced by it: a button label cannot be
-             selected, and quoting the build is what this line is for. -->
-        <SelectableTextBlock Text="{Binding InstalledAt}"
-                             ToolTip.Tip="{Binding VersionPath}"
-                             FontSize="{DynamicResource FontSizeTiny}"
-                             Foreground="{DynamicResource ViewDimText}"
-                             VerticalAlignment="Center"
-                             HorizontalAlignment="Left"
-                             TextTrimming="CharacterEllipsis"/>
-      </DockPanel>
-    </Border>
+       **A Grid, and the pages first in it, because Tab followed the markup.**
+       The footer was a DockPanel's first child — it had to be, to be docked
+       before the pages filled the rest — so Tab from a window nobody had
+       touched went to Settings file, Restore defaults and the version before
+       it ever reached a page. Rows put the footer below and last. -->
+  <Grid RowDefinitions="*,Auto">
 
     <!-- The strip runs down the LEFT.
-         Across the top it wrapped onto three ragged lines once all six pages
+         Across the top it wrapped onto three ragged lines once all the pages
          existed, because the header text is wider than the dialog. A vertical
          list cannot wrap, reads as a list of places rather than a row of
          controls, and matches the main window's own left-hand sidebar. -->
@@ -201,7 +110,9 @@
          rather than on the strip's internal presenter, which would mean
          reaching into the Fluent template; the page content below paints
          AppBackground back over the right-hand side. -->
-    <TabControl TabStripPlacement="Left" Padding="0"
+    <TabControl x:Name="Pages" Grid.Row="0"
+                TabStripPlacement="Left" Padding="0"
+                SelectedIndex="{Binding PageIndex}"
                 Background="{DynamicResource PanelBackground}">
 
       <TabControl.Styles>
@@ -218,11 +129,26 @@
              The accent bar is OVERLAID in a Panel, exactly as the main window
              draws a selected row's edge bar: showing and hiding it moves
              nothing, because it never occupied space. The ContentPresenter's
-             margin is identical in every state. Only Foreground changes. -->
+             margin is identical in every state. Only Foreground changes.
+
+             **RecognizesAccessKey is on, so every page answers to Alt and a
+             letter.** It was off, and the headers had no letters to mark, so
+             the only way to a page from the keyboard was to Tab to the strip
+             and arrow along it. Each header marks its own letter, and no two
+             share one (SettingsPagesTests). -->
         <Style Selector="TabItem">
           <Setter Property="FontSize" Value="{DynamicResource FontSizeSmall}"/>
           <Setter Property="Foreground" Value="{DynamicResource ViewDimText}"/>
           <Setter Property="MinWidth" Value="150"/>
+          <!-- **Capped, because the strip is as wide as its widest name.**
+               "Privacy and system" and "Folders and lists" are the longest
+               page names this window has had, and uncapped they widened the
+               strip — and so narrowed every page — by as much as they needed:
+               measured, 248px against 176, leaving 272px of page at the
+               520px floor. A name longer than the cap wraps onto a second
+               line instead, which costs no height: a row is 48px either way
+               and two lines of this size fit inside it. -->
+          <Setter Property="MaxWidth" Value="176"/>
           <Setter Property="Template">
             <ControlTemplate>
               <Panel Background="Transparent">
@@ -231,7 +157,8 @@
                         Background="{DynamicResource AccentColour}"
                         IsVisible="False"/>
                 <ContentPresenter Content="{TemplateBinding Header}"
-                                  RecognizesAccessKey="False"
+                                  RecognizesAccessKey="True"
+                                  TextWrapping="Wrap"
                                   Margin="16,7"
                                   VerticalAlignment="Center"
                                   HorizontalAlignment="Left"/>
@@ -253,206 +180,197 @@
 
       </TabControl.Styles>
 
-      <!-- General comes first, as it does in Dolphin. Its Previews and
-           Confirmations tabs are not here yet: they arrive with the plumbing
-           that makes them do something. -->
-      <TabItem Header="General">
+      <!-- **Seven pages, each holding what its name says.** General was four
+           screens at the default size — twenty-two settings in ten sections,
+           among them the icon-theme catalogue, the terminal, Proton Drive and
+           the update check — while Navigation held two. The pages are a
+           layout, not a data shape: every control still binds the key it
+           always did, so nothing in settings.json moved.
+
+           General is how Vaktari behaves: where it opens, what a click and a
+           key do, splits and confirmations. It comes first, as it does in
+           Dolphin, and it is the page nothing open-ended lives on — so the
+           settings that decide whether a keystroke can lose a file have a
+           place that does not move (SettingsSectionOrderTests). -->
+      <!-- **Each page is named for a screen reader, and says its key.** A
+           TabItem's peer takes its name from its content's ToString when it
+           has none, so every page was announced as "Avalonia.Controls.
+           ScrollViewer" with no access key — measured. The words and the key
+           are the header's, written out (SettingsPagesTests reads the peers). -->
+      <TabItem Header="_General"
+               AutomationProperties.Name="General" AutomationProperties.AccessKey="Alt+G">
         <ScrollViewer HorizontalScrollBarVisibility="Disabled"
                       Background="{DynamicResource AppBackground}">
         <StackPanel Spacing="14" Margin="20,16,20,16">
 
-          <TextBlock Text="Sorting"
-                     FontSize="{DynamicResource FontSizeTiny}"
-                     Foreground="{DynamicResource ViewDimText}"/>
+          <TextBlock Classes="heading" Text="When Vaktari opens"/>
 
           <StackPanel Spacing="8">
-            <CheckBox FontSize="{DynamicResource FontSizeSmall}"
-                      IsChecked="{Binding NaturalSorting}"
-                      AutomationProperties.Name="Natural sorting">
-              <StackPanel>
-                <TextBlock Text="Natural sorting"/>
-                <TextBlock Text="file2 before file10, rather than file1, file10, file2."
-                           FontSize="{DynamicResource FontSizeTiny}"
-                           Foreground="{DynamicResource ViewDimText}"
-                           TextWrapping="Wrap"/>
-              </StackPanel>
-            </CheckBox>
+            <!-- **Four radio buttons and a greyed-out folder box asked this
+                 one question in a third of a page.** One dropdown asks it in a
+                 line; the box appears for the one answer that reads it.
 
-            <CheckBox Content="Case sensitive"
-                      Margin="24,0,0,0"
+                 The drive listing's row is bound, not written: the noun is
+                 "This PC" on Windows and "this computer" on Linux, and the
+                 label puts a word in front of it. x:Static was measured here
+                 and cannot compose that — Text="Open {x:Static
+                 core:Naming.ComputerName}" rendered those characters literally,
+                 because inside a longer string the extension is not evaluated
+                 at all. -->
+            <ComboBox x:Name="StartupChoice"
+                      SelectedIndex="{Binding StartupIndex}"
+                      AutomationProperties.Name="When Vaktari opens"
+                      AutomationProperties.HelpText="Restoring is the default: the folders, tabs and window size you had when Vaktari last closed. The other three start fresh in one place."
+                      HorizontalAlignment="Stretch"
+                      FontSize="{DynamicResource FontSizeSmall}">
+              <ComboBoxItem Content="Restore folders, tabs and window from last time"/>
+              <ComboBoxItem Content="Open the home folder"/>
+              <ComboBoxItem Content="{Binding StartInComputerLabel}"/>
+              <ComboBoxItem Content="Open a specific folder"/>
+            </ComboBox>
+
+            <!-- **The placeholder said "/home/…" on Windows** — a hardcoded
+                 Linux path in the one control whose whole job is to be given a
+                 path on THIS machine. And there was no Browse, so the only way
+                 to set it was to type a path correctly from memory. -->
+            <DockPanel IsVisible="{Binding StartInSpecificFolder}">
+              <Button DockPanel.Dock="Right"
+                      Content="Browse…"
+                      Padding="10,3"
+                      Margin="8,0,0,0"
                       FontSize="{DynamicResource FontSizeSmall}"
-                      IsEnabled="{Binding CanSetCaseSensitivity}"
-                      IsChecked="{Binding CaseSensitiveSorting}"/>
+                      IsEnabled="{Binding CanEditStartupFolder}"
+                      Command="{Binding BrowseForStartupFolderCommand}"/>
 
-            <!-- Beside the other two sorting rules, because that is what it
-                 is: the comparer applied it ahead of the field and read no
-                 setting, so sorting by modified could not put a folder at the
-                 top however recently it changed. Ticked out of the box, which
-                 is both the shipped behaviour and what all three references
-                 do. -->
-            <CheckBox FontSize="{DynamicResource FontSizeSmall}"
-                      IsChecked="{Binding FoldersFirst}"
-                      AutomationProperties.Name="Sort folders before files">
-              <StackPanel>
-                <TextBlock Text="Sort folders before files"/>
-                <TextBlock Text="On, folders are banded above the files whichever column you sort by. Off, they take their place in the order like anything else — the newest thing in a folder can then be a folder. Grouping by size or by type keeps a Folders band whichever way this is set, because those bands have a heading; grouping by name or by date does not, and there this decides whether folders lead inside each band."
-                           FontSize="{DynamicResource FontSizeTiny}"
-                           Foreground="{DynamicResource ViewDimText}"
-                           TextWrapping="Wrap"/>
-              </StackPanel>
-            </CheckBox>
+              <TextBox Text="{Binding StartupFolder}"
+                       AutomationProperties.Name="Startup folder"
+                       PlaceholderText="{Binding StartupFolderHint}"
+                       IsEnabled="{Binding CanEditStartupFolder}"
+                       FontSize="{DynamicResource FontSizeSmall}"/>
+            </DockPanel>
+
+            <!-- Said, not refused: the folder may be on a stick that is out or a
+                 share that is down, and refusing to save it would make the
+                 setting unusable for exactly the people who need it most. -->
+            <TextBlock Classes="note"
+                       Text="{Binding StartupFolderProblem}"
+                       IsVisible="{Binding HasStartupFolderProblem}"/>
+
+            <local:SettingsColumns Margin="0,4,0,0">
+              <CheckBox Content="Begin in split view"
+                        FontSize="{DynamicResource FontSizeSmall}"
+                        AutomationProperties.HelpText="Takes effect in windows opened from now on, and the next time Vaktari starts."
+                        IsChecked="{Binding BeginInSplitView}"/>
+
+              <CheckBox Content="Show the filter bar"
+                        FontSize="{DynamicResource FontSizeSmall}"
+                        AutomationProperties.HelpText="Takes effect in windows opened from now on, and the next time Vaktari starts."
+                        IsChecked="{Binding ShowFilterBar}"/>
+
+              <!-- "Path bar", because that is what the thing is called
+                   everywhere else you meet it — the bar's own tooltip, the
+                   README, Ctrl+L. The binding stays LocationBarEditable: it is
+                   the key this setting is stored under, and renaming it would
+                   silently reset the preference on every install that already
+                   has one. -->
+              <CheckBox Content="Start with the path bar editable"
+                        FontSize="{DynamicResource FontSizeSmall}"
+                        AutomationProperties.HelpText="Takes effect in windows opened from now on, and the next time Vaktari starts."
+                        IsChecked="{Binding LocationBarEditable}"/>
+
+              <CheckBox Content="Show the full path in the title bar"
+                        FontSize="{DynamicResource FontSizeSmall}"
+                        AutomationProperties.HelpText="Every window's title changes as soon as you apply or save."
+                        IsChecked="{Binding ShowFullPathInTitleBar}"/>
+            </local:SettingsColumns>
+
+            <!-- **This said "Changes to how it opens apply on the next launch"
+                 under all four, and one of the four is not.** The title bar
+                 is set on every window the moment a save lands
+                 (MainWindow.SettingsChangedEverywhere). Named, so the note is
+                 true of each box it is about. -->
+            <!-- "New windows" as well as the next launch: every window's
+                 constructor runs ApplyStartupPreferences, so Ctrl+N after an
+                 Apply opens with them. -->
+            <TextBlock Classes="note"
+                       Text="Split view, the filter bar and the path bar apply to new windows."/>
           </StackPanel>
 
           <Border Height="1" Background="{DynamicResource SeparatorColour}"/>
 
-          <TextBlock Text="Behaviour"
-                     FontSize="{DynamicResource FontSizeTiny}"
-                     Foreground="{DynamicResource ViewDimText}"/>
+          <TextBlock Classes="heading" Text="Open files and folders with"/>
+
+          <!-- Radios rather than a dropdown: three short answers read at a
+               glance, and BackspacePreferenceTests pins what each binds.
+
+               **"Takes effect immediately" sat under these, and it lands on
+               Apply or Save like everything else here.** What it meant was
+               that the choice is read at the click rather than when a row is
+               drawn — so there is no restart — and on a page that also holds
+               the one button that really does act immediately, the default
+               file manager's, the two claims read the same. Gone. -->
+          <StackPanel Spacing="6">
+            <RadioButton Content="Whatever the desktop is set to" GroupName="activation"
+                         FontSize="{DynamicResource FontSizeSmall}"
+                         AutomationProperties.HelpText="Follows your desktop's own single-click setting, so it matches the rest of your system without being configured twice."
+                         IsChecked="{Binding OpenWithSystem}"/>
+
+            <RadioButton Content="A single click" GroupName="activation"
+                         FontSize="{DynamicResource FontSizeSmall}"
+                         IsChecked="{Binding OpenWithSingle}"/>
+
+            <RadioButton Content="A double click" GroupName="activation"
+                         FontSize="{DynamicResource FontSizeSmall}"
+                         IsChecked="{Binding OpenWithDouble}"/>
+          </StackPanel>
+
+          <Border Height="1" Background="{DynamicResource SeparatorColour}"/>
+
+          <TextBlock Classes="heading" Text="Keys and split view"/>
 
           <StackPanel Spacing="8">
-            <CheckBox FontSize="{DynamicResource FontSizeSmall}"
-                      IsChecked="{Binding RememberViewPerFolder}"
-                      AutomationProperties.Name="Remember the view for each folder">
-              <StackPanel>
-                <TextBlock Text="Remember the view for each folder"/>
-                <TextBlock Text="Off, every folder uses the same view. On, a folder keeps the layout, sort and grouping you last gave it. Stored centrally rather than written into your folders, but a view another file manager has already written into a folder is still honoured."
-                           FontSize="{DynamicResource FontSizeTiny}"
-                           Foreground="{DynamicResource ViewDimText}"
-                           TextWrapping="Wrap"/>
-              </StackPanel>
-            </CheckBox>
+            <!-- **Backspace answered Explorer's habit and nobody else's.** It
+                 went Back through history full stop, so somebody who learned
+                 the key in Dolphin — where it goes to the parent folder —
+                 pressed it at the bottom of a deep tree and was thrown to
+                 wherever they had been ten minutes ago.
 
-            <!-- **Turning the box above off left every folder already recorded
-                 exactly as it was.** The store fills up on its own — merely
-                 LOOKING at a folder writes to it — and there was no way to see
-                 it or empty it from anywhere in the application.
+                 Asked as the Dolphin question so that unticked is what
+                 shipped, and so that the stored value's zero is the shipped
+                 behaviour too: a key absent from a settings.json written
+                 before this existed comes back as false, and false has to mean
+                 Back.
 
-                 Indented under the box it belongs to, and shown only when
-                 there is something to forget: an offer to clear an empty list
-                 is a button that does nothing. -->
-            <StackPanel Orientation="Horizontal" Spacing="10" Margin="24,0,0,0"
-                        IsVisible="{Binding HasRememberedViews}">
-              <Button Content="Forget remembered views"
-                      Padding="10,3"
+                 Here on General with the Tab key and the split, where the
+                 Navigation page it used to share with the click choice above
+                 no longer exists: two settings were a page. -->
+            <CheckBox x:Name="BackspaceChoice"
+                      Content="Backspace goes up one folder"
                       FontSize="{DynamicResource FontSizeSmall}"
-                      Command="{Binding ForgetRememberedViewsCommand}"/>
-              <TextBlock Text="{Binding RememberedViewsLabel}"
-                         FontSize="{DynamicResource FontSizeTiny}"
-                         Foreground="{DynamicResource ViewDimText}"
-                         VerticalAlignment="Center"/>
-            </StackPanel>
-
-            <!-- **Every folder and every file opened was recorded, with no
-                 setting consulted and no way to empty the list** — the only
-                 route out was a per-row "Forget", which needs the entry still
-                 on screen and there is one row per entry.
-
-                 On by default: both references record by default, and a
-                 privacy switch that ships off is a feature nobody finds. -->
-            <CheckBox FontSize="{DynamicResource FontSizeSmall}"
-                      IsChecked="{Binding RememberRecent}"
-                      AutomationProperties.Name="Remember recently opened files and folders">
-              <StackPanel>
-                <TextBlock Text="Remember recently opened files and folders"/>
-                <TextBlock Text="Off, nothing new is recorded. What is already remembered stays until you clear it."
-                           FontSize="{DynamicResource FontSizeTiny}"
-                           Foreground="{DynamicResource ViewDimText}"
-                           TextWrapping="Wrap"/>
-              </StackPanel>
-            </CheckBox>
-
-            <!-- Separate from the switch above, and only when there is
-                 something to clear: turning recording off must not silently
-                 delete a list, because that is not what the checkbox says. -->
-            <StackPanel Orientation="Horizontal" Spacing="10" Margin="24,0,0,0"
-                        IsVisible="{Binding HasRecent}">
-              <Button Content="Forget what was opened"
-                      Padding="10,3"
-                      FontSize="{DynamicResource FontSizeSmall}"
-                      Command="{Binding ForgetRecentCommand}"/>
-              <TextBlock Text="{Binding RecentCountLabel}"
-                         FontSize="{DynamicResource FontSizeTiny}"
-                         Foreground="{DynamicResource ViewDimText}"
-                         VerticalAlignment="Center"/>
-            </StackPanel>
-
-            <!-- **Nothing recorded what had been searched for**, so there was
-                 nothing to switch off — and the first thing a list of the
-                 questions somebody asks their own machine needs is the switch.
-
-                 Bound to RememberSearches, which is the positive half of
-                 GeneralSettings.ForgetSearches: that property is named for its
-                 zero value because deserialization here does not run property
-                 initializers, so a positively named default would ship the
-                 feature off for everybody upgrading. -->
-            <CheckBox FontSize="{DynamicResource FontSizeSmall}"
-                      IsChecked="{Binding RememberSearches}"
-                      AutomationProperties.Name="Remember what you search for">
-              <StackPanel>
-                <TextBlock Text="Remember what you search for"/>
-                <TextBlock Text="On, right-clicking the search button lists the searches you have run, and choosing one asks it again. Off, nothing new is recorded. What is already remembered stays until you clear it."
-                           FontSize="{DynamicResource FontSizeTiny}"
-                           Foreground="{DynamicResource ViewDimText}"
-                           TextWrapping="Wrap"/>
-              </StackPanel>
-            </CheckBox>
-
-            <!-- Separate from the switch above, and only when there is
-                 something to clear: turning recording off must not silently
-                 delete a list, because that is not what the checkbox says. -->
-            <StackPanel Orientation="Horizontal" Spacing="10" Margin="24,0,0,0"
-                        IsVisible="{Binding HasSearchHistory}">
-              <Button Content="Forget what was searched for"
-                      Padding="10,3"
-                      FontSize="{DynamicResource FontSizeSmall}"
-                      Command="{Binding ForgetSearchHistoryCommand}"/>
-              <TextBlock Text="{Binding SearchCountLabel}"
-                         FontSize="{DynamicResource FontSizeTiny}"
-                         Foreground="{DynamicResource ViewDimText}"
-                         VerticalAlignment="Center"/>
-            </StackPanel>
-
-            <CheckBox Content="Show tooltips on rows"
-                      FontSize="{DynamicResource FontSizeSmall}"
-                      IsChecked="{Binding ShowTooltips}"/>
+                      AutomationProperties.HelpText="Off, Backspace goes back through the folders you visited, the way Explorer does. On, it goes up to the parent folder, the way Dolphin does. Back and Up one folder keep their own keys either way, and the keyboard sheet says which one Backspace is currently doing. Where there is no parent — This PC, the bin, Recent, a search — it then does nothing."
+                      IsChecked="{Binding BackspaceGoesUp}"/>
 
             <CheckBox Content="Tab switches between split panes"
                       FontSize="{DynamicResource FontSizeSmall}"
                       IsChecked="{Binding TabSwitchesSplitPanes}"/>
 
-            <CheckBox FontSize="{DynamicResource FontSizeSmall}"
-                      IsChecked="{Binding ClosingSplitDiscardsOtherPane}"
-                      AutomationProperties.Name="Closing the split discards the other pane">
-              <StackPanel>
-                <TextBlock Text="Closing the split discards the other pane"/>
-                <TextBlock Text="Off, Vaktari remembers what it was showing so reopening lands back in place."
-                           FontSize="{DynamicResource FontSizeTiny}"
-                           Foreground="{DynamicResource ViewDimText}"
-                           TextWrapping="Wrap"/>
-              </StackPanel>
-            </CheckBox>
+            <CheckBox Content="Closing the split discards the other pane"
+                      FontSize="{DynamicResource FontSizeSmall}"
+                      AutomationProperties.HelpText="Off, Vaktari remembers what it was showing, so reopening the split lands back in place."
+                      IsChecked="{Binding ClosingSplitDiscardsOtherPane}"/>
           </StackPanel>
-
-          <!-- **Ninth of nine, under the icon-theme catalogue.** These three
-               are the only settings on this page that decide whether a
-               keystroke can lose a file, and they sat below a section that is
-               a hundred and fifty lines long and grows with every theme
-               installed — so on a 560px window the person looking for "stop
-               asking me before the bin" scrolled past sorting, splits,
-               default-file-manager, a theme catalogue, terminals, Proton Drive,
-               the status bar and preview limits to find them.
-
-               Here instead, because these ARE behaviour: the section directly
-               above decides what a click does and this decides what a delete
-               does. Nothing else moved. -->
 
           <Border Height="1" Background="{DynamicResource SeparatorColour}"/>
 
-          <TextBlock Text="Ask for confirmation before"
-                     FontSize="{DynamicResource FontSizeTiny}"
-                     Foreground="{DynamicResource ViewDimText}"/>
+          <!-- **They were ninth of nine, under the icon-theme catalogue.** These
+               three are the only settings in the dialog that decide whether a
+               keystroke can lose a file, and they sat below a section that
+               grows with every theme installed. The catalogue is on
+               Appearance now, and last there; this page has nothing
+               open-ended on it at all. -->
+          <TextBlock Classes="heading" Text="Ask for confirmation before"/>
 
-          <StackPanel Spacing="8">
+          <local:SettingsColumns>
             <CheckBox Content="{Binding ConfirmTrashLabel}"
                       FontSize="{DynamicResource FontSizeSmall}"
                       IsChecked="{Binding ConfirmMoveToTrash}"/>
@@ -464,132 +382,215 @@
             <CheckBox Content="Closing a window with several tabs open"
                       FontSize="{DynamicResource FontSizeSmall}"
                       IsChecked="{Binding ConfirmClosingMultipleTabs}"/>
-          </StackPanel>
+          </local:SettingsColumns>
 
-          <!-- One rule, gated with the section it introduces. There were two
-               here — an ungated one and this — so on every platform that can
-               answer CanBeDefault, which is both of the ones we ship, the page
-               drew a pair of hairlines 14px apart. Keeping the ungated one
-               instead would leave a rule hanging under Behaviour with nothing
-               below it wherever the section is hidden. -->
-          <Border Height="1" Background="{DynamicResource SeparatorColour}"
-                  IsVisible="{Binding CanBeDefault}"/>
+        </StackPanel>
+        </ScrollViewer>
+      </TabItem>
 
-          <StackPanel Spacing="8" IsVisible="{Binding CanBeDefault}">
-            <TextBlock Text="Opening folders"
-                       FontSize="{DynamicResource FontSizeTiny}"
-                       Foreground="{DynamicResource ViewDimText}"/>
+      <!-- How Vaktari looks: colour, type, what a row carries, the window's
+           furniture — and the file icons last, because their catalogue is the
+           one section whose length depends on what is installed. -->
+      <TabItem Header="_Appearance"
+               AutomationProperties.Name="Appearance" AutomationProperties.AccessKey="Alt+A">
+        <ScrollViewer HorizontalScrollBarVisibility="Disabled"
+                      Background="{DynamicResource AppBackground}">
+        <StackPanel Spacing="14" Margin="20,16,20,16">
 
-            <!-- A BUTTON, not a checkbox, and that is the honest shape.
-                 Everything else on this page edits a copy and commits it when
-                 you press Save, which is what makes Cancel mean something. This
-                 writes to the system the moment it runs — the registry on
-                 Windows, the desktop's file-type database on Linux — and there
-                 is no way to stage that. A checkbox would promise the dialog's
-                 usual contract and quietly break it. -->
-            <StackPanel Orientation="Horizontal" Spacing="10">
-              <Button Content="Make Vaktari the default"
-                      Padding="12,4"
-                      IsVisible="{Binding !IsDefaultFileManager}"
-                      Command="{Binding MakeDefaultCommand}"
-                      FontSize="{DynamicResource FontSizeSmall}"/>
-              <Button Content="Stop being the default"
-                      Padding="12,4"
-                      IsVisible="{Binding IsDefaultFileManager}"
-                      Command="{Binding RestoreDefaultCommand}"
-                      FontSize="{DynamicResource FontSizeSmall}"/>
-              <TextBlock Text="Vaktari opens folders now."
-                         IsVisible="{Binding IsDefaultFileManager}"
-                         VerticalAlignment="Center"
-                         FontSize="{DynamicResource FontSizeSmall}"
-                         Foreground="{DynamicResource ViewDimText}"/>
-            </StackPanel>
+          <TextBlock Classes="heading" Text="Colour"/>
 
-            <!-- Applies immediately, so it says so where the button is rather
-                 than leaving someone to press Save and wonder. -->
-            <TextBlock Text="This one takes effect straight away rather than when you press Save."
-                       FontSize="{DynamicResource FontSizeTiny}"
-                       Foreground="{DynamicResource ViewDimText}"
-                       TextWrapping="Wrap"/>
+          <!-- **One chooser where there were two**, because the two answered
+               one question and one of their combinations was broken — see
+               SettingsViewModel.ColourIndex for what "the desktop's colours"
+               really layers, and why it has to bring the desktop's lightness
+               with it. -->
+          <ComboBox SelectedIndex="{Binding ColourIndex}"
+                    AutomationProperties.Name="Colour"
+                    AutomationProperties.HelpText="Vaktari's colours follow your desktop's light or dark by default. That row and the desktop's own colours both keep up when you change your desktop while Vaktari is open; always light and always dark hold whatever you pick. The desktop's own colours bring its backgrounds, text, selection and accent — and its font, unless you choose one below — in its own light or dark."
+                    HorizontalAlignment="Stretch"
+                    FontSize="{DynamicResource FontSizeSmall}">
+            <ComboBoxItem Content="Vaktari's colours, light or dark as the desktop is"/>
+            <ComboBoxItem Content="Vaktari's colours, light"/>
+            <ComboBoxItem Content="Vaktari's colours, dark"/>
+            <ComboBoxItem Content="The desktop's own colours and accent"/>
+          </ComboBox>
 
-            <TextBlock Text="{Binding DefaultCaveat}"
-                       IsVisible="{Binding HasDefaultCaveat}"
-                       FontSize="{DynamicResource FontSizeTiny}"
-                       Foreground="{DynamicResource ViewDimText}"
-                       TextWrapping="Wrap"/>
+          <Border Height="1" Background="{DynamicResource SeparatorColour}"/>
 
-            <TextBlock Text="{Binding DefaultStatus}"
-                       IsVisible="{Binding HasDefaultStatus}"
-                       FontSize="{DynamicResource FontSizeTiny}"
-                       Foreground="{DynamicResource AccentText}"
-                       TextWrapping="Wrap"/>
+          <TextBlock Classes="heading" Text="Text"/>
+
+          <StackPanel Spacing="8">
+            <ComboBox ItemsSource="{Binding AvailableFonts}"
+                      AutomationProperties.Name="Font"
+                      AutomationProperties.HelpText="The first entry uses whatever your desktop is set to. This changes the face only; the size is below."
+                      SelectedItem="{Binding SelectedFont}"
+                      HorizontalAlignment="Stretch"
+                      FontSize="{DynamicResource FontSizeSmall}">
+              <ComboBox.ItemTemplate>
+                <DataTemplate x:DataType="vm:FontOption">
+                  <!-- FIXED width, not Min: every row must measure the same or
+                       the popup resizes to whichever items happen to be
+                       realized, and it visibly breathes as you scroll. Trimming
+                       alone does not do it — a TextBlock still asks for its
+                       full desired width unless something constrains it. -->
+                  <DockPanel Width="440">
+                    <!-- The sample keeps the sentinel row honest: it has no
+                         face of its own, so it shows no sample. -->
+                    <TextBlock DockPanel.Dock="Right"
+                               Text="AaBbGg 0123"
+                               IsVisible="{Binding !IsFollowDesktop}"
+                               FontFamily="{Binding Family}"
+                               Foreground="{DynamicResource ViewDimText}"
+                               Margin="16,0,0,0"
+                               VerticalAlignment="Center"/>
+                    <!-- The name renders in its OWN face, which is what a font
+                         picker is expected to do. A symbol or icon font draws
+                         its own name as glyphs, so that row becomes unreadable;
+                         the tooltip carries the plain name for exactly those
+                         rows. -->
+                    <TextBlock Text="{Binding Name}"
+                               FontFamily="{Binding Family}"
+                               ToolTip.Tip="{Binding Name}"
+                               VerticalAlignment="Center"
+                               TextTrimming="CharacterEllipsis"/>
+                  </DockPanel>
+                </DataTemplate>
+              </ComboBox.ItemTemplate>
+            </ComboBox>
+
+            <!-- The rows are decoded by index in InterfaceText.Steps, and a test
+                 checks this list against it: a row added here and not there would
+                 store the size of whichever row happened to share its index. -->
+            <DockPanel>
+              <TextBlock Classes="label" Text="Text size"/>
+              <ComboBox SelectedIndex="{Binding InterfaceTextIndex}"
+                        AutomationProperties.Name="Text size"
+                        AutomationProperties.HelpText="How large every label, row, tab and status line is drawn. Following the desktop is the default: on Windows that is the accessibility text size, and on Plasma the general font. Zooming a pane with ctrl and the wheel still works from wherever this leaves it."
+                        HorizontalAlignment="Stretch"
+                        FontSize="{DynamicResource FontSizeSmall}">
+                <ComboBoxItem Content="Follow the desktop text size"/>
+                <ComboBoxItem Content="100%"/>
+                <ComboBoxItem Content="110%"/>
+                <ComboBoxItem Content="125%"/>
+                <ComboBoxItem Content="150%"/>
+                <ComboBoxItem Content="175%"/>
+                <ComboBoxItem Content="200%"/>
+              </ComboBox>
+            </DockPanel>
           </StackPanel>
 
           <Border Height="1" Background="{DynamicResource SeparatorColour}"/>
 
-          <TextBlock Text="Icons"
-                     FontSize="{DynamicResource FontSizeTiny}"
-                     Foreground="{DynamicResource ViewDimText}"/>
+          <TextBlock Classes="heading" Text="What a row shows"/>
+
+          <local:SettingsColumns>
+            <!-- Here rather than under the list's own settings: all three
+                 layouts bind the same converter, so this is not a property of
+                 one of them. Ticked out of the box, which is the behaviour the
+                 application has always had. -->
+            <CheckBox Content="Show file name extensions"
+                      FontSize="{DynamicResource FontSizeSmall}"
+                      AutomationProperties.HelpText="Off, notes.txt lists as notes in all three layouts. Anything that runs when you open it keeps its ending — a program, a script, an installer — so nothing can be listed as the document beside it. The name you type when renaming, the tooltip on a trimmed name and the look-alike mark all keep the whole file name, and a shortcut or a launcher keeps the name it already had."
+                      IsChecked="{Binding ShowFileExtensions}"/>
+
+            <!-- Off by default, which is Explorer's answer rather than
+                 Dolphin's: the boxes take a slot out of the name column. -->
+            <CheckBox Content="Show selection check boxes"
+                      FontSize="{DynamicResource FontSizeSmall}"
+                      AutomationProperties.HelpText="A box ahead of every row in all three layouts, and one on the list heading that ticks or clears the lot. The box appears when you point at a row and stays while the row is ticked. Ctrl+click, shift+click and dragging a rectangle round the rows work the same either way."
+                      IsChecked="{Binding ShowSelectionBoxes}"/>
+
+            <CheckBox Content="Mark files by version-control status"
+                      FontSize="{DynamicResource FontSizeSmall}"
+                      AutomationProperties.HelpText="M modified · A added · D deleted · ? untracked · ! conflicted. Runs git once per folder, and only inside a repository."
+                      IsChecked="{Binding ShowVcsDecorations}"/>
+          </local:SettingsColumns>
+
+          <Border Height="1" Background="{DynamicResource SeparatorColour}"/>
+
+          <TextBlock Classes="heading" Text="Window"/>
+
+          <StackPanel Spacing="8">
+            <local:SettingsColumns>
+              <CheckBox Content="Show the status bar"
+                        FontSize="{DynamicResource FontSizeSmall}"
+                        IsChecked="{Binding ShowStatusBar}"/>
+
+              <!-- Independent of the status bar: the number is on the
+                   sidebar's drive rows. -->
+              <CheckBox Content="Free space on drive rows"
+                        FontSize="{DynamicResource FontSizeSmall}"
+                        AutomationProperties.HelpText="How full each drive is, on its row in the sidebar."
+                        IsChecked="{Binding ShowFreeSpace}"/>
+
+              <CheckBox Content="Show a folder tree in the sidebar"
+                        FontSize="{DynamicResource FontSizeSmall}"
+                        AutomationProperties.HelpText="A FOLDERS section under your places, rooted at each of them. It reads a folder each time you open one, and expandable folders in the List layout do the same job inside the listing."
+                        IsChecked="{Binding ShowFolderTree}"/>
+            </local:SettingsColumns>
+
+            <!-- **Two check boxes, the second greyed out under the first, with
+                 a paragraph under each**, for one question with three
+                 answers. See SettingsViewModel.DetailsPanelIndex. -->
+            <DockPanel>
+              <TextBlock Classes="label" Text="When the details panel does not fit"/>
+              <ComboBox SelectedIndex="{Binding DetailsPanelIndex}"
+                        AutomationProperties.Name="When the details panel does not fit"
+                        AutomationProperties.HelpText="Greyed out, the panel's button cannot be pressed while the pane is too narrow, and the window keeps the size you gave it. Widened, the window grows to make room — your desktop still caps how far. Shrinking back returns it to the width it had, unless you have resized it yourself since, and in split view only once neither side still needs the room."
+                        HorizontalAlignment="Stretch"
+                        FontSize="{DynamicResource FontSizeSmall}">
+                <ComboBoxItem Content="Grey out its button"/>
+                <ComboBoxItem Content="Widen the window, then shrink it back"/>
+                <ComboBoxItem Content="Widen the window and leave it wide"/>
+              </ComboBox>
+            </DockPanel>
+          </StackPanel>
+
+          <Border Height="1" Background="{DynamicResource SeparatorColour}"/>
+
+          <TextBlock Classes="heading" Text="File icons"/>
 
           <StackPanel Spacing="6">
-            <!-- **This choice was on screen on Linux, where nothing could act
-                 on it, and its explanation named Windows on both platforms.**
-                 The setting reaches the listing only through IconLoader.Files,
-                 which is IPlatform.FileIcons — Windows has one, freedesktop has
-                 none — so on Linux it was a box that remembered being ticked and
-                 changed nothing, offering something the desktop's own icon theme
-                 was already doing. Hidden where it cannot work, exactly as the
-                 default-file-manager section above is; the theme chooser below
-                 stays, because that one is live on both. -->
-            <StackPanel x:Name="DesktopIconsChoice" Spacing="6"
-                        IsVisible="{Binding CanUseDesktopIcons}">
-              <!-- Disabled rather than hidden, and still showing what is
-                   stored. The theme chooser below outranks it — see
-                   IconLoader.UseSystemIcons — and a box that silently loses is
-                   worse than one that says it has. Ticking it here with a theme
-                   chosen was the reported bug. -->
-              <CheckBox Content="Use my desktop's icons"
-                        FontSize="{DynamicResource FontSizeSmall}"
-                        IsEnabled="{Binding !HasIconTheme}"
-                        IsChecked="{Binding UseSystemIcons}"/>
-              <TextBlock Text="Off, files use the set drawn for Vaktari. On, they use the ones your desktop draws — so a program shows its own icon, a shortcut carries its arrow, and a folder you gave a custom icon keeps it. Thumbnails are unaffected either way."
-                         FontSize="{DynamicResource FontSizeTiny}"
-                         Foreground="{DynamicResource ViewDimText}"
-                         TextWrapping="Wrap"/>
-              <TextBlock x:Name="DesktopIconsOverriddenNote"
-                         Text="{Binding DesktopIconsOverridden}"
-                         IsVisible="{Binding HasIconTheme}"
-                         FontSize="{DynamicResource FontSizeTiny}"
-                         Foreground="{DynamicResource AccentText}"
-                         TextWrapping="Wrap"/>
-            </StackPanel>
-
-            <!-- An imported theme wins over both, because it is the most
-                 deliberate of the three: somebody found a theme, downloaded it
-                 and pointed at it. -->
-            <DockPanel Margin="0,4,0,0">
+            <!-- **One chooser where there were a check box, a list and a
+                 paragraph explaining which of the two won.** Vaktari's own
+                 icons, the desktop's — offered only where the platform has
+                 per-file icons, which is Windows — and every theme installed
+                 or browsed to, in one list whose selection is what the
+                 listing draws. See SettingsViewModel.RefreshIconThemes. The
+                 themes are found on disk rather than remembered, so a fetched
+                 pack's variants are one click apart and a folder deleted by
+                 hand simply stops being offered. -->
+            <DockPanel>
               <Button DockPanel.Dock="Right" Content="Browse…"
                       Margin="6,0,0,0" Padding="10,4"
                       FontSize="{DynamicResource FontSizeSmall}"
                       ToolTip.Tip="A theme folder anywhere on this machine — the one holding index.theme"
                       Command="{Binding BrowseForIconThemeCommand}"/>
 
-              <!-- The themes actually on disk, found rather than remembered, so
-                   a fetched pack's variants are one click apart and a folder
-                   deleted by hand simply stops being offered. -->
-              <ComboBox ItemsSource="{Binding IconThemeChoices}"
-                        AutomationProperties.Name="Icon theme"
+              <ComboBox x:Name="IconChoice"
+                        ItemsSource="{Binding IconThemeChoices}"
+                        AutomationProperties.Name="File icons"
+                        AutomationProperties.HelpText="Your desktop's icons, where offered, are the ones it draws itself — a program shows its own icon, a shortcut carries its arrow, and a folder you gave a custom icon keeps it. A theme is a folder holding index.theme, in the freedesktop format Papirus, Tela, Numix and most Linux icon sets are published as. Thumbnails are unaffected either way."
                         SelectedItem="{Binding SelectedIconTheme}"
                         HorizontalAlignment="Stretch"
-                        FontSize="{DynamicResource FontSizeSmall}"
-                        ToolTip.Tip="{Binding IconThemeFolder}">
+                        FontSize="{DynamicResource FontSizeSmall}">
                 <ComboBox.ItemTemplate>
                   <DataTemplate x:DataType="vm:SettingsViewModel+IconThemeChoice">
-                    <TextBlock Text="{Binding Label}"/>
+                    <TextBlock Text="{Binding Label}" ToolTip.Tip="{Binding Path}"/>
                   </DataTemplate>
                 </ComboBox.ItemTemplate>
               </ComboBox>
             </DockPanel>
+
+            <!-- **The whole path of the theme in use.** The chooser's tooltip
+                 was that path before its help took the tooltip over, and a
+                 theme browsed to outside the install folder shows only its
+                 leaf name in the list. Selectable, because it is a path. -->
+            <SelectableTextBlock Text="{Binding IconThemeFolder}"
+                                 IsVisible="{Binding HasIconTheme}"
+                                 FontSize="{DynamicResource FontSizeTiny}"
+                                 Foreground="{DynamicResource ViewDimText}"
+                                 TextWrapping="Wrap"/>
 
             <TextBlock Text="{Binding IconThemeProblem}"
                        IsVisible="{Binding HasIconThemeProblem}"
@@ -597,10 +598,9 @@
                        Foreground="{DynamicResource AccentText}"
                        TextWrapping="Wrap"/>
 
-            <TextBlock Text="Or point at an icon theme you downloaded — the folder holding index.theme. Vaktari reads the freedesktop format, which is what Papirus, Tela, Numix and most Linux icon sets are published as."
-                       FontSize="{DynamicResource FontSizeTiny}"
-                       Foreground="{DynamicResource ViewDimText}"
-                       TextWrapping="Wrap"/>
+            <!-- Per platform: nothing needs getting past on Linux. -->
+            <TextBlock Classes="note"
+                       Text="{Binding FetchNote}"/>
 
             <!-- **Or let Vaktari fetch one.** Doing it by hand means finding the
                  project, downloading an archive and extracting it past forty
@@ -608,7 +608,7 @@
                  will not make the links a theme is built out of. Unpacked here
                  those links are read rather than made, so there is nothing to
                  get past. -->
-            <ItemsControl ItemsSource="{Binding AvailableThemes}" Margin="0,6,0,0">
+            <ItemsControl ItemsSource="{Binding AvailableThemes}" Margin="0,2,0,0">
               <ItemsControl.ItemTemplate>
                 <DataTemplate x:DataType="fs:IconThemeSource">
                   <Border Padding="10,8" Margin="0,0,0,4"
@@ -664,9 +664,9 @@
             <!-- An archive from anywhere else goes through the same unpacking,
                  which is the point: a theme downloaded by hand hits the same
                  symbolic-link wall, and this is what gets past it. -->
-            <StackPanel Orientation="Horizontal" Spacing="14" Margin="0,2,0,0">
+            <WrapPanel Margin="0,2,0,0">
               <Button Content="Install from a file…"
-                      Padding="0"
+                      Padding="0" Margin="0,0,14,2"
                       Background="Transparent" BorderThickness="0"
                       Foreground="{DynamicResource AccentText}"
                       FontSize="{DynamicResource FontSizeTiny}"
@@ -674,7 +674,7 @@
                       ToolTip.Tip="A .tar.gz, .tar.xz or .zip you downloaded yourself"/>
 
               <Button Content="Open the icon folder"
-                      Padding="0"
+                      Padding="0" Margin="0,0,14,2"
                       Background="Transparent" BorderThickness="0"
                       Foreground="{DynamicResource AccentText}"
                       FontSize="{DynamicResource FontSizeTiny}"
@@ -682,107 +682,129 @@
                       ToolTip.Tip="Where installed themes are kept"/>
 
               <Button Content="Find more icon themes"
-                      Padding="0"
+                      Padding="0" Margin="0,0,14,2"
                       Background="Transparent" BorderThickness="0"
                       Foreground="{DynamicResource AccentText}"
                       FontSize="{DynamicResource FontSizeTiny}"
                       Command="{Binding GetMoreIconsCommand}"
                       ToolTip.Tip="Opens store.kde.org in your browser"/>
-            </StackPanel>
+            </WrapPanel>
           </StackPanel>
 
-          <Border Height="1" Background="{DynamicResource SeparatorColour}"/>
+        </StackPanel>
+        </ScrollViewer>
+      </TabItem>
 
-          <TextBlock Text="Terminal"
-                     FontSize="{DynamicResource FontSizeTiny}"
-                     Foreground="{DynamicResource ViewDimText}"/>
+      <!-- How a folder is ordered and what its listing carries. -->
+      <TabItem Header="_Folders and lists"
+               AutomationProperties.Name="Folders and lists" AutomationProperties.AccessKey="Alt+F">
+        <ScrollViewer HorizontalScrollBarVisibility="Disabled"
+                      Background="{DynamicResource AppBackground}">
+        <StackPanel Spacing="14" Margin="20,16,20,16">
 
-          <StackPanel Spacing="6">
-            <!-- The chooser only earns its place on a machine with more than
-                 one, but it is shown regardless: a dropdown reading "Whichever
-                 is found first" is how somebody discovers the choice exists at
-                 all, and hiding it would make the feature depend on already
-                 knowing about it. -->
-            <ComboBox ItemsSource="{Binding AvailableTerminals}"
-                      AutomationProperties.Name="Terminal"
-                      SelectedItem="{Binding SelectedTerminal}"
-                      HorizontalAlignment="Stretch"
-                      FontSize="{DynamicResource FontSizeSmall}">
-              <ComboBox.ItemTemplate>
-                <DataTemplate x:DataType="vm:TerminalChoice">
-                  <TextBlock Text="{Binding Name}" VerticalAlignment="Center"/>
-                </DataTemplate>
-              </ComboBox.ItemTemplate>
-            </ComboBox>
-            <TextBlock Text="What “Open terminal here” opens, from the menu or from its key. Only the terminals found on this machine are listed; if you install another one, reopen Vaktari to see it."
-                       FontSize="{DynamicResource FontSizeTiny}"
-                       Foreground="{DynamicResource ViewDimText}"
-                       TextWrapping="Wrap"/>
-          </StackPanel>
-
-          <Border Height="1" Background="{DynamicResource SeparatorColour}"/>
-
-          <TextBlock Text="Proton Drive"
-                     FontSize="{DynamicResource FontSizeTiny}"
-                     Foreground="{DynamicResource ViewDimText}"/>
-
-          <StackPanel Spacing="6">
-            <TextBox Text="{Binding ProtonDriveFolder}"
-                     AutomationProperties.Name="Proton Drive folder"
-                     PlaceholderText="The folder the Proton Drive app syncs, e.g. D:\Proton-Drive"
-                     FontSize="{DynamicResource FontSizeSmall}"/>
-            <TextBlock Text="With this set — and the Proton Drive CLI installed and signed in — right-clicking anything inside it offers a public share link, and active links appear under SHARING in the sidebar."
-                       FontSize="{DynamicResource FontSizeTiny}"
-                       Foreground="{DynamicResource ViewDimText}"
-                       TextWrapping="Wrap"/>
-          </StackPanel>
-
-          <Border Height="1" Background="{DynamicResource SeparatorColour}"/>
-
-          <TextBlock Text="Updates"
-                     FontSize="{DynamicResource FontSizeTiny}"
-                     Foreground="{DynamicResource ViewDimText}"/>
-
-          <!-- Off unless asked: a request to github.com on the user's own
-               network is not a default. Nothing is downloaded; a newer release
-               is a line on the status bar and on the version line below, where
-               "What is new" is the link. -->
-          <CheckBox FontSize="{DynamicResource FontSizeSmall}"
-                    IsChecked="{Binding CheckForUpdates}"
-                    AutomationProperties.Name="Check for a newer release once a day">
-            <StackPanel>
-              <TextBlock Text="Check for a newer release once a day"/>
-              <TextBlock Text="Asks github.com whether a newer release exists — once a day, sending nothing but the request. Nothing is downloaded: a newer release is a line here and on the status bar, with a link to its notes."
-                         FontSize="{DynamicResource FontSizeTiny}"
-                         Foreground="{DynamicResource ViewDimText}"
-                         TextWrapping="Wrap"/>
-            </StackPanel>
-          </CheckBox>
-
-          <Border Height="1" Background="{DynamicResource SeparatorColour}"/>
-
-          <TextBlock Text="Status bar"
-                     FontSize="{DynamicResource FontSizeTiny}"
-                     Foreground="{DynamicResource ViewDimText}"/>
+          <TextBlock Classes="heading" Text="Sorting"/>
 
           <StackPanel Spacing="8">
-            <CheckBox Content="Show the status bar"
-                      FontSize="{DynamicResource FontSizeSmall}"
-                      IsChecked="{Binding ShowStatusBar}"/>
+            <!-- **"Case sensitive" sat greyed out under "Natural sorting" with
+                 nothing saying why.** Three rows, three answers; see
+                 SettingsViewModel.SortOrderIndex. -->
+            <DockPanel>
+              <TextBlock Classes="label" Text="Sort names"/>
+              <ComboBox SelectedIndex="{Binding SortOrderIndex}"
+                        AutomationProperties.Name="Sort names"
+                        AutomationProperties.HelpText="Natural order puts file2 before file10, where alphabetical order gives file1, file10, file2. Natural order never tells capitals apart; alphabetical order can, which puts Zebra before apple."
+                        HorizontalAlignment="Stretch"
+                        FontSize="{DynamicResource FontSizeSmall}">
+                <ComboBoxItem Content="Naturally, file2 before file10"/>
+                <ComboBoxItem Content="Alphabetically"/>
+                <ComboBoxItem Content="Alphabetically, capitals first"/>
+              </ComboBox>
+            </DockPanel>
 
-            <!-- No longer indented under the status bar, and no longer disabled
-                 with it: the number moved to the sidebar's drive rows, so the
-                 two settings are now independent. -->
-            <CheckBox Content="Free space on drive rows"
+            <!-- Beside the sort order, because that is what it is: the
+                 comparer applied it ahead of the field and read no setting.
+                 Ticked out of the box, which is both the shipped behaviour and
+                 what all three references do. -->
+            <CheckBox Content="Sort folders before files"
                       FontSize="{DynamicResource FontSizeSmall}"
-                      IsChecked="{Binding ShowFreeSpace}"/>
+                      AutomationProperties.HelpText="On, folders are banded above the files whichever column you sort by. Off, they take their place in the order like anything else — the newest thing in a folder can then be a folder. Grouping by size or by type keeps a Folders band whichever way this is set, because those bands have a heading; grouping by name or by date does not, and there this decides whether folders lead inside each band."
+                      IsChecked="{Binding FoldersFirst}"/>
           </StackPanel>
 
           <Border Height="1" Background="{DynamicResource SeparatorColour}"/>
 
-          <TextBlock Text="Previews"
-                     FontSize="{DynamicResource FontSizeTiny}"
-                     Foreground="{DynamicResource ViewDimText}"/>
+          <TextBlock Classes="heading" Text="Each folder's view"/>
+
+          <StackPanel Spacing="8">
+            <CheckBox Content="Remember the view for each folder"
+                      FontSize="{DynamicResource FontSizeSmall}"
+                      AutomationProperties.HelpText="Off, every folder uses the same view. On, a folder keeps the layout, sort and grouping you last gave it. Stored centrally rather than written into your folders, but a view another file manager has already written into a folder is still honoured."
+                      IsChecked="{Binding RememberViewPerFolder}"/>
+
+            <!-- **Turning the box above off left every folder already recorded
+                 exactly as it was.** The store fills up on its own — merely
+                 LOOKING at a folder writes to it — and there was no way to see
+                 it or empty it from anywhere in the application.
+
+                 Indented under the box it belongs to, and shown only when
+                 there is something to forget: an offer to clear an empty list
+                 is a button that does nothing. -->
+            <StackPanel Orientation="Horizontal" Spacing="10" Margin="24,0,0,0"
+                        IsVisible="{Binding HasRememberedViews}">
+              <Button Content="Forget remembered views"
+                      Padding="10,3"
+                      FontSize="{DynamicResource FontSizeSmall}"
+                      Command="{Binding ForgetRememberedViewsCommand}"/>
+              <TextBlock Text="{Binding RememberedViewsLabel}"
+                         FontSize="{DynamicResource FontSizeTiny}"
+                         Foreground="{DynamicResource ViewDimText}"
+                         VerticalAlignment="Center"/>
+            </StackPanel>
+          </StackPanel>
+
+          <Border Height="1" Background="{DynamicResource SeparatorColour}"/>
+
+          <!-- The layout is "List" on the toolbar button and in the README; the
+               panel beside it keeps its own name, "details", which it really
+               is. -->
+          <TextBlock Classes="heading" Text="In the list"/>
+
+          <StackPanel Spacing="8">
+            <!-- **A dropdown where three radios and a note were.** It was a
+                 tick box before that, which could say "counts" or "nothing"
+                 and had no way to say "how big it is". -->
+            <DockPanel>
+              <TextBlock Classes="label" Text="A folder's size shows"/>
+              <ComboBox SelectedIndex="{Binding FolderSizeIndex}"
+                        AutomationProperties.Name="A folder's size shows"
+                        AutomationProperties.HelpText="What the Size column says for a folder. How big its contents are reads every folder underneath, so it costs what it costs — worked out for the rows on screen and stopped when you scroll past them. Show space usage answers the same question for a whole folder at once."
+                        HorizontalAlignment="Stretch"
+                        FontSize="{DynamicResource FontSizeSmall}">
+                <ComboBoxItem Content="How many things are in it"/>
+                <ComboBoxItem Content="How big its contents are"/>
+                <ComboBoxItem Content="Nothing"/>
+              </ComboBox>
+            </DockPanel>
+
+            <local:SettingsColumns>
+              <CheckBox Content="Absolute dates"
+                        FontSize="{DynamicResource FontSizeSmall}"
+                        AutomationProperties.HelpText="2026-07-26 14:30 for everything, instead of dropping the parts you can infer from today."
+                        IsChecked="{Binding AbsoluteDates}"/>
+
+              <!-- Here rather than on General: it is about what a row shows
+                   when the pointer rests on it — the full path, a trimmed name
+                   whole, a date in full. -->
+              <CheckBox Content="Show tooltips on rows"
+                        FontSize="{DynamicResource FontSizeSmall}"
+                        AutomationProperties.HelpText="The whole name of a trimmed row, its full path, the exact date, and the warning on a name that looks like another row's, when the pointer rests on it."
+                        IsChecked="{Binding ShowTooltips}"/>
+            </local:SettingsColumns>
+          </StackPanel>
+
+          <Border Height="1" Background="{DynamicResource SeparatorColour}"/>
+
+          <TextBlock Classes="heading" Text="Previews"/>
 
           <StackPanel Spacing="8">
             <CheckBox Content="Show thumbnails"
@@ -791,533 +813,213 @@
 
             <Grid ColumnDefinitions="*,90" Margin="24,0,0,0"
                   IsEnabled="{Binding CanSetPreviewLimits}">
-              <TextBlock Grid.Column="0" Text="Skip local files larger than (MB)"
-                         VerticalAlignment="Center"
-                         FontSize="{DynamicResource FontSizeSmall}"/>
+              <TextBlock Grid.Column="0" Classes="label" Text="Skip local files larger than (MB)"/>
               <TextBox Grid.Column="1" Text="{Binding MaxLocalPreviewMegabytes}"
                        AutomationProperties.Name="Skip local files larger than, in megabytes"
+                       AutomationProperties.HelpText="Blank or 0 means no limit."
                        PlaceholderText="No limit"
                        FontSize="{DynamicResource FontSizeSmall}"/>
             </Grid>
 
             <Grid ColumnDefinitions="*,90" Margin="24,0,0,0"
                   IsEnabled="{Binding CanSetPreviewLimits}">
-              <TextBlock Grid.Column="0" Text="Skip network files larger than (MB)"
-                         VerticalAlignment="Center"
-                         FontSize="{DynamicResource FontSizeSmall}"/>
+              <TextBlock Grid.Column="0" Classes="label" Text="Skip network files larger than (MB)"/>
               <TextBox Grid.Column="1" Text="{Binding MaxRemotePreviewMegabytes}"
                        AutomationProperties.Name="Skip network files larger than, in megabytes"
+                       AutomationProperties.HelpText="A thumbnail on a mounted share pulls the whole file over the network, which is why this limit is separate from the local one. Blank or 0 means no limit."
                        PlaceholderText="No limit"
                        FontSize="{DynamicResource FontSizeSmall}"/>
             </Grid>
-
-            <TextBlock Text="A thumbnail on a mounted share pulls the whole file over the network, which is why the two limits are separate. Blank or 0 means no limit."
-                       FontSize="{DynamicResource FontSizeTiny}"
-                       Foreground="{DynamicResource ViewDimText}"
-                       TextWrapping="Wrap" Margin="24,0,0,0"/>
           </StackPanel>
-
-        </StackPanel>
-        </ScrollViewer>
-      </TabItem>
-      <TabItem Header="Startup">
-        <ScrollViewer HorizontalScrollBarVisibility="Disabled"
-                      Background="{DynamicResource AppBackground}">
-        <StackPanel Spacing="14" Margin="20,16,20,16">
-
-          <TextBlock Text="When Vaktari opens"
-                     FontSize="{DynamicResource FontSizeTiny}"
-                     Foreground="{DynamicResource ViewDimText}"/>
-
-          <StackPanel Spacing="6">
-            <RadioButton GroupName="startup"
-                         FontSize="{DynamicResource FontSizeSmall}"
-                         AutomationProperties.Name="Restore folders, tabs and window from last time"
-                         IsChecked="{Binding RestoreLastSession}">
-              <StackPanel>
-                <TextBlock Text="Restore folders, tabs and window from last time"/>
-                <TextBlock Text="The default. Forgetting these is the thing this replaces."
-                           FontSize="{DynamicResource FontSizeTiny}"
-                           Foreground="{DynamicResource ViewDimText}"
-                           TextWrapping="Wrap"/>
-              </StackPanel>
-            </RadioButton>
-
-            <RadioButton Content="Open the home folder" GroupName="startup"
-                         FontSize="{DynamicResource FontSizeSmall}"
-                         IsChecked="{Binding StartInHome}"/>
-
-            <!-- **The drive listing was reachable from everywhere but here.**
-                 The sidebar row, Up from a drive root, the breadcrumb and the
-                 path bar all went there; the startup choice offered a session,
-                 the home folder, or a directory — and the listing is not a
-                 directory, so the folder box below could not name it either.
-                 Explorer's two startup choices are This PC and Home.
-
-                 Content is bound, not written: the noun is "This PC" on
-                 Windows and "this computer" on Linux, and the label puts a word
-                 in front of it. x:Static was measured here and cannot compose
-                 that — Text="Open {x:Static core:Naming.ComputerName}" rendered
-                 those characters literally, because inside a longer string the
-                 extension is not evaluated at all. -->
-            <RadioButton Content="{Binding StartInComputerLabel}" GroupName="startup"
-                         FontSize="{DynamicResource FontSizeSmall}"
-                         IsChecked="{Binding StartInComputer}"/>
-
-            <RadioButton Content="Open a specific folder" GroupName="startup"
-                         FontSize="{DynamicResource FontSizeSmall}"
-                         IsChecked="{Binding StartInSpecificFolder}"/>
-          </StackPanel>
-
-          <!-- **The placeholder said "/home/…" on Windows** — a hardcoded
-               Linux path in the one control whose whole job is to be given a
-               path on THIS machine. And there was no Browse, so the only way
-               to set it was to type a path correctly from memory. -->
-          <DockPanel Margin="24,0,0,0">
-            <Button DockPanel.Dock="Right"
-                    Content="Browse…"
-                    Padding="10,3"
-                    Margin="8,0,0,0"
-                    FontSize="{DynamicResource FontSizeSmall}"
-                    IsEnabled="{Binding CanEditStartupFolder}"
-                    Command="{Binding BrowseForStartupFolderCommand}"/>
-
-            <TextBox Text="{Binding StartupFolder}"
-                     AutomationProperties.Name="Startup folder"
-                     PlaceholderText="{Binding StartupFolderHint}"
-                     IsEnabled="{Binding CanEditStartupFolder}"
-                     FontSize="{DynamicResource FontSizeSmall}"/>
-          </DockPanel>
-
-          <!-- Said, not refused: the folder may be on a stick that is out or a
-               share that is down, and refusing to save it would make the
-               setting unusable for exactly the people who need it most. -->
-          <TextBlock Text="{Binding StartupFolderProblem}"
-                     IsVisible="{Binding HasStartupFolderProblem}"
-                     FontSize="{DynamicResource FontSizeTiny}"
-                     Foreground="{DynamicResource ViewDimText}"
-                     TextWrapping="Wrap"
-                     Margin="24,0,0,0"/>
 
           <Border Height="1" Background="{DynamicResource SeparatorColour}"/>
 
-          <TextBlock Text="How it opens"
-                     FontSize="{DynamicResource FontSizeTiny}"
-                     Foreground="{DynamicResource ViewDimText}"/>
+          <TextBlock Classes="heading" Text="Grid spacing"/>
 
           <StackPanel Spacing="8">
-            <CheckBox Content="Begin in split view"
-                      FontSize="{DynamicResource FontSizeSmall}"
-                      IsChecked="{Binding BeginInSplitView}"/>
+            <Grid ColumnDefinitions="*,90">
+              <TextBlock Grid.Column="0" Classes="label" Text="Extra gap between grid tiles (px)"/>
+              <TextBox Grid.Column="1" Text="{Binding IconSpacing}"
+                       AutomationProperties.Name="Extra gap between grid tiles, in pixels"
+                       AutomationProperties.HelpText="Blank or 0 leaves the layout as it is. The value scales with the icon size, so a grid stays proportioned when you zoom. Capped at 48."
+                       PlaceholderText="None"
+                       FontSize="{DynamicResource FontSizeSmall}"/>
+            </Grid>
 
-            <CheckBox Content="Show the filter bar"
-                      FontSize="{DynamicResource FontSizeSmall}"
-                      IsChecked="{Binding ShowFilterBar}"/>
-
-            <!-- "Path bar", because that is what the thing is called everywhere
-                 else you meet it — the bar's own tooltip, the README, Ctrl+L.
-                 "Location" was doing double duty for this and for Copy location,
-                 which is a different thing entirely. The binding stays
-                 LocationBarEditable: it is the key this setting is stored under,
-                 and renaming it would silently reset the preference on every
-                 install that already has one. -->
-            <CheckBox Content="Start with the path bar editable"
-                      FontSize="{DynamicResource FontSizeSmall}"
-                      IsChecked="{Binding LocationBarEditable}"/>
-
-            <CheckBox Content="Show the full path in the title bar"
-                      FontSize="{DynamicResource FontSizeSmall}"
-                      IsChecked="{Binding ShowFullPathInTitleBar}"/>
+            <Grid ColumnDefinitions="*,90">
+              <TextBlock Grid.Column="0" Classes="label" Text="Extra gap around compact cells (px)"/>
+              <TextBox Grid.Column="1" Text="{Binding CompactSpacing}"
+                       AutomationProperties.Name="Extra gap around compact cells, in pixels"
+                       AutomationProperties.HelpText="Blank or 0 leaves the layout as it is. The value scales with the icon size, so the cells stay proportioned when you zoom. Capped at 48."
+                       PlaceholderText="None"
+                       FontSize="{DynamicResource FontSizeSmall}"/>
+            </Grid>
           </StackPanel>
-
-          <TextBlock Text="Changes to how it opens apply on the next launch."
-                     FontSize="{DynamicResource FontSizeTiny}"
-                     Foreground="{DynamicResource ViewDimText}"
-                     TextWrapping="Wrap"/>
 
         </StackPanel>
         </ScrollViewer>
       </TabItem>
-      <TabItem Header="View modes">
+
+      <!-- What Vaktari keeps about you, and where it reaches outside itself:
+           the recent lists and searches, the desktop's default, a terminal,
+           Proton Drive, and github.com. -->
+      <TabItem Header="_Privacy and system"
+               AutomationProperties.Name="Privacy and system" AutomationProperties.AccessKey="Alt+P">
         <ScrollViewer HorizontalScrollBarVisibility="Disabled"
                       Background="{DynamicResource AppBackground}">
         <StackPanel Spacing="14" Margin="20,16,20,16">
 
-          <TextBlock Text="Text"
-                     FontSize="{DynamicResource FontSizeTiny}"
-                     Foreground="{DynamicResource ViewDimText}"/>
-
-          <StackPanel Spacing="6">
-            <ComboBox ItemsSource="{Binding AvailableFonts}"
-                      AutomationProperties.Name="Font"
-                      SelectedItem="{Binding SelectedFont}"
-                      HorizontalAlignment="Stretch"
-                      FontSize="{DynamicResource FontSizeSmall}">
-              <ComboBox.ItemTemplate>
-                <DataTemplate x:DataType="vm:FontOption">
-                  <!-- FIXED width, not Min: every row must measure the same or
-                       the popup resizes to whichever items happen to be
-                       realized, and it visibly breathes as you scroll. Trimming
-                       alone does not do it — a TextBlock still asks for its
-                       full desired width unless something constrains it. -->
-                  <DockPanel Width="440">
-                    <!-- The sample keeps the sentinel row honest: it has no
-                         face of its own, so it shows no sample. -->
-                    <TextBlock DockPanel.Dock="Right"
-                               Text="AaBbGg 0123"
-                               IsVisible="{Binding !IsFollowDesktop}"
-                               FontFamily="{Binding Family}"
-                               Foreground="{DynamicResource ViewDimText}"
-                               Margin="16,0,0,0"
-                               VerticalAlignment="Center"/>
-                    <!-- The name now renders in its OWN face, which is what a
-                         font picker is expected to do. The trade-off is real
-                         and was the reason it did not before: a symbol or icon
-                         font draws its own name as glyphs, so that row becomes
-                         unreadable. The tooltip carries the plain name for
-                         exactly those rows — the list is alphabetical, so
-                         position narrows it down and the tooltip settles it. -->
-                    <TextBlock Text="{Binding Name}"
-                               FontFamily="{Binding Family}"
-                               ToolTip.Tip="{Binding Name}"
-                               VerticalAlignment="Center"
-                               TextTrimming="CharacterEllipsis"/>
-                  </DockPanel>
-                </DataTemplate>
-              </ComboBox.ItemTemplate>
-            </ComboBox>
-            <TextBlock Text="The first entry uses whatever your desktop is set to. This changes the face only; the size is below."
-                       FontSize="{DynamicResource FontSizeTiny}"
-                       Foreground="{DynamicResource ViewDimText}"
-                       TextWrapping="Wrap"/>
-          </StackPanel>
-
-          <!-- The rows are decoded by index in InterfaceText.Steps, and a test
-               checks this list against it: a row added here and not there would
-               store the size of whichever row happened to share its index. -->
-          <StackPanel Spacing="6">
-            <ComboBox SelectedIndex="{Binding InterfaceTextIndex}"
-                      AutomationProperties.Name="Text size"
-                      HorizontalAlignment="Stretch"
-                      FontSize="{DynamicResource FontSizeSmall}">
-              <ComboBoxItem Content="Follow the desktop text size"/>
-              <ComboBoxItem Content="100%"/>
-              <ComboBoxItem Content="110%"/>
-              <ComboBoxItem Content="125%"/>
-              <ComboBoxItem Content="150%"/>
-              <ComboBoxItem Content="175%"/>
-              <ComboBoxItem Content="200%"/>
-            </ComboBox>
-            <TextBlock Text="How large every label, row, tab and status line is drawn. Following the desktop is the default: on Windows that is the accessibility text size, and on Plasma the general font. Zooming a pane with ctrl and the wheel still works from wherever this leaves it."
-                       FontSize="{DynamicResource FontSizeTiny}"
-                       Foreground="{DynamicResource ViewDimText}"
-                       TextWrapping="Wrap"/>
-          </StackPanel>
-
-          <TextBlock Text="Colour"
-                     FontSize="{DynamicResource FontSizeTiny}"
-                     Foreground="{DynamicResource ViewDimText}"/>
-
-          <StackPanel Spacing="6">
-            <ComboBox SelectedIndex="{Binding ThemeModeIndex}"
-                      AutomationProperties.Name="Colour"
-                      HorizontalAlignment="Stretch"
-                      FontSize="{DynamicResource FontSizeSmall}">
-              <ComboBoxItem Content="Follow the desktop"/>
-              <ComboBoxItem Content="Light"/>
-              <ComboBoxItem Content="Dark"/>
-            </ComboBox>
-            <TextBlock Text="Following the desktop is the default, and the only setting that keeps up when you change your desktop while Vaktari is open. The other two hold whatever you pick."
-                       FontSize="{DynamicResource FontSizeTiny}"
-                       Foreground="{DynamicResource ViewDimText}"
-                       TextWrapping="Wrap"/>
-          </StackPanel>
-
-          <!-- The flag behind this has been read on every theme apply for some
-               time and had no control at all, so the only way to set it was to
-               edit settings.json by hand. -->
-          <CheckBox FontSize="{DynamicResource FontSizeSmall}"
-                    IsChecked="{Binding FollowDesktopColours}"
-                    AutomationProperties.Name="Follow desktop colours">
-            <StackPanel>
-              <TextBlock Text="Follow desktop colours"/>
-              <TextBlock Text="Off, Vaktari uses its own scheme. On, your desktop's colours and accent are layered over it. This is about hues, not lightness — whichever you choose, the setting above still decides light or dark."
-                         FontSize="{DynamicResource FontSizeTiny}"
-                         Foreground="{DynamicResource ViewDimText}"
-                         TextWrapping="Wrap"/>
-            </StackPanel>
-          </CheckBox>
-
-          <Border Height="1" Background="{DynamicResource SeparatorColour}"/>
-
-          <TextBlock Text="Details panel"
-                     FontSize="{DynamicResource FontSizeTiny}"
-                     Foreground="{DynamicResource ViewDimText}"/>
-
-          <CheckBox FontSize="{DynamicResource FontSizeSmall}"
-                    IsChecked="{Binding GrowWindowForPanel}"
-                    AutomationProperties.Name="Widen the window to fit the details panel">
-            <StackPanel>
-              <TextBlock Text="Widen the window to fit the details panel"/>
-              <TextBlock Text="Off: the toggle is greyed out when the pane is too narrow, and the window keeps the size you gave it. On: the window grows instead — your desktop still caps how far."
-                         FontSize="{DynamicResource FontSizeTiny}"
-                         Foreground="{DynamicResource ViewDimText}"
-                         TextWrapping="Wrap"/>
-            </StackPanel>
-          </CheckBox>
-
-          <!-- Indented and IsEnabled-bound to the checkbox above, because it does
-               nothing on its own: there is no width to hand back unless something
-               took some. A dependent option that looks independent invites people
-               to tick it and conclude the feature is broken. -->
-          <CheckBox Margin="24,0,0,0"
-                    FontSize="{DynamicResource FontSizeSmall}"
-                    IsEnabled="{Binding GrowWindowForPanel}"
-                    IsChecked="{Binding RestoreWidthOnPanelClose}"
-                    AutomationProperties.Name="Shrink back when the panel closes">
-            <StackPanel>
-              <TextBlock Text="Shrink back when the panel closes"/>
-              <TextBlock Text="Returns the window to the width it had before it was widened. Skipped if you have resized the window yourself since — and in split view, only once neither side still needs the room."
-                         FontSize="{DynamicResource FontSizeTiny}"
-                         Foreground="{DynamicResource ViewDimText}"
-                         TextWrapping="Wrap"/>
-            </StackPanel>
-          </CheckBox>
-
-          <Border Height="1" Background="{DynamicResource SeparatorColour}"/>
-
-          <TextBlock Text="Version control"
-                     FontSize="{DynamicResource FontSizeTiny}"
-                     Foreground="{DynamicResource ViewDimText}"/>
-
-          <CheckBox FontSize="{DynamicResource FontSizeSmall}"
-                    IsChecked="{Binding ShowVcsDecorations}"
-                    AutomationProperties.Name="Mark files by version-control status">
-            <StackPanel>
-              <TextBlock Text="Mark files by version-control status"/>
-              <TextBlock Text="M modified · A added · D deleted · ? untracked · ! conflicted. Runs git once per folder, and only inside a repository."
-                         FontSize="{DynamicResource FontSizeTiny}"
-                         Foreground="{DynamicResource ViewDimText}"
-                         TextWrapping="Wrap"/>
-            </StackPanel>
-          </CheckBox>
-
-          <Border Height="1" Background="{DynamicResource SeparatorColour}"/>
-
-          <TextBlock Text="Selection"
-                     FontSize="{DynamicResource FontSizeTiny}"
-                     Foreground="{DynamicResource ViewDimText}"/>
-
-          <!-- Off by default, which is Explorer's answer rather than Dolphin's:
-               the boxes take a slot out of the name column, and a listing that
-               grows one uninvited is a worse first impression than a feature
-               nobody finds. -->
-          <CheckBox FontSize="{DynamicResource FontSizeSmall}"
-                    IsChecked="{Binding ShowSelectionBoxes}"
-                    AutomationProperties.Name="Show selection check boxes">
-            <StackPanel>
-              <TextBlock Text="Show selection check boxes"/>
-              <TextBlock Text="A box ahead of every row in all three layouts, and one on the list heading that ticks or clears the lot. The box appears when you point at a row and stays while the row is ticked. Ctrl+click, shift+click and dragging a rectangle round the rows work the same either way."
-                         FontSize="{DynamicResource FontSizeTiny}"
-                         Foreground="{DynamicResource ViewDimText}"
-                         TextWrapping="Wrap"/>
-            </StackPanel>
-          </CheckBox>
-
-          <Border Height="1" Background="{DynamicResource SeparatorColour}"/>
-
-          <TextBlock Text="File names"
-                     FontSize="{DynamicResource FontSizeTiny}"
-                     Foreground="{DynamicResource ViewDimText}"/>
-
-          <!-- Here rather than under "List view" below: all three layouts bind
-               the same converter, so this is not a property of one of them.
-               Ticked out of the box, which is the behaviour the application has
-               always had — Explorer ships the same switch unticked, and
-               changing what every row says on upgrade is not a default a file
-               manager gets to pick for you. -->
-          <CheckBox FontSize="{DynamicResource FontSizeSmall}"
-                    IsChecked="{Binding ShowFileExtensions}"
-                    AutomationProperties.Name="Show file name extensions">
-            <StackPanel>
-              <TextBlock Text="Show file name extensions"/>
-              <TextBlock Text="Off, notes.txt lists as notes in all three layouts. Anything that runs when you open it keeps its ending — a program, a script, an installer — so nothing can be listed as the document beside it. The name you type when renaming, the tooltip on a trimmed name and the look-alike mark all keep the whole file name, and a shortcut or a launcher keeps the name it already had."
-                         FontSize="{DynamicResource FontSizeTiny}"
-                         Foreground="{DynamicResource ViewDimText}"
-                         TextWrapping="Wrap"/>
-            </StackPanel>
-          </CheckBox>
-
-          <Border Height="1" Background="{DynamicResource SeparatorColour}"/>
-
-          <TextBlock Text="Spacing"
-                     FontSize="{DynamicResource FontSizeTiny}"
-                     Foreground="{DynamicResource ViewDimText}"/>
-
-          <Grid ColumnDefinitions="*,90">
-            <TextBlock Grid.Column="0" Text="Extra gap between grid tiles (px)"
-                       VerticalAlignment="Center"
-                       FontSize="{DynamicResource FontSizeSmall}"/>
-            <TextBox Grid.Column="1" Text="{Binding IconSpacing}"
-                     AutomationProperties.Name="Extra gap between grid tiles, in pixels"
-                     PlaceholderText="None"
-                     FontSize="{DynamicResource FontSizeSmall}"/>
-          </Grid>
-
-          <Grid ColumnDefinitions="*,90">
-            <TextBlock Grid.Column="0" Text="Extra gap around compact cells (px)"
-                       VerticalAlignment="Center"
-                       FontSize="{DynamicResource FontSizeSmall}"/>
-            <TextBox Grid.Column="1" Text="{Binding CompactSpacing}"
-                     AutomationProperties.Name="Extra gap around compact cells, in pixels"
-                     PlaceholderText="None"
-                     FontSize="{DynamicResource FontSizeSmall}"/>
-          </Grid>
-
-          <TextBlock Text="Blank or 0 leaves the layouts as they are. The value scales with the icon size, so a grid stays proportioned when you zoom. Capped at 48."
-                     FontSize="{DynamicResource FontSizeTiny}"
-                     Foreground="{DynamicResource ViewDimText}"
-                     TextWrapping="Wrap"/>
-
-          <Border Height="1" Background="{DynamicResource SeparatorColour}"/>
-
-          <!-- The layout is "List" on the toolbar button and in the README; this
-               heading was the only place calling it the details view, three
-               sections under a "Details panel" heading that means something else
-               again. The panel keeps its name — it really is the details — and
-               the layout takes the one the rest of the interface already uses. -->
-          <TextBlock Text="List view"
-                     FontSize="{DynamicResource FontSizeTiny}"
-                     Foreground="{DynamicResource ViewDimText}"/>
+          <TextBlock Classes="heading" Text="What Vaktari remembers"/>
 
           <StackPanel Spacing="8">
-            <CheckBox FontSize="{DynamicResource FontSizeSmall}"
-                      IsChecked="{Binding AbsoluteDates}"
-                      AutomationProperties.Name="Absolute dates">
-              <StackPanel>
-                <TextBlock Text="Absolute dates"/>
-                <TextBlock Text="2026-07-26 14:30 for everything, instead of dropping the parts you can infer from today."
-                           FontSize="{DynamicResource FontSizeTiny}"
-                           Foreground="{DynamicResource ViewDimText}"
-                           TextWrapping="Wrap"/>
-              </StackPanel>
-            </CheckBox>
+            <!-- **Every folder and every file opened was recorded, with no
+                 setting consulted and no way to empty the list.**
 
-            <CheckBox FontSize="{DynamicResource FontSizeSmall}"
-                      IsChecked="{Binding ShowFolderTree}"
-                      AutomationProperties.Name="Show a folder tree in the sidebar">
-              <StackPanel>
-                <TextBlock Text="Show a folder tree in the sidebar"/>
-                <TextBlock Text="A FOLDERS section under your places, rooted at each of them. It reads a folder each time you open one, and expandable folders in the List layout do the same job inside the listing."
-                           FontSize="{DynamicResource FontSizeTiny}"
-                           Foreground="{DynamicResource ViewDimText}"
-                           TextWrapping="Wrap"/>
-              </StackPanel>
-            </CheckBox>
+                 On by default: both references record by default, and a
+                 privacy switch that ships off is a feature nobody finds. -->
+            <CheckBox Content="Remember recently opened files and folders"
+                      FontSize="{DynamicResource FontSizeSmall}"
+                      AutomationProperties.HelpText="Off, nothing new is recorded. What is already remembered stays until you clear it."
+                      IsChecked="{Binding RememberRecent}"/>
 
-            <TextBlock Text="In the Size column, a folder shows"
-                       FontSize="{DynamicResource FontSizeTiny}"
-                       Foreground="{DynamicResource ViewDimText}"/>
-
-            <!-- **Three radios where a tick box was.** The box could say
-                 "counts" or "nothing" and had no way to say "how big it is",
-                 so that third mode sat in the settings file reachable only by
-                 editing it by hand — and the dialog preserved it rather than
-                 writing it, which is the shape of a setting nobody can find. -->
-            <StackPanel Spacing="6">
-              <RadioButton Content="How many things are in it" GroupName="foldersize"
-                           FontSize="{DynamicResource FontSizeSmall}"
-                           IsChecked="{Binding FolderSizeCounts}"/>
-
-              <RadioButton GroupName="foldersize"
-                           FontSize="{DynamicResource FontSizeSmall}"
-                           AutomationProperties.Name="How big its contents are"
-                           IsChecked="{Binding FolderSizeContents}">
-                <StackPanel>
-                  <TextBlock Text="How big its contents are"/>
-                  <TextBlock Text="Reads every folder underneath, so it costs what it costs — worked out for the rows on screen and stopped when you scroll past them. Show space usage answers the same question for a whole folder at once."
-                             FontSize="{DynamicResource FontSizeTiny}"
-                             Foreground="{DynamicResource ViewDimText}"
-                             TextWrapping="Wrap"/>
-                </StackPanel>
-              </RadioButton>
-
-              <RadioButton Content="Nothing" GroupName="foldersize"
-                           FontSize="{DynamicResource FontSizeSmall}"
-                           IsChecked="{Binding FolderSizeNothing}"/>
-            </StackPanel>
-          </StackPanel>
-
-        </StackPanel>
-        </ScrollViewer>
-      </TabItem>
-      <TabItem Header="Navigation">
-        <ScrollViewer HorizontalScrollBarVisibility="Disabled"
-                      Background="{DynamicResource AppBackground}">
-        <StackPanel Spacing="14" Margin="20,16,20,16">
-
-          <TextBlock Text="Open files and folders with"
-                     FontSize="{DynamicResource FontSizeTiny}"
-                     Foreground="{DynamicResource ViewDimText}"/>
-
-          <StackPanel Spacing="6">
-            <RadioButton GroupName="activation"
-                         FontSize="{DynamicResource FontSizeSmall}"
-                         AutomationProperties.Name="Whatever the desktop is set to"
-                         IsChecked="{Binding OpenWithSystem}">
-              <StackPanel>
-                <TextBlock Text="Whatever the desktop is set to"/>
-                <TextBlock Text="Follows your desktop's own single-click setting, so it matches the rest of your system without being configured twice."
-                           FontSize="{DynamicResource FontSizeTiny}"
-                           Foreground="{DynamicResource ViewDimText}"
-                           TextWrapping="Wrap"/>
-              </StackPanel>
-            </RadioButton>
-
-            <RadioButton Content="A single click" GroupName="activation"
-                         FontSize="{DynamicResource FontSizeSmall}"
-                         IsChecked="{Binding OpenWithSingle}"/>
-
-            <RadioButton Content="A double click" GroupName="activation"
-                         FontSize="{DynamicResource FontSizeSmall}"
-                         IsChecked="{Binding OpenWithDouble}"/>
-          </StackPanel>
-
-          <TextBlock Text="Takes effect immediately — the setting is read when you click, not when a row is drawn."
-                     FontSize="{DynamicResource FontSizeTiny}"
-                     Foreground="{DynamicResource ViewDimText}"
-                     TextWrapping="Wrap"/>
-
-          <TextBlock Text="Backspace"
-                     FontSize="{DynamicResource FontSizeTiny}"
-                     Foreground="{DynamicResource ViewDimText}"/>
-
-          <!-- **Backspace answered Explorer's habit and nobody else's.** It went
-               Back through history full stop, so somebody who learned the key in
-               Dolphin — where it goes to the parent folder — pressed it at the
-               bottom of a deep tree and was thrown to wherever they had been ten
-               minutes ago.
-
-               Asked as the Dolphin question so that unticked is what shipped, and
-               so that the stored value's zero is the shipped behaviour too: a key
-               absent from a settings.json written before this existed comes back
-               as false, and false has to mean Back. -->
-          <CheckBox x:Name="BackspaceChoice"
-                    FontSize="{DynamicResource FontSizeSmall}"
-                    IsChecked="{Binding BackspaceGoesUp}"
-                    AutomationProperties.Name="Backspace goes up one folder">
-            <StackPanel>
-              <TextBlock Text="Backspace goes up one folder"/>
-              <TextBlock Text="Off, Backspace goes back through the folders you visited, the way Explorer does. On, it goes up to the parent folder, the way Dolphin does. Back and Up one folder keep their own keys either way, and the keyboard sheet says which one Backspace is currently doing. Where there is no parent — This PC, the bin, Recent, a search — it then does nothing."
+            <!-- Separate from the switch above, and only when there is
+                 something to clear: turning recording off must not silently
+                 delete a list, because that is not what the checkbox says. -->
+            <StackPanel Orientation="Horizontal" Spacing="10" Margin="24,0,0,0"
+                        IsVisible="{Binding HasRecent}">
+              <Button Content="Forget what was opened"
+                      Padding="10,3"
+                      FontSize="{DynamicResource FontSizeSmall}"
+                      Command="{Binding ForgetRecentCommand}"/>
+              <TextBlock Text="{Binding RecentCountLabel}"
                          FontSize="{DynamicResource FontSizeTiny}"
                          Foreground="{DynamicResource ViewDimText}"
-                         TextWrapping="Wrap"/>
+                         VerticalAlignment="Center"/>
             </StackPanel>
-          </CheckBox>
+
+            <!-- Bound to RememberSearches, which is the positive half of
+                 GeneralSettings.ForgetSearches: that property is named for its
+                 zero value because deserialization here does not run property
+                 initializers. -->
+            <CheckBox Content="Remember what you search for"
+                      FontSize="{DynamicResource FontSizeSmall}"
+                      AutomationProperties.HelpText="On, right-clicking the search button lists the searches you have run, and choosing one asks it again. Off, nothing new is recorded. What is already remembered stays until you clear it."
+                      IsChecked="{Binding RememberSearches}"/>
+
+            <StackPanel Orientation="Horizontal" Spacing="10" Margin="24,0,0,0"
+                        IsVisible="{Binding HasSearchHistory}">
+              <Button Content="Forget what was searched for"
+                      Padding="10,3"
+                      FontSize="{DynamicResource FontSizeSmall}"
+                      Command="{Binding ForgetSearchHistoryCommand}"/>
+              <TextBlock Text="{Binding SearchCountLabel}"
+                         FontSize="{DynamicResource FontSizeTiny}"
+                         Foreground="{DynamicResource ViewDimText}"
+                         VerticalAlignment="Center"/>
+            </StackPanel>
+          </StackPanel>
+
+          <!-- One rule, gated with the section it introduces, so a platform
+               that cannot answer CanBeDefault does not draw a rule over
+               nothing. -->
+          <Border Height="1" Background="{DynamicResource SeparatorColour}"
+                  IsVisible="{Binding CanBeDefault}"/>
+
+          <StackPanel Spacing="8" IsVisible="{Binding CanBeDefault}">
+            <TextBlock Classes="heading" Text="Opening folders"/>
+
+            <!-- A BUTTON, not a checkbox, and that is the honest shape.
+                 Everything else in this dialog edits a copy and commits it on
+                 Apply or Save, which is what makes Cancel mean something. This
+                 writes to the system the moment it runs — the registry on
+                 Windows, the desktop's file-type database on Linux — and there
+                 is no way to stage that. -->
+            <WrapPanel>
+              <Button Content="Make Vaktari the default"
+                      Padding="12,4" Margin="0,0,10,0"
+                      IsVisible="{Binding !IsDefaultFileManager}"
+                      Command="{Binding MakeDefaultCommand}"
+                      FontSize="{DynamicResource FontSizeSmall}"/>
+              <Button Content="Stop being the default"
+                      Padding="12,4" Margin="0,0,10,0"
+                      IsVisible="{Binding IsDefaultFileManager}"
+                      Command="{Binding RestoreDefaultCommand}"
+                      FontSize="{DynamicResource FontSizeSmall}"/>
+              <TextBlock Text="Vaktari opens folders now."
+                         IsVisible="{Binding IsDefaultFileManager}"
+                         VerticalAlignment="Center"
+                         FontSize="{DynamicResource FontSizeSmall}"
+                         Foreground="{DynamicResource ViewDimText}"/>
+            </WrapPanel>
+
+            <!-- Said where the button is, because it is the one thing in the
+                 dialog that does not wait for Apply or Save. -->
+            <TextBlock Classes="note"
+                       Text="This one takes effect straight away, not when you apply or save."/>
+
+            <TextBlock Classes="note"
+                       Text="{Binding DefaultCaveat}"
+                       IsVisible="{Binding HasDefaultCaveat}"/>
+
+            <TextBlock Text="{Binding DefaultStatus}"
+                       IsVisible="{Binding HasDefaultStatus}"
+                       FontSize="{DynamicResource FontSizeTiny}"
+                       Foreground="{DynamicResource AccentText}"
+                       TextWrapping="Wrap"/>
+          </StackPanel>
+
+          <Border Height="1" Background="{DynamicResource SeparatorColour}"/>
+
+          <TextBlock Classes="heading" Text="Elsewhere on this machine"/>
+
+          <StackPanel Spacing="8">
+            <!-- The chooser only earns its place on a machine with more than
+                 one, but it is shown regardless: a dropdown reading "Whichever
+                 is found first" is how somebody discovers the choice exists at
+                 all. -->
+            <DockPanel>
+              <TextBlock Classes="label" Text="Terminal"/>
+              <ComboBox ItemsSource="{Binding AvailableTerminals}"
+                        AutomationProperties.Name="Terminal"
+                        AutomationProperties.HelpText="What “Open terminal here” opens, from the menu or from its key. Only the terminals found on this machine are listed; if you install another one, reopen Vaktari to see it."
+                        SelectedItem="{Binding SelectedTerminal}"
+                        HorizontalAlignment="Stretch"
+                        FontSize="{DynamicResource FontSizeSmall}">
+                <ComboBox.ItemTemplate>
+                  <DataTemplate x:DataType="vm:TerminalChoice">
+                    <TextBlock Text="{Binding Name}" VerticalAlignment="Center"/>
+                  </DataTemplate>
+                </ComboBox.ItemTemplate>
+              </ComboBox>
+            </DockPanel>
+
+            <!-- **The box had no label**, only a placeholder — which vanishes
+                 the moment anything is typed — and the placeholder named a D:
+                 drive on Linux. Labelled now, and the example is a path on
+                 this machine (SettingsViewModel.ProtonDriveHint). -->
+            <DockPanel>
+              <TextBlock Classes="label" Text="Proton Drive folder"/>
+              <TextBox Text="{Binding ProtonDriveFolder}"
+                       AutomationProperties.Name="Proton Drive folder"
+                       AutomationProperties.HelpText="The folder the Proton Drive app syncs. With this set — and the Proton Drive CLI installed and signed in — right-clicking anything inside it offers a public share link, and active links appear under SHARING in the sidebar."
+                       PlaceholderText="{Binding ProtonDriveHint}"
+                       FontSize="{DynamicResource FontSizeSmall}"/>
+            </DockPanel>
+
+            <!-- Off unless asked: a request to github.com on the user's own
+                 network is not a default. Nothing is downloaded; a newer
+                 release is a line on the status bar and on the version line
+                 below, where "What is new" is the link. -->
+            <CheckBox Content="Check for a newer release once a day"
+                      FontSize="{DynamicResource FontSizeSmall}"
+                      AutomationProperties.HelpText="Asks github.com whether a newer release exists — once a day, sending nothing but the request. Nothing is downloaded: a newer release is a line here and on the status bar, with a link to its notes."
+                      IsChecked="{Binding CheckForUpdates}"/>
+          </StackPanel>
 
         </StackPanel>
         </ScrollViewer>
       </TabItem>
+
       <!-- **Every key was fixed, and the collisions with other programs'
            habits could only be explained.** Ctrl+D pins here and deletes in
            Explorer, Ctrl+B folds the sidebar here and adds a place in Dolphin,
@@ -1329,16 +1031,20 @@
            are about. Each row is two lines — the name over its keys — beside
            its two buttons, because the page is about 300px wide at the
            dialog's floor and a name, three chips and two buttons on one line
-           is not. IsSelected is bound so leaving the page stops a row
-           listening; see KeyboardPage for that and the rest of its rules. -->
-      <TabItem Header="Keyboard" IsSelected="{Binding Keyboard.IsOpen, Mode=TwoWay}">
+           is not. Leaving the page stops a row listening: the strip's
+           SelectedIndex is the model's PageIndex, which tells
+           Keyboard.IsOpen — see SettingsViewModel.OnPageIndexChanged for
+           why that is no longer a binding of its own on this tab, and
+           KeyboardPage for the rest of its rules. -->
+      <TabItem Header="_Keyboard"
+               AutomationProperties.Name="Keyboard" AutomationProperties.AccessKey="Alt+K">
         <DockPanel Background="{DynamicResource AppBackground}">
 
           <StackPanel DockPanel.Dock="Top" Spacing="10" Margin="20,16,20,8">
-            <TextBlock Text="Every command, and the keys that run it. Add key listens for the next key you press. A key another command already has is offered to you to take."
-                       FontSize="{DynamicResource FontSizeSmall}"
-                       Foreground="{DynamicResource ViewDimText}"
-                       TextWrapping="Wrap"/>
+            <TextBlock Text="Every command and the keys that run it — Add key listens for the next key you press."
+                       AutomationProperties.HelpText="A key another command already has is offered to you to take, and you choose whether to move it."
+                       Classes="note"
+                       FontSize="{DynamicResource FontSizeSmall}"/>
 
             <!-- What settings.json asked for and could not have, as the
                  keymap worded it. Only a file edited by hand ever has any. -->
@@ -1442,16 +1148,15 @@
         </DockPanel>
       </TabItem>
 
-      <TabItem Header="Context menu">
+      <TabItem Header="Context _menu"
+               AutomationProperties.Name="Context menu" AutomationProperties.AccessKey="Alt+M">
         <ScrollViewer HorizontalScrollBarVisibility="Disabled"
                       Background="{DynamicResource AppBackground}">
         <StackPanel Spacing="14" Margin="20,16,20,16">
 
-          <TextBlock Text="Show these in the right-click menu"
-                     FontSize="{DynamicResource FontSizeTiny}"
-                     Foreground="{DynamicResource ViewDimText}"/>
+          <TextBlock Classes="heading" Text="Show these in the right-click menu"/>
 
-          <StackPanel Spacing="8">
+          <local:SettingsColumns>
             <CheckBox Content="Copy to" FontSize="{DynamicResource FontSizeSmall}"
                       IsChecked="{Binding MenuCopyTo}"/>
             <CheckBox Content="Move to" FontSize="{DynamicResource FontSizeSmall}"
@@ -1477,7 +1182,7 @@
                  every install that already has one. -->
             <CheckBox Content="Arrange (sort, group and columns)" FontSize="{DynamicResource FontSizeSmall}"
                       IsChecked="{Binding MenuSortBy}"/>
-          </StackPanel>
+          </local:SettingsColumns>
 
           <!-- **The old wording promised "its keyboard shortcut still works",
                and for almost everything on this list there was no such shortcut.**
@@ -1499,7 +1204,7 @@
                by carries no gate at all**, so in Grid and Compact there is
                nothing to click and hiding Arrange takes sorting away along with
                grouping — it is the grouping half alone only in the layout that
-               draws columns. The sentence below is scoped to "the list view's
+               draws columns. The help below is scoped to "the list view's
                column headers" for that reason and is true as it stands;
                Hiding_arrange_leaves_the_headings_only_in_details is what keeps
                the escape route and this claim about it together, because the
@@ -1508,16 +1213,20 @@
                Keys are the person's to give now, under Keyboard, so the note
                names which entries are commands — in the palette, and able to
                take a key there — rather than printing keys that can be moved.
-               -->
-          <TextBlock Text="Hiding an entry takes it off the menu without removing the command — but for most of these the menu is the only route. Add this folder to places and Copy as path keep their keys while hidden, and Duplicate, sorting and grouping stay in the command palette, where any of them can be given a key under Keyboard. While Arrange is hidden, the list view's column headers still sort by name, type, size or modified, and right-clicking those headers still chooses which columns to show."
-                     FontSize="{DynamicResource FontSizeTiny}"
-                     Foreground="{DynamicResource ViewDimText}"
-                     TextWrapping="Wrap"/>
+
+               **One line on the page, the rest as its help.** The paragraph was
+               the longest thing on the page; the line says the part everybody
+               needs, and the tooltip and a screen reader have the exceptions. -->
+          <TextBlock Classes="note"
+                     Text="Hiding an entry takes it off the menu — for most of these, the only route to it."
+                     AutomationProperties.HelpText="Hiding an entry takes it off the menu without removing the command — but for most of these the menu is the only route. Add this folder to places and Copy as path keep their keys while hidden, and Duplicate, sorting and grouping stay in the command palette, where any of them can be given a key under Keyboard. While Arrange is hidden, the list view's column headers still sort by name, type, size or modified, and right-clicking those headers still chooses which columns to show."/>
 
         </StackPanel>
         </ScrollViewer>
       </TabItem>
-      <TabItem Header="{Binding BinTitle}">
+      <TabItem Header="{Binding BinPageHeader}"
+               AutomationProperties.Name="{Binding BinTitle}"
+               AutomationProperties.AccessKey="{Binding BinPageAccessKey}">
         <ScrollViewer HorizontalScrollBarVisibility="Disabled"
                       Background="{DynamicResource AppBackground}">
         <StackPanel Spacing="14" Margin="20,16,20,16">
@@ -1535,9 +1244,7 @@
 
             <Grid ColumnDefinitions="*,90" Margin="24,0,0,0"
                   IsEnabled="{Binding CanSetTrashAge}">
-              <TextBlock Grid.Column="0" Text="Days to keep"
-                         VerticalAlignment="Center"
-                         FontSize="{DynamicResource FontSizeSmall}"/>
+              <TextBlock Grid.Column="0" Classes="label" Text="Days to keep"/>
               <TextBox Grid.Column="1" Text="{Binding DeleteAfterDays}"
                        AutomationProperties.Name="Days to keep"
                        FontSize="{DynamicResource FontSizeSmall}"/>
@@ -1553,9 +1260,7 @@
 
             <Grid ColumnDefinitions="*,90" Margin="24,0,0,0"
                   IsEnabled="{Binding CanSetTrashSize}">
-              <TextBlock Grid.Column="0" Text="Percent of the disk"
-                         VerticalAlignment="Center"
-                         FontSize="{DynamicResource FontSizeSmall}"/>
+              <TextBlock Grid.Column="0" Classes="label" Text="Percent of the disk"/>
               <TextBox Grid.Column="1" Text="{Binding MaxPercentOfDisk}"
                        AutomationProperties.Name="Percent of the disk"
                        FontSize="{DynamicResource FontSizeSmall}"/>
@@ -1563,9 +1268,7 @@
 
             <StackPanel Spacing="6" Margin="24,0,0,0"
                         IsEnabled="{Binding CanSetTrashSize}">
-              <TextBlock Text="When it is exceeded"
-                         FontSize="{DynamicResource FontSizeTiny}"
-                         Foreground="{DynamicResource ViewDimText}"/>
+              <TextBlock Classes="heading" Text="When it is exceeded"/>
 
               <RadioButton Content="Just say so" GroupName="trashlimit"
                            FontSize="{DynamicResource FontSizeSmall}"
@@ -1581,15 +1284,166 @@
 
           <Border Height="1" Background="{DynamicResource SeparatorColour}"/>
 
-          <TextBlock Text="{Binding BinSweepExplanation}"
-                     FontSize="{DynamicResource FontSizeTiny}"
-                     Foreground="{DynamicResource ViewDimText}"
-                     TextWrapping="Wrap"/>
+          <!-- The part nobody may miss stays on the page: the bin is shared,
+               so a sweep reaches other applications' files too. What it does
+               not reach, and why, is the line's help. -->
+          <TextBlock Classes="note"
+                     Text="{Binding BinSweepSummary}"
+                     AutomationProperties.HelpText="{Binding BinSweepExplanation}"/>
 
         </StackPanel>
         </ScrollViewer>
       </TabItem>
     </TabControl>
 
-  </DockPanel>
+    <Border Grid.Row="1"
+            Background="{DynamicResource AppBackground}"
+            BorderBrush="{DynamicResource SeparatorColour}"
+            BorderThickness="0,1,0,0"
+            Padding="16,10">
+      <DockPanel>
+        <!-- Docked first so the buttons keep their natural width and the
+             version takes what is left; a horizontal StackPanel would give the
+             text unlimited width and push them off the edge. -->
+        <StackPanel DockPanel.Dock="Right"
+                    Orientation="Horizontal" Spacing="8">
+          <!-- Cancel drops what has not been applied. After an Apply that is
+               only what changed since — the footer says so when it happens. -->
+          <Button Content="Cancel" Padding="14,4" IsCancel="True" Command="{Binding CancelCommand}"
+                  ToolTip.Tip="Closes without saving anything you have not applied"/>
+
+          <!-- **A change could only be seen by closing the dialog.** Apply is
+               Save without the close: the same collected state, handed to the
+               same code a Save reaches (SettingsViewModel.Apply). -->
+          <Button Content="Apply" Padding="14,4" Command="{Binding ApplyCommand}"
+                  ToolTip.Tip="{Binding ApplyTip}"/>
+
+          <!-- **Escape left this window and Enter did not.** Cancel took
+               IsCancel when the dialogs learnt Escape, and Save was left
+               behind — so the key that throws the page away worked from the
+               keyboard while the key that keeps it did nothing at all.
+
+               Safe from the rest of the page because Avalonia hands its
+               default button an UNHANDLED Enter only, and every control on
+               these pages that wants the key takes it first: a focused
+               button, a check box, a combo box and a radio button all mark it
+               handled and never reach this. What is left is the single-line
+               boxes, where Enter has nothing else to mean; the tab headers,
+               where it means what it means in any property sheet; the version
+               line, which is selectable and so takes focus without wanting the
+               key; and a window nobody has tabbed into yet, which has no focus
+               at all. Each of those four saves what is already on screen,
+               which is what the button says. Counted and pressed on every
+               tab, not reasoned about — the Keyboard page's too, which came
+               later: its buttons press and its search box saves, and a row
+               there that is listening for a key is handed every key before
+               this button can see one (KeyboardPageTests). -->
+          <Button Content="Save" Padding="14,4" IsDefault="True" Command="{Binding SaveCommand}"/>
+        </StackPanel>
+
+        <!-- **Nothing in this dialog could say where the choices go.** The
+             version line beside this shows a path on hover and it is the path
+             of the BINARY; settings.json could only be found by knowing where
+             the platform keeps config, or by searching for it.
+
+             In the footer with the version rather than on a page, because it
+             is about the file rather than about anything in it. One button
+             with a menu rather than three buttons: three would push the
+             version line off a narrow window, and these are rare actions next
+             to Save and Cancel, which are not. -->
+        <Button DockPanel.Dock="Left"
+                Content="Settings file"
+                Padding="10,4"
+                Margin="0,0,12,0"
+                IsEnabled="{Binding HasSettingsFile}"
+                ToolTip.Tip="{Binding SettingsFile}">
+          <Button.Flyout>
+            <MenuFlyout Placement="TopEdgeAlignedLeft">
+              <MenuItem Header="_Show settings file"
+                        Command="{Binding ShowSettingsFileCommand}"/>
+              <MenuItem Header="Save a _copy…"
+                        Command="{Binding ExportSettingsCommand}"/>
+              <MenuItem Header="_Replace from a copy…"
+                        Command="{Binding ImportSettingsCommand}"/>
+              <Separator/>
+              <!-- Version, platform, how the interface is set, and the tail of
+                   the log, with paths already redacted — the paste a bug
+                   report needs. -->
+              <MenuItem Header="Copy _diagnostics"
+                        Command="{Binding CopyDiagnosticsCommand}"/>
+            </MenuFlyout>
+          </Button.Flyout>
+        </Button>
+
+        <!-- **There was no way back to the defaults.** Seven pages, each
+             setting on them remembering what it was last set to, and the only
+             route out was to close Vaktari, find settings.json, delete it and
+             start again.
+
+             Beside the settings-file button rather than next to Save, because
+             both are about the settings AS A WHOLE rather than about any one
+             of them — and because a destructive-looking button next to the
+             one that commits is the wrong pair to put a thumb between. -->
+        <Button DockPanel.Dock="Left"
+                Content="Restore defaults"
+                Padding="10,4"
+                Margin="0,0,12,0"
+                Command="{Binding RestoreDefaultsCommand}"/>
+
+        <!-- Takes the space the version line would have had, and only when
+             there is something to say. A refusal — a file this version cannot
+             read — has to be readable somewhere, and none of these is worth a
+             dialog of its own. -->
+        <SelectableTextBlock DockPanel.Dock="Left"
+                             Text="{Binding ShownStatus}"
+                             IsVisible="{Binding ShownStatus, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"
+                             ToolTip.Tip="{Binding ShownStatus}"
+                             FontSize="{DynamicResource FontSizeTiny}"
+                             Foreground="{DynamicResource ViewDimText}"
+                             VerticalAlignment="Center"
+                             Margin="0,0,12,0"
+                             TextTrimming="CharacterEllipsis"/>
+
+        <!-- **The version line was the whole of the About box, and a dead
+             end.** A flyout on the number itself rather than a page of its
+             own: the page strip has no scroller, so every row it gains is
+             height a short window takes out of the width every page has (see
+             the floor note at the top of this file), and this is three lines
+             of content. -->
+        <Button AutomationProperties.Name="About this version"
+                Padding="0"
+                Background="Transparent"
+                BorderThickness="0"
+                FontSize="{DynamicResource FontSizeTiny}"
+                Foreground="{DynamicResource ViewDimText}"
+                VerticalAlignment="Center"
+                HorizontalAlignment="Left">
+          <!-- A trimming TextBlock rather than a string, so a narrow window
+               with Apply beside Save shortens the version rather than
+               overlapping it with the buttons. -->
+          <TextBlock Text="{Binding VersionLine}" TextTrimming="CharacterEllipsis"/>
+          <Button.Flyout>
+            <MenuFlyout Placement="TopEdgeAlignedLeft">
+              <MenuItem Header="_What is new in this version"
+                        Command="{Binding OpenReleasesCommand}"/>
+              <MenuItem Header="_The project"
+                        Command="{Binding OpenProjectCommand}"/>
+            </MenuFlyout>
+          </Button.Flyout>
+        </Button>
+
+        <!-- Selectable, because the reason anyone reads a version is to quote
+             it somewhere — an issue, a message. Kept beside the button rather
+             than replaced by it: a button label cannot be selected. -->
+        <SelectableTextBlock Text="{Binding InstalledAt}"
+                             ToolTip.Tip="{Binding VersionPath}"
+                             FontSize="{DynamicResource FontSizeTiny}"
+                             Foreground="{DynamicResource ViewDimText}"
+                             VerticalAlignment="Center"
+                             HorizontalAlignment="Left"
+                             TextTrimming="CharacterEllipsis"/>
+      </DockPanel>
+    </Border>
+
+  </Grid>
 </Window>

@@ -156,12 +156,24 @@ public static class ThemeApplier
         // could be read at all. Deliberately computed here rather than at the
         // three places that consume it — the whole failure this file was
         // repaired for was two things deciding lightness independently.
-        var dark = Settings.AppSettings.Current.Views.ThemeMode switch
-        {
-            Core.Settings.ThemeMode.Light => false,
-            Core.Settings.ThemeMode.Dark => true,
-            _ => palette?.IsDark ?? true,
-        };
+        //
+        // **The desktop's own colours bring the desktop's lightness, whatever
+        // ThemeMode says.** Those colours are the desktop's backgrounds and
+        // text, in ITS light or dark — so a forced Light over a dark desktop's
+        // surfaces handed Fluent dark text for dark backgrounds, the very
+        // failure above. The settings dialog shows that pairing as one row,
+        // "the desktop's own colours and accent", and a file that still stores
+        // a forced lightness beside the flag is drawn the way that row says.
+        var views = Settings.AppSettings.Current.Views;
+
+        var dark = views.FollowDesktopColours && palette is not null
+            ? palette.IsDark
+            : views.ThemeMode switch
+            {
+                Core.Settings.ThemeMode.Light => false,
+                Core.Settings.ThemeMode.Dark => true,
+                _ => palette?.IsDark ?? true,
+            };
 
         // **Fluent has to be told, or it answers this question separately and
         // differently.**

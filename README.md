@@ -82,7 +82,7 @@ If your mouse has the two buttons under the thumb, they go back and forward
 too. In a split, they move whichever half the pointer is over.
 
 **Backspace is yours to choose.** Out of the box it goes back, the way Explorer
-does; Settings ▸ Navigation makes it go up to the parent instead, the way
+does; Settings ▸ General makes it go up to the parent instead, the way
 Dolphin does. `Alt+←` and `Alt+↑` keep doing their own jobs either way, and the
 `F1` sheet prints whichever one Backspace is currently doing.
 
@@ -231,8 +231,8 @@ inside them. Tick boxes on rows are available if you want them, off by default.
 
 **Folders can remember how you left them** — layout, sort, grouping, hidden
 files, which columns were ticked and both zoom levels. It is off by default and
-lives in Settings ▸ General, and the record is kept centrally rather than
-written into your folders. A `.directory` file Dolphin already left in a folder
+lives in Settings ▸ Folders and lists, and the record is kept centrally rather
+than written into your folders. A `.directory` file Dolphin already left in a folder
 is still read, so a folder somebody configured elsewhere opens the way they
 meant. *Use this view for all folders*, in the view-options menu, goes the
 other way: it makes the pane you are looking at the way folders open from now
@@ -289,7 +289,7 @@ nothing at all.
 it again exactly as it was asked — the same words, the same folder, the same
 answers about capitals and contents — because what is kept is the whole search
 rather than the words in it. Twelve are offered, fifty are kept, and it can be
-switched off and emptied from Settings.
+switched off and emptied from Settings ▸ Privacy and system.
 
 **A search worth keeping can be saved to places.** `Ctrl+D` in a search, the
 *Save search* button on the band above the results, or *Save this search to
@@ -487,18 +487,20 @@ fetch Papirus for you — about 110 MB, GPL-3.0, light and dark variants
 included. Letting Vaktari unpack it matters most on Windows: these themes are
 built out of tens of thousands of symbolic links, which Windows will not create
 without Developer Mode. Unpacked inside Vaktari the links are *read* rather
-than made, so nothing fails and nothing is duplicated on disk. Windows can also
-be told to use the icons Windows itself draws, so a program shows its own icon
-and a shortcut carries its arrow.
+than made, so nothing fails and nothing is duplicated on disk. On Windows the
+same *File icons* list also offers the icons Windows itself draws, so a program
+shows its own icon and a shortcut carries its arrow; on Linux, the row with no
+theme chosen is your desktop's own icon theme.
 
 **Colour and typeface are a deliberate exception.** The bundled scheme is the
 default, because a file manager that repaints itself to match your desktop the
-first time you launch it is a surprise rather than a courtesy. Turn on *Follow
-desktop colours* and your scheme, accent and interface font are layered over it
-instead. Light or dark is a separate choice in the same place — *Follow the
-desktop*, *Light* or *Dark* — and the bundled scheme is drawn for both, so
-neither is an inversion of the other. Sizes and dates keep the monospaced face
-either way, so figures line up down a column.
+first time you launch it is a surprise rather than a courtesy. One *Colour*
+list in Settings ▸ Appearance chooses: Vaktari's colours, light or dark as your
+desktop is; Vaktari's colours always light; always dark; or *the desktop's own
+colours and accent*, which layers your scheme, accent and interface font over
+it and takes your desktop's light or dark with them. The bundled scheme is
+drawn for both lightnesses, so neither is an inversion of the other. Sizes and
+dates keep the monospaced face either way, so figures line up down a column.
 
 **Vaktari can become the program that opens folders**, from Settings — so
 double-clicking a folder anywhere opens it here, as a tab in the window you
@@ -521,17 +523,31 @@ pays for other people's code.
 
 **Where Vaktari opens is yours to choose** — last session's folders, tabs and
 windows (the default), your home folder, *This PC*, or a folder you browse for.
-The same page decides how it opens: straight into a split, with the filter bar
-showing, with the path bar already editable, or with the full path in the title
-bar.
+The same section decides how it opens: straight into a split, with the filter
+bar showing or with the path bar already editable — in windows opened from
+then on and at the next launch; the full path in the title bar changes as soon
+as you apply it.
 
-**Everything else is one dialog**, on `Ctrl+Shift+,`: sorting, what a click
-does, previews and their size limits, confirmations, the status bar, which
-entries appear in the right-click menu, extensions and selection boxes,
-per-layout spacing, date style, the font and text size, light or dark,
-version-control marks, per-folder view memory, the details panel, and how the
-bin is swept. It can also show you the settings file itself, save a copy of it,
-put one back from another machine, and restore every setting to its default.
+**Everything else is one dialog**, on `Ctrl+Shift+,`, in seven pages:
+
+| Page | What is on it |
+|---|---|
+| **General** | where Vaktari opens and how, whether one click or two opens things, what Backspace and Tab do, the split, and what asks before it happens |
+| **Appearance** | colour, font and text size, extensions, selection boxes and version-control marks on rows, the status bar, free space and the folder tree in the sidebar, what happens when the details panel does not fit, and the file icons |
+| **Folders and lists** | sort order and folders first, per-folder view memory, what a folder's size shows, date style, row tooltips, previews and their size limits, grid spacing |
+| **Privacy and system** | the recent lists and search history, with a button to empty each; the default file manager; the terminal; the Proton Drive folder; the update check |
+| **Keyboard** | every command and its keys |
+| **Context menu** | which entries the right-click menu shows |
+| **Recycle Bin** (*Trash* on Linux) | how the bin is swept |
+
+Each setting's explanation is its tooltip, and what a screen reader reads out
+for it. *Apply* makes what is on screen take effect without closing the
+dialog; *Cancel* afterwards closes it without undoing what was applied.
+`Ctrl+Tab` and `Ctrl+PageDown` turn to the next page (`Ctrl+Shift+Tab`,
+`Ctrl+PageUp` back), `Alt` and the underlined letter goes straight to one, and
+the dialog opens on the page you last left it on. It can also show you the
+settings file itself, save a copy of it, put one back from another machine,
+and restore every setting to its default.
 
 ## Keyboard
 
@@ -692,8 +708,8 @@ promise yet. Worth knowing before you decide:
   a long-term-support distribution several years older.
 - The interface is **English only**.
 - Vaktari does not update itself. It looks for a newer release only when
-  *Check for a newer release once a day* is ticked in Settings ▸ General, and
-  that box is off by default. It downloads nothing; upgrading means going back
+  *Check for a newer release once a day* is ticked in Settings ▸ Privacy and
+  system, and that box is off by default. It downloads nothing; upgrading means going back
   to the releases page.
 
 **Searching**
@@ -728,7 +744,7 @@ promise yet. Worth knowing before you decide:
   item hands off to Windows' own sheet, and Vaktari's checksum panel is on the
   window that only appears for multi-item selections.
 - The **folder tree** in the sidebar is off until you turn it on, under
-  Settings ▸ View modes, and it is a tree of folders rather than a second
+  Settings ▸ Appearance, and it is a tree of folders rather than a second
   listing: it opens one level at a time and forgets a branch when you close
   it. Expandable folders in the List layout do the same job inside the
   listing, and they are List-only — as is grouping.

@@ -97,7 +97,6 @@ internal sealed class WindowServices
     private WindowServices(
         IPlatform platform,
         JsonSettingsStore settingsStore,
-        SettingsState settings,
         JsonSessionStore session,
         JsonFolderViewStore folderViews,
         JsonRecentStore recents,
@@ -108,7 +107,6 @@ internal sealed class WindowServices
     {
         Platform = platform;
         SettingsStore = settingsStore;
-        Settings = settings;
         Session = session;
         FolderViews = folderViews;
         Recents = recents;
@@ -120,7 +118,6 @@ internal sealed class WindowServices
 
     internal IPlatform Platform { get; }
     internal JsonSettingsStore SettingsStore { get; }
-    internal SettingsState Settings { get; }
     internal JsonSessionStore Session { get; }
     internal JsonFolderViewStore FolderViews { get; }
     internal JsonRecentStore Recents { get; }
@@ -423,7 +420,7 @@ internal sealed class WindowServices
         var session = new JsonSessionStore(JsonSessionStore.DefaultDirectory());
 
         return new WindowServices(
-            platform, settingsStore, settings, session, folderViews, recents,
+            platform, settingsStore, session, folderViews, recents,
             searches, driveLinks, driveLinkStore,
             new Vaktari.Core.Updates.ReleaseCheck(JsonSessionStore.DefaultDirectory()))
         {
@@ -554,10 +551,16 @@ internal sealed class WindowServices
             // files unattended, "I ran and did nothing" is exactly as important
             // as "I removed four", and being unable to tell them apart cost a
             // test round trip.
-            var state = !policy.DeleteOldFiles && !policy.LimitSize
+            //
+            // A switch with no number is off on both platforms (zero days or
+            // zero percent sweeps nothing), so it reads "off" here too rather
+            // than "age=0d" for a sweep that does not run.
+            var byAge = policy.DeleteOldFiles && policy.DeleteAfterDays > 0;
+            var bySize = policy.LimitSize && policy.MaximumPercentOfDisk > 0;
+            var state = !byAge && !bySize
                 ? "disabled"
-                : $"age={(policy.DeleteOldFiles ? $"{policy.DeleteAfterDays}d" : "off")} "
-                  + $"size={(policy.LimitSize ? $"{policy.MaximumPercentOfDisk}%" : "off")} "
+                : $"age={(byAge ? $"{policy.DeleteAfterDays}d" : "off")} "
+                  + $"size={(bySize ? $"{policy.MaximumPercentOfDisk}%" : "off")} "
                   // The field that decides whether it DELETES. Leaving it out
                   // made "removed 0 · OVER LIMIT" ambiguous between "set to warn"
                   // and "set to delete and failing to", which is the whole

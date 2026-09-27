@@ -70,7 +70,7 @@ public sealed class JsonSettingsStore : ISettingsStore
     ///
     /// **A file from any other version used to be thrown away.** Only the
     /// current number was kept, so the first release to change it would have
-    /// reset every choice on six pages for everyone who upgraded. Now an older
+    /// reset every choice in the dialog for everyone who upgraded. Now an older
     /// file walks <see cref="SettingsMigrations"/> up to today's format, and
     /// a copy of it as the older version wrote it is kept first, under that
     /// version's name, for the day that version is run again.
@@ -109,6 +109,11 @@ public sealed class JsonSettingsStore : ISettingsStore
 
                 if (SettingsMigrations.Upgrade(document, SettingsState.CurrentVersion) is null) return null;
             }
+
+            // Before the record exists, while an absent key can still be told
+            // from a stored false — see SettingsRepair.CompleteDocument, and
+            // the 0.9.x upgrade that read the recent lists as switched off.
+            SettingsRepair.CompleteDocument(document);
 
             var state = JsonSerializer.Deserialize(document, SettingsJsonContext.Default.SettingsState);
 
@@ -242,7 +247,7 @@ public sealed class JsonSettingsStore : ISettingsStore
     /// **Nothing in the application could name it.** The settings dialog's own
     /// footer shows a path on hover, and it is the path of the BINARY — a
     /// different place on every platform, and on none of them this one. So the
-    /// file that holds every choice on those six pages could only be found by
+    /// file that holds every choice in the settings dialog could only be found by
     /// knowing where a freedesktop config directory is, or by searching the
     /// disk for it.
     /// </summary>

@@ -22,6 +22,48 @@ should not be trusted for compatibility yet.
   refuses the drop as its place row does. Before, the whole tree refused
   every drag.
 
+### Changed
+
+- **The settings window is seven pages that each hold what their name
+  says.** *General* is where Vaktari opens and how, what a click and
+  Backspace and Tab do, the split, and the confirmations; *Appearance* is
+  colour, type, what a row shows, the window's furniture and the file icons;
+  *Folders and lists* is sorting, per-folder views, what a folder's size shows,
+  dates, tooltips, previews and grid spacing; *Privacy and system* is the
+  recent lists and search history, the default file manager, the terminal,
+  Proton Drive and the update check; then *Keyboard*, *Context menu* and the
+  bin. The *Startup*, *View modes* and *Navigation* pages are gone. Nothing
+  in settings.json moved, so no setting changes on upgrade. General was four
+  screens tall at the default size and is under a screen and a half.
+
+- **Each setting's explanation is its tooltip**, and what a screen reader
+  reads for it, rather than a paragraph always on the page. A note on the page
+  is one short line at most. Short groups of check boxes sit in two columns,
+  and fall back to one when the window is narrow.
+
+- **Paired controls are one each.** *File icons* is one list — Vaktari's own,
+  your desktop's (on Windows), and every installed or downloaded theme — where
+  a check box, a list and a paragraph explaining which of the two won used to
+  be. *Colour* is one list, and *the desktop's own colours and accent* brings
+  the desktop's light or dark with it: a forced lightness under a desktop's
+  own backgrounds could put dark text on dark surfaces, so a settings file that
+  still pairs the two is drawn in the desktop's lightness too. The sort order is one
+  list — naturally, alphabetically, or alphabetically with capitals first —
+  instead of a *Case sensitive* box that was greyed out without saying why.
+  Where Vaktari opens, what a folder's size shows and what happens when the
+  details panel does not fit are each a dropdown.
+
+- **The settings window has an Apply button**: what is on screen takes effect
+  without closing the window. *Cancel* after an Apply closes without undoing
+  it, and the footer says so when it happens.
+
+- **The settings window works from the keyboard.** `Ctrl+Tab` and
+  `Ctrl+PageDown` go to the next page, `Ctrl+Shift+Tab` and `Ctrl+PageUp` to
+  the previous one; every page name has an `Alt` letter; `Tab` reaches the
+  page before the buttons at the bottom; and the window reopens on the page it
+  was last closed on. The tour's line about changing keys opens it straight on
+  the Keyboard page.
+
 ### Fixed
 
 - **A drag out of a zip open in Explorer is no longer called off by one
@@ -30,7 +72,8 @@ should not be trusted for compatibility yet.
   Explorer failed to answer just before you let go, Windows called the
   drag off instead of dropping it, with nothing said anywhere. The answer
   is now kept for the whole drag, even while the pointer crosses the
-  toolbar or the edge between the listing and the sidebar; a busy answer
+  address bar, the status bar or the edge between the listing
+  and the sidebar; a busy answer
   is asked once more; and a drop the drag already accepted is taken even
   when asking again at the drop fails. Letting go over the folder tree used
   to end the drag the same way; see above.
@@ -61,6 +104,35 @@ should not be trusted for compatibility yet.
   archive could not take are written to the log in the `logs` folder beside
   your settings — until now they went to a console the Windows build does
   not have.
+
+- **Upgrading from 0.9.x switched the recent lists off and took *Open in new
+  window* off the right-click menu.** Both settings arrived in 0.10.0 switched
+  on, and a settings file written before then read them as off. A setting a
+  file does not mention now gets its real default; a file that switched either
+  off keeps it off. So an install that has not saved a setting since 0.9 finds
+  the recent lists recording again without being asked. But if you saved any
+  setting under 0.10 or 0.11 — in Settings, by dragging a column's width, or
+  with *Use this view for all folders* — that file already says off for both,
+  and Vaktari cannot tell that from a choice you made: tick *Remember recently
+  opened files and folders* under Settings ▸ Privacy and system, and *Open in
+  new window* under Settings ▸ Context menu, if you want them back.
+
+- **On Windows, a bin sweep switched on with no number of days emptied the
+  Recycle Bin of everything older than a day.** A settings file saying
+  `"deleteOldFiles": true` and nothing else reads as zero days, which the
+  sweep raised to one; it is off now, as it always was on Linux.
+
+- **A window opened after changing Settings ignored the new startup
+  choices.** Split view, the filter bar, the editable path bar and the full
+  path in the title bar reached new windows only after a restart; a window
+  opened with `Ctrl+N` now starts the way Settings says.
+
+- **Settings notes that were not true.** *Show the full path in the title bar*
+  sat under "changes to how it opens apply on the next launch" and changes as
+  soon as it is saved; the click choice said it "takes effect immediately" and
+  lands on Save like everything else; the Proton Drive box had no label and
+  suggested a `D:\` path on Linux; and on Linux the icon list offered
+  *Vaktari's own icons* for the row that draws your desktop's icon theme.
 
 ## [0.11.0] — 2026-09-25
 

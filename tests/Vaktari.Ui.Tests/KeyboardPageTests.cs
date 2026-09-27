@@ -897,7 +897,7 @@ public sealed class KeyboardPageTests
         {
             var tabs = window.GetVisualDescendants().OfType<TabControl>().First();
 
-            tabs.SelectedItem = tabs.Items.OfType<TabItem>().Single(t => (string?)t.Header == "Keyboard");
+            tabs.SelectedItem = KeyboardTab(tabs);
             Pump();
 
             window.Measure(new Avalonia.Size(520, 450));
@@ -939,7 +939,7 @@ public sealed class KeyboardPageTests
     {
         var tabs = window.GetVisualDescendants().OfType<TabControl>().First();
 
-        tabs.SelectedItem = tabs.Items.OfType<TabItem>().Single(t => (string?)t.Header == "Keyboard");
+        tabs.SelectedItem = KeyboardTab(tabs);
         Pump();
 
         window.Measure(new Avalonia.Size(700, 560));
@@ -948,6 +948,14 @@ public sealed class KeyboardPageTests
 
         return tabs;
     }
+
+    /// <summary>
+    /// The Keyboard page's tab, found by the words it shows. Its header marks
+    /// its access key now — "_Keyboard", Alt+K — so the marker is taken out
+    /// before comparing, the way every menu test reads a header.
+    /// </summary>
+    private static TabItem KeyboardTab(TabControl tabs)
+        => tabs.Items.OfType<TabItem>().Single(t => MenuLabels.Plain(t.Header as string) == "Keyboard");
 
     private static void Pump()
     {

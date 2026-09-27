@@ -548,13 +548,31 @@ public sealed class ColumnChooserTests : OwnedViewModels
         Assert.Contains("columns", (string?)box.Attribute("Content") ?? "",
                         StringComparison.Ordinal);
 
+        Assert.Contains("still chooses which columns to show", ArrangeNote(settings), StringComparison.Ordinal);
+    }
+
+    /// <summary>
+    /// The whole of the note under the context-menu list.
+    ///
+    /// **One line on the page now, and the paragraph is its help text** — the
+    /// tooltip and what a screen reader is told — since the settings window's
+    /// notes each shrank to a line (SettingsPagesTests). The claims these tests
+    /// hold the note to are in that paragraph, so it is what is read: the line
+    /// is found by the words it starts with, and its help must start with the
+    /// same words, so the two cannot come apart.
+    /// </summary>
+    private static string ArrangeNote(XDocument settings)
+    {
         var note = settings
             .Descendants(Avalonia + "TextBlock")
-            .Select(t => (string?)t.Attribute("Text") ?? "")
-            .Single(t => t.StartsWith("Hiding an entry takes it off the menu",
-                                      StringComparison.Ordinal));
+            .Single(t => ((string?)t.Attribute("Text") ?? "")
+                         .StartsWith("Hiding an entry takes it off the menu", StringComparison.Ordinal));
 
-        Assert.Contains("still chooses which columns to show", note, StringComparison.Ordinal);
+        var help = (string?)note.Attribute("AutomationProperties.HelpText") ?? "";
+
+        Assert.StartsWith("Hiding an entry takes it off the menu", help, StringComparison.Ordinal);
+
+        return help;
     }
 
     /// <summary>
@@ -588,11 +606,7 @@ public sealed class ColumnChooserTests : OwnedViewModels
 
         // And the note is written to that scope rather than to "the column
         // headers", which is the sentence the gate above makes true.
-        var note = XDocument.Parse(RepoSource.Ui("SettingsWindow.axaml"))
-            .Descendants(Avalonia + "TextBlock")
-            .Select(t => (string?)t.Attribute("Text") ?? "")
-            .Single(t => t.StartsWith("Hiding an entry takes it off the menu",
-                                      StringComparison.Ordinal));
+        var note = ArrangeNote(XDocument.Parse(RepoSource.Ui("SettingsWindow.axaml")));
 
         Assert.Contains("the list view's column headers", note, StringComparison.Ordinal);
     }

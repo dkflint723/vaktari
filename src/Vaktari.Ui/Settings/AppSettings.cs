@@ -60,9 +60,11 @@ public static class AppSettings
         // `False` from the file and `True` from a freshly constructed record in
         // the same breath. `Vcs` arriving null was the same mechanism.
         //
-        // Kept as an instrument because every `= true` default in SettingsModel is
-        // therefore decorative for any file written before that property existed,
-        // and the next one to bite will be found here.
+        // Kept as an instrument because every `= true` default in SettingsModel
+        // was therefore decorative for any file written before that property
+        // existed — until SettingsRepair.CompleteDocument, which now writes a
+        // missing key's declared default back in on the way through the store.
+        // A record that reaches here some other way still shows the raw zeros.
         if (Environment.GetEnvironmentVariable("VAKTARI_SETTINGS_DEBUG") == "1")
         {
             var raw = ReferenceEquals(settings.Views, null)

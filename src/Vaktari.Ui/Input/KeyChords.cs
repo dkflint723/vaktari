@@ -302,7 +302,7 @@ public static class KeyChords
     /// **The keys that are the grammar of every list and box**, and so belong
     /// to no command. Enter opens, Escape backs out, Tab moves on; the arrows,
     /// Home, End and the page keys move through a list and through the text of
-    /// a box; Backspace goes back or up by the Navigation page's own setting;
+    /// a box; Backspace goes back or up by the General page's own setting;
     /// the Menu key and Shift+F10 open the menu where the keyboard is; Ctrl+1…9
     /// jump to a tab; Alt+F4 is the desktop's. Each is answered in the window's
     /// own key handling with rules a keymap cannot express, and giving one to

@@ -25,7 +25,10 @@ public sealed class SettingsWindowRendersTests
     [AvaloniaFact]
     public void It_opens_with_the_icon_theme_list_bound()
     {
-        var model = new SettingsViewModel(new SettingsState());
+        // Opened on Appearance, where the File icons chooser is since the
+        // pages were regrouped: only the page on screen is built, so asking
+        // the first page for it would find nothing to be bound.
+        var model = new SettingsViewModel(new SettingsState()) { Page = SettingsPage.Appearance };
 
         var window = new Vaktari.Ui.SettingsWindow { DataContext = model };
 

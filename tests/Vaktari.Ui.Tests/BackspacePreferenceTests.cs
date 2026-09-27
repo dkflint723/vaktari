@@ -263,7 +263,9 @@ public sealed class BackspacePreferenceTests : OwnedViewModels
             .SelectMany(g => g.Keys)
             .Single(k => k.Keys == "Backspace");
 
-        Assert.Contains("Navigation", line.Does, StringComparison.Ordinal);
+        // General since the regroup: the Navigation page, two settings on
+        // their own, was folded into it with the Tab key and the split.
+        Assert.Contains("General", line.Does, StringComparison.Ordinal);
 
         // Both behaviours named on the one line, whichever way it is set:
         // "makes it Back" is useless to a reader who does not know what the key
@@ -332,7 +334,7 @@ public sealed class BackspacePreferenceTests : OwnedViewModels
     /// go on existing with nothing bound to it.
     /// </summary>
     [Fact]
-    public void The_navigation_page_offers_it()
+    public void The_general_page_offers_it()
     {
         var box = XDocument.Parse(RepoSource.Ui("SettingsWindow.axaml"))
             .Descendants(Avalonia + "CheckBox")
@@ -340,12 +342,14 @@ public sealed class BackspacePreferenceTests : OwnedViewModels
 
         Assert.Equal("{Binding BackspaceGoesUp}", (string?)box.Attribute("IsChecked"));
 
-        // On the Navigation page rather than wherever it happened to land: the
-        // page is the one somebody looks on for what a navigation key does.
+        // On a named page rather than wherever it happened to land — General,
+        // with the Tab key and the split, where "what a key does" lives now
+        // that the two-setting Navigation page is gone — and the page the
+        // keyboard sheet names (And_says_the_page_that_changes_it).
         Assert.Equal(
-            "Navigation",
+            "General",
             box.Ancestors(Avalonia + "TabItem")
-               .Select(t => (string?)t.Attribute("Header"))
+               .Select(t => MenuLabels.Plain((string?)t.Attribute("Header")))
                .First());
     }
 
@@ -366,7 +370,7 @@ public sealed class BackspacePreferenceTests : OwnedViewModels
     {
         var page = XDocument.Parse(RepoSource.Ui("SettingsWindow.axaml"))
             .Descendants(Avalonia + "TabItem")
-            .Single(t => (string?)t.Attribute("Header") == "Navigation");
+            .Single(t => MenuLabels.Plain((string?)t.Attribute("Header")) == "General");
 
         var radio = page.Descendants(Avalonia + "RadioButton")
             .Single(r => (string?)r.Attribute("Content") == label
