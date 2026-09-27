@@ -35,6 +35,13 @@ public static class VolumeRoots
         "Vaktari does not copy, move or delete through a device path — open the folder by its ordinary name";
 
     /// <summary>
+    /// The sentence for a Windows path with a colon after its drive — see
+    /// <see cref="NamesAStream"/>.
+    /// </summary>
+    public const string StreamRefusal =
+        "a colon after the drive names a stream, not a file or folder — Vaktari does not copy, move or delete through one";
+
+    /// <summary>
     /// The mount points to compare against, or null for the machine's own.
     /// A seam for tests, which must never have a guard's absence tried on a
     /// real volume; null in the application.
@@ -69,6 +76,8 @@ public static class VolumeRoots
                 return Refusal;
 
             if (OperatingSystem.IsWindows() && IsUnreadDevicePath(path)) return DeviceRefusal;
+
+            if (OperatingSystem.IsWindows() && NamesAStream(path)) return StreamRefusal;
         }
 
         return null;
@@ -120,15 +129,51 @@ public static class VolumeRoots
         return true;
     }
 
-    /// <summary>"\\?\" or "\\.\" — either slash — or null for a path outside
-    /// the device namespace.</summary>
+    /// <summary>
+    /// "\\?\" or "\\.\" — either slash — or null for a path outside the device
+    /// namespace. The NT prefix "\??\" answers as "\\?\".
+    ///
+    /// **"\??\" is the device namespace too, and was not asked about.** Win32
+    /// hands a path starting "\??\" to the object manager as written, and
+    /// .NET reads it as an extended device path (PathInternal.IsExtended), so
+    /// "\??\GLOBALROOT\Sessions\0\DosDevices\…\K:\" reached every name the
+    /// "\\?\" spelling did — and, unseen here, got past the pane and the
+    /// engine's text alike: the fourth review round's Delete emptied a subst
+    /// drive and a mapped drive through it. Backslashes only, exactly as
+    /// IsExtended asks, because "/??/" is not one: .NET reads it as a folder
+    /// named "??" on the current drive.
+    /// </summary>
     private static string? DevicePrefix(string path)
     {
+        if (path.StartsWith(@"\??\", StringComparison.Ordinal)) return @"\\?\";
+
         var unified = path.Replace('/', '\\');
 
         return unified.StartsWith(@"\\?\", StringComparison.Ordinal) ? @"\\?\"
              : unified.StartsWith(@"\\.\", StringComparison.Ordinal) ? @"\\.\"
              : null;
+    }
+
+    /// <summary>
+    /// Whether a Windows path has a colon after its drive — an alternate data
+    /// stream or an attribute type ("X:\::$INDEX_ALLOCATION",
+    /// "X:\:$I30:$INDEX_ALLOCATION", "file.txt:secret").
+    ///
+    /// **A directory's index stream names the directory.** "X:\::$INDEX_ALLOCATION"
+    /// opens the root of X: — the file system's own check said root on the
+    /// system drive — while the text read a folder with a strange name, and
+    /// on a subst drive the engine handed it to the recycler. No name
+    /// Vaktari lists has a colon after the drive, so every verb refuses one.
+    /// </summary>
+    private static bool NamesAStream(string path)
+    {
+        var rest = path.Replace('/', '\\');
+
+        if (DevicePrefix(path) is not null) rest = rest[4..];
+
+        if (rest.Length >= 2 && char.IsAsciiLetter(rest[0]) && rest[1] == ':') rest = rest[2..];
+
+        return rest.Contains(':');
     }
 
     /// <summary>

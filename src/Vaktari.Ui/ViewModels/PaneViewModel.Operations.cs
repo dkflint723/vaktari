@@ -414,9 +414,12 @@ public sealed partial class PaneViewModel
         // gives its usual nothing-selected answer. The caller gives it here too.
         if (paths.Count == 0) return false;
 
-        if (!IsComputerListing && VolumeRoots.Refuse(paths) is null) return false;
+        // This PC's rows are drives, whatever their paths; elsewhere the path
+        // says why, and in its own words — a file under a device path is not
+        // "a drive", which is what this said of it for every key.
+        if ((IsComputerListing ? VolumeRoots.Refusal : VolumeRoots.Refuse(paths)) is not { } why) return false;
 
-        Status = VolumeRoots.Refusal;
+        Status = why;
         return true;
     }
 

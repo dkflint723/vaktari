@@ -295,6 +295,118 @@ public sealed partial class VolumeRootOnDiskTests
     }
 
     /// <summary>
+    /// **The NT prefix "\??\" is the device namespace too.** Win32 hands a
+    /// path that starts "\??\" to the object manager as written, and .NET
+    /// treats it as a device path (PathInternal.IsDevice) and folds nothing,
+    /// so "\??\GLOBALROOT\…" reaches every name "\\?\GLOBALROOT\…" does.
+    ///
+    /// *(From the fourth review round's repro, with one change: it expected
+    /// the device sentence for all four. The first two are names this class
+    /// reads as the drive's root — as their "\\?\" twins are, which
+    /// Every_verb_refuses_another_device_name_of_a_subst_drive pins to the
+    /// drive's sentence — so they are refused in the drive's words, and the
+    /// session's names, which are not read, in the device's.)*
+    /// </summary>
+    [WindowsTheory]
+    [InlineData(@"\??\GLOBALROOT\??\{0}:\", false)]
+    [InlineData(@"\??\GLOBALROOT\DosDevices\{0}:\", false)]
+    [InlineData(@"\??\GLOBALROOT\Sessions\0\DosDevices\{2}\{0}:\", true)]
+    [InlineData(@"\??\GLOBALROOT\Sessions\0\DosDevices\{2}\{0}:", true)]
+    public async Task Every_verb_refuses_a_device_path_under_the_nt_prefix(string shape, bool device)
+    {
+        using var drive = new SubstDrive();
+
+        var marker = Path.Combine(drive.Folder, "marker.txt");
+        File.WriteAllText(marker, "the drive's own file");
+
+        var path = string.Format(
+            System.Globalization.CultureInfo.InvariantCulture, shape, drive.Letter, char.ToLowerInvariant(drive.Letter), LogonSession());
+
+        await AssertEveryVerbRefuses(path, device ? VolumeRoots.DeviceRefusal : VolumeRoots.Refusal, marker);
+    }
+
+    /// <summary>
+    /// **A directory's index stream names the directory.** "X:\::$INDEX_ALLOCATION"
+    /// and "X:\:$I30:$INDEX_ALLOCATION" open the root of X: — measured on the
+    /// system drive (asked only): VolumeRootOnDisk says root, the text says
+    /// folder. On a subst drive the engine handed each to the recycler.
+    /// Whatever sentence is chosen, the recycler must not be asked.
+    ///
+    /// *(From the fourth review round's repro, which asserted only that the
+    /// text refuses; here every verb is asked, and the drive's file checked.)*
+    /// </summary>
+    [WindowsTheory]
+    [InlineData(@"{0}:\::$INDEX_ALLOCATION")]
+    [InlineData(@"{0}:\:$I30:$INDEX_ALLOCATION")]
+    [InlineData(@"\\?\{0}:\::$INDEX_ALLOCATION")]
+    [InlineData(@"\??\{0}:\::$INDEX_ALLOCATION")]
+    [InlineData(@"{0}::$INDEX_ALLOCATION")]
+    public async Task Every_verb_refuses_a_drive_named_by_its_index_stream(string shape)
+    {
+        using var drive = new SubstDrive();
+
+        var marker = Path.Combine(drive.Folder, "marker.txt");
+        File.WriteAllText(marker, "the drive's own file");
+
+        var path = string.Format(System.Globalization.CultureInfo.InvariantCulture, shape, drive.Letter);
+
+        Assert.NotNull(VolumeRoots.Refuse([path]));
+
+        await AssertEveryVerbRefuses(path, VolumeRoots.StreamRefusal, marker);
+    }
+
+    /// <summary>
+    /// **A junction whose stored target is a device name is copied and moved
+    /// as the link it is — or says why not.** The fourth review round saw
+    /// Move and Copy of one "complete and do nothing". They do not do nothing
+    /// silently: a junction can only say a drive-rooted path, so the copy is
+    /// a symbolic link, which an unprivileged process cannot make, and the
+    /// item fails with that reason while the operation completes. Nothing
+    /// lands, the junction stays where it was, and what it names is never
+    /// entered. The target's letter answers to nothing.
+    /// </summary>
+    [WindowsFact]
+    public async Task A_junction_to_a_device_name_is_moved_as_a_link_or_reported()
+    {
+        var holder = Directory.CreateTempSubdirectory("vaktari-devjunction").FullName;
+        var into = Directory.CreateTempSubdirectory("vaktari-volroot").FullName;
+        var taken = DriveInfo.GetDrives().Select(d => char.ToUpperInvariant(d.Name[0])).ToHashSet();
+        var nowhere = "ZYXW".First(c => !taken.Contains(c));
+
+        try
+        {
+            foreach (var move in new[] { true, false })
+            foreach (var suffix in new[] { "", @"\", @"\." })
+            {
+                var junction = Path.Combine(holder, $"j{(move ? "m" : "c")}{suffix.Length}");
+                Directory.CreateDirectory(junction);
+                Native.CreateJunction(junction, $@"\??\GLOBALROOT\GLOBAL??\{nowhere}:\");
+
+                var ops = new WindowsFileOperations();
+                var handle = await Settled(move
+                    ? ops.Move([junction + suffix], into, _ => ValueTask.FromResult(ConflictResolution.Skip))
+                    : ops.Copy([junction + suffix], into, _ => ValueTask.FromResult(ConflictResolution.Skip)));
+
+                var landed = Directory.EnumerateFileSystemEntries(into).ToList();
+
+                // Either the link went across as a link, or the item says why not.
+                if (landed.Count == 0) Assert.NotEmpty(handle.Problems);
+                else Assert.All(landed, entry => Assert.NotNull(new DirectoryInfo(entry).LinkTarget));
+
+                Assert.True(Directory.Exists(junction) || landed.Count > 0, "the junction went and nothing arrived");
+
+                foreach (var entry in landed) Directory.Delete(entry);
+                if (Directory.Exists(junction)) Directory.Delete(junction);
+            }
+        }
+        finally
+        {
+            Directory.Delete(into, recursive: true);
+            Directory.Delete(holder, recursive: true);
+        }
+    }
+
+    /// <summary>
     /// **A drive mapped to a folder on a share, by every name the review
     /// used.** Delete emptied the mapped folder through the session's name for
     /// the letter. The letter is mapped with net use to a temporary folder
@@ -326,6 +438,9 @@ public sealed partial class VolumeRootOnDiskTests
             await AssertEveryVerbRefuses($@"\\.\{letter}:\ ", VolumeRoots.Refusal, marker);
             await AssertEveryVerbRefuses(
                 $@"\\?\GLOBALROOT\Sessions\0\DosDevices\{LogonSession()}\{letter}:\", VolumeRoots.DeviceRefusal, marker);
+            await AssertEveryVerbRefuses(
+                $@"\??\GLOBALROOT\Sessions\0\DosDevices\{LogonSession()}\{letter}:\", VolumeRoots.DeviceRefusal, marker);
+            await AssertEveryVerbRefuses($@"{letter}:\::$INDEX_ALLOCATION", VolumeRoots.StreamRefusal, marker);
         }
         finally
         {

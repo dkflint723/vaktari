@@ -494,6 +494,30 @@ public sealed class VolumeRefusalTests : OwnedViewModels
     }
 
     /// <summary>
+    /// **Every selection route said a drive was refused, whatever was.**
+    /// RefusedOnVolumes — behind the Delete and Shift+Delete prompts, Ctrl+C
+    /// and Ctrl+X, F2, Duplicate, Copy to and the other pane — set the drive's
+    /// sentence for anything the paths were refused for, so a file under a
+    /// device path read "a drive cannot be copied…". Each is refused in its
+    /// own words now; This PC's rows, being drives, keep the drive's.
+    /// </summary>
+    [AvaloniaTheory(Skip = OnlyOn.Windows, SkipUnless = nameof(OnlyOn.IsWindows), SkipType = typeof(OnlyOn))]
+    [InlineData(@"\\?\GLOBALROOT\Device\HarddiskVolumeShadowCopy1\Users\me\a.txt", VolumeRoots.DeviceRefusal)]
+    [InlineData(@"\??\GLOBALROOT\Sessions\0\DosDevices\00000000-0001e240\Q:\", VolumeRoots.DeviceRefusal)]
+    [InlineData(@"\??\GLOBALROOT\??\Q:\", VolumeRoots.Refusal)]
+    [InlineData(@"Q:\::$INDEX_ALLOCATION", VolumeRoots.StreamRefusal)]
+    [InlineData(@"Q:\", VolumeRoots.Refusal)]
+    public void A_selection_is_refused_in_the_words_for_what_it_is(string path, string sentence)
+    {
+        var ops = new Recording();
+        var pane = Own(new PaneViewModel(new Inert(), ops) { CurrentPath = Path.GetTempPath() });
+
+        Assert.True(pane.RefusedOnVolumes([path]));
+        Assert.Equal(sentence, pane.Status);
+        Assert.Empty(ops.Asked);
+    }
+
+    /// <summary>
     /// **Duplicate on a drive answered "this listing is a view, not a
     /// folder"** — true of This PC, but not why a drive cannot be duplicated.
     /// It says what every other verb says of a drive.

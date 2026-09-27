@@ -340,6 +340,17 @@ public sealed class VolumeRootRefusalTests : IDisposable
         }
     }
 
+    /// <summary>
+    /// **A colon is part of a name on Linux**, not a stream: the stream
+    /// refusal is Windows' alone, and a file called "report:2026" or even
+    /// "::$INDEX_ALLOCATION" is an ordinary file here.
+    /// </summary>
+    [PosixFact]
+    public void A_colon_in_a_linux_name_is_not_a_stream()
+    {
+        Assert.Null(VolumeRoots.Refuse(["/tmp/report:2026", "/tmp/::$INDEX_ALLOCATION", "/tmp/a/:$I30:$INDEX_ALLOCATION"]));
+    }
+
     [PosixFact]
     public async Task Move_refuses_a_mount_point()
     {

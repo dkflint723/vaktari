@@ -368,6 +368,61 @@ public sealed class VolumeRootsTests
             Assert.Null(VolumeRoots.Refuse([folder]));
     }
 
+    /// <summary>
+    /// **"\??\" is read as "\\?\" is**, and was not read at all: the three
+    /// forms are understood under it (a drive's root is a root, a folder by
+    /// any of them is left alone) and every other device name under it is
+    /// refused in the device's words. Text only.
+    /// </summary>
+    [WindowsFact]
+    public void The_nt_prefix_is_read_as_the_extended_prefix_is()
+    {
+        var q = UnusedDeviceLetter();
+        const string guid = "Volume{00000000-0000-0000-0000-00000000dead}";
+
+        foreach (var root in new[]
+                 {
+                     $@"\??\{q}:\", $@"\??\{q}:", $@"\??\{q}:\x\..", @"\??\UNC\server\share\", $@"\??\{guid}\",
+                     $@"\??\GLOBALROOT\??\{q}:\", $@"\??\GLOBALROOT\DosDevices\{q}:\",
+                 })
+            Assert.True(VolumeRoots.Refuse([root]) == VolumeRoots.Refusal, $"{root} was not refused as a drive");
+
+        foreach (var unread in new[]
+                 {
+                     $@"\??\GLOBALROOT\Sessions\0\DosDevices\00000000-0001e240\{q}:",
+                     $@"\??\Global\{q}:\", @"\??\GLOBALROOT\Device\HarddiskVolumeShadowCopy1\Users\me\a.txt",
+                 })
+            Assert.True(VolumeRoots.Refuse([unread]) == VolumeRoots.DeviceRefusal, $"{unread} was not refused as a device path");
+
+        foreach (var folder in new[] { $@"\??\{q}:\data", @"\??\UNC\server\share\dir", $@"\??\{guid}\data" })
+            Assert.Null(VolumeRoots.Refuse([folder]));
+    }
+
+    /// <summary>
+    /// **A colon after the drive names a stream**, and a directory's index
+    /// stream names the directory — "X:\::$INDEX_ALLOCATION" is the drive's
+    /// root to the file system. Every such path is refused in the stream's
+    /// words, a file's own stream included; a drive's colon, and a share's
+    /// path with none, are not. Text only.
+    /// </summary>
+    [WindowsFact]
+    public void A_colon_after_the_drive_is_refused_as_a_stream()
+    {
+        var q = UnusedDeviceLetter();
+
+        foreach (var stream in new[]
+                 {
+                     $@"{q}:\::$INDEX_ALLOCATION", $@"{q}:\:$I30:$INDEX_ALLOCATION", $@"\\?\{q}:\::$INDEX_ALLOCATION",
+                     $@"\??\{q}:\::$INDEX_ALLOCATION", $@"{q}::$INDEX_ALLOCATION", $@"{q}:\dir\notes.txt:secret",
+                     $@"{q}:\dir::$INDEX_ALLOCATION", @"\\server\share\dir:x", @"\\?\UNC\server\share\f.txt:s",
+                     $@"{q}:/dir/f.txt:s",
+                 })
+            Assert.True(VolumeRoots.Refuse([stream]) == VolumeRoots.StreamRefusal, $"{stream} was not refused as a stream");
+
+        foreach (var folder in new[] { $@"{q}:\data", $@"\\?\{q}:\data", @"\\server\share\dir", $"{q}:data" })
+            Assert.Null(VolumeRoots.Refuse([folder]));
+    }
+
     private static char UnusedDeviceLetter()
     {
         var taken = DriveInfo.GetDrives().Select(d => char.ToUpperInvariant(d.Name[0])).ToHashSet();
