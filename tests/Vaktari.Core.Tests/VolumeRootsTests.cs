@@ -270,4 +270,66 @@ public sealed class VolumeRootsTests
         Assert.Throws<PathTooLongException>(() => Path.GetFullPath(root));
         Assert.True(VolumeRoots.IsVolumeRoot(root));
     }
+
+    /// <summary>
+    /// **The object manager's other names for a drive**, which the third review
+    /// round tried against the text guard and found refused — pinned so they stay so.
+    ///
+    /// **Each is a spelling Win32 opens**: "\\.\" is the same prefix as "\\?\"
+    /// with the path folded first; "DosDevices" and "GLOBAL??" are two more names
+    /// for "??"; the object manager ignores case; and a network redirector puts a
+    /// ";LanmanRedirector" and a ";Z:000…" (the mapped letter and the logon
+    /// session) ahead of the server and share when it names a mapped drive.
+    /// Asked of text alone, of letters, volume numbers and GUIDs that answer to
+    /// nothing on any machine; nothing is opened.
+    ///
+    /// Here rather than in a class of its own: IsVolumeRoot reads the mount
+    /// table, and a class running alongside this one would count towards
+    /// Refusing_a_list_reads_the_mount_table_once's reads.
+    /// </summary>
+    [WindowsFact]
+    public void Every_other_object_manager_name_for_a_root_is_a_root()
+    {
+        var q = UnusedDeviceLetter();
+        var lower = char.ToLowerInvariant(q);
+        const string guid = "Volume{00000000-0000-0000-0000-00000000dead}";
+
+        string[] roots =
+        [
+            $@"\\.\GLOBALROOT\??\{q}:\",
+            $@"\\?\GlobalRoot\DOSDEVICES\{lower}:\",
+            $@"\\?\GLOBALROOT\global??\{q}:\",
+            $@"\\?\GLOBALROOT\??\{q}:\x\..\.",
+            $@"\\?\GLOBALROOT\??\GLOBALROOT\Device\HarddiskVolume999\",
+            $@"\\?\GLOBALROOT\GLOBAL??\{guid}\",
+            @"\\?\GLOBALROOT\Device\LanmanRedirector\server\share\",
+            @"\\?\GLOBALROOT\DEVICE\MUP\server\share",
+            $@"\\?\GLOBALROOT\Device\Mup\;LanmanRedirector\;{q}:0000000000012345\server\share\",
+            $@"\\?\GLOBALROOT\Device\LanmanRedirector\;{q}:0000000000012345\server\share\.",
+            @"\\?\UNC\localhost\c$\",
+            @"\\.\UNC\server\share\",
+        ];
+
+        foreach (var root in roots)
+            Assert.True(VolumeRoots.IsVolumeRoot(root), $"{root} was not taken for a root");
+
+        string[] folders =
+        [
+            $@"\\.\GLOBALROOT\??\{q}:\data",
+            $@"\\?\GlobalRoot\DOSDEVICES\{lower}:\data\",
+            $@"\\?\GLOBALROOT\Device\Mup\;LanmanRedirector\;{q}:0000000000012345\server\share\dir",
+            @"\\?\GLOBALROOT\Device\LanmanRedirector\server\share\dir\x\..",
+            @"\\?\GLOBALROOT\Device\HarddiskVolumeShadowCopy1\Windows\..\Users",
+            @"\\?\UNC\localhost\c$\Windows",
+        ];
+
+        foreach (var folder in folders)
+            Assert.False(VolumeRoots.IsVolumeRoot(folder), $"{folder} was taken for a root");
+    }
+
+    private static char UnusedDeviceLetter()
+    {
+        var taken = DriveInfo.GetDrives().Select(d => char.ToUpperInvariant(d.Name[0])).ToHashSet();
+        return "ZYXWVUTSRQPONMLKJIHG".First(c => !taken.Contains(c));
+    }
 }
