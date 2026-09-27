@@ -528,6 +528,14 @@ public sealed class CopypartyShare : IFileSharing
         if (_command is null)
             throw new InvalidOperationException(UnavailableReason);
 
+        // **Not a folder whose name Windows folds.** Resolving "…\photos "
+        // below folds it to "…\photos", and the server was started on the
+        // neighbour — served to the network, writable if that was asked
+        // (the hunt). The server is another program handed the folder by
+        // name, so it is the hand-off rule, asked before anything resolves.
+        if (ReachablePath.RefuseHandedOut(path) is { } refused)
+            throw new IOException(refused);
+
         path = PathRules.Normalise(Path.GetFullPath(path));
 
         if (!Directory.Exists(path))

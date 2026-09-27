@@ -185,6 +185,34 @@ public sealed class CopypartyShareTests : IDisposable
         Assert.Null(session.Warning);
     }
 
+    /// <summary>
+    /// **A folder whose name Windows folds was served as its neighbour.**
+    /// Resolving "…\photos " folded it to "…\photos", and copyparty was started
+    /// on that — offered to the network, writable if asked (seventh review
+    /// round, the hunt). Refused, naming it, before anything is resolved,
+    /// written or started; the launch seam records rather than starts.
+    /// </summary>
+    [WindowsFact]
+    public async Task A_folder_whose_name_windows_folds_is_not_served()
+    {
+        var folded = Path.Combine(_root, "photos ");
+        Directory.CreateDirectory(@"\\?\" + folded);
+
+        var launched = new List<string>();
+        var share = new CopypartyShare(new Stub())
+        {
+            LaunchOverride = info => { launched.Add(ConfigPathOf(info)); return Stand(info); },
+        };
+
+        var refused = await Assert.ThrowsAsync<IOException>(
+            () => share.StartAsync(folded, ReadOnly, CancellationToken.None));
+
+        Assert.Contains("\"photos \" cannot be handed to another program", refused.Message, StringComparison.Ordinal);
+        Assert.Empty(launched);
+
+        try { Directory.Delete(@"\\?\" + folded); } catch (IOException) { }
+    }
+
     /// <summary>The file carries the password, so it is nobody else's to read.</summary>
     [PosixFact, SupportedOSPlatform("linux")]
     public async Task The_config_is_readable_by_this_user_alone()

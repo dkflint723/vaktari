@@ -137,11 +137,21 @@ public sealed class WindowsFileSystemProvider : IFileSystemProvider
     {
         try
         {
-            var info = new FileInfo(path);
-            if (!info.Exists && !Directory.Exists(path))
+            // **Read through the spelling that reaches this entry.** A plain
+            // "…\report " is stat'ed as "…\report", so the row the watcher
+            // refreshed took its neighbour's length, dates and Hidden flag — a
+            // hidden neighbour hid the row outright (seventh round's hunt).
+            // The row keeps the path it was listed under; only the stat goes
+            // through "\\?\". None at all is no entry: nothing rather than
+            // the neighbour.
+            if (ReachablePath.Exact(path) is not { } exact)
                 return ValueTask.FromResult<FileEntry?>(null);
 
-            var attributes = File.GetAttributes(path);
+            var info = new FileInfo(exact);
+            if (!info.Exists && !Directory.Exists(exact))
+                return ValueTask.FromResult<FileEntry?>(null);
+
+            var attributes = File.GetAttributes(exact);
             var isDir = (attributes & FileAttributes.Directory) != 0;
 
             // A drive root has no file name, so it names itself — the same rule
@@ -153,7 +163,7 @@ public sealed class WindowsFileSystemProvider : IFileSystemProvider
             // them and not the other is a shortcut drawn with an arrow in the
             // listing and handed back without one by the watcher a moment
             // later, as a different value for the same file.
-            var flags = WindowsEntryFlags.For(name, attributes, isDir, WindowsEntryFlags.TagFor(path, attributes));
+            var flags = WindowsEntryFlags.For(name, attributes, isDir, WindowsEntryFlags.TagFor(exact, attributes));
 
             return ValueTask.FromResult<FileEntry?>(new FileEntry(
                 name,

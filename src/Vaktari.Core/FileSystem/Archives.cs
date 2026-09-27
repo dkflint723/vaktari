@@ -102,6 +102,11 @@ public static class Archives
         if (!CanCompress(sources))
             throw new ArgumentException("everything in one archive has to come from one folder");
 
+        // **Written where it was asked for, or not at all.** A plain
+        // destination whose name Win32 folds is written as its neighbour, and
+        // resolving it below would fold it before anything could tell.
+        if (ReachablePath.Refuse(destination) is { } unreachable) throw new IOException(unreachable);
+
         destination = Path.GetFullPath(destination);
 
         var landing = NewItemName.Free(destination, StemFor(sources, destination), Extension);
@@ -203,6 +208,17 @@ public static class Archives
         string archive, string destination, OperationHandle? handle, CancellationToken token,
         ArchiveRoom room, IExtractionObserver? observer, int maxEntries = ArchiveLimits.MaxEntries)
     {
+        // **The archive the row names, into the folder it was asked for.** A
+        // plain "…\sub \a.zip" is opened as "…\sub\a.zip", so it is read
+        // through the spelling that reaches it; the folder it lands in is
+        // written to, so a name there that folds is refused like any other
+        // landing (seventh round's hunt).
+        if (ReachablePath.Refuse(destination) is { } unreachable)
+            throw new ArchiveRefusedException(unreachable);
+
+        archive = ReachablePath.Exact(archive)
+                  ?? throw new ArchiveRefusedException(ReachablePath.Refuse(archive) ?? archive);
+
         destination = Path.GetFullPath(destination);
 
         var leaf = Leaf(archive);
@@ -514,9 +530,19 @@ public static class Archives
     /// </summary>
     private static void Add(ZipArchive zip, string source, CancellationToken token)
     {
-        if (!Directory.Exists(source))
+        // **Read as the row it names, through "\\?\".** A plain "…\report "
+        // is opened as "…\report": the entry "report " held report's bytes and
+        // the compress said it had made it; beside a FOLDER "report", it
+        // walked that folder instead and wrote an empty "report /" (seventh
+        // round's hunt, H5). Walked from the extended spelling, every name
+        // found underneath is spelled the same way, so "x..." inside a folder
+        // is read as itself rather than as "x" twice. None at all is refused.
+        var root = ReachablePath.Extended(source) ?? ReachablePath.Exact(source)
+                   ?? throw new IOException(ReachablePath.Refuse(source) ?? source);
+
+        if (!Directory.Exists(root))
         {
-            Store(zip, source, Path.GetFileName(source));
+            Store(zip, root, Path.GetFileName(source));
             return;
         }
 
@@ -526,14 +552,17 @@ public static class Archives
         // and does not appear in the archive at all reads as a failed compress.
         zip.CreateEntry(top + "/");
 
-        foreach (var found in SafeWalk.Descend(source, token))
+        foreach (var found in SafeWalk.Descend(root, token))
         {
             // ZipArchive can write a file or a folder and has no member for a
             // link, so following one would silently put a copy of somebody
             // else's tree in the archive instead of recording the link.
             if (found.IsLink) continue;
 
-            var name = top + "/" + Path.GetRelativePath(source, found.Path).Replace('\\', '/');
+            // Relative to the extended root, which GetRelativePath leaves as it
+            // is: from the plain one it folded "x..." to "x" and named the
+            // entry after the neighbour as well.
+            var name = top + "/" + Path.GetRelativePath(root, found.Path).Replace('\\', '/');
 
             if (found.IsDirectory) zip.CreateEntry(name + "/");
             else Store(zip, found.Path, name);

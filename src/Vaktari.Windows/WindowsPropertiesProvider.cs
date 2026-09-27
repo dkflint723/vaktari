@@ -22,9 +22,17 @@ public sealed class WindowsPropertiesProvider : IPropertiesProvider
 
     public ValueTask<FileDetails> GetAsync(string path, CancellationToken ct)
     {
-        var isDirectory = Directory.Exists(path);
+        // **Every fact below is read through the spelling that reaches the
+        // entry.** Asked for "…\report ", the window showed "report"'s size,
+        // dates and attributes (seventh round's hunt). Name and FullPath stay
+        // the path it was asked about; what is READ comes through "\\?\".
+        // None at all is said, rather than filled in from the neighbour.
+        var exact = ReachablePath.Exact(path)
+                    ?? throw new IOException(ReachablePath.Refuse(path) ?? path);
 
-        FileSystemInfo info = isDirectory ? new DirectoryInfo(path) : new FileInfo(path);
+        var isDirectory = Directory.Exists(exact);
+
+        FileSystemInfo info = isDirectory ? new DirectoryInfo(exact) : new FileInfo(exact);
 
         var attributes = FileAttributes.None;
         try { attributes = info.Attributes; } catch (Exception e) when (e is IOException or UnauthorizedAccessException) { }
@@ -33,7 +41,7 @@ public sealed class WindowsPropertiesProvider : IPropertiesProvider
         // execution alias, or a folder under a filter's own tag, wears the
         // attribute and stands for nothing — measured, see WindowsEntryFlags.
         // One item, one look.
-        var isLink = SafeWalk.IsLink(attributes, WindowsEntryFlags.TagFor(path, attributes));
+        var isLink = SafeWalk.IsLink(attributes, WindowsEntryFlags.TagFor(exact, attributes));
 
         // Only resolved for a link. ResolveLinkTarget on an ordinary file is
         // harmless but costs a call per properties window, and on a dead
@@ -165,7 +173,11 @@ public sealed class WindowsPropertiesProvider : IPropertiesProvider
             // not there with -1 — every flag set — and a row invented out of
             // that is the fault the single-item sheet is already gated against.
             // This call throws instead, which is the answer worth having.
-            try { read.Add(File.GetAttributes(path)); }
+            // Through the spelling that reaches it, as GetAsync reads it; a
+            // path with none is left out, like one that has gone.
+            if (ReachablePath.Exact(path) is not { } exact) continue;
+
+            try { read.Add(File.GetAttributes(exact)); }
             catch (Exception e) when (e is IOException or UnauthorizedAccessException)
             {
             }
@@ -225,7 +237,13 @@ public sealed class WindowsPropertiesProvider : IPropertiesProvider
             // must cost that folder, not the whole measurement. On C:\ that is
             // guaranteed rather than likely.
             var pending = new Stack<string>();
-            pending.Push(path);
+
+            // **The folder asked about, not its neighbour.** "album " was
+            // walked as "album" and its neighbour's thousand bytes reported
+            // as its three (seventh round's hunt). Walked from the spelling
+            // that reaches it, its children arrive spelled the same way. A
+            // folder with no such spelling measures as nothing.
+            if (ReachablePath.Exact(path) is { } root) pending.Push(root);
 
             var sinceReport = 0;
 
