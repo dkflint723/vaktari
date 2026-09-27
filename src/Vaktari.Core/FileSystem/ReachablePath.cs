@@ -140,6 +140,90 @@ public static class ReachablePath
             : why;
     }
 
+    /// <summary>
+    /// The spelling that opens exactly this entry, for READING it — its bytes,
+    /// its size, its attributes, what is in it — or null when there is none.
+    ///
+    /// **A read need not be refused: it can reach the right file.**
+    /// <see cref="Refuse"/> stops an ACT, because acting on the neighbour can
+    /// destroy it and an act is a path threaded through a whole engine. A read
+    /// is one call, and the one spelling Win32 opens as written is a literal
+    /// "\\?\" (<see cref="Unopenable"/>) — so a plain path whose names Win32
+    /// would fold is read through that, and the preview, the zip, a row's size
+    /// and the properties window show the file the row names rather than
+    /// "report"'s. WindowsSearchProvider has read its content matches the same
+    /// way since the sixth round.
+    ///
+    /// **The path as it is whenever nothing in it folds**, so no ordinary read
+    /// changes; and as it is on Linux, where nothing folds. Null when it folds
+    /// and has no such spelling — a NUL, a relative path, "\\.\" and the other
+    /// device spellings Win32 rewrites, a "." or ".." between names (which
+    /// "\\?\" would take as names), or a "/" where "\\?\" wants "\". A caller
+    /// given null shows nothing rather than the neighbour.
+    /// </summary>
+    public static string? Exact(string? path)
+    {
+        if (!OperatingSystem.IsWindows()) return path;
+        if (string.IsNullOrEmpty(path)) return path;
+        if (path.Contains('\0')) return null;
+
+        return Unopenable(path) is null ? path : Extended(path);
+    }
+
+    /// <summary>
+    /// The literal "\\?\" spelling of a plain, fully qualified Windows path —
+    /// "\\?\UNC\" for a share — or null when it has none, by the rules
+    /// <see cref="Exact"/> gives. A path already spelled "\\?\" or "\??\" is
+    /// its own. On Linux, the path as it is.
+    ///
+    /// **For a walk whose CHILDREN must keep their names.** <see cref="Exact"/>
+    /// leaves a root that folds nothing as it is, and every name found under
+    /// it is then joined to that plain spelling: "x..." inside "album" is read
+    /// as "album\x..." and opened as "album\x". Walked from this spelling, the
+    /// children arrive spelled the same way and are read as themselves.
+    /// </summary>
+    public static string? Extended(string? path)
+    {
+        if (!OperatingSystem.IsWindows()) return path;
+        if (string.IsNullOrEmpty(path) || path.Contains('\0')) return null;
+
+        if (path.StartsWith(@"\\?\", StringComparison.Ordinal)
+            || path.StartsWith(@"\??\", StringComparison.Ordinal))
+            return path;
+
+        if (path.Contains('/') || !Path.IsPathFullyQualified(path)) return null;
+
+        string prefix, rest;
+
+        if (path.StartsWith(@"\\", StringComparison.Ordinal))
+        {
+            // "\\.\" and "\\?" spelled any other way are device paths, which
+            // Win32 rewrites; only a share is a plain path here.
+            if (path.Length < 3 || path[2] is '.' or '?') return null;
+
+            prefix = @"\\?\UNC\";
+            rest = path[2..];
+        }
+        else
+        {
+            prefix = @"\\?\";
+            rest = path;
+        }
+
+        var names = rest.Split('\\');
+
+        for (var i = 0; i < names.Length; i++)
+        {
+            // "\\?\" opens "." and ".." as names and a doubled separator as an
+            // empty one; the plain spelling meant neither. A single trailing
+            // separator is the folder's own, as in "C:\".
+            if (names[i] is "." or "..") return null;
+            if (names[i].Length == 0 && i != names.Length - 1) return null;
+        }
+
+        return prefix + rest;
+    }
+
     private const string Nul ="a path with a NUL character in it names nothing Windows can open "
                                + "— acting on it would hit whatever comes before the NUL.";
 
