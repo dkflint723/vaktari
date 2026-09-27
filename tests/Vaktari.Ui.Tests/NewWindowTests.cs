@@ -379,6 +379,25 @@ public sealed class NewWindowTests : OwnedViewModels
         Settle();
     }
 
+    /// <summary>
+    /// Closes a window the test released by hand, then the rest of the family.
+    ///
+    /// **A window released by hand is out of the family list, so CloseAll never
+    /// reached it**, and the three tests here that release one left it open,
+    /// shown and ticking for the rest of the run — measured, one more open
+    /// MainWindow after each. Every window built afterwards writes the theme
+    /// and the text sizes into the application's resources, and every open
+    /// window hears each write, so those three made every later window test in
+    /// the suite slower. Closed first, while the founder still holds the
+    /// family, so its release takes the ordinary not-the-last path.
+    /// </summary>
+    private static async Task CloseAllAsync(MainWindow founder, MainWindow? released)
+    {
+        if (released is not null) await CloseAndWaitAsync(released);
+
+        CloseAll(founder.Services);
+    }
+
     // ---- one application, several windows ----------------------------------
 
     /// <summary>
@@ -469,6 +488,7 @@ public sealed class NewWindowTests : OwnedViewModels
         PaneViewModel.Search = null;
 
         var founder = new MainWindow();
+        MainWindow? peer = null;
 
         try
         {
@@ -479,7 +499,7 @@ public sealed class NewWindowTests : OwnedViewModels
             Settle();
 
             var services = founder.Services;
-            var peer = services.Windows.First(w => !ReferenceEquals(w, founder));
+            peer = services.Windows.First(w => !ReferenceEquals(w, founder));
 
             Assert.Equal(2, services.Compose().Windows.Count);
 
@@ -504,7 +524,7 @@ public sealed class NewWindowTests : OwnedViewModels
         }
         finally
         {
-            CloseAll(founder.Services);
+            await CloseAllAsync(founder, released: peer);
         }
     }
 
@@ -978,6 +998,7 @@ public sealed class NewWindowTests : OwnedViewModels
         PaneViewModel.Search = null;
 
         var founder = new MainWindow();
+        MainWindow? peer = null;
 
         try
         {
@@ -994,14 +1015,14 @@ public sealed class NewWindowTests : OwnedViewModels
             Assert.False(services.IsLastWindow,
                          "with two windows open, closing one must not stop the other's shares");
 
-            var peer = services.Windows.First(w => !ReferenceEquals(w, founder));
+            peer = services.Windows.First(w => !ReferenceEquals(w, founder));
             await services.ReleaseAsync(peer);
 
             Assert.True(services.IsLastWindow);
         }
         finally
         {
-            CloseAll(founder.Services);
+            await CloseAllAsync(founder, released: peer);
         }
     }
 
@@ -1021,6 +1042,7 @@ public sealed class NewWindowTests : OwnedViewModels
         PaneViewModel.Search = null;
 
         var founder = new MainWindow();
+        MainWindow? peer = null;
 
         try
         {
@@ -1031,7 +1053,7 @@ public sealed class NewWindowTests : OwnedViewModels
             Settle();
 
             var services = founder.Services;
-            var peer = services.Windows.First(w => !ReferenceEquals(w, founder));
+            peer = services.Windows.First(w => !ReferenceEquals(w, founder));
 
             // Showing it focused it, which is the only thing that ever assigns
             // Active.
@@ -1043,7 +1065,7 @@ public sealed class NewWindowTests : OwnedViewModels
         }
         finally
         {
-            CloseAll(founder.Services);
+            await CloseAllAsync(founder, released: peer);
         }
     }
 
@@ -1174,6 +1196,258 @@ public sealed class NewWindowTests : OwnedViewModels
         Assert.Equal(0, places.Subscribers);
     }
 
+    /// <summary>What is listening for version-control snapshots right now: one
+    /// handler per row on screen, each holding its row.</summary>
+    private static HashSet<object?> VcsListeners()
+    {
+        var field = typeof(Vaktari.Ui.Thumbnails.RowVcs).GetField(
+            "Changed", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Static);
+
+        Assert.NotNull(field);
+
+        var handlers = (Delegate?)field.GetValue(null);
+
+        return [.. handlers?.GetInvocationList().Select(d => d.Target) ?? []];
+    }
+
+    /// <summary>
+    /// **Every closed window stayed in memory for the life of the process.**
+    /// A row listened for version-control snapshots from the moment its entry
+    /// was set and let go only when it left the screen — and a closing window
+    /// takes its rows off the screen FIRST and clears its listings after, so
+    /// each row's entry changed once more while it was off screen, and it
+    /// subscribed again to a static event it would never leave. That one
+    /// handler held the row, the row its parents, the parents the window.
+    /// MEASURED: four rows a window, and in the Ui suite 11,000 of them and a
+    /// 5 GB heap by the end of a run, every window test slower than the last.
+    /// </summary>
+    [AvaloniaFact]
+    public async Task A_closed_window_leaves_no_row_listening_for_version_control()
+    {
+        await SaveAsync();
+        PaneViewModel.Search = null;
+
+        var folder = Directory.CreateTempSubdirectory("vaktari-vcs-rows").FullName;
+
+        foreach (var name in new[] { "a.txt", "b.txt", "c.txt" })
+            System.IO.File.WriteAllText(Path.Combine(folder, name), name);
+
+        // Compared by identity rather than counted, so a window an earlier test
+        // was still closing cannot hide one of this window's rows by letting
+        // go of one of its own.
+        var before = VcsListeners();
+        var founder = new MainWindow();
+
+        try
+        {
+            founder.Show();
+            Settle();
+
+            await founder.Shell.ActiveTab!.NavigateAsync(folder);
+            founder.UpdateLayout();
+            Settle();
+
+            // The premise: rows on screen do listen. Without it, a row that
+            // never subscribed at all would pass the assertion below.
+            Assert.NotEmpty(VcsListeners().Except(before));
+        }
+        finally
+        {
+            await CloseAndWaitAsync(founder);
+        }
+
+        Settle();
+
+        try
+        {
+            Assert.Empty(VcsListeners().Except(before));
+        }
+        finally
+        {
+            Directory.Delete(folder, recursive: true);
+        }
+    }
+
+    /// <summary>
+    /// Opens a second window on the founder's folder, waits for its rows to be
+    /// on screen, closes it, and hands back nothing but a weak reference — in a
+    /// method of its own so no local of the caller's can be what keeps it.
+    /// </summary>
+    [System.Runtime.CompilerServices.MethodImpl(System.Runtime.CompilerServices.MethodImplOptions.NoInlining)]
+    private static async Task<WeakReference> OpenAndCloseAPeerAsync(MainWindow founder, int rows)
+    {
+        founder.Shell.NewWindowCommand.Execute(null);
+        Settle();
+
+        var peer = founder.Services.Windows.Single(w => !ReferenceEquals(w, founder));
+        var deadline = DateTime.UtcNow + Ceiling;
+
+        while (peer.Shell.ActiveTab?.Entries.Count != rows)
+        {
+            Assert.True(DateTime.UtcNow < deadline, "the second window never listed the folder");
+
+            Settle();
+            await Task.Delay(5);
+        }
+
+        peer.UpdateLayout();
+        Settle();
+
+        await CloseAndWaitAsync(peer);
+
+        return new WeakReference(peer);
+    }
+
+    /// <summary>Whether what the reference points at goes within fifty full
+    /// collections, pumping between them so a queued callback can let go.</summary>
+    private static async Task<bool> CollectedAsync(WeakReference closed)
+    {
+        for (var i = 0; i < 50; i++)
+        {
+            Settle();
+            GC.Collect();
+            GC.WaitForPendingFinalizers();
+            GC.Collect();
+
+            if (!closed.IsAlive) return true;
+
+            await Task.Delay(5);
+        }
+
+        return false;
+    }
+
+    /// <summary>A folder of three files, so a window opened on it has rows.</summary>
+    private static string ThreeFiles(string prefix)
+    {
+        var folder = Directory.CreateTempSubdirectory(prefix).FullName;
+
+        foreach (var name in new[] { "a.txt", "b.txt", "c.txt" })
+            System.IO.File.WriteAllText(Path.Combine(folder, name), name);
+
+        return folder;
+    }
+
+    /// <summary>
+    /// **And the window itself goes**, which is what somebody using Vaktari
+    /// actually had: every window closed in a session stayed in memory until
+    /// Vaktari quit, and each one made every later window slower to open.
+    /// The listener test above says why; this one says the window is free.
+    ///
+    /// **The closed window is the one built last, on purpose**, and nothing is
+    /// built after it. PaneViewModel.AskConflict is a static every window
+    /// assigns, and it used to capture the window that assigned it — so the
+    /// window built last stayed in memory after it closed until another came
+    /// along. Measured before that was fixed: alive after thirty collections,
+    /// and gone as soon as a third window was built.
+    /// </summary>
+    [AvaloniaFact]
+    public async Task A_closed_window_is_collected()
+    {
+        await SaveAsync();
+        PaneViewModel.Search = null;
+
+        var folder = ThreeFiles("vaktari-collected");
+        var founder = new MainWindow();
+
+        try
+        {
+            founder.Show();
+            Settle();
+
+            await founder.Shell.ActiveTab!.NavigateAsync(folder);
+            founder.UpdateLayout();
+            Settle();
+
+            var closed = await OpenAndCloseAPeerAsync(founder, rows: 3);
+
+            Assert.True(await CollectedAsync(closed), "a closed window is still in memory after fifty collections");
+        }
+        finally
+        {
+            CloseAll(founder.Services);
+            Directory.Delete(folder, recursive: true);
+        }
+    }
+
+    /// <summary>
+    /// Opens a first window on the folder, opens a second FROM it, closes the
+    /// first and hands back a weak reference to it with the second, still
+    /// open. A method of its own so no local of the caller's holds the first.
+    /// </summary>
+    [System.Runtime.CompilerServices.MethodImpl(System.Runtime.CompilerServices.MethodImplOptions.NoInlining)]
+    private static async Task<(WeakReference First, MainWindow Second)> OpenOneFromAnotherAndCloseTheFirstAsync(
+        string folder, List<WindowServices> toClose)
+    {
+        var first = new MainWindow();
+
+        toClose.Add(first.Services);
+        first.Show();
+        Settle();
+
+        var tab = first.Shell.ActiveTab!;
+
+        await tab.NavigateAsync(folder);
+        first.UpdateLayout();
+        Settle();
+
+        // A view the second window can only have got from the first, so the
+        // premise — it was opened FROM it — is checked rather than assumed.
+        tab.SortDescending = !tab.SortDescending;
+        var sortedDown = tab.SortDescending;
+
+        first.Shell.NewWindowCommand.Execute(null);
+        Settle();
+
+        var second = first.Services.Windows.Single(w => !ReferenceEquals(w, first));
+        var deadline = DateTime.UtcNow + Ceiling;
+
+        while (second.Shell.ActiveTab?.Entries.Count != 3)
+        {
+            Assert.True(DateTime.UtcNow < deadline, "the second window never listed the folder");
+
+            Settle();
+            await Task.Delay(5);
+        }
+
+        Assert.Equal(sortedDown, second.Shell.ActiveTab!.SortDescending);
+
+        await CloseAndWaitAsync(first);
+
+        return (new WeakReference(first), second);
+    }
+
+    /// <summary>
+    /// **A window opened from another kept that other one alive.** It carried
+    /// the tab it was opened from, to copy its view, and kept it for as long as
+    /// it stayed open — and a tab holds the handlers its own window wired to
+    /// it, so closing the first window freed nothing while the second was
+    /// still up. The second stays open here while the first is collected.
+    /// </summary>
+    [AvaloniaFact]
+    public async Task A_window_opened_from_another_does_not_keep_it_in_memory()
+    {
+        await SaveAsync();
+        PaneViewModel.Search = null;
+
+        var folder = ThreeFiles("vaktari-opened-from");
+        var toClose = new List<WindowServices>();
+
+        try
+        {
+            var (first, second) = await OpenOneFromAnotherAndCloseTheFirstAsync(folder, toClose);
+
+            Assert.True(second.IsVisible, "the second window closed too, so this proves nothing");
+            Assert.True(await CollectedAsync(first),
+                        "the first window is still in memory while the one opened from it is open");
+        }
+        finally
+        {
+            foreach (var services in toClose) CloseAll(services);
+            Directory.Delete(folder, recursive: true);
+        }
+    }
+
     /// <summary>
     /// The eject veto asks the FAMILY, so a window has to be able to see what
     /// the others are doing. This is the wiring that makes that possible; the
@@ -1186,6 +1460,7 @@ public sealed class NewWindowTests : OwnedViewModels
         PaneViewModel.Search = null;
 
         var founder = new MainWindow();
+        var handle = new OperationHandle { Paths = [Path.Combine(Path.GetTempPath(), "big.iso")] };
 
         try
         {
@@ -1197,7 +1472,6 @@ public sealed class NewWindowTests : OwnedViewModels
 
             var peer = founder.Services.Windows.First(w => !ReferenceEquals(w, founder));
 
-            var handle = new OperationHandle { Paths = [Path.Combine(Path.GetTempPath(), "big.iso")] };
             handle.Begin(1, totalBytes: 0);
             peer.Shell.ActiveTab!.Adopt(handle);
 
@@ -1210,6 +1484,12 @@ public sealed class NewWindowTests : OwnedViewModels
         }
         finally
         {
+            // Finished first: a window with a transfer still running asks
+            // before it closes, nobody here answers, and the family never
+            // empties — CloseAll then ran its whole ceiling out and left both
+            // windows open for the rest of the run.
+            handle.Complete();
+
             CloseAll(founder.Services);
         }
     }
@@ -1312,7 +1592,7 @@ public sealed class NewWindowTests : OwnedViewModels
     {
         var source = Window();
 
-        Assert.Contains("var owner = _services.Active ?? this;", source, StringComparison.Ordinal);
+        Assert.Contains("var owner = family.ForDesktopRequest;", source, StringComparison.Ordinal);
         Assert.Contains("new ConflictWindow(model).ShowDialog(owner)", source, StringComparison.Ordinal);
     }
 

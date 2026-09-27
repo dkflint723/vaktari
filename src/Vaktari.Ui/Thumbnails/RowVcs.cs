@@ -190,6 +190,22 @@ public static class RowVcs
     private static readonly AttachedProperty<bool> WiredProperty =
         AvaloniaProperty.RegisterAttached<Control, bool>("Wired", typeof(RowVcs));
 
+    /// <summary>
+    /// **A row that was OFF screen when its entry changed listened forever,
+    /// and held its whole window.** This subscribed whenever the entry was set
+    /// and let go only on a detach — so an entry set after the detach, which is
+    /// exactly what a closing window does as its panes clear their listings,
+    /// subscribed a control that would never be detached again. The static
+    /// event then held the row, the row its parents, and the parents the
+    /// closed window with every listing it had shown: measured in the Ui suite,
+    /// four rows per window, 11,000 subscriptions and a 5 GB heap by the end of
+    /// a run, and every later window test slower than the one before because
+    /// work that walks the live controls was walking all of the dead ones too.
+    ///
+    /// So the row listens only while it is on screen, the way KeyHint does:
+    /// subscribed on attach, let go on detach, and re-read on attach because a
+    /// snapshot may have landed while it was away.
+    /// </summary>
     private static void Attach(Control control, Action reapply)
     {
         if (control.GetValue(WiredProperty)) return;
@@ -199,17 +215,16 @@ public static class RowVcs
         void OnChanged(object? _, EventArgs __) =>
             Avalonia.Threading.Dispatcher.UIThread.Post(reapply);
 
-        Changed += OnChanged;
-
-        // A static event holding a strong reference to a control would keep
-        // every row ever realized alive for the life of the process. Detaching
-        // is what makes this safe, and it is why the handler is a named local
-        // rather than a lambda written twice.
-        control.DetachedFromVisualTree += (_, _) =>
+        control.AttachedToVisualTree += (_, _) =>
         {
-            Changed -= OnChanged;
-            control.SetValue(WiredProperty, false);
+            Changed += OnChanged;
+            reapply();
         };
+
+        control.DetachedFromVisualTree += (_, _) => Changed -= OnChanged;
+
+        // Already on screen: the attach this would have waited for has been.
+        if (TopLevel.GetTopLevel(control) is not null) Changed += OnChanged;
     }
 
     private static void ApplyBadge(Control control, FileEntry? entry)

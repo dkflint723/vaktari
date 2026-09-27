@@ -64,7 +64,7 @@ public sealed class CutMarkTests : IDisposable
     /// **Every listing shows the same marks**, because the clipboard is one:
     /// cutting in one tab and pasting in another is the ordinary case.
     /// </summary>
-    [Fact]
+    [AvaloniaFact]
     public void Changing_them_is_announced()
     {
         var raised = 0;

@@ -128,6 +128,8 @@ public sealed class RefusedDropTests : OwnedViewModels
 
             var pane = Own(ShellOf(window)).ActiveTab!;
 
+            SidebarReady(window);
+
             var bin = window.GetVisualDescendants().OfType<Control>()
                 .FirstOrDefault(c => c.DataContext is PlaceItemViewModel p && PathRules.Same(p.Path, VirtualPaths.Trash));
 

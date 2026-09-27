@@ -45,6 +45,21 @@ public sealed class SettingsPagesTests : OwnedViewModels
 
     public override void Dispose()
     {
+        // **A window that asks before it closes never closed, and stayed open
+        // for the rest of the run.** Three tests here Apply through a real
+        // window, which writes settings.json in this class's state directory,
+        // and one of them turns on BeginInSplitView — so every later window
+        // of the class restored itself split, counted two tabs, and answered
+        // Close() with "2 tabs are open. Close anyway?". Nobody answers in a
+        // test. MEASURED: one MainWindow and its prompt open from here to the
+        // end of the suite, and every window built after it paying to repaint
+        // it. The prompt is not what these tests are about, so it is not
+        // asked.
+        AppSettings.Apply(AppSettings.Current with
+        {
+            General = AppSettings.Current.General with { ConfirmClosingMultipleTabs = false },
+        });
+
         foreach (var window in _windows) window.Close();
 
         AppSettings.Apply(_settingsBefore);

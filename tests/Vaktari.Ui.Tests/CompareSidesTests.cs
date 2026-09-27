@@ -353,7 +353,7 @@ public sealed class CompareSidesTests : OwnedViewModels
 
     /// <summary>The word a row carries for each mark, and none for a row that
     /// looks the same on both sides.</summary>
-    [Fact]
+    [AvaloniaFact]
     public void A_row_says_what_the_comparison_found()
     {
         var marks = new Dictionary<string, CompareMark>(StringComparer.Ordinal)

@@ -370,26 +370,8 @@ public partial class MainWindow : Window
         // Marshalled, because the operation runs on a background thread and is
         // awaiting the answer: a dialog opened from there would touch the UI
         // from the wrong thread, and awaiting it from the UI thread is what
-        // lets the copy carry on afterwards.
-        ViewModels.PaneViewModel.AskConflict = async conflict =>
-            await Dispatcher.UIThread.InvokeAsync(async () =>
-            {
-                var model = new ViewModels.ConflictViewModel(conflict);
-
-                // **A process-wide static that every window assigns.** It
-                // captured `this`, so with two windows the prompt belonged to
-                // whichever was constructed LAST — and after that one closed,
-                // to a window that is gone. Resolved when the question is
-                // asked instead, falling back to the window that assigned it.
-                var owner = _services.Active ?? this;
-
-                // ShowDialog returns when the window closes; the window closes
-                // when the model answers, and closing it any other way answers
-                // Cancel. So this cannot wait forever on a dismissed dialog.
-                await new ConflictWindow(model).ShowDialog(owner);
-
-                return await model.Answer;
-            });
+        // lets the copy carry on afterwards. Built by a static method: see there.
+        ViewModels.PaneViewModel.AskConflict = ConflictAsker(_services);
 
         _shell.ShareDialogRequested += (_, request) =>
             new ShareWindow(request).ShowDialog(this);

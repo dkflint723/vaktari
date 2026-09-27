@@ -145,6 +145,80 @@ public sealed class RenameStepTests : OwnedViewModels
         Settle();
     }
 
+    /// <summary>
+    /// The rename the window's last confirm started, which a Tab waits for
+    /// before it steps. Read off the window because nothing else can say when
+    /// "the step would have happened by now": see <see cref="Refused"/>.
+    /// </summary>
+    private static Task<bool>? LastRename(Rig rig)
+    {
+        var field = typeof(MainWindow).GetField(
+            "_lastRename", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
+
+        Assert.NotNull(field);
+
+        return (Task<bool>?)field.GetValue(rig.Window);
+    }
+
+    /// <summary>
+    /// Types a name the run must refuse, presses Tab, and returns once the
+    /// window has decided — not after a timeout.
+    ///
+    /// **Both refusal tests sat out two full ceilings of <see cref="Until"/>,
+    /// about twelve seconds each.** <see cref="Rename"/> waits for the old name
+    /// to leave the listing and for the box to open on another row, and a
+    /// refusal is exactly the case where neither happens, so the ceiling WAS
+    /// the wait. What those tests assert is that the step did NOT happen, and
+    /// that needs a moment by which it would have — which the window has: a Tab
+    /// steps only after awaiting the rename the confirm started, so once that
+    /// task has finished and its continuation has run, a wrong step has
+    /// already landed or never will. A name refused before it leaves the
+    /// window starts no rename at all, and the step is decided inside the key
+    /// press itself.
+    /// </summary>
+    private static async Task Refused(Rig rig, FileEntry row, string to, bool byTheDisk)
+    {
+        rig.Shell.ActiveTab!.SelectedEntry = row;
+        rig.Shell.ActiveTab.BeginRenameCommand.Execute(null);
+
+        Settle();
+
+        var box = Box(rig);
+
+        Assert.Equal(row.Name, box.Text);
+        Assert.True(box.IsFocused, "the box on the row does not have the keyboard");
+
+        box.Text = to;
+        Settle();
+
+        var before = LastRename(rig);
+
+        rig.Window.KeyPress(Key.Tab, RawInputModifiers.None, PhysicalKey.Tab, null);
+
+        // **The premise of a refusal by the disk is that the disk was asked.**
+        // What the test asserts afterwards is that nothing moved on, which a
+        // Tab that never reached the step satisfies just as well. MEASURED: with
+        // the Tab handler's call to the step replaced by nothing, the taken-name
+        // test passed, on this branch and at 5c9b8a7.
+        //
+        // A name refused in the box has no such premise to check: there, doing
+        // nothing IS what Tab does, and the box already says why as it is typed.
+        if (byTheDisk)
+        {
+            var pending = LastRename(rig);
+
+            Assert.True(pending is not null && !ReferenceEquals(pending, before),
+                        "Tab started no rename, so the file system refused nothing");
+            Assert.False(await pending, "the file system took the name, so this refused nothing");
+        }
+        else
+        {
+            Assert.Same(before, LastRename(rig));
+        }
+
+        Settle();
+    }
+
     private static async Task Rename(Rig rig, FileEntry row, string to)
     {
         rig.Shell.ActiveTab!.SelectedEntry = row;
@@ -176,8 +250,8 @@ public sealed class RenameStepTests : OwnedViewModels
         // once more as an unnamed intermittent before that.
         //
         // The old name leaving the listing is the rename actually landing, and
-        // it is monotonic — a refusal never reaches it, and those tests assert
-        // negatives, so exhausting the ceiling is the correct outcome there.
+        // it is monotonic — a refusal never reaches it, which is why the
+        // refusal tests go through Refused rather than sitting out this ceiling.
         await Until(() => rig.Shell.ActiveTab!.Entries.All(e => e.Name != row.Name));
 
         // And then the box reopening on whatever the run stepped to, which is
@@ -230,7 +304,7 @@ public sealed class RenameStepTests : OwnedViewModels
         using var rig = await BuildAsync();
         var pane = rig.Shell.ActiveTab!;
 
-        await Rename(rig, pane.Entries.Single(e => e.Name == "a.txt"), "c.txt");
+        await Refused(rig, pane.Entries.Single(e => e.Name == "a.txt"), "c.txt", byTheDisk: true);
 
         // Still a.txt on disk, and the editor has not moved on to anything.
         Assert.True(File.Exists(Path.Combine(rig.Root, "a.txt")));
@@ -248,7 +322,7 @@ public sealed class RenameStepTests : OwnedViewModels
         using var rig = await BuildAsync();
         var pane = rig.Shell.ActiveTab!;
 
-        await Rename(rig, pane.Entries.Single(e => e.Name == "a.txt"), "   ");
+        await Refused(rig, pane.Entries.Single(e => e.Name == "a.txt"), "   ", byTheDisk: false);
 
         // The premise: the box really is still open on the row with the refused
         // text in it. Without this the test would pass just as well if the box
