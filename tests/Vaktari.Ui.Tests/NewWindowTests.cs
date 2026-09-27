@@ -379,6 +379,25 @@ public sealed class NewWindowTests : OwnedViewModels
         Settle();
     }
 
+    /// <summary>
+    /// Closes a window the test released by hand, then the rest of the family.
+    ///
+    /// **A window released by hand is out of the family list, so CloseAll never
+    /// reached it**, and the three tests here that release one left it open,
+    /// shown and ticking for the rest of the run — measured, one more open
+    /// MainWindow after each. Every window built afterwards writes the theme
+    /// and the text sizes into the application's resources, and every open
+    /// window hears each write, so those three made every later window test in
+    /// the suite slower. Closed first, while the founder still holds the
+    /// family, so its release takes the ordinary not-the-last path.
+    /// </summary>
+    private static async Task CloseAllAsync(MainWindow founder, MainWindow? released)
+    {
+        if (released is not null) await CloseAndWaitAsync(released);
+
+        CloseAll(founder.Services);
+    }
+
     // ---- one application, several windows ----------------------------------
 
     /// <summary>
@@ -469,6 +488,7 @@ public sealed class NewWindowTests : OwnedViewModels
         PaneViewModel.Search = null;
 
         var founder = new MainWindow();
+        MainWindow? peer = null;
 
         try
         {
@@ -479,7 +499,7 @@ public sealed class NewWindowTests : OwnedViewModels
             Settle();
 
             var services = founder.Services;
-            var peer = services.Windows.First(w => !ReferenceEquals(w, founder));
+            peer = services.Windows.First(w => !ReferenceEquals(w, founder));
 
             Assert.Equal(2, services.Compose().Windows.Count);
 
@@ -504,7 +524,7 @@ public sealed class NewWindowTests : OwnedViewModels
         }
         finally
         {
-            CloseAll(founder.Services);
+            await CloseAllAsync(founder, released: peer);
         }
     }
 
@@ -978,6 +998,7 @@ public sealed class NewWindowTests : OwnedViewModels
         PaneViewModel.Search = null;
 
         var founder = new MainWindow();
+        MainWindow? peer = null;
 
         try
         {
@@ -994,14 +1015,14 @@ public sealed class NewWindowTests : OwnedViewModels
             Assert.False(services.IsLastWindow,
                          "with two windows open, closing one must not stop the other's shares");
 
-            var peer = services.Windows.First(w => !ReferenceEquals(w, founder));
+            peer = services.Windows.First(w => !ReferenceEquals(w, founder));
             await services.ReleaseAsync(peer);
 
             Assert.True(services.IsLastWindow);
         }
         finally
         {
-            CloseAll(founder.Services);
+            await CloseAllAsync(founder, released: peer);
         }
     }
 
@@ -1021,6 +1042,7 @@ public sealed class NewWindowTests : OwnedViewModels
         PaneViewModel.Search = null;
 
         var founder = new MainWindow();
+        MainWindow? peer = null;
 
         try
         {
@@ -1031,7 +1053,7 @@ public sealed class NewWindowTests : OwnedViewModels
             Settle();
 
             var services = founder.Services;
-            var peer = services.Windows.First(w => !ReferenceEquals(w, founder));
+            peer = services.Windows.First(w => !ReferenceEquals(w, founder));
 
             // Showing it focused it, which is the only thing that ever assigns
             // Active.
@@ -1043,7 +1065,7 @@ public sealed class NewWindowTests : OwnedViewModels
         }
         finally
         {
-            CloseAll(founder.Services);
+            await CloseAllAsync(founder, released: peer);
         }
     }
 
@@ -1258,6 +1280,7 @@ public sealed class NewWindowTests : OwnedViewModels
         PaneViewModel.Search = null;
 
         var founder = new MainWindow();
+        var handle = new OperationHandle { Paths = [Path.Combine(Path.GetTempPath(), "big.iso")] };
 
         try
         {
@@ -1269,7 +1292,6 @@ public sealed class NewWindowTests : OwnedViewModels
 
             var peer = founder.Services.Windows.First(w => !ReferenceEquals(w, founder));
 
-            var handle = new OperationHandle { Paths = [Path.Combine(Path.GetTempPath(), "big.iso")] };
             handle.Begin(1, totalBytes: 0);
             peer.Shell.ActiveTab!.Adopt(handle);
 
@@ -1282,6 +1304,12 @@ public sealed class NewWindowTests : OwnedViewModels
         }
         finally
         {
+            // Finished first: a window with a transfer still running asks
+            // before it closes, nobody here answers, and the family never
+            // empties — CloseAll then ran its whole ceiling out and left both
+            // windows open for the rest of the run.
+            handle.Complete();
+
             CloseAll(founder.Services);
         }
     }
