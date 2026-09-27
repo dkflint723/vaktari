@@ -33,8 +33,8 @@ should not be trusted for compatibility yet.
   the command box, inverting on `Ctrl+Shift+A` as before,
   and *Add your own scripts* is gone — *Scripts ▸ Open scripts folder* makes
   the folder if it is missing. Rows are left off wherever they would refuse
-  or do the wrong thing: nothing moves, renames or bins a drive in *This
-  PC*; *Open with*, *Copy* and *Scripts* are not offered in the bin; *Paste*,
+  or do the wrong thing: nothing copies, moves, renames or bins a drive in
+  *This PC*; *Open with*, *Copy* and *Scripts* are not offered in the bin; *Paste*,
   *New* and *Duplicate* only appear in a real folder; *Select what differs*
   and *Copy what is newer or missing* only when both sides are folders;
   *Share* on a file no longer shares the folder around it; *Scripts* are
@@ -55,9 +55,12 @@ should not be trusted for compatibility yet.
   delete cleared and removed the drive's files one by one before refusing
   the drive itself at the end. `Delete`, `Ctrl+X` then `Ctrl+V`, `F2`,
   `Shift+F2`, *Copy to*, *Move to* and sending to the other pane reached a
-  drive the same way. Every one of them now says a drive cannot be moved,
-  renamed or deleted, and the file operations themselves refuse the root of
-  a drive — on Linux any mount point — whatever asks. `Ctrl+C` in the bin no
+  drive the same way, and `Ctrl+C` then `Ctrl+V` or a drag copied one,
+  though a drive has no name of its own for the copy to take. Every one of
+  them now says a drive cannot be copied, moved, renamed or deleted, and
+  the file operations themselves refuse the root of a drive — on Linux any
+  mount point — whatever asks and however it is spelled (`Z:\.`,
+  `\\server\share\`, `/media/me/STICK/.`). `Ctrl+C` in the bin no
   longer puts the path a binned file used to have on the clipboard.
 
 - **The Menu key's menu closed as soon as the key was let go.** It opened on

@@ -73,7 +73,10 @@ public sealed class LinuxFileOperations : IFileOperations
     public IOperationHandle Copy(
         IReadOnlyList<string> sources, string destination,
         Func<FileConflict, ValueTask<ConflictResolution>> onConflict)
-        => Run(sources, destination, onConflict, move: false);
+        // Nor copied: a root has no name to land under, so its copy lands on
+        // itself. See VolumeRoots.
+        => VolumeRoots.RefusedOperation(sources, OperationKind.Copy)
+           ?? Run(sources, destination, onConflict, move: false);
 
     public IOperationHandle Move(
         IReadOnlyList<string> sources, string destination,

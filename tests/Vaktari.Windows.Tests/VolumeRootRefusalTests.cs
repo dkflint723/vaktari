@@ -91,6 +91,98 @@ public sealed class VolumeRootRefusalTests
         }
     }
 
+    /// <summary>
+    /// **A copy of a drive landed on itself.** PathRules.LeafName("Z:\") is
+    /// "Z:\", so the target under any folder combined back to the drive, and
+    /// Replace or Keep both duplicated files in place on the source. Refused.
+    /// </summary>
+    [Fact]
+    public async Task Copy_refuses_a_drive_root()
+    {
+        var into = Directory.CreateTempSubdirectory("vaktari-volroot").FullName;
+
+        try
+        {
+            var handle = await Settled(new WindowsFileOperations().Copy(
+                [UnusedRoot()], into, _ => ValueTask.FromResult(ConflictResolution.Skip)));
+
+            Assert.Equal(OperationState.Failed, handle.State);
+            Assert.Equal(VolumeRoots.Refusal, handle.Error?.Message);
+        }
+        finally
+        {
+            Directory.Delete(into, recursive: true);
+        }
+    }
+
+    /// <summary>
+    /// **The spellings that got past the guard**, through the real engine:
+    /// "Z:\\", "Z:\.", "Z:\x\.." and "\\?\Z:\" each walked, recycled or moved
+    /// before. Every verb refuses every one of them.
+    /// </summary>
+    [Theory]
+    [InlineData("{0}:\\\\")]
+    [InlineData("{0}:\\.")]
+    [InlineData("{0}:\\x\\..")]
+    [InlineData("\\\\?\\{0}:\\")]
+    [InlineData("{0}:/")]
+    public async Task Every_verb_refuses_every_spelling_of_a_root(string shape)
+    {
+        var root = string.Format(System.Globalization.CultureInfo.InvariantCulture, shape, UnusedRoot()[0]);
+        var into = Directory.CreateTempSubdirectory("vaktari-volroot").FullName;
+        var asked = new List<string>();
+
+        var ops = new WindowsFileOperations
+        {
+            RecycleOverride = paths =>
+            {
+                asked.AddRange(paths);
+                return new RecycleResult(0, false);
+            },
+        };
+
+        try
+        {
+            foreach (var handle in new[]
+                     {
+                         ops.Delete([root]),
+                         ops.Trash([root]),
+                         ops.Move([root], into, _ => ValueTask.FromResult(ConflictResolution.Skip)),
+                         ops.Copy([root], into, _ => ValueTask.FromResult(ConflictResolution.Skip)),
+                     })
+            {
+                await Settled(handle);
+
+                Assert.Equal(VolumeRoots.Refusal, handle.Error?.Message);
+            }
+
+            Assert.Empty(asked);
+        }
+        finally
+        {
+            Directory.Delete(into, recursive: true);
+        }
+    }
+
+    /// <summary>
+    /// What the pane's gate hides is what the engine refuses: a rename of a
+    /// drive root throws before touching anything.
+    ///
+    /// **Here, not in the Ui tests, where it was first written** — they build
+    /// on Linux too, without Vaktari.Windows, and the reference broke that
+    /// build (found running the Ui classes in WSL).
+    /// </summary>
+    [Fact]
+    public async Task The_rename_engine_refuses_a_drive_root()
+    {
+        var root = Path.GetPathRoot(Path.GetTempPath())!;
+
+        var refused = await Assert.ThrowsAsync<IOException>(
+            async () => await new WindowsFileOperations().RenameAsync(root, "renamed", CancellationToken.None));
+
+        Assert.Contains("drive root cannot be renamed", refused.Message, StringComparison.Ordinal);
+    }
+
     /// <summary>And a folder is not a root: the refusal does not reach past
     /// the thing it is for.</summary>
     [Fact]

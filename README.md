@@ -404,8 +404,8 @@ the space and duplicate scans and, in a split, comparing the sides, *Scripts*,
 Right-clicking empty space keeps your selection; the folder's menu simply does
 not act on it. The Menu key and `Shift+F10` open the first when something is
 selected and the second when nothing is. A row is left off wherever it would
-refuse or do the wrong thing — nothing moves, renames or bins a drive in *This
-PC*, and nothing writes into a search, a recent list or the bin — and the rows
+refuse or do the wrong thing — nothing copies, moves, renames or bins a drive
+in *This PC*, and nothing writes into a search, a recent list or the bin — and the rows
 are compact, 24 pixels to the toolkit's 30.
 
 **Also on those menus:** *Mount* for a disk image, which attaches it and takes

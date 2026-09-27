@@ -217,6 +217,21 @@ public sealed class VolumeRefusalTests : OwnedViewModels
             Assert.Empty(CutMarks.Paths);
         });
 
+    /// <summary>
+    /// **Ctrl+C on a drive copied it, and the paste landed on the drive
+    /// itself** — a root has no leaf name to land under. Refused at the key.
+    /// </summary>
+    [AvaloniaFact]
+    public async Task Ctrl_c_on_a_drive_copies_nothing()
+        => await InThisPc(false, async (window, _, pane, ops) =>
+        {
+            window.KeyPress(Key.C, RawInputModifiers.Control, PhysicalKey.C, "c");
+            await Task.Delay(50);
+            Settle();
+
+            await NothingHappened(window, pane, ops, "Ctrl+C");
+        });
+
     [AvaloniaFact]
     public async Task F2_and_shift_f2_rename_no_drive()
         => await InThisPc(false, async (window, shell, pane, ops) =>
@@ -360,6 +375,12 @@ public sealed class VolumeRefusalTests : OwnedViewModels
         pane.PasteIntoFolder(Path.GetTempPath(), [Root], move: true);
         pane.PasteInto([Root], move: true);
 
+        // And copied: a drive dragged onto a folder row copies by default,
+        // and one on the clipboard from elsewhere pastes the same way — each
+        // landing on the drive itself.
+        pane.PasteIntoFolder(Path.GetTempPath(), [Root], move: false);
+        pane.PasteInto([Root], move: false);
+
         Assert.Empty(ops.Asked);
         Assert.Equal(VolumeRoots.Refusal, pane.Status);
 
@@ -367,6 +388,54 @@ public sealed class VolumeRefusalTests : OwnedViewModels
         pane.PasteIntoFolder(Path.GetTempPath(), [_drive], move: false);
 
         Assert.Single(ops.Asked);
+    }
+
+    /// <summary>
+    /// **Five spellings of a root got past the pane**, each through to the
+    /// engine: a UNC share with its trailing backslash, the same behind
+    /// \\?\UNC\, a doubled separator, and "." and ".." left in. Handed to a
+    /// recording engine, so nothing can reach a filesystem either way.
+    /// </summary>
+    [AvaloniaTheory(Skip = OnlyOn.Windows, SkipUnless = nameof(OnlyOn.IsWindows), SkipType = typeof(OnlyOn))]
+    [InlineData(@"\\server\share\")]
+    [InlineData(@"\\?\UNC\server\share\")]
+    [InlineData(@"Q:\\")]
+    [InlineData(@"Q:\.")]
+    [InlineData(@"Q:\x\..")]
+    public void Every_spelling_of_a_root_is_refused_by_the_pane(string root)
+    {
+        var ops = new Recording();
+        var pane = Own(new PaneViewModel(new Inert(), ops) { CurrentPath = Path.GetTempPath() });
+
+        pane.TrashChosen([root]);
+        pane.DeleteChosen([root]);
+        pane.PasteIntoFolder(Path.GetTempPath(), [root], move: true);
+        pane.PasteInto([root], move: false);
+
+        Assert.Empty(ops.Asked);
+        Assert.Equal(VolumeRoots.Refusal, pane.Status);
+    }
+
+    /// <summary>
+    /// **With nothing selected, This PC answered as though a drive had been
+    /// refused.** Nothing was asked of anything; the pane says what an
+    /// ordinary folder says to a Delete with nothing selected, which is
+    /// nothing at all.
+    /// </summary>
+    [AvaloniaFact]
+    public void Delete_with_nothing_selected_in_this_pc_says_nothing_about_drives()
+    {
+        var (_, pane, ops, _) = InThisPcModel();
+
+        pane.SelectedEntry = null;
+        pane.SelectedEntries.Clear();
+        pane.Status = "";
+
+        pane.TrashSelectedCommand.Execute(null);
+        pane.DeleteSelectedCommand.Execute(null);
+
+        Assert.Equal("", pane.Status);
+        Assert.Empty(ops.Asked);
     }
 
     /// <summary>

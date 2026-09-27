@@ -467,6 +467,34 @@ public sealed class ListingMenusTests(ITestOutputHelper output) : OwnedViewModel
             scroller.Offset = new Vector(scroller.Extent.Width, scroller.Extent.Height);
             await Layout(window);
 
+            // **The strip itself, measured**, and not only a click that lands
+            // somewhere empty. The first version of this clicked a point and
+            // stopped there, and the Compact case passed with the strip set to
+            // nought: the small grid flows into columns, and the space a
+            // column leaves under its last cell can be empty by luck of the
+            // arithmetic. So the gap under the lowest cell in view is asserted
+            // to be the full strip — a row and a half of the pane's own row
+            // height, read from its resources rather than from the padding
+            // under test — which no layout leaves by luck.
+            var presenter = scroller.GetVisualDescendants()
+                .OfType<Avalonia.Controls.Presenters.ScrollContentPresenter>().First();
+
+            var rowHeight = list.TryFindResource("RowHeight", out var rowResource) && rowResource is double found
+                ? found
+                : throw new InvalidOperationException("the pane has no row height to measure the strip by");
+
+            var lowest = list.GetVisualDescendants().OfType<ListBoxItem>()
+                .Where(r => r.IsVisible && r.Bounds.Width > 0)
+                .Select(r => (Top: r.TranslatePoint(new Point(0, 0), presenter)!.Value,
+                              Bottom: r.TranslatePoint(new Point(0, r.Bounds.Height), presenter)!.Value.Y))
+                .Where(r => r.Top.Y >= 0 && r.Top.Y < presenter.Bounds.Height
+                            && r.Top.X >= 0 && r.Top.X < presenter.Bounds.Width)
+                .Max(r => r.Bottom);
+
+            Assert.True(presenter.Bounds.Height - lowest >= rowHeight * 1.5 - 1,
+                        $"the gap under the lowest row is {presenter.Bounds.Height - lowest:0.#}px, "
+                        + $"short of the {rowHeight * 1.5:0.#}px strip");
+
             // Inside the strip, and clear of a horizontal scrollbar under it.
             var below = At(list, list.Bounds.Width / 3, list.Bounds.Height - 30, window);
 
@@ -1009,9 +1037,10 @@ public sealed class ListingMenusTests(ITestOutputHelper output) : OwnedViewModel
     /// <summary>
     /// **A drive in This PC offered every verb a folder row gets.** Its rows
     /// are volumes: the item menu keeps what reads a drive's path — Open, Copy,
-    /// Copy as path, Properties — and drops what would move, rename, bin or
-    /// duplicate it, each of which refuses or is wrong for a volume (see
-    /// PaneViewModel.CanMoveSelection). The background has no folder behind
+    /// Copy as path, Properties — and drops what would copy, move, rename, bin
+    /// or duplicate it, each of which refuses or is wrong for a volume (see
+    /// PaneViewModel.CanMoveSelection). Copy went with the rest: a root has no
+    /// leaf name, so its paste landed on the drive itself. The background has no folder behind
     /// it, so no Paste, New, Properties or folder Windows menu either.
     /// </summary>
     [AvaloniaFact]
@@ -1039,10 +1068,10 @@ public sealed class ListingMenusTests(ITestOutputHelper output) : OwnedViewModel
 
             Print("item, This PC", rows);
 
-            foreach (var expected in new[] { "Open", "Copy", "Copy as path", "Properties" })
+            foreach (var expected in new[] { "Open", "Copy as path", "Properties" })
                 Assert.Contains(expected, rows);
 
-            foreach (var absent in new[] { "Cut", "Rename", "Rename in bulk…", shell.BinMoveLabel,
+            foreach (var absent in new[] { "Cut", "Copy", "Rename", "Rename in bulk…", shell.BinMoveLabel,
                                            "Duplicate", "Copy to", "Move to", "Create shortcut",
                                            "Compress to ZIP" })
                 Assert.DoesNotContain(absent, rows);

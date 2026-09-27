@@ -68,7 +68,7 @@ public partial class MainWindow
     /// route that another file has to undo, which is why it is named on both
     /// sides.
     /// </summary>
-    private void OpenListingMenu()
+    private void OpenListingMenu(Key key)
     {
         if (ActiveListing() is not { } list) return;
 
@@ -115,6 +115,12 @@ public partial class MainWindow
         // the keyboard's menu (see ForgetTheClick), and the preparing the
         // right-click route does in Opening is done above.
         ForgetTheClick();
+
+        // Held here, as the menu opens, and nowhere else: a key held on its
+        // way to the address bar's flyout, or to a listing that turned out to
+        // have no menu, was never let go of, and the next Menu key that closed
+        // a menu took two presses. See _menuKeyHeld.
+        HoldMenuKey(key);
         menu.Open(host);
     }
 

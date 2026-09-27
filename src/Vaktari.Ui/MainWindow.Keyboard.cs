@@ -437,11 +437,6 @@ public partial class MainWindow : ICommandHost
         {
             e.Handled = true;
 
-            // The release of this same key would close the listing menu it
-            // opens — see HoldMenuKey. Only the listing's two menus listen for
-            // it; the bar's flyout is not a ContextMenu.
-            HoldMenuKey(e.Key);
-
             // **The keyboard on the address bar got the LISTING's menu.** A
             // crumb is an ordinary focusable Button, so Tab reaches it and both
             // these keys fell straight through to the listing — offering Cut,
@@ -459,7 +454,7 @@ public partial class MainWindow : ICommandHost
                 return;
             }
 
-            OpenListingMenu();
+            OpenListingMenu(e.Key);
             return;
         }
 

@@ -2569,11 +2569,12 @@
                    HasSelection, and WriteClipboardAsync refuses nothing — so it
                    put the path a binned file USED to have on the clipboard, and
                    the next Paste copied whatever lives there now, or failed on
-                   a name that is gone. A drive in This PC may be copied, as
-                   Explorer allows. -->
+                   a name that is gone. **Nor on a drive in This PC**, though
+                   Explorer offers it: a root pasted anywhere lands on itself.
+                   See CanMoveSelection. -->
               <MenuItem Header="Cop_y" Command="{Binding ActiveTab.CopySelectionToClipboardCommand}"
                         in:KeyHint.Command="Copy"
-                        IsVisible="{Binding ActiveTab.CanActOnSelection}"/>
+                        IsVisible="{Binding ActiveTab.CanMoveSelection}"/>
               <!-- **Back at the top level, where they were before the menu was
                    consolidated.** Pushing these behind "More" made the menu
                    tidy and made the things people reach for a hover further

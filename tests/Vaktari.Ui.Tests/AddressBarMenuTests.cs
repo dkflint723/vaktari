@@ -591,6 +591,54 @@ public sealed class AddressBarMenuTests : OwnedViewModels
         Assert.Null(ListingMenu(window));
     }
 
+    /// <summary>
+    /// **The Menu key on a crumb left itself "held"**, and the next Menu key
+    /// that should have closed a listing menu took two presses. The key is
+    /// held so that the release after it opens a listing menu does not close
+    /// that menu again; it was held before the address bar's branch, which
+    /// opens the bar's flyout instead and never lets go. It is held only as a
+    /// listing menu actually opens now.
+    /// </summary>
+    [AvaloniaFact]
+    public async Task The_menu_key_on_a_crumb_leaves_the_next_menu_closing_on_one_press()
+    {
+        var (window, _) = await RealWindow();
+
+        var crumb = Crumb(window);
+        var bar = MenuAbove(crumb);
+
+        crumb.Focus();
+        Dispatcher.UIThread.RunJobs();
+
+        window.KeyPress(Key.Apps, RawInputModifiers.None, PhysicalKey.ContextMenu, null);
+
+        // The bar's menu is up: the press went where it should.
+        _ = await Rows(window, bar);
+
+        window.KeyRelease(Key.Apps, RawInputModifiers.None, PhysicalKey.ContextMenu, null);
+
+        bar.Hide();
+        await Settled(window);
+
+        var shell = Assert.IsType<ShellViewModel>(window.DataContext);
+        var list = window.GetVisualDescendants().OfType<ListBox>()
+            .Single(l => l.IsVisible && ReferenceEquals(l.DataContext, shell.ActiveTab)
+                         && l.SelectionMode.HasFlag(SelectionMode.Multiple));
+
+        var menu = ListingMenus.Above(list, ListingMenus.Background);
+
+        menu.Open();
+        await Settled(window);
+
+        Assert.True(menu.IsOpen, "the listing's menu did not open, so this proves nothing");
+
+        window.KeyPress(Key.Apps, RawInputModifiers.None, PhysicalKey.ContextMenu, null);
+        window.KeyRelease(Key.Apps, RawInputModifiers.None, PhysicalKey.ContextMenu, null);
+        await Settled(window);
+
+        Assert.False(menu.IsOpen, "one press of the Menu key did not close the menu");
+    }
+
     // ---- driving the real window -------------------------------------------
 
     /// <summary>

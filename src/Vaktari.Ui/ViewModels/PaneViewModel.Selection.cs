@@ -115,20 +115,24 @@ public sealed partial class PaneViewModel
     public bool CanActOnSelection => HasSelection && !IsTrashListing;
 
     /// <summary>
-    /// Cut, Rename, Move to the bin, Copy to and Move to: the verbs that move
-    /// or rename what is selected, which a VOLUME cannot be.
+    /// Cut, Copy, Rename, Move to the bin, Copy to and Move to: the verbs
+    /// that copy, move or rename what is selected, which a VOLUME cannot be.
     ///
     /// <see cref="CanActOnSelection"/> excluded the bin and nothing else, so
     /// right-clicking C: in This PC offered every one of them — and each was a
     /// refusal or worse. Measured on Windows: the rename engine throws "A drive
-    /// root cannot be renamed." (ListingMenuGatesTests asks it); on Linux a
+    /// root cannot be renamed." (Windows.Tests' VolumeRootRefusalTests asks
+    /// it); on Linux a
     /// mount point is a directory rename(2) refuses as busy. Copy to and Move
     /// to send the drive into a place, and TransferInto refuses every place
     /// that lives on that drive as "cannot be sent into itself" — which on most
     /// machines is most of the list. Explorer's menu on a drive has no Cut and
     /// no Delete, and its Rename relabels the volume, which is not what this
-    /// one does. Open, Copy, Copy as path and Properties stay: those read a
-    /// drive's path without changing it.
+    /// one does. Open, Copy as path and Properties stay: those read a drive's
+    /// path without changing it. **Copy went too**, though Explorer offers it:
+    /// a root has no leaf name to land under, so a paste combined back to the
+    /// drive itself and duplicated its files in place — see
+    /// WriteClipboardAsync.
     /// </summary>
     public bool CanMoveSelection => CanActOnSelection && !IsComputerListing;
 

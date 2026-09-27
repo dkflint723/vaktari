@@ -237,6 +237,50 @@ public sealed class SplitHalfMenuTests : OwnedViewModels
         });
 
     /// <summary>
+    /// **A right-click on a group heading in the other half left that half
+    /// inactive.** The press on a heading is claimed so it moves no selection,
+    /// and the claim returned before the activation every other press gets —
+    /// so the background menu opened in the right half while the shell's
+    /// active tab, which its shell-bound rows act on, was the left half's.
+    /// </summary>
+    [AvaloniaFact]
+    public async Task A_right_click_on_a_heading_in_the_other_half_makes_it_active()
+        => await InASplit(async (window, shell, other) =>
+        {
+            var pane = other.ActiveTab!;
+
+            pane.GroupBy = Vaktari.Core.FileSystem.GroupMode.Kind;
+
+            try
+            {
+                await Until(window, () => Headings(window, pane).Any(), "the other half drew no group heading");
+
+                var heading = Headings(window, pane).First();
+                var at = At(heading, heading.Bounds.Width * 0.6, heading.Bounds.Height / 2, window);
+
+                await Hits(window, at, hit => MainWindow.GroupHeadingAt(hit) is not null, "the heading");
+
+                shell.ActivateGroup(shell.Left);
+                Assert.NotSame(other, shell.ActiveGroup);
+
+                await RightClick(window, at);
+
+                Assert.Same(other, shell.ActiveGroup);
+                Assert.True(ListingMenus.Above(Listing(window, pane)!, ListingMenus.Background).IsOpen,
+                            "the heading opened no background menu");
+            }
+            finally
+            {
+                CloseMenus(window);
+                pane.GroupBy = Vaktari.Core.FileSystem.GroupMode.None;
+            }
+        });
+
+    private static IEnumerable<Control> Headings(Window window, PaneViewModel pane)
+        => Listing(window, pane)!.GetVisualDescendants().OfType<Control>()
+            .Where(c => c.Classes.Contains(MainWindow.GroupHeadingClass) && c.IsVisible && c.Bounds.Height > 0);
+
+    /// <summary>
     /// Shift on the right press arms the administrator rows; a plain right
     /// press disarms them. Asked of the pane under the pointer, which the
     /// press writes and the menu reads.

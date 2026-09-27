@@ -81,24 +81,6 @@ public sealed class ListingMenuGatesTests : OwnedViewModels
         Assert.True(folder.CanMoveSelection);
     }
 
-    /// <summary>
-    /// What the gate hides is what the engine refuses, measured against the
-    /// real Windows engine where that is safe to ask: a rename of a drive root
-    /// throws before touching anything.
-    /// </summary>
-    [AvaloniaFact(Skip = OnlyOn.Windows, SkipUnless = nameof(OnlyOn.IsWindows), SkipType = typeof(OnlyOn))]
-    [System.Runtime.Versioning.SupportedOSPlatform("windows")]
-    public async Task The_rename_engine_refuses_a_drive_root()
-    {
-        var root = Path.GetPathRoot(Temp)!;
-        var engine = new Vaktari.Windows.WindowsFileOperations();
-
-        var refused = await Assert.ThrowsAsync<IOException>(
-            async () => await engine.RenameAsync(root, "renamed", CancellationToken.None));
-
-        Assert.Contains("drive root cannot be renamed", refused.Message, StringComparison.Ordinal);
-    }
-
     // ---- the bin ------------------------------------------------------------------
 
     /// <summary>

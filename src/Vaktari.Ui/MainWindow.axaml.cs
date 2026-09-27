@@ -799,6 +799,11 @@ public partial class MainWindow : Window
         if (properties.PointerUpdateKind is PointerUpdateKind.RightButtonPressed
             && GroupHeadingAt(e.Source) is not null)
         {
+            // Still a press in THIS half: returning before the activation at
+            // the end of this handler left the other half active, and the
+            // background menu's rows bound through the shell acted on its
+            // folder instead of this one.
+            ActivateGroupAt(e.Source);
             ArmNothing();
             e.Handled = true;
             return;

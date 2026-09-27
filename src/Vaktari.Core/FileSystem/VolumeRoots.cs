@@ -25,7 +25,7 @@ public static class VolumeRoots
 {
     /// <summary>The sentence a refusal says, in the pane and in a failed
     /// operation alike.</summary>
-    public const string Refusal = "a drive cannot be moved, renamed or deleted — only what is on it";
+    public const string Refusal = "a drive cannot be copied, moved, renamed or deleted — only what is on it";
 
     /// <summary>
     /// The mount points to compare against, or null for the machine's own.
@@ -35,30 +35,133 @@ public static class VolumeRoots
     public static Func<IReadOnlyList<string>>? MountPointsOverride { get; set; }
 
     /// <summary>Whether this path is the root of a volume.</summary>
-    public static bool IsVolumeRoot(string? path)
+    public static bool IsVolumeRoot(string? path) => IsVolumeRootIn(path, MountPoints());
+
+    /// <summary>The refusal if any of these paths is a volume's root, or null.
+    ///
+    /// **The mount table is read once per call, not once per path.** It was
+    /// read per path: a thousand selected files read /proc/mounts a thousand
+    /// times, in the pane on the UI thread and again in the engine.</summary>
+    public static string? Refuse(IEnumerable<string> paths)
+    {
+        IReadOnlyList<string>? points = null;
+
+        foreach (var path in paths)
+            if (IsVolumeRootIn(path, points ??= MountPoints())) return Refusal;
+
+        return null;
+    }
+
+    /// <summary>
+    /// Whether a path is a root, however it is spelled.
+    ///
+    /// **Five spellings of a root got past both guards**, measured on the
+    /// review's probe against the real engine: "\\server\share\" (the ordinary
+    /// trailing-backslash form), "\\?\UNC\server\share\", "Z:\\", "Z:\." and
+    /// "Z:\x\..". PathRules.IsRoot compares a path with its own root as TEXT,
+    /// so each of them read as a folder: Delete walked on, Trash handed "Z:\"
+    /// to the recycler, and Move landed the root on itself.
+    ///
+    /// So the path is asked as written first — "Z:" must be, because
+    /// Path.GetFullPath("Z:") resolves to Z:'s CURRENT folder, which is not
+    /// its root — then with its trailing separators taken off, which is what
+    /// "\\server\share\" and "\\?\UNC\server\share\" needed (GetPathRoot
+    /// answers either without its last backslash), and then resolved, which
+    /// folds "." and ".." away and collapses a doubled separator. A mount point
+    /// is compared the same way on both sides, so "/media/me/STICK/.",
+    /// "//media/me/STICK" and "/media/me/./STICK" all name the stick.
+    ///
+    /// **The trimmed spelling is asked twice, and each time hides the
+    /// other's absence**: once as written and once resolved, because
+    /// resolving a path that is only trailing separators away from a root
+    /// gives the same path back. The first stands for a path GetFullPath
+    /// refuses. Revert-checked as a pair.
+    /// </summary>
+    private static bool IsVolumeRootIn(string? path, IReadOnlyList<string> points)
     {
         if (string.IsNullOrEmpty(path)) return false;
 
         if (PathRules.IsRoot(path)) return true;
 
-        // Only where mount points are a directory tree's own business. On
-        // Windows a volume mounted in a folder is rare, and the fallback that
-        // lists them asks every drive letter — a dead mapped drive included —
-        // on each call.
-        var points = MountPointsOverride?.Invoke()
-                     ?? (OperatingSystem.IsLinux() ? Volumes.MountPoints() : []);
+        var spellings = new List<string> { PathRules.Normalise(path) };
+
+        if (Resolved(path) is { } full)
+        {
+            spellings.Add(full);
+            spellings.Add(PathRules.Normalise(full));
+        }
+
+        if (spellings.Any(PathRules.IsRoot)) return true;
 
         if (points.Count == 0) return false;
 
-        var trimmed = path.Length > 1 ? path.TrimEnd('/') : path;
+        var canonical = Canonical(path);
 
-        return points.Any(point => string.Equals(
-            point.Length > 1 ? point.TrimEnd('/') : point, trimmed, StringComparison.Ordinal));
+        return points.Any(point => string.Equals(Canonical(point), canonical, StringComparison.Ordinal));
     }
 
-    /// <summary>The refusal if any of these paths is a volume's root, or null.</summary>
-    public static string? Refuse(IEnumerable<string> paths)
-        => paths.Any(IsVolumeRoot) ? Refusal : null;
+    /// <summary>The path with "." and ".." folded away, or null where it
+    /// cannot be resolved.</summary>
+    private static string? Resolved(string path)
+    {
+        try
+        {
+            return Path.GetFullPath(path);
+        }
+        catch (Exception e) when (e is ArgumentException or NotSupportedException or PathTooLongException
+                                      or System.Security.SecurityException)
+        {
+            return null;
+        }
+    }
+
+    /// <summary>A path as a mount point is compared: resolved, and without a
+    /// trailing separator.</summary>
+    private static string Canonical(string path)
+        => PathRules.Normalise(Resolved(path) ?? path);
+
+    /// <summary>
+    /// The mount points to compare against: the seam's, or on Linux the
+    /// machine's own, read at most once every two seconds — the pane asks as a
+    /// key is pressed and the engine asks again as it starts, and a mount that
+    /// appears between the two within that time is a drive that was not on
+    /// screen when the key was pressed. On Windows none: a volume mounted in a
+    /// folder is rare, and the fallback that lists them asks every drive
+    /// letter, a dead mapped drive included.
+    /// </summary>
+    private static IReadOnlyList<string> MountPoints()
+        => MountPointsOverride?.Invoke() ?? (OperatingSystem.IsLinux() ? CachedMountTable() : []);
+
+    /// <summary>What reads the mount table. A seam, so the cache in front of it
+    /// can be counted; Volumes.MountPoints in the application.</summary>
+    internal static Func<IReadOnlyList<string>> ReadMountTable { get; set; } = Volumes.MountPoints;
+
+    private static readonly object CacheGate = new();
+    private static IReadOnlyList<string>? _cached;
+    private static long _cachedAt;
+
+    /// <summary>The mount table, read again only once it is two seconds old.</summary>
+    internal static IReadOnlyList<string> CachedMountTable()
+    {
+        lock (CacheGate)
+        {
+            var now = Environment.TickCount64;
+
+            if (_cached is null || now - _cachedAt > 2000)
+            {
+                _cached = ReadMountTable();
+                _cachedAt = now;
+            }
+
+            return _cached;
+        }
+    }
+
+    /// <summary>Drops the cached table, so the next ask reads it again.</summary>
+    internal static void ForgetMountTable()
+    {
+        lock (CacheGate) _cached = null;
+    }
 
     /// <summary>
     /// An operation that has already failed with the refusal, for an engine to
