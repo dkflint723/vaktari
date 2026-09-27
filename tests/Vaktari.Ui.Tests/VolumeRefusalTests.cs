@@ -494,6 +494,52 @@ public sealed class VolumeRefusalTests : OwnedViewModels
     }
 
     /// <summary>
+    /// **A device path is read the way Win32 opens it, in the pane too.** The
+    /// fifth review round had the pane pass "\\.\W:\..\NAME\" — which Win32
+    /// opens as the device NAME — and "//?/X:/ " — which it opens as X:'s root —
+    /// straight to the engine. A ".." that climbs out of the device it was
+    /// written under is refused as a device path; a spelling that folds to the
+    /// drive's own root is refused as the drive; one that folds to a folder is
+    /// a folder. Handed to a recording engine; no letter here answers to
+    /// anything, and the fold is Win32's text rule, which needs none.
+    /// </summary>
+    [AvaloniaTheory(Skip = OnlyOn.Windows, SkipUnless = nameof(OnlyOn.IsWindows), SkipType = typeof(OnlyOn))]
+    [InlineData(@"\\.\Q:\..\VAKTARINAME\", VolumeRoots.DeviceRefusal)]
+    [InlineData(@"//./Q:/../VAKTARINAME/", VolumeRoots.DeviceRefusal)]
+    [InlineData(@"//?/Q:/../VAKTARINAME/", VolumeRoots.DeviceRefusal)]
+    [InlineData(@"\\.\Q:\x\..\..\GLOBALROOT\??\VAKTARINAME\", VolumeRoots.DeviceRefusal)]
+    [InlineData(@"\\.\Q:\..\R:\", VolumeRoots.DeviceRefusal)]
+    [InlineData(@"\\.\.\Q:\", VolumeRoots.DeviceRefusal)]
+    [InlineData(@"//?/Q:/ ", VolumeRoots.Refusal)]
+    [InlineData(@"\\?/Q:/...", VolumeRoots.Refusal)]
+    [InlineData(@"/\?\Q:\ ", VolumeRoots.Refusal)]
+    [InlineData(@"\/?/Q:/x/..", VolumeRoots.Refusal)]
+    [InlineData(@"\\.\Q:\x\...\..", null)]
+    public void A_device_path_is_refused_by_the_pane_as_win32_folds_it(string path, string? sentence)
+    {
+        var ops = new Recording();
+        var pane = Own(new PaneViewModel(new Inert(), ops) { CurrentPath = Path.GetTempPath() });
+
+        pane.Status = "";
+        pane.TrashChosen([path]);
+        pane.DeleteChosen([path]);
+        var binned = pane.TrashPaths([path]);
+        var moved = pane.PasteIntoFolder(Path.GetTempPath(), [path], move: true);
+        var copied = pane.PasteInto([path], move: false);
+
+        if (sentence is null)
+        {
+            Assert.True(binned && moved && copied, $"{path} names a folder and was refused: {pane.Status}");
+            Assert.Equal(5, ops.Asked.Count);
+            return;
+        }
+
+        Assert.False(binned || moved || copied, $"{path} was passed on");
+        Assert.Empty(ops.Asked);
+        Assert.Equal(sentence, pane.Status);
+    }
+
+    /// <summary>
     /// **Every selection route said a drive was refused, whatever was.**
     /// RefusedOnVolumes — behind the Delete and Shift+Delete prompts, Ctrl+C
     /// and Ctrl+X, F2, Duplicate, Copy to and the other pane — set the drive's

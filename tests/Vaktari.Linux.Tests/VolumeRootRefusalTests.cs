@@ -351,6 +351,36 @@ public sealed class VolumeRootRefusalTests : IDisposable
         Assert.Null(VolumeRoots.Refuse(["/tmp/report:2026", "/tmp/::$INDEX_ALLOCATION", "/tmp/a/:$I30:$INDEX_ALLOCATION"]));
     }
 
+    /// <summary>
+    /// **Win32's fold of a device path is Windows' alone.** "//./tmp/x" is
+    /// an ordinary spelling of /tmp/x here — a doubled slash and a "." — and
+    /// "//?/tmp/x" names a folder "?" under the root, so neither is read as a
+    /// device path, let alone one that climbed out of its device; each is
+    /// asked as the folder it is. Asked, never acted on.
+    /// </summary>
+    [PosixFact]
+    public void A_path_spelled_like_a_windows_device_path_is_a_folder_here()
+    {
+        var holder = Directory.CreateTempSubdirectory("vaktari-devicelike").FullName;
+
+        try
+        {
+            foreach (var path in new[]
+                     {
+                         "//." + holder, "//." + holder + "/", "//./." + holder, "/\\./" + holder.TrimStart('/'),
+                         "//?" + holder, "//." + holder + "/../" + Path.GetFileName(holder),
+                     })
+            {
+                Assert.Null(VolumeRoots.Refuse([path]));
+                Assert.False(VolumeRoots.IsVolumeRoot(path), $"{path} was taken for a mount point");
+            }
+        }
+        finally
+        {
+            Directory.Delete(holder);
+        }
+    }
+
     [PosixFact]
     public async Task Move_refuses_a_mount_point()
     {
