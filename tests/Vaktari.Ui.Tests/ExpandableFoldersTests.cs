@@ -931,7 +931,7 @@ public sealed class ExpandableFoldersTests : OwnedViewModels
     /// What the converter behind that Data answers: nothing for a file, and two
     /// different shapes for a folder depending on whether it is open.
     /// </summary>
-    [Fact]
+    [AvaloniaFact]
     public void A_file_gets_no_triangle_and_a_folder_gets_one_of_two()
     {
         var open = new HashSet<string>(StringComparer.Ordinal) { "/a/docs" };
@@ -954,7 +954,7 @@ public sealed class ExpandableFoldersTests : OwnedViewModels
     /// <summary>The indent the row draws, which is the map read through the
     /// same binding the template uses. The map holds pixels, so the converter's
     /// job is the lookup and the zero for a row that is not in it.</summary>
-    [Fact]
+    [AvaloniaFact]
     public void The_indent_is_what_the_map_holds_and_nothing_at_the_top()
     {
         var indents = new Dictionary<string, double>(StringComparer.Ordinal)

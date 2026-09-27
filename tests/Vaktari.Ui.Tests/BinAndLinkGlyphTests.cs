@@ -296,7 +296,7 @@ public sealed class BinAndLinkGlyphTests
 
     // ---- the link emblem ---------------------------------------------------
 
-    [Fact]
+    [AvaloniaFact]
     public void The_emblem_is_two_shapes_and_one_of_them_is_filled()
     {
         Assert.NotNull(LinkEmblem.Ground);
@@ -317,7 +317,7 @@ public sealed class BinAndLinkGlyphTests
     /// It sits in the bottom-left of the 24×24 grid the rest of the set uses —
     /// the corner Explorer marks, and the one a name never grows into.
     /// </summary>
-    [Fact]
+    [AvaloniaFact]
     public void And_it_sits_in_the_corner_it_claims_to()
     {
         var bounds = LinkEmblem.Ground.Bounds;

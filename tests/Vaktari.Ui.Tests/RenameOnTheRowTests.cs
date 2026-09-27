@@ -901,11 +901,11 @@ public sealed class RenameOnTheRowTests : OwnedViewModels
                [path, target], typeof(bool), null,
                System.Globalization.CultureInfo.InvariantCulture)!;
 
-    [Fact]
+    [AvaloniaFact]
     public void The_row_being_renamed_is_the_one_whose_path_matches()
         => Assert.True(Renaming("/a/report.txt", "/a/report.txt"));
 
-    [Fact]
+    [AvaloniaFact]
     public void Any_other_row_is_not()
         => Assert.False(Renaming("/a/second.txt", "/a/report.txt"));
 
@@ -915,14 +915,14 @@ public sealed class RenameOnTheRowTests : OwnedViewModels
     /// row in the listing would open a box the moment one was asked for — and
     /// the pane holds "" for "no rename in progress".
     /// </summary>
-    [Fact]
+    [AvaloniaFact]
     public void No_rename_in_progress_opens_no_box_anywhere()
     {
         Assert.False(Renaming("/a/report.txt", ""));
         Assert.False(Renaming("", ""));
     }
 
-    [Fact]
+    [AvaloniaFact]
     public void The_label_is_shown_exactly_when_the_box_is_not()
     {
         foreach (var (path, target) in new[]
