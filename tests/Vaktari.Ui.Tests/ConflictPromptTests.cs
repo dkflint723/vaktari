@@ -15,6 +15,7 @@ namespace Vaktari.Ui.Tests;
 /// "name (1)", with no way to say what was actually wanted. These pin the
 /// asking, and the one place where not asking is still correct.
 /// </summary>
+[Collection(ConflictPromptCollection.Name)]
 public sealed class ConflictPromptTests : IDisposable
 {
     private readonly string _root;

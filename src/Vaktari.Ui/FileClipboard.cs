@@ -59,9 +59,19 @@ public static class FileClipboard
     {
         if (paths.Count == 0) return;
 
+        // **Only names that survive being handed on go into the file list**,
+        // which is what Explorer and every other program paste from — CF_HDROP
+        // on Windows. It was built through the storage provider, which folds
+        // "…\report " to "…\report", so a cut here and a paste in Explorer
+        // would have moved the neighbour (seventh review round, 7-D). Such a
+        // name stays in Vaktari's own list below, which keeps every name
+        // exactly, so a paste back into Vaktari still gets it; the pane says
+        // which were left out. See ReachablePath.RefuseHandedOut.
         var items = new List<IStorageItem>();
         foreach (var path in paths)
         {
+            if (Vaktari.Core.FileSystem.ReachablePath.RefuseHandedOut(path) is not null) continue;
+
             IStorageItem? item = Directory.Exists(path)
                 ? await storage.TryGetFolderFromPathAsync(path).ConfigureAwait(false)
                 : await storage.TryGetFileFromPathAsync(path).ConfigureAwait(false);
@@ -69,7 +79,7 @@ public static class FileClipboard
             if (item is not null) items.Add(item);
         }
 
-        if (items.Count == 0) return;
+        if (items.Count == 0 && paths.All(path => Vaktari.Core.FileSystem.ReachablePath.RefuseHandedOut(path) is null)) return;
 
         var gnome = new StringBuilder();
         gnome.Append(action == ClipboardAction.Cut ? "cut" : "copy");
@@ -91,7 +101,7 @@ public static class FileClipboard
         if (action == ClipboardAction.Cut)
             first.Set(KdeCutFormat, "1"u8.ToArray());
 
-        first.SetFile(items[0]);
+        if (items.Count > 0) first.SetFile(items[0]);
         first.SetText(string.Join('\n', paths));
         data.Add(first);
 
@@ -119,7 +129,9 @@ public static class FileClipboard
     {
         using var data = await clipboard.TryGetDataAsync().ConfigureAwait(false);
 
-        return data is not null && data.Contains(DataFormat.File);
+        // Vaktari's own list counts: a copy of names no other program is
+        // handed still pastes here.
+        return data is not null && (data.Contains(DataFormat.File) || data.Contains(GnomeFormat));
     }
 
     public static async Task<ClipboardPayload?> GetAsync(IClipboard clipboard)

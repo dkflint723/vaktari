@@ -178,21 +178,17 @@ public partial class MainWindow
             // consumed by the tunnelled ContextRequested handler.
             if (_dragRight) _suppressContextMenu = true;
 
-            // DataFormat.File is what other applications actually read; Avalonia
-            // serialises it to text/uri-list on X11, the same route the
-            // clipboard takes.
-            var data = new DataTransfer();
+            // Refused whole, in words, when any row's name would be folded on
+            // the way out — the drag carried the neighbour. See DragPayload.
+            var (data, refused) = await DragPayload.BuildAsync(storage, paths);
 
-            foreach (var path in paths)
+            if (refused is not null)
             {
-                IStorageItem? item = Directory.Exists(path)
-                    ? await storage.TryGetFolderFromPathAsync(path)
-                    : await storage.TryGetFileFromPathAsync(path);
-
-                if (item is not null) data.Add(DataTransferItem.CreateFile(item));
+                pane.Status = refused;
+                return;
             }
 
-            if (data.Items.Count == 0) return;
+            if (data is null) return;
 
             // Not disposed — the drag system takes ownership.
             await DragDrop.DoDragDropAsync(

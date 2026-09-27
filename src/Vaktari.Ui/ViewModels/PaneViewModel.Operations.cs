@@ -54,7 +54,13 @@ public sealed partial class PaneViewModel
 
             await Dispatcher.UIThread.InvokeAsync(() =>
             {
-                Status = ok ? $"{paths.Count} item(s) {verb}" : "clipboard unavailable";
+                // Named when another program will not be handed one of them:
+                // FileClipboard leaves it out of the file list, and a paste in
+                // Explorer would otherwise quietly miss it.
+                Status = !ok ? "clipboard unavailable"
+                    : paths.Select(Vaktari.Core.FileSystem.ReachablePath.RefuseHandedOut).OfType<string>().FirstOrDefault() is { } withheld
+                        ? $"{paths.Count} item(s) {verb} — only Vaktari can paste this one: {withheld}"
+                        : $"{paths.Count} item(s) {verb}";
 
                 // **Shown, not just remembered.** A cut used to look exactly
                 // like nothing having happened; Explorer greys what is pending.

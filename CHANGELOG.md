@@ -250,6 +250,44 @@ should not be trusted for compatibility yet.
   acted on the other side of a split** when the tab was on the side that was
   not active.
 
+- **On Windows, a file whose name ends in a space or a dot is no longer
+  acted on as the file beside it through a `\\.\` path.** With `report`,
+  `report ` and `report.` in one folder, deleting, moving, copying or
+  binning `\\.\C:\…\report ` acted on `report`. Only a literal `\\?\` or
+  `\??\` path reaches such a name as written; every other spelling now
+  refuses it, as an ordinary path always did. And the file operations read
+  a relative path against the current folder, the way Windows opens it, so
+  none reaches a drive's root through a current folder named by a device
+  path.
+
+- **On Windows, pasting a file whose name ends in a space or a dot could
+  overwrite a different file.** With the source folder opened through
+  `\\?\` or `\??\`, copying or moving `report ` into a folder opened by its
+  ordinary name wrote it as `report`: when that folder already had a
+  `report`, the prompt asked about `report ` and *Replace* overwrote
+  `report`. The same went for such a name inside a copied folder. Every
+  name is now checked as it will be written, and a copy or move that would
+  land a name the destination cannot hold is refused before anything is
+  asked or moved, naming the file; into a folder opened through `\\?\` it
+  still lands as it is. The file operations also refuse, in so many words,
+  any path that is not written out in full or has a NUL character in it,
+  and never hand one to the Recycle Bin.
+
+- **On Windows, a folder holding a name that ends in a space or a dot was
+  copied, moved or deleted through the file beside it.** Copying a folder
+  that held `x...` next to `x` wrote `x` twice and never copied `x...`; a
+  prompt set to keep `x` could still have it replaced, a move could take a
+  skipped `x` along, *Duplicate* made `x (2)` from the wrong file, and a
+  delete removed `x` and stopped half-way. Copy, move, *Duplicate*, delete
+  and their retries now refuse such a folder before anything happens,
+  naming the file; opened through `\\?\`, the folder is copied exactly. A
+  drag that would carry such a name is refused too — it carried the file
+  beside it, so a Shift-drop moved a file nobody dragged — and *Copy* and
+  *Cut* leave it out of what other programs can paste, saying so, while
+  still pasting it inside Vaktari. *Extract all* of `report .zip` now lands
+  as `report_`, the name it reports, where it landed as `report` and said
+  `report `.
+
 ## [0.11.0] — 2026-09-25
 
 ### Added
