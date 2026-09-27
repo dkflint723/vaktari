@@ -122,26 +122,31 @@ should not be trusted for compatibility yet.
   is asked once more; and a drop the drag already accepted is taken even
   when asking again at the drop fails. Letting go over the folder tree used
   to end the drag the same way; see above.
+
 - **A file dragged from Explorer is no longer mistaken for one inside a
   zip.** Explorer describes an ordinary file the same way it describes a
   zip's contents, alongside its path. Vaktari now goes by the path, so
   Shift-dragging a file onto the folder it is already in is refused as
   "already here" instead of putting a second copy beside it.
+
 - **Shift- and Alt-drags from most programs work on Windows.** A program
   that allows only copying — 7-Zip and most others — showed the no-drop
   cursor for a Shift-drag (move) or an Alt-drag (shortcut), and nothing was
   dropped. Those now copy, which is what the program allows, and the cursor
   says so.
+
 - **A drop tells the program it came from what was done.** Vaktari answered
   every drop with whatever the source had allowed, so a copy out of a zip
   was reported as possibly a move. A copy now reports a copy and a shortcut
   a shortcut. A move Vaktari makes itself reports, on Windows, that the
   source has nothing left to delete; on Linux it reports the move, where
   answering nothing had made the source show the drop as failed.
+
 - **A drop that lands a moment after the listing scrolled goes where the
   highlight said.** Resting a drag at the edge of a listing scrolls it,
   and releasing just after a scroll could drop the files into whichever
   folder had scrolled under the pointer instead of the one that was lit.
+
 - **A drop that goes wrong says so.** A failure while a drop was being
   taken made it silently not happen; it now shows on the status line. It,
   a failure while a drag was over the window, the reason a drag was

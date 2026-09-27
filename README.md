@@ -359,7 +359,8 @@ leaves a shortcut. A small label follows the pointer naming what you are
 carrying, so a drag begun by accident does not look like the drag of twenty
 files you meant. The folder under the pointer takes a ring; files can also be
 dropped on another tab, which pauses and then switches, on a breadcrumb to move
-them up the tree, or on the bin. A folder cannot be dropped into itself by any
+them up the tree, on a place or a folder in the sidebar's tree, or on the bin.
+A folder cannot be dropped into itself by any
 route. Drag with the *right* button instead and the drop asks. On Windows a
 drag straight out of 7-Zip or Explorer's own zip view lands too, even though
 those files do not exist on disk until they are dropped. *Copy to* and *Move
@@ -402,11 +403,12 @@ folder, a compressed single file becomes the file, and anything else goes into
 a folder named after the archive. It runs on the transfer bar with progress,
 pause and cancel, and a cancelled or failed run removes what it wrote (should
 Vaktari itself stop part-way, the next *Extract all* into that folder clears
-the hidden `.vaktari-extracting-…` folder it left). Names
-Windows cannot hold, or that would display misleadingly, are written with `_`
-in place of the offending characters (`_CON.txt`, `inv_gpj.exe`), two entries
-with one name both arrive (the second numbered), and on Windows what comes out
-of a downloaded archive carries the archive's own mark of the web. *Create shortcut*, made the way each platform makes them. *Open
+the hidden `.vaktari-extracting-…` folder it left). Names Windows cannot hold,
+or that would display misleadingly, are written with `_` in place of the
+offending characters (`_CON.txt`, `inv_gpj.exe`), two entries with one name
+both arrive (the second numbered), and on Windows what comes out of a
+downloaded archive carries the archive's own mark of the web. *Create
+shortcut*, made the way each platform makes them. *Open
 with*, reading your system's own file-type database. *Run* and *Run as
 administrator* for a program. *Open terminal here* on `F4`, with *Open admin
 terminal here* beside it. Entries that need a selection are simply not offered
