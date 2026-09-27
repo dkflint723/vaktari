@@ -132,6 +132,10 @@ public sealed partial class RunningOperationRow : ObservableObject, IDisposable
             OperationKind.Copy => Transfer("Copying", paths),
             OperationKind.Move => Transfer("Moving", paths),
 
+            // The archive, then the folder it lands in — the same
+            // arrangement, so "Extracting a.zip to Downloads".
+            OperationKind.Extract => Transfer("Extracting", paths),
+
             // No second place: a trash and a delete carry sources only.
             OperationKind.Trash => paths.Count == 0
                 ? "Moving to the bin"

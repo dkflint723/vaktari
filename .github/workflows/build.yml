@@ -176,6 +176,34 @@ jobs:
           dotnet publish src/Vaktari.Ui -c Release -r linux-x64 -p:PublishAot=true \
             -p:Version="$VERSION_NUMBER"
 
+      # **The binary that ships, not the one the tests ran.** A NativeAOT
+      # publish with full trimming can drop a decoder the JIT-hosted tests
+      # never miss -- PPMd, BCJ2, Deflate64, the RAR unpackers are reached
+      # through registries the trimmer cannot see. This extracts every
+      # committed fixture with the published executable and compares the
+      # files, their SHA-256 and the counts with expected.tsv; any difference
+      # is a non-zero exit. It needs no display: the switch is answered before
+      # any window exists. `shell: bash` for pipefail, which the default
+      # Linux shell does not set, so the tee cannot hide the exit status.
+      - name: Archive self-test
+        shell: bash
+        run: |
+          P=src/Vaktari.Ui/bin/Release/net10.0/linux-x64/publish
+          "$P/Vaktari.Ui" --self-test-archives tests/Fixtures/Archives | tee selftest.txt
+          grep -q "archive fixtures extracted as expected" selftest.txt
+
+          # And it can fail. A self-test that exits 0 whatever happens proves
+          # nothing, and a windowed executable that wrote nothing to the pipe
+          # would look exactly like one that passed: one broken expectation
+          # must exit non-zero and name its fixture.
+          cp -r tests/Fixtures/Archives ../broken-fixtures
+          sed -i 's/^\(7z-ppmd\.7z\tfile\t7z-ppmd\/docs\/c\.txt\t21390\t\)./\1x/' ../broken-fixtures/expected.tsv
+          if "$P/Vaktari.Ui" --self-test-archives ../broken-fixtures > broken.txt; then
+            echo "::error::the archive self-test passed with a broken expected.tsv"
+            exit 1
+          fi
+          grep -q "FAIL 7z-ppmd.7z" broken.txt
+
       # The publish DIRECTORY is the deliverable, not the executable.
       # libSkiaSharp.so and libHarfBuzzSharp.so sit beside the binary and are
       # loaded from its own directory; shipping the executable alone produces
@@ -278,6 +306,28 @@ jobs:
 
           dotnet publish src/Vaktari.Ui -c Release -r win-x64 -p:PublishAot=true \
             -p:Version="$VERSION_NUMBER"
+
+      # The same check as the Linux job's, on the Windows binary. Under
+      # `shell: bash` GitHub runs `bash -eo pipefail`, so the tee cannot hide
+      # a failing exit.
+      - name: Archive self-test
+        shell: bash
+        run: |
+          P=src/Vaktari.Ui/bin/Release/net10.0/win-x64/publish
+          "$P/Vaktari.Ui.exe" --self-test-archives tests/Fixtures/Archives | tee selftest.txt
+          grep -q "archive fixtures extracted as expected" selftest.txt
+
+          # And it can fail. A self-test that exits 0 whatever happens proves
+          # nothing, and a windowed executable that wrote nothing to the pipe
+          # would look exactly like one that passed: one broken expectation
+          # must exit non-zero and name its fixture.
+          cp -r tests/Fixtures/Archives ../broken-fixtures
+          sed -i 's/^\(7z-ppmd\.7z\tfile\t7z-ppmd\/docs\/c\.txt\t21390\t\)./\1x/' ../broken-fixtures/expected.tsv
+          if "$P/Vaktari.Ui.exe" --self-test-archives ../broken-fixtures > broken.txt; then
+            echo "::error::the archive self-test passed with a broken expected.tsv"
+            exit 1
+          fi
+          grep -q "FAIL 7z-ppmd.7z" broken.txt
 
       # Same check the Linux job makes for libSkiaSharp.so, and for the same
       # reason: these sit beside the binary and are loaded from its own

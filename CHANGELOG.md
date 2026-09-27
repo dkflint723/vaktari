@@ -13,6 +13,20 @@ should not be trusted for compatibility yet.
 
 ### Added
 
+- **Extract all opens 7z, RAR and tar, not only zip.** The same menu row now
+  takes apart `.7z`, `.rar`, `.tar`, `.tar.gz`/`.tgz`, `.tar.bz2`, `.tar.xz`,
+  `.tar.zst` and `.tar.lz`, and a single compressed file such as
+  `report.txt.gz`. What the file is decides how it is read, not what it is
+  called, so a 7z renamed to .zip still opens. A `.xz` of several streams and
+  a `.lz` of several members (what `plzip` writes) arrive whole.
+  Password-protected and split archives are refused with a sentence saying so.
+
+- **Extracting is an operation on the transfer bar**, "Extracting a.zip to
+  Downloads", with progress, pause and cancel. A cancelled or failed run
+  removes what it wrote. If Vaktari itself stops part-way, the hidden
+  `.vaktari-extracting-…` folder it was writing is cleared away by the next
+  Extract all into the same folder.
+
 - **The folder tree takes drops.** Dropping files on a row of the *FOLDERS*
   section puts them in that folder by the rules a place row uses — a drag
   from another Vaktari folder on the same drive moves, one from another
@@ -23,6 +37,37 @@ should not be trusted for compatibility yet.
   every drag.
 
 ### Changed
+
+- **Extract all no longer wraps a folder in another folder.** An archive that
+  holds one folder extracts as that folder, `project.zip` holding `project/`
+  arriving as `project` rather than `project\project`; a compressed single
+  file arrives as the file itself, beside the archive. Anything else still
+  goes into a new folder named after the archive, and nothing already there
+  is ever written over — a taken name is numbered.
+
+- **Two entries with the same name both arrive.** An archive holding two
+  `notes.txt` used to leave only the second; now the first keeps its name and
+  the second lands as `notes (2).txt`.
+
+- **Names Windows cannot hold are written with `_` instead**, as 7-Zip does:
+  `CON.txt` arrives as `_CON.txt`, `a:b` as `a_b`, and a name using invisible
+  or right-to-left control characters to disguise itself — `inv\u202Egpj.exe`
+  showing as "invexe.jpg" — as `inv_gpj.exe`. The status line says how many
+  were renamed, and what was left out and why: "3 left out (2 links, 1 unsafe
+  name)".
+
+- **What comes out of a downloaded archive keeps the mark of the web** on
+  Windows, as it does from Explorer and 7-Zip, so Office still opens it in
+  Protected View and SmartScreen still asks before running it — and each file
+  keeps its own date from the archive.
+
+- **The Fedora and Arch packages declare `MIT AND LicenseRef-unRAR`.** They
+  now carry SharpCompress's RAR decoder, whose unRAR licence is reproduced in
+  THIRD-PARTY-NOTICES.txt; it is not a free licence as Fedora counts them.
+
+- **A damaged archive is refused whole.** Every entry is checked against its
+  CRC and its declared size as it is written, and a zip built to unpack to far
+  more than it holds is refused before anything is written.
 
 - **The settings window is seven pages that each hold what their name
   says.** *General* is where Vaktari opens and how, what a click and

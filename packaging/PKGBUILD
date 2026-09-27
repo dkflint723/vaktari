@@ -24,7 +24,10 @@ pkgrel=1
 pkgdesc="A file manager for KDE that consumes the desktop instead of reimplementing it"
 arch=('x86_64')
 url="https://github.com/dkflint723/vaktari"
-license=('MIT')
+# The RAR decoder inside SharpCompress is under the unRAR licence, which is
+# not an SPDX one; its text is in THIRD-PARTY-NOTICES.txt, installed below
+# into the package's own licence folder as a custom licence must be.
+license=('MIT' 'LicenseRef-unRAR')
 
 # Loaded at runtime by the bundled SkiaSharp, and by the desktop integration.
 depends=('fontconfig' 'glib2' 'shared-mime-info' 'xdg-utils')

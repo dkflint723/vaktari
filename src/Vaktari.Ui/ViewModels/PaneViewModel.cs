@@ -1896,9 +1896,16 @@ public sealed partial class PaneViewModel : ObservableObject, IDisposable
     /// </summary>
     public void Adopt(IOperationHandle handle) => Track(handle);
 
+    /// <summary>
+    /// Puts an operation on the bar: its progress, pause and cancel. The
+    /// first half of <see cref="Track"/>, for the one caller that finishes
+    /// its own operation — see <see cref="ExtractSelectionAsync"/>.
+    /// </summary>
+    private void Announce(IOperationHandle handle) => OperationStarted?.Invoke(this, handle);
+
     private void Track(IOperationHandle handle)
     {
-        OperationStarted?.Invoke(this, handle);
+        Announce(handle);
 
         // The listing is refreshed once, at the end — refreshing per item would
         // rebuild the view thousands of times during a large copy.

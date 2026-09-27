@@ -128,6 +128,17 @@ public sealed class OperationHandle : IOperationHandle
         Report();
     }
 
+    /// <summary>
+    /// Raises the item total while the work is under way, for an engine that
+    /// learns how many items there are only by reaching them — a tar says
+    /// nothing about its count until its last entry has been read.
+    /// </summary>
+    public void ItemsExpected(int itemsTotal)
+    {
+        _itemsTotal = itemsTotal;
+        Report();
+    }
+
     public void ItemStarted(string path)
     {
         _currentItem = Path.GetFileName(path);
@@ -170,6 +181,23 @@ public sealed class OperationHandle : IOperationHandle
     {
         if (_gate.IsSet) return;
         await Task.Run(() => _gate.Wait(_cts.Token), _cts.Token).ConfigureAwait(false);
+    }
+
+    /// <summary>
+    /// The same gate, for a worker that is not async: blocks while paused,
+    /// and throws <see cref="OperationCanceledException"/> if the operation is
+    /// cancelled while it waits.
+    ///
+    /// **Extract all runs on one pool thread from start to finish**, because
+    /// SharpCompress's readers are synchronous: every decoder pulls from a
+    /// stream inside a plain <c>Read</c>. An async wait there would have to be
+    /// blocked on anyway.
+    /// </summary>
+    public void WaitIfPaused()
+    {
+        if (_gate.IsSet) return;
+
+        _gate.Wait(_cts.Token);
     }
 
     /// <summary>

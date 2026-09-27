@@ -833,7 +833,23 @@ public sealed partial class PaneViewModel
     }
 
     /// <summary>
-    /// Unpacks the selected archive into a folder beside it.
+    /// Unpacks the selected archive beside it — see
+    /// <see cref="Archives.Extract(string, string, OperationHandle?, CancellationToken)"/>
+    /// for where exactly it lands.
+    ///
+    /// **A tracked operation, with the bar, pause and cancel that a copy
+    /// has.** Extracting was a status line and a wait: a two-gigabyte 7z
+    /// showed "extracting…" for minutes with no progress and no way to stop
+    /// it. It now raises <see cref="OperationStarted"/> with a handle of kind
+    /// <see cref="OperationKind.Extract"/>, so the bar reads "Extracting a.zip
+    /// to Downloads".
+    ///
+    /// **Announced rather than handed to <see cref="Track"/>, which would
+    /// refresh the listing again once the handle completes** — and a finished
+    /// listing clears the status line, so the sentence below, the one place
+    /// that says what was left out, would be erased a moment after it was
+    /// written. The finish here does the rest of what Track's does, in the
+    /// order it does it.
     /// </summary>
     [RelayCommand]
     public async Task ExtractSelectionAsync()
@@ -842,30 +858,65 @@ public sealed partial class PaneViewModel
         if (EntriesToActOn() is not [{ } archive]) return;
         if (Path.GetDirectoryName(archive.FullPath) is not { Length: > 0 } into) return;
 
+        var handle = new OperationHandle { Paths = [archive.FullPath, into], Kind = OperationKind.Extract };
+
+        Announce(handle);
+
         Status = $"extracting {archive.Name}…";
 
         try
         {
-            var done = await Task.Run(() => Archives.Extract(archive.FullPath, into))
+            var done = await Task.Run(() => Archives.Extract(archive.FullPath, into, handle))
                 .ConfigureAwait(true);
 
-            _ops?.RecordCreation(done.Folder);
+            handle.Arrived([done.Landed]);
+            handle.Complete();
+
+            _ops?.RecordCreation(done.Landed);
+
+            Thumbnails.RowMetadata.Forget(handle.Paths);
+
+            if (_disposed) return;
+
+            RefreshUndoState();
+            SelectOnlyAfterLoad(handle.Landed);
 
             await RefreshAsync().ConfigureAwait(true);
 
-            // **The refused count is said out loud.** An entry naming a path
-            // outside the folder is dropped rather than written, and an
-            // extraction that quietly produced fewer files than the archive
-            // holds is exactly the thing somebody needs to be told about.
-            Status = done.Refused == 0
-                ? $"extracted {done.Files} item(s) to {Path.GetFileName(done.Folder)}"
-                : $"extracted {done.Files} item(s) to {Path.GetFileName(done.Folder)} — "
-                  + $"{done.Refused} refused for pointing outside it";
+            Status = Extracted(done);
+        }
+        catch (OperationCanceledException)
+        {
+            handle.Cancelled();
+
+            Status = $"stopped extracting {archive.Name} — nothing was extracted";
         }
         catch (Exception ex)
         {
+            handle.Failed(ex);
+
             Status = Failures.Describe(ex, $"extract {archive.Name}");
         }
+    }
+
+    /// <summary>
+    /// "extracted 52 item(s) to report — 3 left out (2 links, 1 unsafe
+    /// name), 1 renamed"; a clean run keeps the plain first half.
+    ///
+    /// **What was left out is said out loud.** A link, a device, a name that
+    /// climbs out of the folder: each is dropped rather than written, and an
+    /// extraction that quietly produced fewer files than the archive holds is
+    /// exactly the thing somebody needs to be told about.
+    /// </summary>
+    internal static string Extracted(Archives.Extraction done)
+    {
+        var said = $"extracted {done.Files} item(s) to {Path.GetFileName(done.Landed)}";
+
+        if (done.LeftOut.Describe() is { } leftOut) said += " — " + leftOut;
+
+        if (done.Renamed > 0) said += (done.LeftOut.Total > 0 ? ", " : " — ") + $"{done.Renamed} renamed";
+
+        return said;
     }
 
     /// <summary>

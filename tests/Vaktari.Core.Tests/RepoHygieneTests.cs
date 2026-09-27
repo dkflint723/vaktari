@@ -48,6 +48,121 @@ public sealed class RepoHygieneTests
     /// for exactly that reason; the first Linux run found twelve more tests
     /// asserting Windows facts. Nothing else notices this line going.
     /// </summary>
+    /// <summary>
+    /// **The archive self-test runs against the binary that ships, on both
+    /// platforms.** A NativeAOT publish with full trimming can drop a decoder
+    /// the JIT-hosted tests never miss; only the published executable can say
+    /// it still reads a PPMd 7z or a RAR5. Each job's step must come AFTER its
+    /// Publish step, or it would run nothing that was just built.
+    /// </summary>
+    [Fact]
+    public void Continuous_integration_runs_the_archive_self_test_on_the_published_binary_on_both_platforms()
+    {
+        var workflow = Read(".github", "workflows", "build.yml");
+        var split = workflow.IndexOf("  windows-x64:", StringComparison.Ordinal);
+
+        foreach (var (job, binary) in new[]
+                 {
+                     (workflow[..split], "\"$P/Vaktari.Ui\" --self-test-archives tests/Fixtures/Archives | tee selftest.txt"),
+                     (workflow[split..], "\"$P/Vaktari.Ui.exe\" --self-test-archives tests/Fixtures/Archives | tee selftest.txt"),
+                 })
+        {
+            var publish = job.IndexOf("- name: Publish", StringComparison.Ordinal);
+            var selfTest = job.IndexOf(binary, StringComparison.Ordinal);
+
+            Assert.True(publish > 0, "no Publish step");
+            Assert.True(selfTest > publish, $"no self-test after Publish: {binary}");
+
+            // Under pipefail, with its output read back, and shown able to
+            // fail against a broken expectation.
+            var step = job[job.LastIndexOf("- name: Archive self-test", selfTest, StringComparison.Ordinal)..];
+
+            Assert.Contains("shell: bash", step[..step.IndexOf(binary, StringComparison.Ordinal)]);
+            Assert.Contains("grep -q \"archive fixtures extracted as expected\" selftest.txt", step);
+            Assert.Contains("--self-test-archives ../broken-fixtures > broken.txt; then", step);
+            Assert.Contains("grep -q \"FAIL 7z-ppmd.7z\" broken.txt", step);
+        }
+    }
+
+    /// <summary>The Fedora package runs it against the INSTALLED binary, the
+    /// one build of the three that keeps RAR under a distribution's own
+    /// packaging.</summary>
+    [Fact]
+    public void The_Fedora_package_runs_the_archive_self_test()
+    {
+        var workflow = Read(".github", "workflows", "distro.yml");
+
+        Assert.Contains("vaktari --self-test-archives \"$GITHUB_WORKSPACE/tests/Fixtures/Archives\"", workflow);
+    }
+
+    /// <summary>
+    /// **With core.autocrlf on, git is free to rewrite a fixture it guesses is
+    /// text** — a tar is mostly ASCII — and then every CRC and every SHA-256
+    /// in expected.tsv is wrong on the machine that checked it out.
+    /// </summary>
+    [Fact]
+    public void Archive_fixtures_are_committed_as_binary()
+    {
+        var attributes = Read(".gitattributes");
+
+        Assert.Contains("tests/Fixtures/** binary", attributes);
+        Assert.Contains("tests/Fixtures/Archives/expected.tsv -text diff", attributes);
+    }
+
+    /// <summary>
+    /// **A fixture on disk is not a fixture in the repository.** tree.tar.gz
+    /// sat in the working folder, every local run passed, and CI failed on
+    /// its absence: the .gitignore rule for build tarballs had kept it out.
+    /// Every fixture PROVENANCE.md and expected.tsv name must be tracked.
+    /// </summary>
+    [GitRepoFact]
+    public void Every_archive_fixture_is_tracked_by_git()
+    {
+        const string folder = "tests/Fixtures/Archives/";
+
+        var tracked = Git("-c", "core.quotepath=off", "ls-files", "--", folder)
+            .Split('\n', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+            .ToHashSet(StringComparer.Ordinal);
+
+        var named = System.Text.RegularExpressions.Regex
+            .Matches(Read("tests", "Fixtures", "Archives", "PROVENANCE.md"), @"^\| `([^`]+)` \|", System.Text.RegularExpressions.RegexOptions.Multiline)
+            .Select(m => m.Groups[1].Value)
+            .Concat(Read("tests", "Fixtures", "Archives", "expected.tsv").Split('\n')
+                .Skip(1)
+                .Where(l => l.Length > 0)
+                .Select(l => l.Split('\t')[0]))
+            .Append("expected.tsv")
+            .Append("PROVENANCE.md")
+            .Distinct(StringComparer.Ordinal)
+            .ToList();
+
+        Assert.True(named.Count > 40, $"only {named.Count} fixtures named");
+
+        var missing = named.Where(n => !tracked.Contains(folder + n)).ToList();
+
+        Assert.True(missing.Count == 0, "not tracked by git: " + string.Join(", ", missing));
+    }
+
+    private static string Git(params string[] args)
+    {
+        var start = new System.Diagnostics.ProcessStartInfo("git")
+        {
+            WorkingDirectory = RepoSource.Root,
+            RedirectStandardOutput = true,
+            RedirectStandardError = true,
+            UseShellExecute = false,
+        };
+
+        foreach (var a in args) start.ArgumentList.Add(a);
+
+        using var git = System.Diagnostics.Process.Start(start)!;
+        var output = git.StandardOutput.ReadToEnd();
+
+        git.WaitForExit();
+
+        return git.ExitCode == 0 ? output : throw new InvalidOperationException($"git {string.Join(' ', args)}: {git.StandardError.ReadToEnd()}");
+    }
+
     [Fact]
     public void Continuous_integration_runs_the_Ui_suite_on_Linux()
     {
@@ -103,5 +218,53 @@ public sealed class RepoHygieneTests
         Assert.DoesNotContain(":warning", config);
         Assert.DoesNotContain(":error", config);
         Assert.DoesNotContain("dotnet_diagnostic", config);
+    }
+}
+
+/// <summary>
+/// A fact that asks git about the repository. **Skipped, and shown as
+/// skipped**, where there is no git to ask — a source tarball, a copy
+/// rsynced without its .git — rather than passing on nothing.
+/// </summary>
+public sealed class GitRepoFactAttribute : FactAttribute
+{
+    public GitRepoFactAttribute()
+    {
+        string root;
+
+        try
+        {
+            root = RepoSource.Root;
+        }
+        catch (InvalidOperationException)
+        {
+            Skip = "the repository root could not be found";
+            return;
+        }
+
+        // A worktree's .git is a file, a clone's a folder.
+        if (!Directory.Exists(Path.Combine(root, ".git")) && !File.Exists(Path.Combine(root, ".git")))
+        {
+            Skip = "this copy of the source has no .git, so git cannot say what is tracked";
+            return;
+        }
+
+        try
+        {
+            using var git = System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo("git", "--version")
+            {
+                RedirectStandardOutput = true,
+                RedirectStandardError = true,
+                UseShellExecute = false,
+            })!;
+
+            git.WaitForExit();
+
+            if (git.ExitCode != 0) Skip = "git is installed but does not run";
+        }
+        catch (System.ComponentModel.Win32Exception)
+        {
+            Skip = "git is not installed, so it cannot say what is tracked";
+        }
     }
 }

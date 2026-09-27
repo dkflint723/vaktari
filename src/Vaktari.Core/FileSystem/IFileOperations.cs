@@ -29,21 +29,21 @@ public enum OperationState { Queued, Running, Paused, Completed, Failed, Cancell
 ///
 /// A verb and not a sentence. The words belong to the window, which is where
 /// they can be spelled the way the rest of the labels are; the engine knows
-/// only which of these four calls it is serving.
+/// only which of these calls it is serving.
 ///
 /// <see cref="Other"/> is the default, and it is honest rather than lazy: a
 /// handle nobody named must not be given a verb it did not earn, because the
 /// wrong verb on a row is worse than no verb — "Deleting" over a copy.
 ///
-/// **Measured: every one of the seven <c>new OperationHandle</c> sites in this
-/// repository sets it** — three in each engine, and ElevatedRun, which maps the
-/// request's verb in the same object initialiser. So nothing in the shipping
+/// **Measured: every one of the eight <c>new OperationHandle</c> sites in this
+/// repository sets it** — three in each engine, ElevatedRun, which maps the
+/// request's verb in the same object initialiser, and Extract all. So nothing in the shipping
 /// application answers <see cref="Other"/>. It is reached by handles built in
 /// tests, and by an implementor written outside this assembly, which is the
 /// point of the interface default beside it: adding a member to a published
 /// interface must break nobody.
 /// </summary>
-public enum OperationKind { Other, Copy, Move, Trash, Delete }
+public enum OperationKind { Other, Copy, Move, Trash, Delete, Extract }
 
 /// <summary>
 /// One item an operation could not do, and why — so the rest of the batch can

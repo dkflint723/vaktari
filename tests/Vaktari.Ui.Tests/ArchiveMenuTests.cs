@@ -181,16 +181,28 @@ public sealed class ArchiveMenuTests : OwnedViewModels
         Assert.False(pane.CanCompressSelection);
     }
 
+    /// <summary>
+    /// Every format Extract all reads is offered, by name — and a Word
+    /// document or a jar, zips in all but name, is not. This was
+    /// <c>Extract_is_offered_for_one_zip_and_nothing_else</c>; Stage A of the
+    /// archive plan widened it on purpose.
+    /// </summary>
     [AvaloniaFact]
-    public void Extract_is_offered_for_one_zip_and_nothing_else()
+    public void Extract_is_offered_for_one_archive_of_any_browsable_format()
     {
         var pane = Pane();
 
-        pane.SelectedEntry = Row(Write("holiday.zip"));
-        Assert.True(pane.CanExtractSelection);
+        foreach (var name in new[] { "holiday.zip", "holiday.7z", "holiday.rar", "holiday.tar.gz", "holiday.tgz" })
+        {
+            pane.SelectedEntry = Row(Write(name));
+            Assert.True(pane.CanExtractSelection, name);
+        }
 
-        pane.SelectedEntry = Row(Write("holiday.7z"));
-        Assert.False(pane.CanExtractSelection);
+        foreach (var name in new[] { "report.docx", "app.jar" })
+        {
+            pane.SelectedEntry = Row(Write(name));
+            Assert.False(pane.CanExtractSelection, name);
+        }
 
         Directory.CreateDirectory(At("folder.zip"));
         pane.SelectedEntry = Row(At("folder.zip"));
@@ -427,7 +439,7 @@ public sealed class ArchiveMenuTests : OwnedViewModels
 
         await pane.ExtractSelectionAsync();
 
-        Assert.Contains("1 refused", pane.Status);
+        Assert.Equal("extracted 1 item(s) to hostile — 1 left out (1 unsafe name)", pane.Status);
         Assert.False(File.Exists(At("escaped.txt")));
     }
 

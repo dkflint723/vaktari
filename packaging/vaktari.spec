@@ -21,7 +21,13 @@ Summary:        A file manager for KDE that consumes the desktop instead of reim
 Obsoletes:      heimdall
 Provides:       heimdall = %{version}-%{release}
 
-License:        MIT
+# **Not MIT alone since Extract all reads RAR.** The binary carries
+# SharpCompress's RAR decoder, which is under the unRAR licence (reproduced in
+# THIRD-PARTY-NOTICES.txt). That licence forbids using the code to make a RAR
+# compressor, so it is not a free licence as Fedora counts them: this spec is
+# for the project's own RPM, and Fedora proper or a COPR that follows
+# Fedora's licensing rules would not accept it as it stands.
+License:        MIT AND LicenseRef-unRAR
 URL:            https://github.com/dkflint723/vaktari
 Source0:        vaktari-linux-x64.tar.gz
 

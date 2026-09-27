@@ -117,6 +117,9 @@ jobs:
           # its own version is one nobody should be shipping. This is now a real
           # check rather than a comment claiming to be one.
           vaktari --version
+          # And the archive self-test, against the INSTALLED binary: the RPM
+          # keeps RAR, and a trimmed decoder shows up here or nowhere.
+          vaktari --self-test-archives "$GITHUB_WORKSPACE/tests/Fixtures/Archives"
 
       - uses: actions/upload-artifact@v7
         with:

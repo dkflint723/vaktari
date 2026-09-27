@@ -1,5 +1,4 @@
 using System.Collections;
-using System.Diagnostics;
 using System.IO.Compression;
 using Vaktari.Core.FileSystem;
 using Xunit;
@@ -59,17 +58,6 @@ public sealed class ArchiveVerbTests : IDisposable
     }
 
     // ---- which files the verb offers itself for ----------------------------
-
-    [Theory]
-    [InlineData("holiday.zip", true)]
-    [InlineData("HOLIDAY.ZIP", true)]
-    [InlineData("holiday.7z", false)]
-    [InlineData("holiday.tar.gz", false)]
-    [InlineData("holiday.rar", false)]
-    [InlineData("holiday", false)]
-    [InlineData("zip", false)]
-    public void Only_a_zip_can_be_extracted(string name, bool offered)
-        => Assert.Equal(offered, Archives.CanExtract(name));
 
     [Fact]
     public void Nothing_cannot_be_extracted() => Assert.False(Archives.CanExtract(null));
@@ -320,7 +308,7 @@ public sealed class ArchiveVerbTests : IDisposable
         Write("elsewhere/secret.txt", "not yours");
         Write("trip/mine.txt", "mine");
 
-        Junction(At("trip", "shortcut"), At("elsewhere"));
+        TestLinks.Junction(At("trip", "shortcut"), At("elsewhere"));
 
         var names = NamesIn(Archives.Compress([At("trip")], _root));
 
@@ -345,36 +333,11 @@ public sealed class ArchiveVerbTests : IDisposable
         Write("elsewhere/report.txt", "the target's own");
         Dir("here");
 
-        Junction(At("here", "shortcut"), At("elsewhere"));
+        TestLinks.Junction(At("here", "shortcut"), At("elsewhere"));
 
         var names = NamesIn(Archives.Compress([At("here", "shortcut")], At("here")));
 
         Assert.Equal(["shortcut/", "shortcut/report.txt"], names);
-    }
-
-    /// <summary>
-    /// Made by the platform's own tool rather than by anything under test —
-    /// setup sharing an implementation with its subject passes just as happily
-    /// when both are wrong. The same reason, and the same command, as the
-    /// Windows suite's TempTree.
-    /// </summary>
-    private static void Junction(string path, string target)
-    {
-        Directory.CreateDirectory(Path.GetDirectoryName(path)!);
-
-        using var mklink = Process.Start(new ProcessStartInfo(
-            "cmd.exe", $"/c mklink /J \"{path}\" \"{target}\"")
-        {
-            RedirectStandardOutput = true,
-            RedirectStandardError = true,
-            UseShellExecute = false,
-        })!;
-
-        mklink.WaitForExit();
-
-        if (!Directory.Exists(path))
-            throw new InvalidOperationException(
-                $"could not make a junction at '{path}': {mklink.StandardError.ReadToEnd().Trim()}");
     }
 
     // ---- extracting --------------------------------------------------------
@@ -382,20 +345,12 @@ public sealed class ArchiveVerbTests : IDisposable
     /// <summary>Builds an archive with exactly the entries asked for, including
     /// ones no honest writer would produce.</summary>
     private string Zip(string name, params (string Entry, string Content)[] entries)
-    {
-        var path = At(name);
+        => ArchiveTestData.Zip(At(name), entries);
 
-        using var file = File.Create(path);
-        using var zip = new ZipArchive(file, ZipArchiveMode.Create);
-
-        foreach (var (entry, content) in entries)
-        {
-            using var writer = new StreamWriter(zip.CreateEntry(entry).Open());
-            writer.Write(content);
-        }
-
-        return path;
-    }
+    private string[] Tree(string folder)
+        => [.. Directory.EnumerateFileSystemEntries(folder, "*", SearchOption.AllDirectories)
+                .Select(p => Path.GetRelativePath(folder, p).Replace('\\', '/'))
+                .OrderBy(p => p, StringComparer.Ordinal)];
 
     [Fact]
     public void An_archive_unpacks_into_a_folder_named_after_it()
@@ -404,9 +359,10 @@ public sealed class ArchiveVerbTests : IDisposable
 
         var done = Archives.Extract(archive, _root);
 
-        Assert.Equal(At("trip"), done.Folder);
+        Assert.Equal(At("trip"), done.Landed);
+        Assert.False(done.IsFile);
         Assert.Equal(2, done.Files);
-        Assert.Equal(0, done.Refused);
+        Assert.Equal(0, done.LeftOut.Total);
 
         Assert.Equal("one", File.ReadAllText(At("trip", "top.txt")));
         Assert.Equal("two", File.ReadAllText(At("trip", "day one", "photo.txt")));
@@ -414,8 +370,9 @@ public sealed class ArchiveVerbTests : IDisposable
 
     /// <summary>
     /// **An entry is free to call itself ..\..\somewhere.** The rule is not
-    /// that the name looks harmless but that the resolved path is genuinely
-    /// underneath the folder being unpacked into.
+    /// that the name looks harmless but that nothing it names can be outside
+    /// the folder: a <c>..</c> segment refuses the entry (see ArchiveKeys),
+    /// and what is left is counted as an unsafe name.
     /// </summary>
     [Fact]
     public void An_entry_that_climbs_out_of_the_folder_is_refused_and_counted()
@@ -428,58 +385,53 @@ public sealed class ArchiveVerbTests : IDisposable
         var done = Archives.Extract(archive, Dir("into"));
 
         Assert.Equal(1, done.Files);
-        Assert.Equal(2, done.Refused);
+        Assert.Equal(2, done.LeftOut.Unsafe);
 
-        Assert.True(File.Exists(Path.Combine(done.Folder, "innocent.txt")));
+        Assert.True(File.Exists(Path.Combine(done.Landed, "innocent.txt")));
         Assert.False(File.Exists(At("into", "escaped.txt")));
         Assert.False(File.Exists(At("escaped.txt")));
     }
 
     /// <summary>
-    /// **The count is of files that came out, not of entries that went past.**
-    /// A zip is free to hold two entries under one name, and the second lands
-    /// on the first — the folder is made fresh at a free name a moment earlier,
-    /// so nothing else can be at the path. Measured before the check: this
-    /// archive reported two files into a folder holding one.
+    /// **Every copy arrives; the first keeps its name.** A zip is free to hold
+    /// two entries under one name. Measured before the planner: the second
+    /// was written over the first and the count said two files had arrived.
+    ///
+    /// This test was <c>Two_entries_under_one_name_are_counted_as_the_one_file_they_leave</c>,
+    /// which pinned "last one wins" — the maintainer's decision reversed that
+    /// on purpose (nothing an archive holds is lost silently), so its
+    /// expectation changed rather than its subject.
     /// </summary>
     [Fact]
-    public void Two_entries_under_one_name_are_counted_as_the_one_file_they_leave()
+    public void Two_entries_under_one_name_both_arrive_the_second_numbered()
     {
-        var archive = Zip("twins.zip", ("notes.txt", "first"), ("notes.txt", "second"));
+        var archive = Zip("twins.zip", ("notes.txt", "first"), ("notes.txt", "second"), ("other.txt", "x"));
 
         var done = Archives.Extract(archive, _root);
 
-        Assert.Equal(1, done.Files);
+        Assert.Equal(3, done.Files);
+        Assert.Equal(1, done.Renamed);
 
-        Assert.Equal(
-            ["notes.txt"],
-            Directory.EnumerateFileSystemEntries(done.Folder)
-                .Select(Path.GetFileName).OfType<string>().ToArray());
-
-        Assert.Equal("second", File.ReadAllText(Path.Combine(done.Folder, "notes.txt")));
+        Assert.Equal(["notes (2).txt", "notes.txt", "other.txt"], Tree(done.Landed));
+        Assert.Equal("first", File.ReadAllText(Path.Combine(done.Landed, "notes.txt")));
+        Assert.Equal("second", File.ReadAllText(Path.Combine(done.Landed, "notes (2).txt")));
     }
 
     [Fact]
     public void A_second_extraction_lands_in_a_numbered_folder()
     {
-        var archive = Zip("trip.zip", ("top.txt", "one"));
+        var archive = Zip("trip.zip", ("top.txt", "one"), ("two.txt", "two"));
 
         Archives.Extract(archive, _root);
 
-        Assert.Equal(At("trip (2)"), Archives.Extract(archive, _root).Folder);
+        Assert.Equal(At("trip (2)"), Archives.Extract(archive, _root).Landed);
     }
 
     /// <summary>
     /// **A folder holding half an archive looks like one holding all of it.**
-    /// The folder is this class's own, made a moment earlier at a free name, so
-    /// removing it cannot take anything that was already there.
-    ///
-    /// **And it is refused in words rather than in the runtime's.** The menu
-    /// row decides by extension, so a file named .zip that is not one is the
-    /// failure this verb meets most often — a download that arrived as an error
-    /// page, a renamed .rar, a file that stopped halfway. Measured before the
-    /// sentence existed: the message was "End of Central Directory record could
-    /// not be found.", which reached the status bar verbatim.
+    /// And it is refused in words rather than in the runtime's: measured before
+    /// the sentence existed, "End of Central Directory record could not be
+    /// found." reached the status bar verbatim.
     /// </summary>
     [Fact]
     public void An_extraction_that_fails_leaves_no_folder_behind()
@@ -491,33 +443,38 @@ public sealed class ArchiveVerbTests : IDisposable
 
         Assert.Equal("trip.zip is not a zip file, or is damaged", refused.Message);
 
-        Assert.False(Directory.Exists(At("trip")));
+        Assert.Equal(["trip.zip"], Tree(_root));
     }
 
     /// <summary>
     /// The same rule from the other side: an archive that fails PARTWAY, once
-    /// files are already on disk, leaves nothing behind either.
+    /// files are already on disk, leaves nothing behind either — not the
+    /// landing folder and not the working folder it was being written in.
     ///
-    /// Staged with an archive naming one thing twice, once as a folder and once
-    /// as a file — the folder is made first and writing the file onto it is
-    /// refused by the filesystem. A separate case from the one above because
-    /// the failure arrives after the archive has been opened and read, which is
-    /// the catch that clears up after everything except an unreadable zip.
+    /// Staged with a zip whose last entry's bytes do not match its CRC, so the
+    /// first entries are written whole before the failure. (It used to be
+    /// staged with a folder/file clash, which is now numbered rather than
+    /// failed.)
     /// </summary>
     [Fact]
     public void An_extraction_that_fails_partway_leaves_no_folder_behind()
     {
-        var archive = Zip("odd.zip", ("clash/", ""), ("clash", "onto its own folder"));
+        File.WriteAllBytes(At("odd.zip"), ZipBytes.Build(
+            new ZipBytes.Entry("first.txt") { Data = "fine"u8.ToArray() },
+            new ZipBytes.Entry("second.txt") { Data = "fine too"u8.ToArray() },
+            new ZipBytes.Entry("bad.txt") { Data = "not what the CRC says"u8.ToArray(), Crc = 0xDEADBEEF }));
 
-        Assert.ThrowsAny<Exception>(() => Archives.Extract(archive, _root));
+        var failed = Assert.Throws<ArchiveDamagedException>(() => Archives.Extract(At("odd.zip"), _root));
 
-        Assert.False(Directory.Exists(At("odd")));
+        Assert.Equal(2, failed.EntriesBefore);
+        Assert.Equal(["odd.zip"], Tree(_root));
     }
 
     /// <summary>An archive and the folder it unpacks to make a round trip
     /// without losing the shape in between — including a folder with nothing in
-    /// it, which survives only because both ends handle an entry that is a name
-    /// ending in a separator and holds no bytes.</summary>
+    /// it — and WITHOUT a second wrapping: a zip of <c>trip</c> holds only
+    /// <c>trip/</c>, so it lands as <c>back\trip</c>, not
+    /// <c>back\trip\trip</c>.</summary>
     [Fact]
     public void A_folder_survives_being_compressed_and_extracted_again()
     {
@@ -528,9 +485,314 @@ public sealed class ArchiveVerbTests : IDisposable
         var made = Archives.Compress([At("trip")], _root);
         var done = Archives.Extract(made, Dir("back"));
 
-        Assert.Equal("one", File.ReadAllText(Path.Combine(done.Folder, "trip", "top.txt")));
-        Assert.Equal("two", File.ReadAllText(Path.Combine(done.Folder, "trip", "day one", "photo.txt")));
+        Assert.Equal(At("back", "trip"), done.Landed);
 
-        Assert.True(Directory.Exists(Path.Combine(done.Folder, "trip", "nothing here")));
+        Assert.Equal("one", File.ReadAllText(At("back", "trip", "top.txt")));
+        Assert.Equal("two", File.ReadAllText(At("back", "trip", "day one", "photo.txt")));
+
+        Assert.True(Directory.Exists(At("back", "trip", "nothing here")));
+    }
+
+    // ---- no double wrap -----------------------------------------------------
+
+    [Fact]
+    public void An_archive_holding_one_folder_extracts_to_that_folder_not_inside_another()
+    {
+        var archive = Zip("download.zip", ("project/", ""), ("project/readme.txt", "hi"), ("project/src/a.c", "int"));
+
+        var done = Archives.Extract(archive, _root);
+
+        Assert.Equal(At("project"), done.Landed);
+        Assert.Equal(["readme.txt", "src", "src/a.c"], Tree(done.Landed));
+        Assert.Equal(["download.zip", "project", "project/readme.txt", "project/src", "project/src/a.c"], Tree(_root));
+    }
+
+    [Fact]
+    public void One_folder_whose_name_is_taken_lands_numbered()
+    {
+        Write("project/mine.txt", "already here");
+
+        var archive = Zip("download.zip", ("project/readme.txt", "hi"));
+
+        var done = Archives.Extract(archive, _root);
+
+        Assert.Equal(At("project (2)"), done.Landed);
+        Assert.Equal("already here", File.ReadAllText(At("project", "mine.txt")));
+        Assert.Equal(["mine.txt"], Tree(At("project")));
+    }
+
+    [Fact]
+    public void Loose_files_go_into_a_folder_named_after_the_archive()
+    {
+        var archive = Zip("bundle.zip", ("a.txt", "a"), ("b.txt", "b"));
+
+        Assert.Equal(At("bundle"), Archives.Extract(archive, _root).Landed);
+        Assert.Equal(["a.txt", "b.txt"], Tree(At("bundle")));
+    }
+
+    /// <summary>A zip is not a compressed FILE even when it holds one: the
+    /// single file still gets a folder, so an archive never scatters anything
+    /// loose into the destination.</summary>
+    [Fact]
+    public void A_single_top_level_file_goes_into_a_folder_named_after_the_archive()
+    {
+        var archive = Zip("notes.zip", ("notes.txt", "hello"));
+
+        var done = Archives.Extract(archive, _root);
+
+        Assert.Equal(At("notes"), done.Landed);
+        Assert.False(done.IsFile);
+        Assert.Equal("hello", File.ReadAllText(At("notes", "notes.txt")));
+    }
+
+    /// <summary>A Mac zips <c>__MACOSX/</c> beside the folder it was asked to
+    /// zip; left out, it would make every such zip "two things at the top" and
+    /// wrap the one folder in another.</summary>
+    [Fact]
+    public void Mac_metadata_beside_the_one_folder_does_not_wrap_it()
+    {
+        var archive = Zip("photos.zip",
+            ("photos/a.jpg", "jpeg"),
+            ("__MACOSX/photos/._a.jpg", "resource fork"),
+            ("photos/._b.jpg", "resource fork"));
+
+        var done = Archives.Extract(archive, _root);
+
+        Assert.Equal(At("photos"), done.Landed);
+        Assert.Equal(["a.jpg"], Tree(done.Landed));
+        Assert.Equal(2, done.LeftOut.MacMetadata);
+    }
+
+    /// <summary>
+    /// **A compressed single file is the file.** <c>report.txt.gz</c> lands
+    /// as <c>report.txt</c> beside it, numbered when that is taken — named by
+    /// <see cref="ArchiveFormats.Stem"/>, which knows the whole suffix, and
+    /// not by the verb's own stem, which would have taken the last extension
+    /// off <c>report.txt</c> as well.
+    /// </summary>
+    [Fact]
+    public void A_compressed_single_file_lands_beside_the_archive_numbered()
+    {
+        Write("report.txt", "already here");
+
+        var archive = ArchiveTestData.Bare(At("report.txt.gz"), ArchiveFormat.Gz, "the report"u8.ToArray());
+
+        var done = Archives.Extract(archive, _root);
+
+        Assert.True(done.IsFile);
+        Assert.Equal(At("report (2).txt"), done.Landed);
+        Assert.Equal("the report", File.ReadAllText(done.Landed));
+        Assert.Equal("already here", File.ReadAllText(At("report.txt")));
+        Assert.Equal(["report (2).txt", "report.txt", "report.txt.gz"], Tree(_root));
+    }
+
+    [Fact]
+    public void A_gz_holding_a_tar_is_an_archive()
+    {
+        var archive = ArchiveTestData.Tar(At("src.gz"), tar =>
+        {
+            tar.WriteEntry(ArchiveTestData.File_("one.txt", "1"));
+            tar.WriteEntry(ArchiveTestData.File_("two.txt", "2"));
+        }, ArchiveTestData.Compressor(ArchiveFormat.Gz));
+
+        var done = Archives.Extract(archive, _root);
+
+        Assert.False(done.IsFile);
+        Assert.Equal(At("src"), done.Landed);
+        Assert.Equal(["one.txt", "two.txt"], Tree(done.Landed));
+    }
+
+    // ---- every format -------------------------------------------------------
+
+    [Theory]
+    [InlineData("holiday.zip", true)]
+    [InlineData("HOLIDAY.ZIP", true)]
+    [InlineData("holiday.7z", true)]
+    [InlineData("holiday.rar", true)]
+    [InlineData("holiday.tar", true)]
+    [InlineData("holiday.tar.gz", true)]
+    [InlineData("holiday.TGZ", true)]
+    [InlineData("holiday.tar.bz2", true)]
+    [InlineData("holiday.tar.xz", true)]
+    [InlineData("holiday.tar.zst", true)]
+    [InlineData("holiday.tar.lz", true)]
+    [InlineData("notes.txt.gz", true)]
+    [InlineData("notes.txt.xz", true)]
+    [InlineData("holiday.docx", false)]
+    [InlineData("holiday.jar", false)]
+    [InlineData("holiday", false)]
+    [InlineData("zip", false)]
+    public void Every_browsable_format_can_be_extracted(string name, bool offered)
+        => Assert.Equal(offered, Archives.CanExtract(name));
+
+    [Theory]
+    [InlineData("7z-solid-lzma2.7z")]
+    [InlineData("7z-bcj2.7z")]
+    [InlineData("7z-ppmd.7z")]
+    [InlineData("7z-bzip2.7z")]
+    [InlineData("7z-delta.7z")]
+    [InlineData("7z-arm64.7z")]
+    [InlineData("zip-deflate64.zip")]
+    [InlineData("zip-bzip2.zip")]
+    [InlineData("zip-lzma.zip")]
+    [InlineData("zip-ppmd.zip")]
+    [InlineData("tree.tar.gz")]
+    [InlineData("tree.tar.bz2")]
+    [InlineData("tree.tar.xz")]
+    [InlineData("tree.tar.zst")]
+    [InlineData("tree.tar.lz")]
+    public void Each_format_extracts(string fixture)
+    {
+        var done = Archives.Extract(ArchiveTestData.Fixture(fixture), _root);
+
+        Assert.Equal(At(ArchiveFormats.Stem(fixture)), done.Landed);
+        Assert.Equal(["docs", "docs/a.txt", "docs/b.bin", "docs/c.txt", "empty", "readme.txt"], Tree(done.Landed));
+        Assert.Equal("Vaktari archive fixture\n", File.ReadAllText(Path.Combine(done.Landed, "readme.txt")));
+    }
+
+    [Theory]
+    [InlineData("rar4.rar")]
+    [InlineData("rar5.rar")]
+    [InlineData("rar4-solid.rar")]
+    [InlineData("rar5-solid.rar")]
+    [InlineData("zip-zstd.zip")]
+    [InlineData("zip-xz.zip")]
+    public void Each_vendored_format_extracts(string fixture)
+    {
+        var done = Archives.Extract(ArchiveTestData.Fixture(fixture), _root);
+
+        Assert.Contains("тест.txt", Tree(done.Landed));
+        Assert.Equal(45056, new FileInfo(Path.Combine(done.Landed, "exe", "test.exe")).Length);
+    }
+
+    [Theory]
+    [InlineData("7z-p.7z")]
+    [InlineData("7z-mhe.7z")]
+    [InlineData("zip-zipcrypto.zip")]
+    [InlineData("zip-aes256.zip")]
+    [InlineData("rar4-p.rar")]
+    [InlineData("rar4-hp.rar")]
+    [InlineData("rar5-p.rar")]
+    [InlineData("rar5-hp.rar")]
+    public void A_password_protected_archive_is_refused_in_words(string fixture)
+    {
+        var copy = At(fixture);
+
+        File.Copy(ArchiveTestData.Fixture(fixture), copy);
+
+        var refused = Assert.Throws<ArchivePasswordRequiredException>(() => Archives.Extract(copy, _root));
+
+        Assert.Equal($"{fixture} is password-protected — Vaktari cannot extract it yet", refused.Message);
+        Assert.Equal([fixture], Tree(_root));
+    }
+
+    [Theory]
+    [InlineData("photos.part1.rar")]
+    [InlineData("photos.part02.rar")]
+    [InlineData("photos.r00")]
+    [InlineData("photos.7z.001")]
+    [InlineData("photos.zip.001")]
+    [InlineData("photos.z01")]
+    public void A_split_volume_is_refused_in_words(string name)
+    {
+        var part = Write(name, "a part");
+
+        var refused = Assert.Throws<ArchiveRefusedException>(() => Archives.Extract(part, _root));
+
+        Assert.Equal($"{name} is one part of a split archive — Vaktari cannot extract split archives", refused.Message);
+    }
+
+    /// <summary>The flag, for a first part whose name does not give it away.</summary>
+    [Fact]
+    public void A_split_rar_renamed_to_look_whole_is_refused_by_its_flag()
+    {
+        var part = At("photos.rar");
+
+        File.WriteAllBytes(part, RarFirstVolume());
+
+        var refused = Assert.Throws<ArchiveRefusedException>(() => Archives.Extract(part, _root));
+
+        Assert.Contains("split archive", refused.Message);
+    }
+
+    /// <summary>The first part of SharpCompress's own multi-part RAR5 set,
+    /// vendored as rar5-volume1.rar (see PROVENANCE.md): only its volume flag
+    /// is read, so the rest of the set is not needed.</summary>
+    private static byte[] RarFirstVolume() => File.ReadAllBytes(ArchiveTestData.Fixture("rar5-volume1.rar"));
+
+    [Fact]
+    public void A_sparse_tar_is_refused_in_words()
+    {
+        var copy = At("sparse-gnu.tar");
+
+        File.Copy(ArchiveTestData.Fixture("sparse-gnu.tar"), copy);
+
+        var refused = Assert.Throws<ArchiveRefusedException>(() => Archives.Extract(copy, _root));
+
+        Assert.Equal("sparse-gnu.tar holds a sparse file, which Vaktari cannot extract — nothing was extracted", refused.Message);
+        Assert.Equal(["sparse-gnu.tar"], Tree(_root));
+    }
+
+    /// <summary>
+    /// **The non-recursive zip bomb**: fifty central-directory records, every
+    /// one pointing at the same compressed stream. Each would inflate to the
+    /// whole of it; refused before anything is created.
+    /// </summary>
+    [Fact]
+    public void Overlapping_entries_are_refused()
+    {
+        var zeros = new byte[64 * 1024];
+        var entries = new List<ZipBytes.Entry> { new("0.bin") { Data = zeros, Method = 8 } };
+
+        for (var i = 1; i < 50; i++)
+            entries.Add(new ZipBytes.Entry($"{i}.bin") { Data = zeros, Method = 8, SharesWith = 0, LocalName = "0.bin"u8.ToArray() });
+
+        File.WriteAllBytes(At("bomb.zip"), ZipBytes.Build([.. entries]));
+
+        var refused = Assert.Throws<ArchiveRefusedException>(() => Archives.Extract(At("bomb.zip"), _root));
+
+        Assert.Equal("bomb.zip is built to unpack to far more than it holds — nothing was extracted", refused.Message);
+        Assert.Equal(["bomb.zip"], Tree(_root));
+    }
+
+    [Fact]
+    public void More_entries_than_the_cap_are_refused()
+    {
+        var entries = Enumerable.Range(0, 11).Select(i => ($"{i}.txt", "x")).ToArray();
+        var archive = Zip("many.zip", entries);
+
+        var refused = Assert.Throws<ArchiveRefusedException>(() => Archives.Extract(
+            archive, _root, null, default, ArchiveRoom.Real, observer: null, maxEntries: 10));
+
+        Assert.Equal("many.zip holds more than 10 entries — Vaktari does not extract archives that large", refused.Message);
+        Assert.Equal(["many.zip"], Tree(_root));
+    }
+
+    /// <summary>A tar declares no count, so it is stopped at the first entry
+    /// over the cap, as a stream-level failure, and discarded.</summary>
+    [Fact]
+    public void A_tar_with_more_entries_than_the_cap_stops_and_leaves_nothing()
+    {
+        var archive = ArchiveTestData.Tar(At("many.tar"), tar =>
+        {
+            for (var i = 0; i < 11; i++) tar.WriteEntry(ArchiveTestData.File_($"{i}.txt", "x"));
+        });
+
+        Assert.Throws<ArchiveRefusedException>(() => Archives.Extract(
+            archive, _root, null, default, ArchiveRoom.Real, observer: null, maxEntries: 10));
+
+        Assert.Equal(["many.tar"], Tree(_root));
+    }
+
+    /// <summary>The bytes win over the name: a 7z called .zip is a 7z.</summary>
+    [Fact]
+    public void A_file_named_zip_holding_7z_bytes_extracts_as_7z()
+    {
+        File.Copy(ArchiveTestData.Fixture("7z-solid-lzma2.7z"), At("misnamed.zip"));
+
+        var done = Archives.Extract(At("misnamed.zip"), _root);
+
+        Assert.Equal(4, done.Files);
+        Assert.True(File.Exists(Path.Combine(done.Landed, "docs", "c.txt")));
     }
 }
