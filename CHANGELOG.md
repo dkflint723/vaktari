@@ -250,6 +250,13 @@ should not be trusted for compatibility yet.
   acted on the other side of a split** when the tab was on the side that was
   not active.
 
+- **A closed window no longer stays in memory.** Every window you closed
+  was kept whole for as long as Vaktari ran — its listings, its rows and
+  everything they had drawn — because the version-control marks on its
+  rows went on listening after the window had gone. Each window opened
+  afterwards was also a little slower to appear, since applying the theme
+  and the text size reached the closed ones too.
+
 ## [0.11.0] — 2026-09-25
 
 ### Added

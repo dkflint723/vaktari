@@ -1174,6 +1174,78 @@ public sealed class NewWindowTests : OwnedViewModels
         Assert.Equal(0, places.Subscribers);
     }
 
+    /// <summary>What is listening for version-control snapshots right now: one
+    /// handler per row on screen, each holding its row.</summary>
+    private static HashSet<object?> VcsListeners()
+    {
+        var field = typeof(Vaktari.Ui.Thumbnails.RowVcs).GetField(
+            "Changed", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Static);
+
+        Assert.NotNull(field);
+
+        var handlers = (Delegate?)field.GetValue(null);
+
+        return [.. handlers?.GetInvocationList().Select(d => d.Target) ?? []];
+    }
+
+    /// <summary>
+    /// **Every closed window stayed in memory for the life of the process.**
+    /// A row listened for version-control snapshots from the moment its entry
+    /// was set and let go only when it left the screen — and a closing window
+    /// takes its rows off the screen FIRST and clears its listings after, so
+    /// each row's entry changed once more while it was off screen, and it
+    /// subscribed again to a static event it would never leave. That one
+    /// handler held the row, the row its parents, the parents the window.
+    /// MEASURED: four rows a window, and in the Ui suite 11,000 of them and a
+    /// 5 GB heap by the end of a run, every window test slower than the last.
+    /// </summary>
+    [AvaloniaFact]
+    public async Task A_closed_window_leaves_no_row_listening_for_version_control()
+    {
+        await SaveAsync();
+        PaneViewModel.Search = null;
+
+        var folder = Directory.CreateTempSubdirectory("vaktari-vcs-rows").FullName;
+
+        foreach (var name in new[] { "a.txt", "b.txt", "c.txt" })
+            System.IO.File.WriteAllText(Path.Combine(folder, name), name);
+
+        // Compared by identity rather than counted, so a window an earlier test
+        // was still closing cannot hide one of this window's rows by letting
+        // go of one of its own.
+        var before = VcsListeners();
+        var founder = new MainWindow();
+
+        try
+        {
+            founder.Show();
+            Settle();
+
+            await founder.Shell.ActiveTab!.NavigateAsync(folder);
+            founder.UpdateLayout();
+            Settle();
+
+            // The premise: rows on screen do listen. Without it, a row that
+            // never subscribed at all would pass the assertion below.
+            Assert.NotEmpty(VcsListeners().Except(before));
+        }
+        finally
+        {
+            await CloseAndWaitAsync(founder);
+        }
+
+        Settle();
+
+        try
+        {
+            Assert.Empty(VcsListeners().Except(before));
+        }
+        finally
+        {
+            Directory.Delete(folder, recursive: true);
+        }
+    }
+
     /// <summary>
     /// The eject veto asks the FAMILY, so a window has to be able to see what
     /// the others are doing. This is the wiring that makes that possible; the
