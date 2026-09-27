@@ -294,6 +294,12 @@ public sealed class WindowsFileIconsTests : IDisposable
     /// Here rather than in that class, because the seam this class's other
     /// tests set is one static, and a fake answering in place of the shell
     /// would make this assertion about nothing.
+    ///
+    /// **Whether the shell answers with an icon is not what this pins.** It
+    /// did on this machine and on CI until one hosted runner answered null for
+    /// the .ico, with nothing fetched (2026-09-27) — a null is the type's own
+    /// icon in IconLoader, which is fine. What must hold is the fetch count and
+    /// that both files are still online only.
     /// </summary>
     [WindowsFact]
     public void A_file_that_is_its_own_icon_is_not_downloaded_to_draw_it()
@@ -306,8 +312,9 @@ public sealed class WindowsFileIconsTests : IDisposable
 
         var icons = new WindowsFileIcons();
 
-        Assert.NotNull(icons.IconFor(ico, isDirectory: false, size: 48));
-        Assert.NotNull(icons.IconFor(exe, isDirectory: false, size: 48));
+        // Asked, and its answer not required: see the summary.
+        _ = icons.IconFor(ico, isDirectory: false, size: 48);
+        _ = icons.IconFor(exe, isDirectory: false, size: 48);
 
         Assert.True(cloud.FetchCount == 0 && cloud.OtherFetches.Count == 0,
             $"fetched for this process: [{string.Join(", ", cloud.Fetched)}]; "
