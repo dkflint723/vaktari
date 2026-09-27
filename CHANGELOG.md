@@ -256,6 +256,9 @@ should not be trusted for compatibility yet.
   rows went on listening after the window had gone. Each window opened
   afterwards was also a little slower to appear, since applying the theme
   and the text size reached the closed ones too.
+  Two smaller holds went with it: a window opened from another kept that
+  one in memory for as long as it stayed open, and the window opened last
+  stayed in memory after closing until another was opened.
 
 ## [0.11.0] — 2026-09-25
 

@@ -1298,17 +1298,48 @@ public sealed class NewWindowTests : OwnedViewModels
         return new WeakReference(peer);
     }
 
+    /// <summary>Whether what the reference points at goes within fifty full
+    /// collections, pumping between them so a queued callback can let go.</summary>
+    private static async Task<bool> CollectedAsync(WeakReference closed)
+    {
+        for (var i = 0; i < 50; i++)
+        {
+            Settle();
+            GC.Collect();
+            GC.WaitForPendingFinalizers();
+            GC.Collect();
+
+            if (!closed.IsAlive) return true;
+
+            await Task.Delay(5);
+        }
+
+        return false;
+    }
+
+    /// <summary>A folder of three files, so a window opened on it has rows.</summary>
+    private static string ThreeFiles(string prefix)
+    {
+        var folder = Directory.CreateTempSubdirectory(prefix).FullName;
+
+        foreach (var name in new[] { "a.txt", "b.txt", "c.txt" })
+            System.IO.File.WriteAllText(Path.Combine(folder, name), name);
+
+        return folder;
+    }
+
     /// <summary>
     /// **And the window itself goes**, which is what somebody using Vaktari
     /// actually had: every window closed in a session stayed in memory until
     /// Vaktari quit, and each one made every later window slower to open.
     /// The listener test above says why; this one says the window is free.
     ///
-    /// A third window is opened after the closed one, because two things
-    /// outside this fault hold a window on purpose and would otherwise be what
-    /// this measured: PaneViewModel.AskConflict answers through the window
-    /// built LAST, and a new window keeps the tab it was opened from as
-    /// ShellViewModel.LikeTab. The closed window is neither.
+    /// **The closed window is the one built last, on purpose**, and nothing is
+    /// built after it. PaneViewModel.AskConflict is a static every window
+    /// assigns, and it used to capture the window that assigned it — so the
+    /// window built last stayed in memory after it closed until another came
+    /// along. Measured before that was fixed: alive after thirty collections,
+    /// and gone as soon as a third window was built.
     /// </summary>
     [AvaloniaFact]
     public async Task A_closed_window_is_collected()
@@ -1316,11 +1347,7 @@ public sealed class NewWindowTests : OwnedViewModels
         await SaveAsync();
         PaneViewModel.Search = null;
 
-        var folder = Directory.CreateTempSubdirectory("vaktari-collected").FullName;
-
-        foreach (var name in new[] { "a.txt", "b.txt", "c.txt" })
-            System.IO.File.WriteAllText(Path.Combine(folder, name), name);
-
+        var folder = ThreeFiles("vaktari-collected");
         var founder = new MainWindow();
 
         try
@@ -1334,28 +1361,89 @@ public sealed class NewWindowTests : OwnedViewModels
 
             var closed = await OpenAndCloseAPeerAsync(founder, rows: 3);
 
-            founder.Shell.NewWindowCommand.Execute(null);
-            Settle();
-
-            var collected = false;
-
-            for (var i = 0; i < 50 && !collected; i++)
-            {
-                Settle();
-                GC.Collect();
-                GC.WaitForPendingFinalizers();
-                GC.Collect();
-
-                collected = !closed.IsAlive;
-
-                if (!collected) await Task.Delay(5);
-            }
-
-            Assert.True(collected, "a closed window is still in memory after fifty collections");
+            Assert.True(await CollectedAsync(closed), "a closed window is still in memory after fifty collections");
         }
         finally
         {
             CloseAll(founder.Services);
+            Directory.Delete(folder, recursive: true);
+        }
+    }
+
+    /// <summary>
+    /// Opens a first window on the folder, opens a second FROM it, closes the
+    /// first and hands back a weak reference to it with the second, still
+    /// open. A method of its own so no local of the caller's holds the first.
+    /// </summary>
+    [System.Runtime.CompilerServices.MethodImpl(System.Runtime.CompilerServices.MethodImplOptions.NoInlining)]
+    private static async Task<(WeakReference First, MainWindow Second)> OpenOneFromAnotherAndCloseTheFirstAsync(
+        string folder, List<WindowServices> toClose)
+    {
+        var first = new MainWindow();
+
+        toClose.Add(first.Services);
+        first.Show();
+        Settle();
+
+        var tab = first.Shell.ActiveTab!;
+
+        await tab.NavigateAsync(folder);
+        first.UpdateLayout();
+        Settle();
+
+        // A view the second window can only have got from the first, so the
+        // premise — it was opened FROM it — is checked rather than assumed.
+        tab.SortDescending = !tab.SortDescending;
+        var sortedDown = tab.SortDescending;
+
+        first.Shell.NewWindowCommand.Execute(null);
+        Settle();
+
+        var second = first.Services.Windows.Single(w => !ReferenceEquals(w, first));
+        var deadline = DateTime.UtcNow + Ceiling;
+
+        while (second.Shell.ActiveTab?.Entries.Count != 3)
+        {
+            Assert.True(DateTime.UtcNow < deadline, "the second window never listed the folder");
+
+            Settle();
+            await Task.Delay(5);
+        }
+
+        Assert.Equal(sortedDown, second.Shell.ActiveTab!.SortDescending);
+
+        await CloseAndWaitAsync(first);
+
+        return (new WeakReference(first), second);
+    }
+
+    /// <summary>
+    /// **A window opened from another kept that other one alive.** It carried
+    /// the tab it was opened from, to copy its view, and kept it for as long as
+    /// it stayed open — and a tab holds the handlers its own window wired to
+    /// it, so closing the first window freed nothing while the second was
+    /// still up. The second stays open here while the first is collected.
+    /// </summary>
+    [AvaloniaFact]
+    public async Task A_window_opened_from_another_does_not_keep_it_in_memory()
+    {
+        await SaveAsync();
+        PaneViewModel.Search = null;
+
+        var folder = ThreeFiles("vaktari-opened-from");
+        var toClose = new List<WindowServices>();
+
+        try
+        {
+            var (first, second) = await OpenOneFromAnotherAndCloseTheFirstAsync(folder, toClose);
+
+            Assert.True(second.IsVisible, "the second window closed too, so this proves nothing");
+            Assert.True(await CollectedAsync(first),
+                        "the first window is still in memory while the one opened from it is open");
+        }
+        finally
+        {
+            foreach (var services in toClose) CloseAll(services);
             Directory.Delete(folder, recursive: true);
         }
     }
@@ -1504,7 +1592,7 @@ public sealed class NewWindowTests : OwnedViewModels
     {
         var source = Window();
 
-        Assert.Contains("var owner = _services.Active ?? this;", source, StringComparison.Ordinal);
+        Assert.Contains("var owner = family.ForDesktopRequest;", source, StringComparison.Ordinal);
         Assert.Contains("new ConflictWindow(model).ShowDialog(owner)", source, StringComparison.Ordinal);
     }
 

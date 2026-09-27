@@ -80,4 +80,50 @@ public partial class MainWindow
 
         request.Chose(folder);
     }
+
+    /// <summary>
+    /// The question a copy or a move asks when a name is taken, for
+    /// <see cref="ViewModels.PaneViewModel.AskConflict"/>.
+    ///
+    /// **The static held the last window built, closed or not.** Every window
+    /// assigns it, and the lambda was written in the constructor, reading
+    /// <c>_services</c> and falling back to <c>this</c> — so it captured the
+    /// window, and a static keeps what it captures. The window built last
+    /// stayed in memory after it closed until another window was built.
+    /// Capturing a local instead is not enough in a constructor: the compiler
+    /// shares one closure among the lambdas there, and the others capture the
+    /// window. A STATIC method has no window to capture, and the compiler holds
+    /// it to that.
+    /// </summary>
+    private static Func<Core.FileSystem.FileConflict, ValueTask<ViewModels.ConflictAnswer>> ConflictAsker(
+        WindowServices family)
+        => async conflict =>
+            await Avalonia.Threading.Dispatcher.UIThread.InvokeAsync(async () =>
+            {
+                var model = new ViewModels.ConflictViewModel(conflict);
+
+                // **A process-wide static that every window assigns.** It
+                // captured the window, so with two windows the prompt belonged
+                // to whichever was constructed LAST — and after that one closed,
+                // to a window that is gone. Resolved when the question is asked
+                // instead: the focused window, or else any that is open.
+                var owner = family.ForDesktopRequest;
+
+                // No window left to hold the dialog: the last one is on its way
+                // out, and closing it cancels what is running. Answered the way
+                // dismissing the dialog would be.
+                if (owner is null)
+                {
+                    model.Cancel();
+
+                    return await model.Answer;
+                }
+
+                // ShowDialog returns when the window closes; the window closes
+                // when the model answers, and closing it any other way answers
+                // Cancel. So this cannot wait forever on a dismissed dialog.
+                await new ConflictWindow(model).ShowDialog(owner);
+
+                return await model.Answer;
+            });
 }

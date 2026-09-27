@@ -100,6 +100,10 @@ public sealed partial class ShellViewModel
             _restoring = false;
         }
 
+        // Its view has been copied into the first tab, which is all it was for.
+        // See LikeTab for what keeping it cost.
+        LikeTab = null;
+
         // Assigned while suppressed, so it never triggered its own load.
         ActiveGroup.ActiveTab?.RefreshIfUnloaded();
     }
@@ -110,6 +114,14 @@ public sealed partial class ShellViewModel
     /// The same thing Ctrl+T already carries between tabs: hidden files, the
     /// layout, the sort, the grouping and the zoom. Null for a shell that was
     /// not opened from anywhere, which is every launch and every test.
+    ///
+    /// **Kept, it kept the window it came from alive.** A tab's events hold the
+    /// handlers its own window wired to them, so a window opened from another held
+    /// that other one in memory after it was closed, for as long as the new
+    /// window stayed open. Measured: a first window closed while the one
+    /// opened from it stayed open survived thirty collections, and went at the
+    /// first once this was cleared. So it is read once, by <see cref="Start"/>,
+    /// and let go of there.
     /// </summary>
     internal PaneViewModel? LikeTab { get; set; }
 
