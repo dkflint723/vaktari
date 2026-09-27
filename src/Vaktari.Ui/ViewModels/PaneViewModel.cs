@@ -1424,6 +1424,12 @@ public sealed partial class PaneViewModel : ObservableObject, IDisposable
 
         if (entry.IsDirectory) return NavigateAsync(entry.FullPath);
 
+        // **Before the shortcut is read and before anything is asked.** Every
+        // route that opens a FILE comes through here — a double-click, Enter,
+        // a path typed or pasted into the bar — and the shell given
+        // "…\t.cmd." ran "t.cmd" (the hunt, H1 and H2). Said, not dropped.
+        if (RefusedHandOff([entry.FullPath])) return Task.CompletedTask;
+
         // **A shortcut to a folder navigates the pane**, rather than being
         // handed to the shell, which opened a separate Explorer window. Only
         // when it points at a folder: a shortcut to a program is still the
@@ -2010,6 +2016,12 @@ public sealed partial class PaneViewModel : ObservableObject, IDisposable
 
         if (_launcher is null || value is not { IsDirectory: false } entry) return;
 
+        // **No applications offered for a row the shell cannot be handed.**
+        // The row then has no Open with at all, which is the menu's way of
+        // saying a command would do nothing; choosing one anyway is refused
+        // with the sentence in OpenWithApp.
+        if (ReachablePath.RefuseHandedOut(entry.FullPath) is not null) return;
+
         // Enumeration shells out to xdg-mime, so keep it off the UI thread.
         var path = entry.FullPath;
         _ = Task.Run(() =>
@@ -2083,6 +2095,13 @@ public sealed partial class PaneViewModel : ObservableObject, IDisposable
         if (RefusedInBin()) return;
 
         if (option is null || SelectedEntry is not { } entry) return;
+
+        // Before either branch: both hand the launcher a path by name, and the
+        // shell's parser folds it (the hunt, H6). Every file or none.
+        if (RefusedHandOff(option.IsChooser
+                ? [entry.FullPath]
+                : EntriesToActOn().Where(e => !e.IsDirectory).Select(e => e.FullPath)))
+            return;
 
         // The chooser opens the file itself once something is picked, so it
         // records the same way — and is checked BEFORE the recent entry,
@@ -2194,6 +2213,10 @@ public sealed partial class PaneViewModel : ObservableObject, IDisposable
         // "cd vaktari:trash" is what it was being asked to do.
         if (!IsRealFolder) return;
 
+        // A folder whose name Win32 folds would open the terminal in its
+        // neighbour, where whatever is typed next runs.
+        if (RefusedHandOff([CurrentPath])) return;
+
         if (Terminals.FirstOrDefault() is { } preferred)
         {
             _launcher?.OpenTerminal(CurrentPath, preferred);
@@ -2209,7 +2232,7 @@ public sealed partial class PaneViewModel : ObservableObject, IDisposable
     [RelayCommand]
     public void OpenTerminalIn(Vaktari.Core.FileSystem.TerminalOption? terminal)
     {
-        if (terminal is null || !IsRealFolder) return;
+        if (terminal is null || !IsRealFolder || RefusedHandOff([CurrentPath])) return;
 
         _launcher?.OpenTerminal(CurrentPath, terminal);
     }

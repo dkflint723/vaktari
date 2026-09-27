@@ -70,6 +70,17 @@ public sealed partial class PaneViewModel
 
         if (entry.IsDirectory) return;
 
+        // **The row's own file, not its neighbour's.** A plain "…\report "
+        // is opened as "…\report", and the pane previewed report's text under
+        // the other name (the hunt, H4). Read through the spelling that
+        // reaches it — its own when nothing folds — or not read at all, and
+        // the detail line says why.
+        if (Core.FileSystem.ReachablePath.Exact(entry.FullPath) is not { } read)
+        {
+            PreviewDetail = Core.FileSystem.ReachablePath.Refuse(entry.FullPath) ?? PreviewDetail;
+            return;
+        }
+
         try
         {
             // **A file kept online was read to preview it, or shown blank with
@@ -80,7 +91,7 @@ public sealed partial class PaneViewModel
             // Asked once here, before either branch, and said on the detail
             // line. Off the UI thread: it is a call to the file system, like
             // every other read the preview makes.
-            if (await Task.Run(() => Core.FileSystem.OnlineOnly.Is(entry.FullPath), ct).ConfigureAwait(false))
+            if (await Task.Run(() => Core.FileSystem.OnlineOnly.Is(read), ct).ConfigureAwait(false))
             {
                 await Dispatcher.UIThread.InvokeAsync(() =>
                 {
@@ -115,7 +126,7 @@ public sealed partial class PaneViewModel
             // previewing a config file.
             if (entry.Length is > 0 and < 8_000_000 && LooksTextual(entry.Name))
             {
-                var text = await ReadHeadAsync(entry.FullPath, 4000, ct).ConfigureAwait(false);
+                var text = await ReadHeadAsync(read, 4000, ct).ConfigureAwait(false);
 
                 ct.ThrowIfCancellationRequested();
 

@@ -121,6 +121,11 @@ public sealed partial class PaneViewModel
             return;
         }
 
+        // **A script is another program, handed the folder and the selection
+        // by name**, and a name Win32 folds reaches the neighbour — a script
+        // that deletes what it is given would delete "report" for "report ".
+        if (RefusedHandOff([CurrentPath, .. selection])) return;
+
         Status = $"running {script.Name}…";
 
         try

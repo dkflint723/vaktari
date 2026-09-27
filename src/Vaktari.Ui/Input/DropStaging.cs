@@ -98,7 +98,12 @@ internal static class DropStaging
 
         foreach (var path in paths)
         {
-            if (!IsVolatile(path, temporaryRoot))
+            // **Not moved or copied by a name Win32 folds.** A drop of
+            // "…\Temp\7zO…\report " moved the NEIGHBOUR "report" into staging
+            // and handed the drop a path to nothing (the hunt, H7). Handed back
+            // as it came, so the copy refuses it in its own words and nothing
+            // leaves the archiver's folder that was not dropped.
+            if (!IsVolatile(path, temporaryRoot) || !Core.FileSystem.ReachablePath.IsReachable(path))
             {
                 result.Add(path);
                 continue;
@@ -170,13 +175,21 @@ internal static class DropStaging
 
         foreach (var file in Directory.EnumerateFiles(from))
         {
+            // A name inside that Win32 folds would be copied from, and onto,
+            // its neighbour; the rescue of this one path is abandoned instead.
+            if (Core.FileSystem.ReachablePath.Refuse(file) is { } why) throw new IOException(why);
+
             var landing = Path.Combine(to, Path.GetFileName(file));
             File.Copy(file, landing, overwrite: true);
             bytes += Size(landing);
         }
 
         foreach (var folder in Directory.EnumerateDirectories(from))
+        {
+            if (Core.FileSystem.ReachablePath.Refuse(folder) is { } why) throw new IOException(why);
+
             bytes += CopyTree(folder, Path.Combine(to, Path.GetFileName(folder)));
+        }
 
         return bytes;
     }

@@ -193,6 +193,10 @@ public sealed partial class PaneViewModel
     /// </summary>
     private async Task<List<FileEntry>?> FoldersInAsync(string folder)
     {
+        // A crumb of a folder whose name Win32 folds would list its
+        // neighbour's folders, as the listing would have. It cannot be read.
+        if (folder != VirtualPaths.Computer && !ReachablePath.IsReachable(folder)) return null;
+
         var options = new ListingOptions { IncludeHidden = ShowHidden };
         var found = new List<FileEntry>();
 

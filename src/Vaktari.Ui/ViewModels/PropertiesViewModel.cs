@@ -221,6 +221,17 @@ public sealed partial class PropertiesViewModel : ObservableObject
         }
     }
 
+    /// <summary>
+    /// The spelling this window reads a path through, or null when it has none.
+    ///
+    /// **Every size, count and digest here was the neighbour's for a name that
+    /// ends in a space or a dot**, because the plain spelling is opened without
+    /// it (the hunt): "report " showed report's size and hashed report's bytes.
+    /// The provider reads its own facts the same way; these are the ones the
+    /// window reads itself.
+    /// </summary>
+    private static string? Exact(string path) => ReachablePath.Exact(path);
+
     public ObservableCollection<PropertyGroup> Groups { get; } = new();
 
     [ObservableProperty] private string _title = "";
@@ -293,7 +304,9 @@ public sealed partial class PropertiesViewModel : ObservableObject
             return;
         }
 
-        if (_paths.Count != 1 || !File.Exists(_paths[0])) return;
+        // Through the spelling that reaches it: "…\report " was hashed as
+        // "report" (the hunt). None at all is nothing to hash.
+        if (_paths.Count != 1 || Exact(_paths[0]) is not { } exact || !File.Exists(exact)) return;
 
         _hashCts?.Dispose();
         _hashCts = new CancellationTokenSource();
@@ -316,7 +329,7 @@ public sealed partial class PropertiesViewModel : ObservableObject
             // **And Stop stops waiting.** An open that blocks does not look at
             // the token, so the button read Stop for good; the wait is what
             // honours it now, and the blocked open is left to the pool.
-            var path = _paths[0];
+            var path = exact;
             var result = await Task.Run(() => Checksums.ComputeAsync(path, progress, ct), ct)
                                    .WaitAsync(ct)
                                    .ConfigureAwait(false);
@@ -424,8 +437,11 @@ public sealed partial class PropertiesViewModel : ObservableObject
 
         foreach (var path in _paths)
         {
-            if (Directory.Exists(path)) folders++;
-            else if (File.Exists(path)) { files++; total += new FileInfo(path).Length; }
+            // Asked of each entry itself, not of what Win32 folds its name to.
+            if (Exact(path) is not { } exact) continue;
+
+            if (Directory.Exists(exact)) folders++;
+            else if (File.Exists(exact)) { files++; total += new FileInfo(exact).Length; }
         }
 
         // **The lower half of this window was empty for a selection.** One item
@@ -525,11 +541,13 @@ public sealed partial class PropertiesViewModel : ObservableObject
             var files = 0;
             var folders = 0;
 
-            foreach (var path in _paths.Where(p => !Directory.Exists(p)))
+            foreach (var path in _paths.Where(p => !Directory.Exists(Exact(p) ?? p)))
             {
                 try
                 {
-                    var info = new FileInfo(path);
+                    if (Exact(path) is not { } exact) continue;
+
+                    var info = new FileInfo(exact);
 
                     if (!info.Exists) continue;
 
@@ -546,7 +564,7 @@ public sealed partial class PropertiesViewModel : ObservableObject
             // One of several selected is not walked when it is /proc or /sys:
             // selecting everything in "/" is not asking what /proc holds. One
             // on its own is, and is.
-            foreach (var path in _paths.Where(Directory.Exists)
+            foreach (var path in _paths.Where(p => Exact(p) is { } exact && Directory.Exists(exact))
                          .Where(p => _paths.Count == 1 || Core.FileSystem.SafeWalk.DoNotEnter?.Invoke(p) != true))
             {
                 var result = await _provider.MeasureAsync(path, progress, ct).ConfigureAwait(false);

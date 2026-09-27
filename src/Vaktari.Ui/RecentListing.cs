@@ -539,13 +539,17 @@ public static class RecentListing
             var flags = EntryFlags.None;
             long length = 0;
 
-            if (Directory.Exists(recent.Path))
+            // Asked of the entry itself: a remembered "…\report " answered for
+            // "report", with its size, and stood in for it once it had gone.
+            if (Vaktari.Core.FileSystem.ReachablePath.Exact(recent.Path) is not { } exact) return null;
+
+            if (Directory.Exists(exact))
             {
                 flags |= EntryFlags.Directory;
             }
-            else if (File.Exists(recent.Path))
+            else if (File.Exists(exact))
             {
-                length = new FileInfo(recent.Path).Length;
+                length = new FileInfo(exact).Length;
             }
             else
             {

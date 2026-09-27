@@ -276,6 +276,11 @@ public sealed partial class FolderTreeViewModel : ObservableObject
         {
             var options = new ListingOptions { IncludeHidden = ShowHidden };
 
+            // A folder whose name Win32 folds would show its neighbour's
+            // folders as its own; it cannot be opened, like any other.
+            if (Vaktari.Core.FileSystem.ReachablePath.Refuse(node.Path) is { } unreachable)
+                throw new IOException(unreachable);
+
             await foreach (var batch in _fs.EnumerateAsync(node.Path, options, CancellationToken.None)
                                .ConfigureAwait(true))
             {

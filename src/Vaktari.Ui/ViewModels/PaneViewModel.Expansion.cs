@@ -239,7 +239,7 @@ public sealed partial class PaneViewModel
         // splicing into that one would show rows from somewhere else.
         var generation = _generation;
 
-        var children = await ReadChildrenAsync(path).ConfigureAwait(true);
+        var (children, refused) = await ReadChildrenAsync(path).ConfigureAwait(true);
 
         // Cancelled by a second press while it was reading, or superseded by a
         // navigation.
@@ -247,7 +247,7 @@ public sealed partial class PaneViewModel
 
         if (children is null)
         {
-            Status = $"could not open {entry.Name}";
+            Status = refused ?? $"could not open {entry.Name}";
             return;
         }
 
@@ -271,8 +271,16 @@ public sealed partial class PaneViewModel
     /// only one reload can be in flight per folder: see <c>_opening</c> and
     /// <c>_reloading</c>.
     /// </summary>
-    private async Task<List<FileEntry>?> ReadChildrenAsync(string path)
+    private async Task<(List<FileEntry>? Rows, string? Refused)> ReadChildrenAsync(string path)
     {
+        // **A folder whose name Win32 folds was opened as its neighbour.**
+        // Expanding "album " beside "album" spliced album's children in under
+        // it, with album's paths — and Shift+Delete on one deleted a file in
+        // "album" (the hunt, H3). The listing refused such a folder; this is
+        // the same refusal, in the same words, for the same folder opened in
+        // place. Every expansion and every reload of one reads through here.
+        if (ReachablePath.Refuse(path) is { } unreachable) return (null, unreachable);
+
         var options = new ListingOptions { IncludeHidden = ShowHidden, BatchSize = 500 };
         var children = new List<FileEntry>();
 
@@ -292,12 +300,12 @@ public sealed partial class PaneViewModel
             // every other Swallowed call does — a failure nothing records is a
             // failure nobody can diagnose.
             Vaktari.Core.Quiet.Swallowed("expand", ex);
-            return null;
+            return (null, null);
         }
 
         children.Sort(CompareWithin);
 
-        return children;
+        return (children, null);
     }
 
     // ---- the projection ----------------------------------------------------
@@ -534,7 +542,7 @@ public sealed partial class PaneViewModel
         {
             foreach (var path in _open.Keys.ToList())
             {
-                var children = await ReadChildrenAsync(path).ConfigureAwait(true);
+                var (children, _) = await ReadChildrenAsync(path).ConfigureAwait(true);
 
                 // The listing this reload belongs to has gone — navigated away
                 // from, or away and back. Splicing these rows in would put a

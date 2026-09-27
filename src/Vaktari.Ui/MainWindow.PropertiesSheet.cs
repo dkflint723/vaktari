@@ -68,7 +68,12 @@ public partial class MainWindow
         // so the window filled itself in and looked authoritative. A row can go
         // between being listed and being asked about, so refusing the bin and
         // Recent is not enough on its own; this is a race as well as a gate.
-        var live = paths.Where(p => File.Exists(p) || Directory.Exists(p)).ToList();
+        //
+        // Asked of each entry itself: a plain "…\report " answers for
+        // "report", so a row whose own file had gone still opened a sheet
+        // while its neighbour stood.
+        var live = paths.Where(p => ReachablePath.Exact(p) is { } exact
+                                    && (File.Exists(exact) || Directory.Exists(exact))).ToList();
 
         if (live.Count == 0)
         {

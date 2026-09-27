@@ -66,14 +66,20 @@ public sealed class PropertiesGateTests
         var body = RepoSource.Body(
             Source(), "private void ShowPropertiesFor(IReadOnlyList<string> paths)");
 
-        Assert.True(body.Contains("File.Exists(p) || Directory.Exists(p)"),
+        Assert.True(body.Contains("File.Exists(exact) || Directory.Exists(exact)"),
             "the sheet is opened without checking the path is still there, so it "
             + "shows a size of zero and 1601 dates as though they were facts");
+
+        // **Asked of the entry itself.** A plain "…\report " answers for
+        // "report", so a row whose own file had gone still opened a sheet
+        // while its neighbour stood (seventh review round, the hunt).
+        Assert.True(body.Contains("ReachablePath.Exact(p) is { } exact"),
+            "the check asks the plain spelling, which answers for the neighbour");
 
         // Before the window is built, not after — a sheet that appears and then
         // corrects itself is worse than one that never appears.
         Assert.True(
-            body.IndexOf("File.Exists(p)", StringComparison.Ordinal)
+            body.IndexOf("File.Exists(exact)", StringComparison.Ordinal)
             < body.IndexOf("new PropertiesWindow", StringComparison.Ordinal),
             "the check runs after the window is built");
     }
