@@ -152,8 +152,12 @@ public sealed class ListingRowNameTests : OwnedViewModels
     /// Windows shortcut loses its .lnk in both places or in neither. Windows
     /// only, because hiding the extension is a Windows rule — a conditional
     /// expectation would assert whatever the code currently does.
+    ///
+    /// An Avalonia fact, not a [WindowsFact]: the converter is FileConverters,
+    /// whose initialiser needs the headless platform — see
+    /// PlatformBoundStaticsTests. Alone, as a plain fact, it failed there.
     /// </summary>
-    [WindowsFact]
+    [AvaloniaFact(Skip = OnlyOn.Windows, SkipUnless = nameof(OnlyOn.IsWindows), SkipType = typeof(OnlyOn))]
     public void A_shortcut_is_read_the_way_it_is_drawn()
         => Assert.Equal("Chrome", Spoken("Chrome.lnk"));
 

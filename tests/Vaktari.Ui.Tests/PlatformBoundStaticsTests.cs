@@ -89,8 +89,21 @@ public sealed class PlatformBoundStaticsTests
                 .Any(f => IsGeometry(f.FieldType))
                || (t.TypeInitializer is { } init && Named(init).Any(m => IsGeometry(m as Type ?? m.DeclaringType))))];
 
+    /// <summary>
+    /// Any fact or theory that does not start the headless session.
+    ///
+    /// **Compared by exact type, this let [WindowsFact] and [PosixFact] through**,
+    /// and they are plain facts: FactAttribute subclasses that only add a skip.
+    /// ListingRowNameTests.A_shortcut_is_read_the_way_it_is_drawn was a
+    /// [WindowsFact] reading FileConverters.RowName, and alone it failed exactly
+    /// as the four this guard was written for did — MEASURED, "the type
+    /// initializer for 'FileConverters' threw" — while the guard passed.
+    /// </summary>
     private static bool Plain(MethodInfo method)
-        => method.GetCustomAttributes().Any(a => a.GetType() == typeof(FactAttribute) || a.GetType() == typeof(TheoryAttribute));
+        => method.GetCustomAttributes().Any(a =>
+               a is FactAttribute
+               && a is not Avalonia.Headless.XUnit.AvaloniaFactAttribute
+               && a is not Avalonia.Headless.XUnit.AvaloniaTheoryAttribute);
 
     /// <summary>What the test's body reaches, following the calls it makes into
     /// this assembly: helpers, local functions, lambdas and async bodies.</summary>
