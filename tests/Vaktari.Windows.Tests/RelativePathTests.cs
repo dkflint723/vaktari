@@ -133,6 +133,55 @@ public sealed partial class RelativePathTests
     }
 
     /// <summary>
+    /// **IsVolumeRoot reads a relative path as it resolves, as Refuse does.**
+    /// The pane and the menus ask it of a path on its own; the theory above
+    /// asks Refuse and the verbs, and each has its own readings, so taking
+    /// the resolved one away from IsVolumeRoot alone reddened nothing. Each
+    /// current directory here is inside a subst drive or an alias of a
+    /// temporary folder, and the relative path climbs to its root; nothing
+    /// is handed to a verb.
+    /// </summary>
+    [WindowsTheory]
+    [InlineData(@"\\.\GLOBALROOT\??\{0}:\x", "..", false)]
+    [InlineData(@"\\?\GLOBALROOT\??\{0}:\x", @"..\.", false)]
+    [InlineData(@"\\.\GLOBALROOT\??\{0}:\", ".", false)]
+    [InlineData(@"\\.\{0}:\x", "..", false)]
+    [InlineData(@"\\.\{0}\x", "..", true)]
+    [InlineData(@"\\?\GLOBALROOT\??\{0}\", ".", true)]
+    public void IsVolumeRoot_reads_a_relative_path_as_it_resolves(string cwdShape, string relative, bool alias)
+    {
+        var folder = Directory.CreateTempSubdirectory("vaktari-relative").FullName;
+        Directory.CreateDirectory(Path.Combine(folder, "x"));
+
+        var name = alias ? Alias : SubstOf(folder).ToString();
+
+        if (alias) Assert.True(DefineDosDevice(0, Alias, folder));
+
+        var cwd = Environment.CurrentDirectory;
+        bool root, folderUnder;
+
+        try
+        {
+            Environment.CurrentDirectory = string.Format(System.Globalization.CultureInfo.InvariantCulture, cwdShape, name);
+
+            root = VolumeRoots.IsVolumeRoot(relative);
+            folderUnder = VolumeRoots.IsVolumeRoot(Path.Combine(relative, "x"));
+        }
+        finally
+        {
+            Environment.CurrentDirectory = cwd;
+
+            if (alias) DefineDosDevice(2, Alias, folder);
+            else Subst($"{name}: /D");
+
+            Directory.Delete(folder, recursive: true);
+        }
+
+        Assert.True(root, $"\"{relative}\" under {cwdShape} is the root of {name} and was not called one");
+        Assert.False(folderUnder, $"\"{Path.Combine(relative, "x")}\" under {cwdShape} is a folder and was called a root");
+    }
+
+    /// <summary>
     /// **A relative path that does not climb out is still a folder**, and
     /// "\x" — rooted, drive-relative in name only — is the folder on the
     /// current drive. Ordinary current directory; nothing is handed to a verb.
