@@ -49,8 +49,8 @@ public sealed partial class PaneViewModel
     /// drive.** <see cref="CanActOnSelection"/> excludes only the bin, so a
     /// right-click on C: listed every verb a folder row gets. None of them
     /// means anything for a volume: the rename engine refuses a root ("A drive
-    /// root cannot be renamed."), Duplicate refuses the listing it would write
-    /// into, and Copy to and Move to answer "that folder cannot be sent into
+    /// root cannot be renamed."), Duplicate refuses a drive in the words
+    /// every other verb uses for one, and Copy to and Move to answer "that folder cannot be sent into
     /// itself" for every place that lives on the drive being sent — which on
     /// most machines is most of them. See
     /// <see cref="CanMoveSelection"/>, which is where this is read.

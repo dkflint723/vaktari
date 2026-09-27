@@ -134,6 +134,15 @@ public sealed class WindowsFileOperations : IFileOperations
     internal Func<IReadOnlyList<string>, RecycleResult>? RecycleOverride { get; init; }
 
     /// <summary>
+    /// **Whether the file system calls a path a volume's root**, asked as the
+    /// first act of each operation's worker — see VolumeRoots.RefuseOnDisk and
+    /// <see cref="VolumeRootOnDisk"/>. A seam, so the tests can have a
+    /// temporary folder answer as a root and watch every verb refuse it:
+    /// trying a guard's absence on a real volume is never done.
+    /// </summary>
+    internal Func<string, bool> RootOnDisk { get; init; } = VolumeRootOnDisk.Is;
+
+    /// <summary>
     /// One call to the shell, owning the memory it marshals.
     ///
     /// Extracted because the refusal path calls it AGAIN, once per path, to
@@ -241,6 +250,9 @@ public sealed class WindowsFileOperations : IFileOperations
 
         _ = Task.Run(() =>
         {
+            // The file system's own answer as well, off the key's thread. See VolumeRoots.RefuseOnDisk.
+            if (VolumeRoots.RefuseOnDisk(paths, RootOnDisk) is { } rootTrash) { handle.Failed(new IOException(rootTrash)); return; }
+
             // **Noted before the recycle, so the undo can find what moved.**
             // SHFileOperation reports nothing about what it recycled, which is
             // why this was undoable on Linux and not here. The bin knows,
@@ -581,6 +593,9 @@ public sealed class WindowsFileOperations : IFileOperations
 
         _ = Task.Run(async () =>
         {
+            // The file system's own answer as well, off the key's thread. See VolumeRoots.RefuseOnDisk.
+            if (VolumeRoots.RefuseOnDisk(paths, RootOnDisk) is { } rootDelete) { handle.Failed(new IOException(rootDelete)); return; }
+
             try
             {
                 handle.Begin(paths.Count, totalBytes: 0);
@@ -1067,6 +1082,9 @@ public sealed class WindowsFileOperations : IFileOperations
 
         _ = Task.Run(async () =>
         {
+            // The file system's own answer as well, off the key's thread. See VolumeRoots.RefuseOnDisk.
+            if (VolumeRoots.RefuseOnDisk(sources, RootOnDisk) is { } rootRun) { handle.Failed(new IOException(rootRun)); return; }
+
             try
             {
                 // Enumerating first means the progress bar is honest from the

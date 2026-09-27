@@ -200,7 +200,14 @@ public sealed class ListingMenuGatesTests : OwnedViewModels
 
         pane.DuplicateSelected();
 
-        Assert.Equal("this listing is a view, not a folder — open a real folder first", pane.Status);
+        // This PC's rows are drives, and a drive is refused in the words every
+        // other verb uses for one — see VolumeRefusalTests'
+        // Duplicate_on_a_drive_says_what_every_other_verb_says.
+        Assert.Equal(
+            listing == VirtualPaths.Computer
+                ? VolumeRoots.Refusal
+                : "this listing is a view, not a folder — open a real folder first",
+            pane.Status);
     }
 
     /// <summary>

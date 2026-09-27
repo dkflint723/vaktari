@@ -1515,8 +1515,9 @@
                holds.
 
                **In Details, and only there. The band those headings live in
-               carries IsVisible="{Binding IsDetailsView}" and the menu's Sort
-               by carries no gate at all**, so in Grid and Compact there is
+               carries IsVisible="{Binding IsDetailsView}", and View's Sort by
+               carries only this preference's gate (ShowSortByInMenu), none
+               for the layout**, so in Grid and Compact there is
                nothing to click and hiding it takes sorting away along with
                grouping — it is the grouping half alone only in the layout that
                draws columns. The sentence below is scoped to "the list view's

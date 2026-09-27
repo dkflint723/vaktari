@@ -104,6 +104,168 @@ public sealed class VolumeRootRefusalTests : IDisposable
         Assert.False(VolumeRoots.IsVolumeRoot("/proc/self"));
     }
 
+    /// <summary>
+    /// **A stick reached through a linked folder was a folder**, and the
+    /// engine's Delete emptied it in review: the table names the real path,
+    /// and the text of "~/media/STICK", where ~/media is a link to the folder
+    /// holding the stick, never met it. Fedora Silverblue ships /mnt, /media
+    /// and /home as links. The "stick" is a temporary folder declared a mount
+    /// through the seam, so an unguarded engine could only delete the test's
+    /// own file.
+    /// </summary>
+    [PosixFact]
+    public async Task A_mount_point_reached_through_a_linked_folder_is_refused()
+    {
+        var media = Directory.CreateTempSubdirectory("vaktari-media").FullName;
+        var elsewhere = Directory.CreateTempSubdirectory("vaktari-home").FullName;
+        var stick = Path.Combine(media, "STICK");
+        var photo = Path.Combine(stick, "photo.jpg");
+
+        Directory.CreateDirectory(stick);
+        File.WriteAllText(photo, "the stick's own file");
+        File.CreateSymbolicLink(Path.Combine(elsewhere, "media"), media);
+
+        VolumeRoots.MountPointsOverride = () => ["/", stick];
+
+        try
+        {
+            var via = Path.Combine(elsewhere, "media", "STICK");
+
+            foreach (var spelling in new[] { via, via + "/", via + "/.", elsewhere + "/./media/STICK", elsewhere + "//media/x/../STICK" })
+                Assert.True(VolumeRoots.IsVolumeRoot(spelling), $"{spelling} was not taken for the mount point");
+
+            Assert.False(VolumeRoots.IsVolumeRoot(Path.Combine(via, "photo.jpg")));
+            Assert.False(VolumeRoots.IsVolumeRoot(Path.Combine(elsewhere, "media")));
+
+            var handle = await Settled(new LinuxFileOperations().Delete([via]));
+
+            Assert.Equal(VolumeRoots.Refusal, handle.Error?.Message);
+            Assert.True(File.Exists(photo), "the stick's file was deleted");
+        }
+        finally
+        {
+            File.Delete(Path.Combine(elsewhere, "media"));
+            Directory.Delete(elsewhere, recursive: true);
+            Directory.Delete(media, recursive: true);
+        }
+    }
+
+    /// <summary>
+    /// **A link to a mount is the link; what it leads to is the mount.** With
+    /// the machine's own table: "toproc" — a link to /proc — is a link, and
+    /// removing it removes only that; "toproc/." and "toproc/" are /proc
+    /// itself; "todev/shm" is /dev/shm, a mount on every Linux Vaktari runs
+    /// on, reached through a linked parent. And "/dev/fd/../shm" is /dev/shm
+    /// to .NET, which folds ".." as text before the kernel sees it, though
+    /// the kernel would read it through the /dev/fd link — the engine acts on
+    /// what .NET resolves, so that is a mount too. Asked, never acted on.
+    /// </summary>
+    [PosixFact]
+    public void Through_a_link_the_mount_it_leads_to_is_a_mount_and_the_link_is_not()
+    {
+        VolumeRoots.MountPointsOverride = null;
+
+        var holder = Directory.CreateTempSubdirectory("vaktari-links").FullName;
+        var toProc = Path.Combine(holder, "toproc");
+        var toDev = Path.Combine(holder, "todev");
+
+        File.CreateSymbolicLink(toProc, "/proc");
+        File.CreateSymbolicLink(toDev, "/dev");
+
+        try
+        {
+            foreach (var spelling in new[] { toProc + "/.", toProc + "/", toDev + "/shm", toDev + "/./shm", toDev + "/shm/.", "/dev/fd/../shm" })
+                Assert.True(VolumeRoots.IsVolumeRoot(spelling), $"{spelling} was not taken for a mount point");
+
+            Assert.False(VolumeRoots.IsVolumeRoot(toProc));
+            Assert.False(VolumeRoots.IsVolumeRoot(toDev));
+            Assert.False(VolumeRoots.IsVolumeRoot(toProc + "/self"));
+        }
+        finally
+        {
+            Directory.Delete(holder, recursive: true);
+        }
+    }
+
+    /// <summary>
+    /// **The kernel's own answer**, which the engines ask in their workers:
+    /// statx's mount-root attribute, and where the kernel does not report it,
+    /// the device against the parent's. "/", /proc, /dev/shm and each reached
+    /// through a link are mounts; the link itself, a temporary folder and a
+    /// path that is not there are not. "/dev/fd/../shm" is a mount as .NET
+    /// resolves it, which is what an engine acts on. Both answers are asked
+    /// of every path.
+    /// </summary>
+    [PosixFact]
+    public void The_kernel_calls_a_mount_a_mount_however_it_is_reached()
+    {
+        var holder = Directory.CreateTempSubdirectory("vaktari-links").FullName;
+        var toProc = Path.Combine(holder, "toproc");
+        var toDev = Path.Combine(holder, "todev");
+
+        File.CreateSymbolicLink(toProc, "/proc");
+        File.CreateSymbolicLink(toDev, "/dev");
+
+        try
+        {
+            foreach (var attribute in new[] { true, false })
+            {
+                foreach (var mount in new[] { "/", "//", "/.", "/proc", "/proc/", "/proc/.", "/dev/shm", "/dev/./shm", toProc + "/.", toProc + "/", toDev + "/shm", "/dev/fd/../shm" })
+                    Assert.True(MountRootOnDisk.Is(mount, attribute), $"{mount} was not a mount (attribute {attribute})");
+
+                foreach (var folder in new[] { toProc, toDev, holder, "/proc/self", holder + "/nothing-here" })
+                    Assert.False(MountRootOnDisk.Is(folder, attribute), $"{folder} was a mount (attribute {attribute})");
+            }
+        }
+        finally
+        {
+            Directory.Delete(holder, recursive: true);
+        }
+    }
+
+    /// <summary>
+    /// **Every verb asks the kernel too, in its worker.** A temporary folder
+    /// stands in for a mount through the engine's seam — a real mount is
+    /// never where a guard's absence is tried — and Delete, Trash, Move and
+    /// Copy each refuse it, leaving its file where it was.
+    /// </summary>
+    [PosixFact]
+    public async Task Every_verb_refuses_what_the_kernel_calls_a_mount()
+    {
+        VolumeRoots.MountPointsOverride = () => ["/"];
+
+        var mount = Directory.CreateTempSubdirectory("vaktari-onDisk").FullName;
+        var into = Directory.CreateTempSubdirectory("vaktari-volroot").FullName;
+        var marker = Path.Combine(mount, "marker.txt");
+        File.WriteAllText(marker, "x");
+
+        var ops = new LinuxFileOperations { RootOnDisk = path => path == mount };
+
+        try
+        {
+            foreach (var handle in new[]
+                     {
+                         ops.Delete([mount]),
+                         ops.Trash([mount]),
+                         ops.Move([mount], into, _ => ValueTask.FromResult(ConflictResolution.Skip)),
+                         ops.Copy([mount], into, _ => ValueTask.FromResult(ConflictResolution.Skip)),
+                     })
+            {
+                await Settled(handle);
+
+                Assert.Equal(VolumeRoots.Refusal, handle.Error?.Message);
+            }
+
+            Assert.True(File.Exists(marker));
+            Assert.Empty(Directory.EnumerateFileSystemEntries(into));
+        }
+        finally
+        {
+            Directory.Delete(into, recursive: true);
+            if (Directory.Exists(mount)) Directory.Delete(mount, recursive: true);
+        }
+    }
+
     [PosixFact]
     public async Task Move_refuses_a_mount_point()
     {

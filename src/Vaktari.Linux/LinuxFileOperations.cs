@@ -70,6 +70,15 @@ public sealed class LinuxFileOperations : IFileOperations
 
     public bool CanUndo => _walking == 0 && !_undo.IsEmpty;
 
+    /// <summary>
+    /// **Whether the kernel calls a path the root of a mount**, asked as the
+    /// first act of each operation's worker — see VolumeRoots.RefuseOnDisk and
+    /// <see cref="MountRootOnDisk"/>. A seam, so the tests can have a
+    /// temporary folder answer as a mount and watch every verb refuse it:
+    /// trying a guard's absence on a real mount is never done.
+    /// </summary>
+    internal Func<string, bool> RootOnDisk { get; init; } = MountRootOnDisk.Is;
+
     public IOperationHandle Copy(
         IReadOnlyList<string> sources, string destination,
         Func<FileConflict, ValueTask<ConflictResolution>> onConflict)
@@ -105,6 +114,9 @@ public sealed class LinuxFileOperations : IFileOperations
 
         _ = Task.Run(async () =>
         {
+            // The kernel's own answer as well, off the key's thread. See VolumeRoots.RefuseOnDisk.
+            if (VolumeRoots.RefuseOnDisk(paths, RootOnDisk) is { } rootTrash) { handle.Failed(new IOException(rootTrash)); return; }
+
             var restored = new List<(string TrashName, string Original)>();
 
             try
@@ -175,6 +187,9 @@ public sealed class LinuxFileOperations : IFileOperations
 
         _ = Task.Run(async () =>
         {
+            // The kernel's own answer as well, off the key's thread. See VolumeRoots.RefuseOnDisk.
+            if (VolumeRoots.RefuseOnDisk(paths, RootOnDisk) is { } rootDelete) { handle.Failed(new IOException(rootDelete)); return; }
+
             try
             {
                 handle.Begin(paths.Count, totalBytes: 0);
@@ -417,6 +432,9 @@ public sealed class LinuxFileOperations : IFileOperations
 
         _ = Task.Run(async () =>
         {
+            // The kernel's own answer as well, off the key's thread. See VolumeRoots.RefuseOnDisk.
+            if (VolumeRoots.RefuseOnDisk(sources, RootOnDisk) is { } rootRun) { handle.Failed(new IOException(rootRun)); return; }
+
             try
             {
                 // Enumerating first means the progress bar is honest from the

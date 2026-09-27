@@ -384,7 +384,8 @@ public sealed class VolumeRefusalTests : OwnedViewModels
         Assert.Empty(ops.Asked);
         Assert.Equal(VolumeRoots.Refusal, pane.Status);
 
-        // And a copy of a folder is not refused: the rule is about moving.
+        // And a copy of a folder is not refused: the rule is about the drive
+        // itself, and what is ON it copies as anything else does.
         pane.PasteIntoFolder(Path.GetTempPath(), [_drive], move: false);
 
         Assert.Single(ops.Asked);
@@ -402,6 +403,12 @@ public sealed class VolumeRefusalTests : OwnedViewModels
     [InlineData(@"Q:\\")]
     [InlineData(@"Q:\.")]
     [InlineData(@"Q:\x\..")]
+    [InlineData(@"\\?\GLOBALROOT\??\Q:\")]
+    [InlineData(@"\\?\GLOBALROOT\Device\HarddiskVolume999\")]
+    [InlineData(@"\\?\Q:\.")]
+    [InlineData(@"\\?\Q:\x\..")]
+    [InlineData(@"\\?\UNC\server\share\.")]
+    [InlineData(@"\\?\Volume{00000000-0000-0000-0000-00000000dead}\.")]
     public void Every_spelling_of_a_root_is_refused_by_the_pane(string root)
     {
         var ops = new Recording();
@@ -414,6 +421,46 @@ public sealed class VolumeRefusalTests : OwnedViewModels
 
         Assert.Empty(ops.Asked);
         Assert.Equal(VolumeRoots.Refusal, pane.Status);
+    }
+
+    /// <summary>
+    /// **A refused drop reported a Move.** The drop tells its source what it
+    /// did, and it read that off the modifier keys rather than off the paste:
+    /// a drive turned away by the guard still answered Move, which on X11
+    /// tells the source to delete what it dragged. The paste now says whether
+    /// it started anything, so the drop can answer None.
+    /// </summary>
+    [AvaloniaFact]
+    public void A_refused_paste_says_it_started_nothing()
+    {
+        var ops = new Recording();
+        var pane = Own(new PaneViewModel(new Inert(), ops) { CurrentPath = Path.GetTempPath() });
+
+        Assert.False(pane.PasteIntoFolder(Path.GetTempPath(), [Root], move: true));
+        Assert.False(pane.PasteInto([Root], move: true));
+        Assert.False(pane.PasteIntoFolder(Path.GetTempPath(), [Root], move: false));
+        Assert.False(pane.PasteInto([Root], move: false));
+        Assert.Empty(ops.Asked);
+
+        Assert.True(pane.PasteIntoFolder(Path.GetTempPath(), [_file], move: false));
+        Assert.True(pane.PasteInto([_file], move: false));
+        Assert.Equal(2, ops.Asked.Count);
+    }
+
+    /// <summary>
+    /// **Duplicate on a drive answered "this listing is a view, not a
+    /// folder"** — true of This PC, but not why a drive cannot be duplicated.
+    /// It says what every other verb says of a drive.
+    /// </summary>
+    [AvaloniaFact]
+    public void Duplicate_on_a_drive_says_what_every_other_verb_says()
+    {
+        var (_, pane, ops, _) = InThisPcModel();
+
+        pane.DuplicateSelectedCommand.Execute(null);
+
+        Assert.Equal(VolumeRoots.Refusal, pane.Status);
+        Assert.Empty(ops.Asked);
     }
 
     /// <summary>

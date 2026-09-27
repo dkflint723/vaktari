@@ -60,8 +60,9 @@ public sealed partial class ShellViewModel
     /// **A search, Recent, This PC and the scan listings drew it and the
     /// command refused**: DuplicateSelected writes the copy into the folder on
     /// screen, and RefusedVirtualDestination turns away every listing that is
-    /// not one, with "this listing is a view, not a folder". The row asked
-    /// CanActOnSelection, which excludes only the bin.
+    /// not one, with "this listing is a view, not a folder" (This PC, whose
+    /// rows are drives, with the drive sentence — see RefusedOnVolumes). The
+    /// row asked CanActOnSelection, which excludes only the bin.
     /// </summary>
     public bool ShowDuplicateInMenu
         => Menu.ShowDuplicate && ActiveTab is { HasSelection: true, IsRealFolder: true };

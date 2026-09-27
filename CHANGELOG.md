@@ -60,8 +60,11 @@ should not be trusted for compatibility yet.
   them now says a drive cannot be copied, moved, renamed or deleted, and
   the file operations themselves refuse the root of a drive — on Linux any
   mount point — whatever asks and however it is spelled (`Z:\.`,
-  `\\server\share\`, `/media/me/STICK/.`). `Ctrl+C` in the bin no
-  longer puts the path a binned file used to have on the clipboard.
+  `\\server\share\`, `\\?\GLOBALROOT\??\Z:\`, `/media/me/STICK/.`), through
+  a linked folder, or mounted a moment before; each operation also asks
+  Windows or the Linux kernel itself before it starts. *Duplicate* on a
+  drive says so too. `Ctrl+C` in the bin no longer puts the path a binned
+  file used to have on the clipboard.
 
 - **The Menu key's menu closed as soon as the key was let go.** It opened on
   the press, and the release put it away again.

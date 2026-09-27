@@ -253,18 +253,20 @@ public sealed partial class PaneViewModel
 
     /// <summary>Copy or move into a specific folder — used when a drop lands on
     /// a folder row rather than on the listing's background.</summary>
-    public void PasteIntoFolder(string destination, IReadOnlyList<string> paths, bool move)
+    /// <returns>Whether a copy or move was started — see
+    /// <see cref="PasteInto"/>.</returns>
+    public bool PasteIntoFolder(string destination, IReadOnlyList<string> paths, bool move)
     {
         // A drive dropped onto a folder row is a move of the drive, or a copy
         // of it onto itself — see WriteClipboardAsync.
-        if (RefusedVolumePaths(paths)) return;
+        if (RefusedVolumePaths(paths)) return false;
 
         // The DESTINATION, not CurrentPath. Dropping onto a real folder row
         // while a virtual listing is showing is legitimate — Recent rows carry
         // real paths — and guarding on CurrentPath would break it.
-        if (RefusedVirtualDestination(destination)) return;
+        if (RefusedVirtualDestination(destination)) return false;
 
-        if (_ops is null || paths.Count == 0) return;
+        if (_ops is null || paths.Count == 0) return false;
 
         var conflicts = Conflicts();
 
@@ -273,14 +275,21 @@ public sealed partial class PaneViewModel
             : _ops.Copy(paths, destination, conflicts);
 
         Track(handle);
+        return true;
     }
 
     /// <summary>Runs a copy or move into this directory, from the view's paste.</summary>
-    public void PasteInto(IReadOnlyList<string> paths, bool move)
+    /// <returns>
+    /// Whether a copy or move was started. **A drop reports what it did to the
+    /// source**, and a refused one did nothing: reporting Move for a drive the
+    /// guard turned away tells an X11 source to delete what it dragged. False
+    /// for a refusal and for nothing to do, so the drop can answer None.
+    /// </returns>
+    public bool PasteInto(IReadOnlyList<string> paths, bool move)
     {
-        if (_ops is null || paths.Count == 0) return;
-        if (RefusedVolumePaths(paths)) return;
-        if (RefusedVirtualDestination(CurrentPath)) return;
+        if (_ops is null || paths.Count == 0) return false;
+        if (RefusedVolumePaths(paths)) return false;
+        if (RefusedVirtualDestination(CurrentPath)) return false;
 
         var conflicts = Conflicts();
 
@@ -289,6 +298,7 @@ public sealed partial class PaneViewModel
             : _ops.Copy(paths, CurrentPath, conflicts);
 
         Track(handle);
+        return true;
     }
 
     /// <summary>
@@ -823,11 +833,19 @@ public sealed partial class PaneViewModel
         // a folder called vaktari:recent-files in the working directory and
         // copied into it. In the bin the row names where a file USED to be, so
         // the copy is of whatever occupies that path now.
-        if (RefusedInBin() || RefusedVirtualDestination(CurrentPath)) return;
+        if (RefusedInBin()) return;
+
+        var paths = SelectionPaths();
+
+        // A drive in This PC says what every other verb says of a drive,
+        // rather than "this listing is a view, not a folder" — true, but not
+        // why a drive cannot be duplicated. See RefusedOnVolumes.
+        if (RefusedOnVolumes(paths)) return;
+
+        if (RefusedVirtualDestination(CurrentPath)) return;
 
         if (_ops is null) return;
 
-        var paths = SelectionPaths();
         if (paths.Count == 0) { Status = "select something to duplicate"; return; }
 
         // **KeepBoth without asking, and this is the one place that is right.**

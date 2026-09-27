@@ -1,5 +1,6 @@
 using System.Runtime.Versioning;
 using Vaktari.Core.FileSystem;
+using Vaktari.Core.Tests;
 using Xunit;
 
 namespace Vaktari.Windows.Tests;
@@ -126,6 +127,11 @@ public sealed class VolumeRootRefusalTests
     [InlineData("{0}:\\x\\..")]
     [InlineData("\\\\?\\{0}:\\")]
     [InlineData("{0}:/")]
+    [InlineData(@"\\?\GLOBALROOT\??\{0}:\")]
+    [InlineData(@"\\?\{0}:\.")]
+    [InlineData(@"\\?\{0}:\x\..")]
+    [InlineData(@"\\?\GLOBALROOT\Device\HarddiskVolume999\")]
+    [InlineData(@"\\?\Volume{{00000000-0000-0000-0000-00000000dead}}\.")]
     public async Task Every_verb_refuses_every_spelling_of_a_root(string shape)
     {
         var root = string.Format(System.Globalization.CultureInfo.InvariantCulture, shape, UnusedRoot()[0]);
@@ -181,6 +187,253 @@ public sealed class VolumeRootRefusalTests
             async () => await new WindowsFileOperations().RenameAsync(root, "renamed", CancellationToken.None));
 
         Assert.Contains("drive root cannot be renamed", refused.Message, StringComparison.Ordinal);
+    }
+
+    /// <summary>
+    /// A drive letter standing for a fresh temporary folder, made with subst
+    /// and removed again — a real drive root whose contents are the test's
+    /// own, so an engine that walks it deletes nothing that matters.
+    ///
+    /// Letters from the front of the alphabet, where
+    /// <see cref="UnusedRoot"/> takes them from the back.
+    /// </summary>
+    private sealed class SubstDrive : IDisposable
+    {
+        public SubstDrive()
+        {
+            var taken = DriveInfo.GetDrives().Select(d => char.ToUpperInvariant(d.Name[0])).ToHashSet();
+
+            Letter = "GHIJKLMNOP".First(c => !taken.Contains(c));
+            Folder = Directory.CreateTempSubdirectory("vaktari-subst").FullName;
+
+            Subst($"{Letter}: \"{Folder}\"");
+
+            if (!Directory.Exists(Root)) throw new InvalidOperationException($"subst did not make {Root}");
+        }
+
+        public char Letter { get; }
+
+        public string Folder { get; }
+
+        public string Root => $"{Letter}:\\";
+
+        public void Dispose()
+        {
+            Subst($"{Letter}: /D");
+
+            try
+            {
+                Directory.Delete(Folder, recursive: true);
+            }
+            catch (IOException)
+            {
+            }
+        }
+
+        private static void Subst(string arguments)
+        {
+            using var process = System.Diagnostics.Process.Start(
+                new System.Diagnostics.ProcessStartInfo("subst.exe", arguments) { UseShellExecute = false, CreateNoWindow = true })!;
+
+            process.WaitForExit();
+        }
+    }
+
+    /// <summary>
+    /// **The engine's Delete emptied a subst drive** named
+    /// "\\?\GLOBALROOT\??\Z:\" — the object manager's name for it, which
+    /// GetFullPath leaves as written and the check read as a folder. Every
+    /// verb refuses each device spelling of a real (subst) drive, and the
+    /// drive's file is still there after all four were asked. The file
+    /// system's own answer does not cover this one — a subst root is a folder
+    /// on another volume — so it is the text that must.
+    /// </summary>
+    [WindowsTheory]
+    [InlineData(@"\\?\GLOBALROOT\??\{0}:\")]
+    [InlineData(@"\\?\GLOBALROOT\??\{0}:\.")]
+    [InlineData(@"\\?\GLOBALROOT\DosDevices\{0}:\")]
+    [InlineData(@"\\?\{0}:\.")]
+    [InlineData(@"\\?\{0}:\x\..")]
+    public async Task Every_verb_refuses_a_device_spelling_of_a_subst_drive(string shape)
+    {
+        using var drive = new SubstDrive();
+
+        var marker = Path.Combine(drive.Folder, "marker.txt");
+        File.WriteAllText(marker, "the drive's own file");
+        Directory.CreateDirectory(Path.Combine(drive.Folder, "x"));
+
+        var root = string.Format(System.Globalization.CultureInfo.InvariantCulture, shape, drive.Letter);
+        var into = Directory.CreateTempSubdirectory("vaktari-volroot").FullName;
+        var asked = new List<string>();
+
+        var ops = new WindowsFileOperations
+        {
+            RecycleOverride = paths =>
+            {
+                asked.AddRange(paths);
+                return new RecycleResult(0, false);
+            },
+        };
+
+        try
+        {
+            foreach (var handle in new[]
+                     {
+                         ops.Delete([root]),
+                         ops.Trash([root]),
+                         ops.Move([root], into, _ => ValueTask.FromResult(ConflictResolution.Skip)),
+                         ops.Copy([root], into, _ => ValueTask.FromResult(ConflictResolution.Skip)),
+                     })
+            {
+                await Settled(handle);
+
+                Assert.Equal(VolumeRoots.Refusal, handle.Error?.Message);
+            }
+
+            Assert.Empty(asked);
+            Assert.True(File.Exists(marker), "the drive's file was deleted");
+            Assert.Empty(Directory.EnumerateFileSystemEntries(into));
+        }
+        finally
+        {
+            Directory.Delete(into, recursive: true);
+        }
+    }
+
+    /// <summary>
+    /// **The file system's own answer, however the volume is named.** Asked,
+    /// never acted on: the system volume's root by its letter, by its
+    /// GLOBALROOT device name, by its Volume GUID and with a ".." folded by
+    /// Win32 — each opens the volume's root, whose path within its volume is
+    /// "\". A folder is not a root, nor is a path that is not there.
+    /// </summary>
+    [WindowsFact]
+    public void The_file_system_calls_a_volume_root_a_root_however_it_is_named()
+    {
+        var root = Path.GetPathRoot(Path.GetTempPath())!;
+
+        var guid = new char[64];
+        Assert.True(Native.GetVolumeNameForVolumeMountPoint(root, guid, (uint)guid.Length));
+        var byGuid = new string(guid, 0, Array.IndexOf(guid, '\0'));
+
+        Assert.True(VolumeRootOnDisk.Is(root));
+        Assert.True(VolumeRootOnDisk.Is(byGuid), byGuid);
+        Assert.True(VolumeRootOnDisk.Is(@"\\?\GLOBALROOT" + DeviceOf(root) + @"\"), DeviceOf(root));
+        Assert.True(VolumeRootOnDisk.Is(root + @"no-such-folder\.."));
+
+        Assert.False(VolumeRootOnDisk.Is(Path.GetTempPath()));
+        Assert.False(VolumeRootOnDisk.Is(Path.Combine(Path.GetTempPath(), Guid.NewGuid().ToString("N"))));
+        Assert.False(VolumeRootOnDisk.Is(UnusedRoot()));
+    }
+
+    /// <summary>The NT device a drive letter stands for — "\Device\HarddiskVolume3"
+    /// — read from the path a handle on its root reaches.</summary>
+    private static unsafe string DeviceOf(string root)
+    {
+        var handle = Native.CreateFile(
+            root, Native.FILE_READ_ATTRIBUTES, Native.FILE_SHARE_ALL, 0, Native.OPEN_EXISTING,
+            Native.FILE_FLAG_BACKUP_SEMANTICS, 0);
+
+        Assert.NotEqual(Native.INVALID_HANDLE_VALUE, handle);
+
+        try
+        {
+            var buffer = stackalloc char[512];
+
+            // VOLUME_NAME_NT: "\Device\HarddiskVolume3\".
+            var length = Native.GetFinalPathNameByHandle(handle, buffer, 512, 0x2);
+
+            return new string(buffer, 0, (int)length).TrimEnd('\\');
+        }
+        finally
+        {
+            Native.CloseHandle(handle);
+        }
+    }
+
+    /// <summary>
+    /// **A link to a root is the link**: a junction leading to the system
+    /// volume's root, and a subst drive's root — a folder on another volume —
+    /// are not roots to the file system. Removing the junction removes the
+    /// junction; the subst drive is the text guard's to refuse.
+    /// </summary>
+    [WindowsFact]
+    public void A_junction_to_a_root_and_a_subst_root_are_not_roots_to_the_file_system()
+    {
+        var holder = Directory.CreateTempSubdirectory("vaktari-junction").FullName;
+        var junction = Path.Combine(holder, "to-root");
+
+        try
+        {
+            Directory.CreateDirectory(junction);
+            Native.CreateJunction(junction, Path.GetPathRoot(Path.GetTempPath())!);
+
+            Assert.False(VolumeRootOnDisk.Is(junction));
+
+            using var drive = new SubstDrive();
+
+            Assert.False(VolumeRootOnDisk.Is(drive.Root));
+            Assert.True(VolumeRoots.IsVolumeRoot(drive.Root));
+        }
+        finally
+        {
+            // The junction first, as a link: never recursively through it.
+            if (Directory.Exists(junction)) Directory.Delete(junction);
+            Directory.Delete(holder);
+        }
+    }
+
+    /// <summary>
+    /// **Every verb asks the file system too, in its worker.** A temporary
+    /// folder stands in for a root through the engine's seam — a real volume
+    /// is never where a guard's absence is tried — and Delete, Trash, Move
+    /// and Copy each refuse it with the refusal's sentence, leaving its file
+    /// where it was.
+    /// </summary>
+    [WindowsFact]
+    public async Task Every_verb_refuses_what_the_file_system_calls_a_root()
+    {
+        var root = Directory.CreateTempSubdirectory("vaktari-onDisk").FullName;
+        var into = Directory.CreateTempSubdirectory("vaktari-volroot").FullName;
+        var marker = Path.Combine(root, "marker.txt");
+        File.WriteAllText(marker, "x");
+
+        var asked = new List<string>();
+
+        var ops = new WindowsFileOperations
+        {
+            RootOnDisk = path => string.Equals(path, root, StringComparison.OrdinalIgnoreCase),
+            RecycleOverride = paths =>
+            {
+                asked.AddRange(paths);
+                return new RecycleResult(0, false);
+            },
+        };
+
+        try
+        {
+            foreach (var handle in new[]
+                     {
+                         ops.Delete([root]),
+                         ops.Trash([root]),
+                         ops.Move([root], into, _ => ValueTask.FromResult(ConflictResolution.Skip)),
+                         ops.Copy([root], into, _ => ValueTask.FromResult(ConflictResolution.Skip)),
+                     })
+            {
+                await Settled(handle);
+
+                Assert.Equal(VolumeRoots.Refusal, handle.Error?.Message);
+            }
+
+            Assert.Empty(asked);
+            Assert.True(File.Exists(marker));
+            Assert.Empty(Directory.EnumerateFileSystemEntries(into));
+        }
+        finally
+        {
+            Directory.Delete(into, recursive: true);
+            if (Directory.Exists(root)) Directory.Delete(root, recursive: true);
+        }
     }
 
     /// <summary>And a folder is not a root: the refusal does not reach past

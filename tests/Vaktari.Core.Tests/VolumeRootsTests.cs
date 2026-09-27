@@ -99,39 +99,108 @@ public sealed class VolumeRootsTests
         }
     }
 
-    /// <summary>And the machine's own table is kept for a moment, so the pane's
-    /// ask and the engine's, a keystroke apart, read it once between them.</summary>
+    /// <summary>
+    /// **A mount made between two asks is refused by the second.** The table
+    /// was kept for two seconds and shared by the pane and the engine, so a
+    /// stick mounted inside that window was a folder to both — measured by
+    /// the review: pane and engine each answered "allowed". Through the
+    /// machine-table seam, not the override, because the override was never
+    /// kept.
+    /// </summary>
     [Fact]
-    public void The_mount_table_is_read_again_only_once_it_is_stale()
+    public void A_mount_that_appears_between_two_asks_is_refused_by_the_second()
     {
         var before = VolumeRoots.ReadMountTable;
-        var reads = 0;
+        var beforeOverride = VolumeRoots.MountPointsOverride;
+        IReadOnlyList<string> table = ["/"];
 
-        VolumeRoots.ReadMountTable = () =>
-        {
-            reads++;
-            return ["/"];
-        };
-
-        VolumeRoots.ForgetMountTable();
+        VolumeRoots.MountPointsOverride = null;
+        VolumeRoots.ReadMountTable = () => table;
 
         try
         {
-            _ = VolumeRoots.CachedMountTable();
-            _ = VolumeRoots.CachedMountTable();
+            Assert.Null(VolumeRoots.Refuse(["/media/me/STICK"]));
 
-            Assert.Equal(1, reads);
+            table = ["/", "/media/me/STICK"];
 
-            VolumeRoots.ForgetMountTable();
-            _ = VolumeRoots.CachedMountTable();
-
-            Assert.Equal(2, reads);
+            Assert.Equal(VolumeRoots.Refusal, VolumeRoots.Refuse(["/media/me/STICK"]));
+            Assert.True(VolumeRoots.IsVolumeRoot("/media/me/STICK"));
         }
         finally
         {
             VolumeRoots.ReadMountTable = before;
-            VolumeRoots.ForgetMountTable();
+            VolumeRoots.MountPointsOverride = beforeOverride;
         }
+    }
+
+    /// <summary>
+    /// **A device path is taken apart, because GetFullPath leaves it as
+    /// written.** "\\?\GLOBALROOT\??\Z:\" had the engine's Delete empty a
+    /// subst drive in review; "\\?\GLOBALROOT\Device\HarddiskVolume3\" names
+    /// a real volume the same way; "\\?\Z:\.", "\\?\Z:\x\..", "\\?\Volume{…}\."
+    /// and "\\?\UNC\server\share\." were folders to the check and failed only
+    /// because the file system happened to reject them. Every one is a root
+    /// here, asked of text alone — the volume numbers and the GUID answer to
+    /// nothing on any machine, and nothing is opened. A folder under each
+    /// kind stays a folder, a shadow copy's included, so its files can still
+    /// be copied out.
+    /// </summary>
+    [WindowsFact]
+    public void Every_device_spelling_of_a_root_is_a_root_and_a_folder_under_one_is_not()
+    {
+        var taken = DriveInfo.GetDrives().Select(d => char.ToUpperInvariant(d.Name[0])).ToHashSet();
+        var q = "ZYXWVUTSRQPONMLKJIHG".First(c => !taken.Contains(c));
+        const string guid = "Volume{00000000-0000-0000-0000-00000000dead}";
+
+        string[] roots =
+        [
+            $@"\\?\GLOBALROOT\??\{q}:\", $@"\\?\GLOBALROOT\??\{q}:", $@"\\?\GLOBALROOT\DosDevices\{q}:\",
+            $@"\\?\GLOBALROOT\GLOBAL??\{q}:\x\..", $@"\\?\globalroot\??\{q}:\.",
+            @"\\?\GLOBALROOT\Device\HarddiskVolume999\", @"\\?\GLOBALROOT\Device\HarddiskVolume999",
+            @"\\?\GLOBALROOT\Device\HarddiskVolume999\x\..", @"\\?\GLOBALROOT\Device\HarddiskVolume999\.",
+            @"\\?\GLOBALROOT\Device\Mup\server\share\", @"\\?\GLOBALROOT\Device\Mup\;LanmanRedirector\server\share",
+            @"\\?\GLOBALROOT\??\UNC\server\share\",
+            $@"\\?\{q}:\.", $@"\\?\{q}:\x\..", $@"\\?\{q}:\x\..\..", $@"\\?\{q}:", $@"//?/{q}:/./",
+            $@"\\.\{q}:\x\..",
+            $@"\\?\{guid}\", $@"\\?\{guid}", $@"\\?\{guid}\.", $@"\\.\{guid}\x\..",
+            @"\\?\UNC\server\share\.", @"\\?\UNC\server\share\x\..", @"\\?\unc\server\share\",
+        ];
+
+        foreach (var root in roots)
+            Assert.True(VolumeRoots.IsVolumeRoot(root), $"{root} was not taken for a root");
+
+        string[] folders =
+        [
+            $@"\\?\GLOBALROOT\??\{q}:\data", @"\\?\GLOBALROOT\Device\HarddiskVolume999\Windows",
+            @"\\?\GLOBALROOT\Device\HarddiskVolumeShadowCopy1\Users",
+            @"\\?\GLOBALROOT\Device\Mup\server\share\dir",
+            $@"\\?\{q}:\data", $@"\\?\{q}:\x\..\y", $@"\\?\{guid}\Windows", @"\\?\UNC\server\share\dir",
+        ];
+
+        foreach (var folder in folders)
+            Assert.False(VolumeRoots.IsVolumeRoot(folder), $"{folder} was taken for a root");
+    }
+
+    /// <summary>
+    /// **What the engines ask as well, off the key's thread**: the file
+    /// system's own answer, through a predicate each engine supplies. Any path
+    /// it calls a root refuses the whole list; an empty name is never asked.
+    /// </summary>
+    [Fact]
+    public void The_filesystem_answer_refuses_a_list_with_any_root_in_it()
+    {
+        var asked = new List<string>();
+
+        bool RootIfNamedRoot(string path)
+        {
+            asked.Add(path);
+            return path.EndsWith("root", StringComparison.Ordinal);
+        }
+
+        Assert.Equal(VolumeRoots.Refusal, VolumeRoots.RefuseOnDisk(["a", "", "the root", "b"], RootIfNamedRoot));
+        Assert.Equal(["a", "the root"], asked);
+
+        Assert.Null(VolumeRoots.RefuseOnDisk(["a", "b"], RootIfNamedRoot));
     }
 
     /// <summary>The operation an engine hands back instead of starting: failed
