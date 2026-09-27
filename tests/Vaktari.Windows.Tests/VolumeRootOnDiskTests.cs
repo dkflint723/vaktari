@@ -662,4 +662,208 @@ public sealed partial class VolumeRootOnDiskTests
             Directory.Delete(into, recursive: true);
         }
     }
+
+    /// <summary>
+    /// **Names Win32 folds into a drive's root before it opens them**, each of
+    /// which the fifth review round measured reaching a subst drive's folder:
+    /// "//?/X:/ " and "\\?/X:/..." are normalised as "\\.\" is (only "\\?\"
+    /// with backslashes skips it), so the trailing space or dots go and the
+    /// root is what opens; "\\.\W:\..\X:\" lets ".." take the device name
+    /// itself away. Whatever refuses them — the stream rule for the second,
+    /// the unreachable-name rule for the first — every verb must leave the
+    /// drive alone: no copy or move lands, the bin is not asked, and the
+    /// drive's file is there at the end. W is a letter nothing answers to.
+    /// </summary>
+    [WindowsTheory]
+    [InlineData(@"//?/{0}:/ ")]
+    [InlineData(@"\\?/{0}:/...")]
+    [InlineData(@"/\?\{0}:\. ")]
+    [InlineData(@"\\.\{1}:\..\{0}:\")]
+    [InlineData(@"//?/{1}:/x/../../{0}:/")]
+    public async Task Every_verb_leaves_a_drive_alone_under_a_name_win32_folds_to_its_root(string shape)
+    {
+        using var drive = new SubstDrive();
+
+        var marker = Path.Combine(drive.Folder, "marker.txt");
+        File.WriteAllText(marker, "the drive's own file");
+        Directory.CreateDirectory(Path.Combine(drive.Folder, "x"));
+
+        var taken = DriveInfo.GetDrives().Select(d => char.ToUpperInvariant(d.Name[0])).ToHashSet();
+        var nowhere = "ZYXW".First(c => !taken.Contains(c));
+        var path = string.Format(System.Globalization.CultureInfo.InvariantCulture, shape, drive.Letter, nowhere);
+
+        Assert.True(Directory.Exists(path), $"{path} does not reach the drive, so it proves nothing");
+
+        var into = Directory.CreateTempSubdirectory("vaktari-volroot").FullName;
+        var asked = new List<string>();
+
+        var ops = new WindowsFileOperations
+        {
+            RecycleOverride = paths =>
+            {
+                lock (asked) asked.AddRange(paths);
+                return new RecycleResult(0, false);
+            },
+        };
+
+        try
+        {
+            foreach (var handle in new[]
+                     {
+                         ops.Copy([path], into, _ => ValueTask.FromResult(ConflictResolution.Skip)),
+                         ops.Move([path], into, _ => ValueTask.FromResult(ConflictResolution.Skip)),
+                         ops.Trash([path]),
+                         ops.Delete([path]),
+                     })
+            {
+                await Settled(handle);
+
+                Assert.True(handle.Error is not null || handle.Problems.Count > 0, $"{handle.Kind} of {path} was not refused");
+            }
+
+            Assert.Empty(asked);
+            Assert.True(File.Exists(marker), $"the drive's file was deleted through {path}");
+            Assert.True(Directory.Exists(Path.Combine(drive.Folder, "x")), $"the drive's folder went through {path}");
+            Assert.Empty(Directory.EnumerateFileSystemEntries(into));
+        }
+        finally
+        {
+            Directory.Delete(into, recursive: true);
+        }
+    }
+
+    /// <summary>
+    /// **A junction to a LIVE device name of a drive is the junction to every
+    /// verb.** A_junction_to_a_device_name_is_moved_as_a_link_or_reported pins
+    /// a junction whose target names nothing — and Native.CreateJunction,
+    /// handed a target that already starts "\??\", stores "\??\\??\…" — so it
+    /// cannot tell a copy that went through the link from one that did not.
+    /// Here the junction is written raw, its target the object manager's name
+    /// for a real (subst) drive: the logon session's, and "??" under
+    /// GLOBALROOT. Delete takes the link away, the bin is handed the link,
+    /// Copy and Move either carry a link or report why not, and the drive's
+    /// file and folder are there after every verb.
+    /// </summary>
+    [WindowsTheory]
+    [InlineData(@"\??\GLOBALROOT\Sessions\0\DosDevices\{1}\{0}:\")]
+    [InlineData(@"\??\GLOBALROOT\??\{0}:\")]
+    public async Task A_junction_to_a_live_device_name_of_a_drive_is_acted_on_as_the_link(string shape)
+    {
+        using var drive = new SubstDrive();
+
+        var marker = Path.Combine(drive.Folder, "marker.txt");
+        var folder = Path.Combine(drive.Folder, "x");
+        var target = string.Format(System.Globalization.CultureInfo.InvariantCulture, shape, drive.Letter, LogonSession());
+        var holder = Directory.CreateTempSubdirectory("vaktari-livejunction").FullName;
+
+        try
+        {
+            var n = 0;
+
+            foreach (var tail in new[] { "", @"\", @"\." })
+            foreach (var verb in new[] { "delete", "trash", "move", "copy" })
+            {
+                File.WriteAllText(marker, "the drive's own file");
+                Directory.CreateDirectory(folder);
+
+                var junction = Path.Combine(holder, $"j{n++}");
+                Directory.CreateDirectory(junction);
+                RawJunction(junction, target);
+
+                Assert.True(File.Exists(Path.Combine(junction, "marker.txt")), $"{target} does not reach the drive, so it proves nothing");
+
+                var into = Directory.CreateTempSubdirectory("vaktari-livejunction-into").FullName;
+                var asked = new List<string>();
+                var ops = new WindowsFileOperations
+                {
+                    RecycleOverride = paths =>
+                    {
+                        lock (asked) asked.AddRange(paths);
+                        return new RecycleResult(0, false);
+                    },
+                };
+
+                try
+                {
+                    var path = junction + tail;
+                    var handle = await Settled(verb switch
+                    {
+                        "delete" => ops.Delete([path]),
+                        "trash" => ops.Trash([path]),
+                        "move" => ops.Move([path], into, _ => ValueTask.FromResult(ConflictResolution.Skip)),
+                        _ => ops.Copy([path], into, _ => ValueTask.FromResult(ConflictResolution.Skip)),
+                    });
+
+                    var landed = Directory.EnumerateFileSystemEntries(into).Select(e => new DirectoryInfo(e)).ToList();
+
+                    Assert.True(File.Exists(marker), $"{verb} of {path} deleted the drive's file");
+                    Assert.True(Directory.Exists(folder), $"{verb} of {path} took the drive's folder");
+                    Assert.All(landed, d => Assert.True(d.LinkTarget is not null, $"{verb} of {path} landed {d.Name} as a real folder"));
+
+                    if (verb is "move" or "copy" && landed.Count == 0)
+                        Assert.True(handle.Problems.Count > 0 || handle.Error is not null, $"{verb} of {path} did nothing and said nothing");
+
+                    if (verb == "trash")
+                        Assert.All(asked, a => Assert.Equal(junction, a.TrimEnd('\\', '.'), ignoreCase: true));
+                    else
+                        Assert.Empty(asked);
+                }
+                finally
+                {
+                    foreach (var entry in Directory.EnumerateDirectories(into))
+                        if (new DirectoryInfo(entry).LinkTarget is not null) Directory.Delete(entry);
+
+                    Directory.Delete(into, recursive: true);
+
+                    if (Directory.Exists(junction) && new DirectoryInfo(junction).LinkTarget is not null) Directory.Delete(junction);
+                }
+            }
+        }
+        finally
+        {
+            foreach (var entry in Directory.EnumerateDirectories(holder))
+                if (new DirectoryInfo(entry).LinkTarget is not null) Directory.Delete(entry);
+
+            Directory.Delete(holder, recursive: true);
+        }
+    }
+
+    /// <summary>A mount-point reparse point storing <paramref name="substitute"/>
+    /// exactly as given — unlike Native.CreateJunction, which resolves its
+    /// target and puts "\??\" in front of it.</summary>
+    private static void RawJunction(string path, string substitute)
+    {
+        var names = (substitute.Length + 1 + substitute.Length + 1) * 2;
+        var buffer = new byte[16 + names];
+
+        BitConverter.TryWriteBytes(buffer.AsSpan(0), 0xA0000003u);
+        BitConverter.TryWriteBytes(buffer.AsSpan(4), (ushort)(8 + names));
+        BitConverter.TryWriteBytes(buffer.AsSpan(8), (ushort)0);
+        BitConverter.TryWriteBytes(buffer.AsSpan(10), (ushort)(substitute.Length * 2));
+        BitConverter.TryWriteBytes(buffer.AsSpan(12), (ushort)((substitute.Length + 1) * 2));
+        BitConverter.TryWriteBytes(buffer.AsSpan(14), (ushort)(substitute.Length * 2));
+
+        var text = MemoryMarshal.Cast<byte, char>(buffer.AsSpan(16));
+        substitute.CopyTo(text);
+        substitute.CopyTo(text[(substitute.Length + 1)..]);
+
+        var handle = Native.CreateFile(path, 0x40000000, Native.FILE_SHARE_ALL, 0, Native.OPEN_EXISTING,
+                                       Native.FILE_FLAG_BACKUP_SEMANTICS | Native.FILE_FLAG_OPEN_REPARSE_POINT, 0);
+
+        Assert.True(handle != Native.INVALID_HANDLE_VALUE, $"cannot open {path}: {Marshal.GetLastPInvokeError()}");
+
+        try
+        {
+            unsafe
+            {
+                fixed (byte* data = buffer)
+                    Assert.True(Native.DeviceIoControl(handle, 0x000900A4, (nint)data, (uint)buffer.Length, 0, 0, out _, 0),
+                                $"cannot set the junction on {path}: {Marshal.GetLastPInvokeError()}");
+            }
+        }
+        finally
+        {
+            Native.CloseHandle(handle);
+        }
+    }
 }
