@@ -160,7 +160,7 @@ public static class Archives
 
             if (Links > 0) parts.Add(Links == 1 ? "1 link" : $"{Links} links");
             if (Unsafe > 0) parts.Add(Unsafe == 1 ? "1 unsafe name" : $"{Unsafe} unsafe names");
-            if (Special > 0) parts.Add(Special == 1 ? "1 device or pipe" : $"{Special} devices or pipes");
+            if (Special > 0) parts.Add(Special == 1 ? "1 special file" : $"{Special} special files");
             if (MacMetadata > 0) parts.Add($"{MacMetadata} Mac metadata");
             if (Unwritable > 0) parts.Add(Unwritable == 1 ? "1 that could not be written" : $"{Unwritable} that could not be written");
 
@@ -244,9 +244,18 @@ public static class Archives
                 ZoneMarks.Read(archive),
                 room,
                 observer,
-                maxEntries);
+                maxEntries,
+                destination);
 
             var done = ArchiveExtraction.Run(pass, working, options, handle, cancel);
+
+            // **Nothing written is not a folder to land.** An archive whose
+            // only entry was left out used to arrive as an empty folder named
+            // after it, which reads as success (verification of Stage A).
+            // An archive that is genuinely empty still lands as one: nothing
+            // of it was refused.
+            if (done.LeftOut.Total > 0 && !Directory.EnumerateFileSystemEntries(working).Any())
+                throw new ArchiveRefusedException(ArchiveSentences.NothingWritten(leaf, done.LeftOut.Describe()!));
 
             var (landed, isFile) = Publish(working, destination, archive, pass.Format, observer);
 
@@ -616,11 +625,29 @@ public static class Archives
 
             foreach (var entry in new DirectoryInfo(folder).EnumerateFileSystemInfos().ToList())
             {
-                if ((entry.Attributes & FileAttributes.ReadOnly) != 0) entry.Attributes &= ~FileAttributes.ReadOnly;
+                // **A link first, and nothing else asked of it.** Clearing
+                // ReadOnly ran before this test, and on Unix that setter is a
+                // chmod, which follows the link: a sweep turned a 0444 file
+                // OUTSIDE the working folder into 0644 (verification of
+                // Stage A). Deleting a link removes the link alone.
+                if ((entry.Attributes & FileAttributes.ReparsePoint) != 0 || entry.LinkTarget is not null)
+                {
+                    entry.Delete();
+                    continue;
+                }
 
-                if (entry is DirectoryInfo sub && (entry.Attributes & FileAttributes.ReparsePoint) == 0) pending.Push(sub.FullName);
-                else if (entry is DirectoryInfo link) link.Delete();
-                else entry.Delete();
+                if (entry is DirectoryInfo sub)
+                {
+                    pending.Push(sub.FullName);
+                    continue;
+                }
+
+                // Only Windows refuses to delete a read-only file; unlink on
+                // Unix asks the folder, not the file.
+                if (OperatingSystem.IsWindows() && (entry.Attributes & FileAttributes.ReadOnly) != 0)
+                    entry.Attributes &= ~FileAttributes.ReadOnly;
+
+                entry.Delete();
             }
         }
 

@@ -33,6 +33,8 @@ REFUSED = {
     "rar4-p.rar": PASSWORD, "rar4-hp.rar": PASSWORD,
     "rar5-p.rar": PASSWORD, "rar5-hp.rar": PASSWORD,
     "rar5-volume1.rar": "{} is one part of a split archive — Vaktari cannot extract split archives",
+    # Its only entry is a PAX sparse member, left out; nothing is landed.
+    "sparse-pax01.tar": "nothing in {} could be written: 1 left out (1 special file)",
     "sparse-gnu.tar": "{} holds a sparse file, which Vaktari cannot extract \u2014 nothing was extracted",
 }
 
@@ -55,7 +57,6 @@ SUMMARY = {
     "sc-tar.tar": (3, 3, 1, 0, 0, 0, 0, 0), "sc-tar.tar.lz": (3, 3, 1, 0, 0, 0, 0, 0),
     "sc-tar.tar.zst": (3, 3, 1, 0, 0, 0, 0, 0),
     "concat.txt.xz": ONE, "multi.txt.lz": ONE,
-    "sparse-pax01.tar": (0, 0, 0, 0, 0, 1, 0, 0),
 }
 
 SUFFIXES = [".tar.gz", ".tar.bz2", ".tar.xz", ".tar.zst", ".tar.lz", ".7z", ".zip", ".rar", ".tar", ".gz", ".xz", ".lz"]

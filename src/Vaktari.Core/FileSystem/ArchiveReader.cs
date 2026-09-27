@@ -325,7 +325,21 @@ internal sealed class ArchivePass : IDisposable
             {
                 Directory = ZipDirectory.Read(_stream);
                 _stream.Position = 0;
-                _archive = SharpZip.OpenArchive(_stream, ArchiveReader.Options);
+
+                // **Both readings see the same file.** Bytes in front of a zip
+                // whose offsets were written without them are what
+                // ZipDirectory calls the shift, and it adds it; SharpCompress
+                // does not, so the two could read different bytes for one
+                // entry — a directory could point one reader at an entry and
+                // the other at a different entry's data (verification of
+                // Stage A). SharpCompress's offsets cannot be read back to be
+                // compared, so it is given the file as the directory sees it
+                // instead: from where the zip proper starts. The per-entry
+                // names and compressed sizes are then checked against the
+                // local headers in ZipDirectory, which is where both readers
+                // meet.
+                _archive = SharpZip.OpenArchive(
+                    Directory.Shift == 0 ? _stream : new From(_stream, Directory.Shift), ArchiveReader.Options);
                 _entries = [.. _archive.Entries];
 
                 // SharpCompress walks the same directory (E-28); a count that
@@ -364,6 +378,29 @@ internal sealed class ArchivePass : IDisposable
                 break;
             }
         }
+    }
+
+    /// <summary>A seekable stream seen from <paramref name="start"/> on,
+    /// which it does not close.</summary>
+    private sealed class From(Stream inner, long start) : Stream
+    {
+        public override int Read(byte[] buffer, int offset, int count) => inner.Read(buffer, offset, count);
+        public override int Read(Span<byte> buffer) => inner.Read(buffer);
+        public override bool CanRead => true;
+        public override bool CanSeek => true;
+        public override bool CanWrite => false;
+        public override long Length => inner.Length - start;
+        public override long Position { get => inner.Position - start; set => inner.Position = value + start; }
+
+        public override long Seek(long offset, SeekOrigin origin) => origin switch
+        {
+            SeekOrigin.Begin => inner.Seek(start + offset, SeekOrigin.Begin),
+            _ => inner.Seek(offset, origin),
+        } - start;
+
+        public override void Flush() { }
+        public override void SetLength(long value) => throw new NotSupportedException();
+        public override void Write(byte[] buffer, int offset, int count) => throw new NotSupportedException();
     }
 
     /// <summary>The entries, in archive order.</summary>

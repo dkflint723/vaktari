@@ -33,13 +33,18 @@ internal interface IExtractionObserver
 /// every file, or null.</param>
 /// <param name="MaxEntries">The entry cap; a parameter so a test can reach
 /// it with ten entries rather than a million.</param>
+/// <param name="Destination">Where the result will land — what a sentence
+/// names. The run writes into a hidden working folder inside it, and a
+/// sentence that named THAT told somebody their disk was filled by
+/// ".vaktari-extracting-e1e4…" (verification of Stage A).</param>
 internal sealed record ExtractionOptions(
     bool WindowsRules,
     bool SkipMacMetadata,
     string? ZoneMark,
     ArchiveRoom Room,
     IExtractionObserver? Observer,
-    int MaxEntries = ArchiveLimits.MaxEntries);
+    int MaxEntries = ArchiveLimits.MaxEntries,
+    string? Destination = null);
 
 /// <summary>What one run wrote, and what it left out.</summary>
 internal sealed record ExtractionResult(int Files, int Folders, int Renamed, Archives.LeftOut LeftOut);
@@ -407,7 +412,7 @@ internal static class ArchiveExtraction
                 && info.Size is { } size
                 && options.Room.FreeBytes(root) is { } free
                 && size + ArchiveRoom.StreamFloor > free)
-                throw new ArchiveRefusedException(ArchiveSentences.Floor(pass.Leaf, ArchiveRoom.Drive(root)));
+                throw new ArchiveRefusedException(ArchiveSentences.Floor(pass.Leaf, Place));
         }
 
         /// <summary>
@@ -421,6 +426,10 @@ internal static class ArchiveExtraction
         internal static bool Settable(DateTimeOffset when) => when.UtcDateTime >= Earliest;
 
         private static readonly DateTime Earliest = new(1601, 1, 1, 0, 0, 0, DateTimeKind.Utc);
+
+        /// <summary>What a sentence calls the place being filled: the
+        /// destination's drive or folder, never the working folder.</summary>
+        private string Place => ArchiveRoom.Drive(options.Destination ?? Path.GetDirectoryName(root) ?? root);
 
         private bool TooLong(string[] segments)
         {
@@ -476,7 +485,7 @@ internal static class ArchiveExtraction
                     _sinceFloorCheck = 0;
 
                     if (options.Room.BelowFloor(root))
-                        throw new ArchiveRefusedException(ArchiveSentences.Floor(pass.Leaf, ArchiveRoom.Drive(root)));
+                        throw new ArchiveRefusedException(ArchiveSentences.Floor(pass.Leaf, Place));
                 }
             }
 

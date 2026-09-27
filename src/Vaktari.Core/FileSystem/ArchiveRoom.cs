@@ -40,7 +40,12 @@ internal sealed record ArchiveRoom(Func<string, long?> FreeBytes, Func<string, s
     {
         if (FreeBytes(destination) is not { } free) return null;
 
-        var needed = declaredTotal + entries * Slack;
+        // **Saturated, never wrapped.** A Zip64 size of long.MaxValue plus
+        // the slack overflowed to a negative need, which every disk has room
+        // for; the run then decoded until the disk filled (verification of
+        // Stage A).
+        var slack = Math.Max(0, entries) * Slack;
+        var needed = declaredTotal > long.MaxValue - slack ? long.MaxValue : Math.Max(0, declaredTotal) + slack;
 
         return needed > free
             ? $"there is not enough room on {Drive(destination)} — {leaf} needs {ByteSize.Format(needed)}, {ByteSize.Format(free)} is free"

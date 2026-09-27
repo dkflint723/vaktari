@@ -83,7 +83,7 @@ sc-tar.tar.zst	file	sc-tar/jpg/test.jpg	40372	b251c7501fb0f55dd4a92feabe0a6f5733
 sc-tar.tar.zst	file	sc-tar/���.txt	15498	4d581d93d369f6e1c9b295ff38d82dabd577f927dfaf0c35818c015c85e322d9									
 sc-tar.tar.zst	summary				3	3	1	0	0	0	0	0	
 sparse-gnu.tar	refused												sparse-gnu.tar holds a sparse file, which Vaktari cannot extract — nothing was extracted
-sparse-pax01.tar	summary				0	0	0	0	0	1	0	0	
+sparse-pax01.tar	refused												nothing in sparse-pax01.tar could be written: 1 left out (1 special file)
 tree.tar.bz2	file	tree/docs/a.txt	6	b6a98d9ce9a2d9149288fa3df42d377c3e42737afdcdaf714e33c0a100b51060									
 tree.tar.bz2	file	tree/docs/b.bin	8192	0d9b450f200c3eb7b45c6fa83888405cfdf5c5d76eb836f8579222bf8ae5bb46									
 tree.tar.bz2	file	tree/docs/c.txt	21390	0c9c2a97579f6b4b7bc4d623467c222b1bf98975ba4524bc6ef2dd0ce850e67f									

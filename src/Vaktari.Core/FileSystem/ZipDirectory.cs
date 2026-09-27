@@ -83,6 +83,15 @@ internal sealed class ZipDirectory
     public required byte[] Digest { get; init; }
 
     /// <summary>
+    /// How far every offset the directory gives is from where it points in
+    /// the file: the length of bytes put in front of an archive whose
+    /// offsets were written without them. Zero for an ordinary zip, and for
+    /// a prefixed one written with its offsets counted from the start of
+    /// the file.
+    /// </summary>
+    public long Shift { get; init; }
+
+    /// <summary>
     /// Reads the directory of a seekable stream.
     /// </summary>
     /// <exception cref="InvalidDataException">No end record, or a directory
@@ -217,6 +226,16 @@ internal sealed class ZipDirectory
             var localName = BinaryPrimitives.ReadUInt16LittleEndian(header.AsSpan(26));
             var localExtra = BinaryPrimitives.ReadUInt16LittleEndian(header.AsSpan(28));
 
+            // **The local header's compressed size must agree too**, where it
+            // gives one (no data descriptor, not a Zip64 placeholder): the
+            // decoder is bounded by the local header and every rule here by
+            // the directory, so a disagreement is two archives in one file.
+            var localFlags = BinaryPrimitives.ReadUInt16LittleEndian(header.AsSpan(6));
+            var localCompressed = BinaryPrimitives.ReadUInt32LittleEndian(header.AsSpan(18));
+
+            if ((localFlags & 8) == 0 && localCompressed != 0xFFFFFFFF && localCompressed != compressed)
+                disagrees = true;
+
             // Noted, and thrown only after the overlap check below: a bomb's
             // records all share one local header, so every record but one
             // disagrees with it, and the refusal that names the bomb is the
@@ -241,6 +260,7 @@ internal sealed class ZipDirectory
             Records = records,
             Overlapping = overlapping,
             Digest = SHA256.HashData(directory),
+            Shift = shift,
         };
     }
 

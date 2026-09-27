@@ -74,6 +74,9 @@ internal static class ArchiveSentences
     internal static string TooMany(string leaf, int cap)
         => $"{leaf} holds more than {cap:N0} entries — Vaktari does not extract archives that large";
 
+    internal static string NothingWritten(string leaf, string leftOut)
+        => $"nothing in {leaf} could be written: {leftOut}";
+
     internal static string Floor(string leaf, string drive)
         => $"stopped before {leaf} filled {drive} — nothing was extracted";
 }

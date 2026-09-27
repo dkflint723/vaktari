@@ -78,6 +78,15 @@ public static class Failures
     {
         OperationCanceledException => "cancelled",
 
+        // **An archive's refusals are already sentences**, and one of them
+        // carries the HResult of the failure underneath: an archive whose
+        // stick was pulled reads as "a.zip could not be read", where the arms
+        // below would say "that drive is not ready" — which drive, the
+        // archive's or the destination's? (verification of Stage A). Kept
+        // ahead of every HResult arm.
+        ArchiveUnreadableException or ArchiveDamagedException
+            or ArchivePasswordRequiredException or ArchiveRefusedException => e.Message,
+
         DirectoryNotFoundException => "that folder is not there any more",
         FileNotFoundException => "that file is not there any more",
 
