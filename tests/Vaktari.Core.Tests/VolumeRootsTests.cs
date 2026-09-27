@@ -327,6 +327,47 @@ public sealed class VolumeRootsTests
             Assert.False(VolumeRoots.IsVolumeRoot(folder), $"{folder} was taken for a root");
     }
 
+    /// <summary>
+    /// **A device path outside the three forms read here is refused, whatever
+    /// it names.** The third review round emptied drives through a logon
+    /// session's own name for one ("\\?\GLOBALROOT\Sessions\0\DosDevices\…\G:\"),
+    /// through "Global", and read a disk-and-partition name as a folder; the
+    /// text had chased spellings for three rounds. Now only a drive letter, a
+    /// share and a volume GUID are read in the device namespace; every other
+    /// device path gets the device sentence — a file under a shadow copy
+    /// included, because what such a name leads to is the question refused.
+    ///
+    /// "\\.\" is read the way Win32 reads it, trailing spaces and dots taken
+    /// off each name, so "\\.\X:\ " and "\\.\X:\..." are the drive's root and
+    /// get the drive's sentence. And a folder by a form that IS read is left
+    /// alone. Text only: the letters, LUID and GUIDs answer to nothing.
+    /// </summary>
+    [WindowsFact]
+    public void A_device_path_outside_the_forms_read_here_is_refused_whatever_it_names()
+    {
+        var q = UnusedDeviceLetter();
+        const string guid = "Volume{00000000-0000-0000-0000-00000000dead}";
+
+        string[] unread =
+        [
+            $@"\\?\GLOBALROOT\Sessions\0\DosDevices\00000000-0001e240\{q}:\",
+            $@"\\.\GLOBALROOT\Sessions\0\DosDevices\00000000-0001e240\{q}:\",
+            $@"\\?\Global\{q}:\", $@"\\?\GLOBALROOT\??\Global\{q}:\", $@"\\?\GLOBALROOT\GLOBAL??\Global\{q}:\",
+            @"\\?\GLOBALROOT\Device\Harddisk0\Partition3\", @"\\?\GLOBALROOT\Device\Harddisk0\Partition3",
+            @"\\?\GLOBALROOT\Device\HarddiskVolumeShadowCopy1\Users\me\a.txt",
+            @"\\.\UNC\server\share\dir", $@"\\.\{guid}\data", @"\\?\Volume{not-a-guid}\data", @"//?/Global/C:/",
+        ];
+
+        foreach (var path in unread)
+            Assert.True(VolumeRoots.Refuse([path]) == VolumeRoots.DeviceRefusal, $"{path} was not refused as a device path");
+
+        foreach (var root in new[] { $@"\\.\{q}:\ ", $@"\\.\{q}:\...", $@"\\.\{q}: \. ", $@"\\.\{q}:\x\..." + @"\.." })
+            Assert.True(VolumeRoots.Refuse([root]) == VolumeRoots.Refusal, $"{root} was not refused as a drive");
+
+        foreach (var folder in new[] { $@"\\?\{q}:\data", $@"\\.\{q}:\data", @"\\?\UNC\server\share\dir", $@"\\?\{guid}\data", $@"{q}:\data" })
+            Assert.Null(VolumeRoots.Refuse([folder]));
+    }
+
     private static char UnusedDeviceLetter()
     {
         var taken = DriveInfo.GetDrives().Select(d => char.ToUpperInvariant(d.Name[0])).ToHashSet();

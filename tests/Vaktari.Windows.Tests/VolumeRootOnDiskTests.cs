@@ -1,3 +1,4 @@
+using System.Runtime.InteropServices;
 using System.Runtime.Versioning;
 using Vaktari.Core.FileSystem;
 using Vaktari.Core.Tests;
@@ -21,7 +22,7 @@ namespace Vaktari.Windows.Tests;
 /// ever ASKED, never handed to a verb.
 /// </summary>
 [SupportedOSPlatform("windows")]
-public sealed class VolumeRootOnDiskTests
+public sealed partial class VolumeRootOnDiskTests
 {
     private static async Task<IOperationHandle> Settled(IOperationHandle handle)
     {
@@ -181,6 +182,193 @@ public sealed class VolumeRootOnDiskTests
         {
             Directory.Delete(holder, recursive: true);
         }
+    }
+
+    [LibraryImport("advapi32.dll", SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static partial bool OpenProcessToken(nint process, uint access, out nint token);
+
+    [LibraryImport("advapi32.dll", SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static partial bool GetTokenInformation(nint token, int infoClass, nint info, uint length, out uint returned);
+
+    /// <summary>This logon session's id as the object manager spells it under
+    /// \Sessions\0\DosDevices — "00000000-0004a48b" — read from the process's
+    /// token (TokenStatistics' AuthenticationId).</summary>
+    private static string LogonSession()
+    {
+        Assert.True(OpenProcessToken(-1, 0x8, out var token));
+
+        var buffer = Marshal.AllocHGlobal(256);
+
+        try
+        {
+            Assert.True(GetTokenInformation(token, 10, buffer, 256, out _));
+
+            var low = (uint)Marshal.ReadInt32(buffer, 8);
+            var high = (uint)Marshal.ReadInt32(buffer, 12);
+
+            return $"{high:x8}-{low:x8}";
+        }
+        finally
+        {
+            Marshal.FreeHGlobal(buffer);
+            Native.CloseHandle(token);
+        }
+    }
+
+    private static async Task AssertEveryVerbRefuses(string path, string sentence, string marker)
+    {
+        var into = Directory.CreateTempSubdirectory("vaktari-volroot").FullName;
+        var asked = new List<string>();
+
+        var ops = new WindowsFileOperations
+        {
+            RecycleOverride = paths =>
+            {
+                asked.AddRange(paths);
+                return new RecycleResult(0, false);
+            },
+        };
+
+        try
+        {
+            foreach (var handle in new[]
+                     {
+                         ops.Delete([path]),
+                         ops.Trash([path]),
+                         ops.Move([path], into, _ => ValueTask.FromResult(ConflictResolution.Skip)),
+                         ops.Copy([path], into, _ => ValueTask.FromResult(ConflictResolution.Skip)),
+                     })
+            {
+                await Settled(handle);
+
+                Assert.Equal(sentence, handle.Error?.Message);
+            }
+
+            Assert.Empty(asked);
+            Assert.True(File.Exists(marker), $"the drive's file was deleted through {path}");
+            Assert.Empty(Directory.EnumerateFileSystemEntries(into));
+        }
+        finally
+        {
+            Directory.Delete(into, recursive: true);
+        }
+    }
+
+    /// <summary>
+    /// **The third round's names for a real drive, refused before any is
+    /// opened.** Delete emptied a subst drive's folder through the logon
+    /// session's own name for the letter, in both prefixes; "Global" is one
+    /// more. None is a form the text reads, so every verb refuses it with the
+    /// device sentence — the session id is this process's real one, so an
+    /// engine without the refusal would reach the drive. "\\.\X:\ " and
+    /// "\\.\X:\..." are read the way Win32 reads them, as the drive's root,
+    /// and get the drive's sentence. The drive's file is there at the end.
+    /// </summary>
+    [WindowsTheory]
+    [InlineData(@"\\?\GLOBALROOT\Sessions\0\DosDevices\{2}\{0}:\", true, true)]
+    [InlineData(@"\\.\GLOBALROOT\Sessions\0\DosDevices\{2}\{0}:\", true, true)]
+    [InlineData(@"\\?\GLOBALROOT\Sessions\0\DosDevices\{2}\{0}:", true, false)]
+    [InlineData(@"\\?\Global\{0}:\", true, false)]
+    [InlineData(@"\\?\GLOBALROOT\??\Global\{0}:\", true, false)]
+    [InlineData(@"\\?\GLOBALROOT\GLOBAL??\Global\{0}:\", true, false)]
+    [InlineData(@"\\.\{0}:\ ", false, true)]
+    [InlineData(@"\\.\{0}:\...", false, true)]
+    public async Task Every_verb_refuses_a_device_path_it_does_not_read(string shape, bool device, bool reaches)
+    {
+        using var drive = new SubstDrive();
+
+        var marker = Path.Combine(drive.Folder, "marker.txt");
+        File.WriteAllText(marker, "the drive's own file");
+
+        var path = string.Format(
+            System.Globalization.CultureInfo.InvariantCulture, shape, drive.Letter, char.ToLowerInvariant(drive.Letter), LogonSession());
+
+        // Where the name reaches the drive, an engine without the refusal
+        // empties it. "Global" names the machine's drives rather than this
+        // session's subst, so those reach nothing here and would fail
+        // harmlessly unrefused — still refused, with the device sentence.
+        if (reaches) Assert.True(Directory.Exists(path), $"{path} does not reach the drive, so it proves nothing");
+
+        await AssertEveryVerbRefuses(path, device ? VolumeRoots.DeviceRefusal : VolumeRoots.Refusal, marker);
+    }
+
+    /// <summary>
+    /// **A drive mapped to a folder on a share, by every name the review
+    /// used.** Delete emptied the mapped folder through the session's name for
+    /// the letter. The letter is mapped with net use to a temporary folder
+    /// reached through this machine's own administrative share, and unmapped
+    /// again; each name is refused, and the folder's file is still there.
+    /// To the file system the mapped root is a folder inside a share — it is
+    /// the text that refuses the letter itself.
+    /// </summary>
+    [WindowsFact]
+    public async Task Every_verb_refuses_every_name_of_a_mapped_drive()
+    {
+        var folder = Directory.CreateTempSubdirectory("vaktari-mapped").FullName;
+        var marker = Path.Combine(folder, "marker.txt");
+        File.WriteAllText(marker, "the mapped folder's own file");
+
+        var share = $@"\\localhost\{folder[0]}$\{folder[3..]}";
+        var taken = DriveInfo.GetDrives().Select(d => char.ToUpperInvariant(d.Name[0])).ToHashSet();
+        var letter = "VW".First(c => !taken.Contains(c));
+
+        Assert.Equal(0, NetUse($"{letter}: \"{share}\""));
+
+        try
+        {
+            Assert.True(File.Exists($@"{letter}:\marker.txt"), $"{letter}: does not reach {share}");
+            Assert.False(VolumeRootOnDisk.Is($@"{letter}:\"));
+
+            await AssertEveryVerbRefuses($@"{letter}:\", VolumeRoots.Refusal, marker);
+            await AssertEveryVerbRefuses($@"\\?\{letter}:\", VolumeRoots.Refusal, marker);
+            await AssertEveryVerbRefuses($@"\\.\{letter}:\ ", VolumeRoots.Refusal, marker);
+            await AssertEveryVerbRefuses(
+                $@"\\?\GLOBALROOT\Sessions\0\DosDevices\{LogonSession()}\{letter}:\", VolumeRoots.DeviceRefusal, marker);
+        }
+        finally
+        {
+            NetUse($"{letter}: /delete /y");
+            Directory.Delete(folder, recursive: true);
+        }
+    }
+
+    private static int NetUse(string arguments)
+    {
+        using var process = System.Diagnostics.Process.Start(
+            new System.Diagnostics.ProcessStartInfo("net.exe", "use " + arguments)
+            {
+                UseShellExecute = false, CreateNoWindow = true, RedirectStandardOutput = true, RedirectStandardError = true,
+            })!;
+
+        process.StandardOutput.ReadToEnd();
+        process.StandardError.ReadToEnd();
+        process.WaitForExit();
+
+        return process.ExitCode;
+    }
+
+    /// <summary>
+    /// **A share's root is a root to the file system too.** Without the
+    /// volume, "\\localhost\c$\" answers "\localhost\c$", not "\", so the
+    /// engine's own question never refused a share root or a drive mapped to
+    /// one; with the share it answers "\\?\UNC\localhost\c$\", which the text
+    /// reads as the share's root. Asked, never acted on: this machine's
+    /// administrative share for the temporary folder's drive, and a folder
+    /// under it.
+    /// </summary>
+    [WindowsFact]
+    public void The_file_system_calls_a_share_root_a_root()
+    {
+        var temp = Path.GetTempPath();
+        var share = $@"\\localhost\{temp[0]}$\";
+
+        Assert.True(Directory.Exists(share), $"{share} cannot be reached");
+
+        Assert.True(VolumeRootOnDisk.Is(share));
+        Assert.True(VolumeRootOnDisk.Is($@"\\?\UNC\localhost\{temp[0]}$\"));
+        Assert.False(VolumeRootOnDisk.Is(share + temp[3..]));
     }
 
     /// <summary>

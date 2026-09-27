@@ -188,6 +188,39 @@ public sealed class VolumeRootRefusalTests : IDisposable
     }
 
     /// <summary>
+    /// **A link that leads to "/" made "//proc"**, which the table does not
+    /// have: "toroot/proc", "up/proc" (up is "../..") and
+    /// "/proc/self/root/proc" were folders to the pane though the kernel
+    /// refused each in the engine. With the machine's own table; asked, never
+    /// acted on.
+    /// </summary>
+    [PosixFact]
+    public void A_mount_reached_through_a_link_to_the_root_is_a_mount()
+    {
+        VolumeRoots.MountPointsOverride = null;
+
+        var holder = Directory.CreateTempSubdirectory("vaktari-links").FullName;
+        var toRoot = Path.Combine(holder, "toroot");
+        var up = Path.Combine(holder, "up");
+
+        File.CreateSymbolicLink(toRoot, "/");
+        File.CreateSymbolicLink(up, string.Join('/', holder.Split('/', StringSplitOptions.RemoveEmptyEntries).Select(_ => "..")));
+
+        try
+        {
+            foreach (var spelling in new[] { toRoot + "/proc", toRoot + "/proc/.", up + "/proc", "/proc/self/root/proc", toRoot + "/" })
+                Assert.True(VolumeRoots.IsVolumeRoot(spelling), $"{spelling} was not taken for a mount point");
+
+            Assert.False(VolumeRoots.IsVolumeRoot(toRoot + "/proc/self"));
+            Assert.False(VolumeRoots.IsVolumeRoot(toRoot));
+        }
+        finally
+        {
+            Directory.Delete(holder, recursive: true);
+        }
+    }
+
+    /// <summary>
     /// **The kernel's own answer**, which the engines ask in their workers:
     /// statx's mount-root attribute, and where the kernel does not report it,
     /// the device against the parent's. "/", /proc, /dev/shm and each reached

@@ -448,6 +448,52 @@ public sealed class VolumeRefusalTests : OwnedViewModels
     }
 
     /// <summary>
+    /// **The bin's row reported a refused drop as a Move.** A drive dropped
+    /// on the bin is refused by TrashPaths, and the drop went on to report a
+    /// Move it performed — which on X11 tells the source to delete what it
+    /// dragged. TrashPaths now says whether it asked the bin, as the paste does.
+    /// </summary>
+    [AvaloniaFact]
+    public void A_refused_bin_drop_says_it_started_nothing()
+    {
+        var ops = new Recording();
+        var pane = Own(new PaneViewModel(new Inert(), ops) { CurrentPath = Path.GetTempPath() });
+
+        Assert.False(pane.TrashPaths([Root]));
+        Assert.False(pane.TrashPaths([]));
+        Assert.Empty(ops.Asked);
+
+        Assert.True(pane.TrashPaths([_file]));
+        Assert.Single(ops.Asked);
+    }
+
+    /// <summary>
+    /// **A device path the text does not read is refused in the pane**, with
+    /// its own sentence, before anything is queued — the logon session's name
+    /// for a drive that emptied one in review among them. Handed to a
+    /// recording engine; the LUID answers to nothing.
+    /// </summary>
+    [AvaloniaTheory(Skip = OnlyOn.Windows, SkipUnless = nameof(OnlyOn.IsWindows), SkipType = typeof(OnlyOn))]
+    [InlineData(@"\\?\GLOBALROOT\Sessions\0\DosDevices\00000000-0001e240\Q:\")]
+    [InlineData(@"\\?\Global\C:\")]
+    [InlineData(@"\\?\GLOBALROOT\Device\Harddisk0\Partition3\")]
+    [InlineData(@"\\?\GLOBALROOT\Device\HarddiskVolumeShadowCopy1\Users\me\a.txt")]
+    public void A_device_path_is_refused_by_the_pane_in_its_own_words(string path)
+    {
+        var ops = new Recording();
+        var pane = Own(new PaneViewModel(new Inert(), ops) { CurrentPath = Path.GetTempPath() });
+
+        pane.TrashChosen([path]);
+        pane.DeleteChosen([path]);
+        Assert.False(pane.TrashPaths([path]));
+        Assert.False(pane.PasteIntoFolder(Path.GetTempPath(), [path], move: true));
+        Assert.False(pane.PasteInto([path], move: false));
+
+        Assert.Empty(ops.Asked);
+        Assert.Equal(VolumeRoots.DeviceRefusal, pane.Status);
+    }
+
+    /// <summary>
     /// **Duplicate on a drive answered "this listing is a view, not a
     /// folder"** — true of This PC, but not why a drive cannot be duplicated.
     /// It says what every other verb says of a drive.

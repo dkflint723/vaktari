@@ -521,12 +521,19 @@ public sealed partial class PaneViewModel
     /// Sends specific paths to the bin — what dropping onto the bin's row
     /// means, as distinct from the Delete key acting on a selection.
     /// </summary>
-    public void TrashPaths(IReadOnlyList<string> paths)
+    /// <returns>
+    /// Whether the bin was asked to take them. **The bin's row reports a drop
+    /// as a Move it performed**, which on X11 tells the source to delete what
+    /// it dragged — so a drive turned away here must not be reported as one.
+    /// False for a refusal and for nothing to do; see <see cref="PasteInto"/>.
+    /// </returns>
+    public bool TrashPaths(IReadOnlyList<string> paths)
     {
-        if (_ops is null || paths.Count == 0) return;
-        if (RefusedVolumePaths(paths)) return;
+        if (_ops is null || paths.Count == 0) return false;
+        if (RefusedVolumePaths(paths)) return false;
 
         Track(_ops.Trash(paths));
+        return true;
     }
 
     /// <summary>Shift+Delete. Irreversible — the view must confirm first.</summary>

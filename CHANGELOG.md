@@ -60,9 +60,12 @@ should not be trusted for compatibility yet.
   them now says a drive cannot be copied, moved, renamed or deleted, and
   the file operations themselves refuse the root of a drive — on Linux any
   mount point — whatever asks and however it is spelled (`Z:\.`,
-  `\\server\share\`, `\\?\GLOBALROOT\??\Z:\`, `/media/me/STICK/.`), through
-  a linked folder, or mounted a moment before; each operation also asks
-  Windows or the Linux kernel itself before it starts. *Duplicate* on a
+  `\\server\share\`, `\\.\Z:\ `, `/media/me/STICK/.`), through a linked
+  folder, or mounted a moment before; each operation also asks Windows or
+  the Linux kernel itself before it starts. A Windows device path other than
+  a drive letter's, a share's or a volume's (`\\?\GLOBALROOT\…`,
+  `\\?\Global\…`) is not copied, moved or deleted through at all — open the
+  folder by its ordinary name. *Duplicate* on a
   drive says so too. `Ctrl+C` in the bin no longer puts the path a binned
   file used to have on the clipboard.
 

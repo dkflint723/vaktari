@@ -28,6 +28,13 @@ public static class VolumeRoots
     public const string Refusal = "a drive cannot be copied, moved, renamed or deleted — only what is on it";
 
     /// <summary>
+    /// The sentence for a Windows device path outside the forms understood
+    /// here — see <see cref="IsUnreadDevicePath"/>.
+    /// </summary>
+    public const string DeviceRefusal =
+        "Vaktari does not copy, move or delete through a device path — open the folder by its ordinary name";
+
+    /// <summary>
     /// The mount points to compare against, or null for the machine's own.
     /// A seam for tests, which must never have a guard's absence tried on a
     /// real volume; null in the application.
@@ -47,17 +54,103 @@ public static class VolumeRoots
     /// pane and the engine read the same copy — so a stick mounted a moment
     /// before Shift+Delete was a folder to both guards at once, and one stale
     /// read stood in for two independent ones. Each call reads the table as
-    /// it is now; it is a few dozen lines of a file the kernel writes.</summary>
+    /// it is now; it is a few dozen lines of a file the kernel writes.
+    ///
+    /// **A device path outside the forms read here is refused too**, with its
+    /// own sentence — see <see cref="IsUnreadDevicePath"/>.</summary>
     public static string? Refuse(IEnumerable<string> paths)
     {
         IReadOnlyList<string>? points = null;
         Dictionary<string, string>? folders = null;
 
         foreach (var path in paths)
+        {
             if (IsVolumeRootIn(path, points ??= MountPoints(), folders ??= new(StringComparer.Ordinal)))
                 return Refusal;
 
+            if (OperatingSystem.IsWindows() && IsUnreadDevicePath(path)) return DeviceRefusal;
+        }
+
         return null;
+    }
+
+    /// <summary>
+    /// Whether a path is a root by its text alone — no mount table, nothing
+    /// opened. For the engine's file-system answer, which reads back the path
+    /// a handle reached and asks this of it.
+    /// </summary>
+    public static bool IsRootSpelling(string? path) => IsVolumeRootIn(path, [], new(StringComparer.Ordinal));
+
+    /// <summary>
+    /// Whether a path is in the Win32 device namespace ("\\?\…", "\\.\…") but
+    /// not in one of the three forms this class reads: a drive letter
+    /// ("\\?\X:\…", "\\.\X:\…"), a share ("\\?\UNC\server\share\…") or a
+    /// volume by its GUID ("\\?\Volume{…}\…").
+    ///
+    /// **Every other device name was a spelling to chase, and the chase did
+    /// not end.** Three review rounds each found drives the text read as
+    /// folders and the engine then emptied: the object manager's names under
+    /// GLOBALROOT, then a logon session's own
+    /// ("\\?\GLOBALROOT\Sessions\0\DosDevices\…\G:\"), "Global", a disk and
+    /// partition number ("\\?\GLOBALROOT\Device\Harddisk0\Partition3\"). The
+    /// namespace is open-ended, so the destructive verbs deny by default: any
+    /// such path is refused, whatever it names. Nothing in Vaktari hands one
+    /// out — a person has to type it — and the ordinary name of the same
+    /// folder works.
+    ///
+    /// **Copying out is refused as well**, though it is not destructive: a
+    /// copy of a root has no name to land under, and whether one of these
+    /// names a root is the question this refuses to guess at.
+    /// </summary>
+    private static bool IsUnreadDevicePath(string path)
+    {
+        if (DevicePrefix(path) is not { } prefix) return false;
+
+        var first = DeviceNames(path, prefix)[0];
+
+        if (first.Length == 2 && char.IsAsciiLetter(first[0]) && first[1] == ':') return false;
+
+        if (prefix == @"\\?\" && first.Equals("UNC", StringComparison.OrdinalIgnoreCase)) return false;
+
+        if (prefix == @"\\?\" && first.Length == 44
+            && first.StartsWith("Volume{", StringComparison.OrdinalIgnoreCase) && first.EndsWith('}')
+            && Guid.TryParse(first.AsSpan(6), out _))
+            return false;
+
+        return true;
+    }
+
+    /// <summary>"\\?\" or "\\.\" — either slash — or null for a path outside
+    /// the device namespace.</summary>
+    private static string? DevicePrefix(string path)
+    {
+        var unified = path.Replace('/', '\\');
+
+        return unified.StartsWith(@"\\?\", StringComparison.Ordinal) ? @"\\?\"
+             : unified.StartsWith(@"\\.\", StringComparison.Ordinal) ? @"\\.\"
+             : null;
+    }
+
+    /// <summary>
+    /// The names after a device prefix, as Win32 reads them.
+    ///
+    /// **"\\.\" is normalised on the way in and "\\?\" is not.** Win32 takes
+    /// trailing spaces and dots off each name after "\\.\" — so "\\.\G:\ " and
+    /// "\\.\G:\..." open G:'s root, and the review's probe had Delete empty a
+    /// subst drive through each while the text read a folder named " " — and
+    /// takes nothing off after "\\?\", where "\\?\G:\ " is a name of its own.
+    /// "." and ".." are left for <see cref="Folded"/>.
+    /// </summary>
+    private static string[] DeviceNames(string path, string prefix)
+    {
+        var names = path.Replace('/', '\\')[4..].Split('\\');
+
+        if (prefix == @"\\.\")
+            for (var i = 0; i < names.Length; i++)
+                if (names[i] is not ("." or ".."))
+                    names[i] = names[i].TrimEnd(' ', '.');
+
+        return names;
     }
 
     /// <summary>
@@ -160,13 +253,9 @@ public static class VolumeRoots
     /// </summary>
     private static (bool Root, string? Plain)? DevicePath(string path)
     {
-        var unified = path.Replace('/', '\\');
+        if (DevicePrefix(path) is not { } prefix) return null;
 
-        if (!unified.StartsWith(@"\\?\", StringComparison.Ordinal)
-            && !unified.StartsWith(@"\\.\", StringComparison.Ordinal))
-            return null;
-
-        var names = unified[4..].Split('\\');
+        var names = DeviceNames(path, prefix);
 
         if (names[0].Equals("UNC", StringComparison.OrdinalIgnoreCase))
             return (false, @"\\" + string.Join('\\', names[1..]));
@@ -254,7 +343,9 @@ public static class VolumeRoots
                 continue;
             }
 
-            var next = reached + "/" + name;
+            // Not "//name" after a link that led to "/": the table has "/proc",
+            // and "toroot/proc" read as "//proc" was a folder to it.
+            var next = (reached == "/" ? "" : reached) + "/" + name;
 
             // The last name is the entry itself unless something after it — a
             // separator, a "." — asks for what it leads to.
