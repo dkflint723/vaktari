@@ -192,9 +192,17 @@ internal static partial class AssocHandlers
     /// An IDataObject carrying one file, which is what a handler expects to be
     /// given. Built through the shell so a handler receives the same shape of
     /// object it would from Explorer.
+    ///
+    /// **Nothing for a name the shell's parser folds.** SHCreateItemFromParsingName
+    /// binds "…\report " to "…\report" and "…\x..." to "…\x" — measured, the
+    /// seventh round's hunt (H6) — so a handler chosen for the row would have
+    /// been handed the neighbour. The rule is the launcher's, asked here where
+    /// the path becomes a shell item, because this is the one place it does.
     /// </summary>
-    private static IntPtr DataObjectFor(string path)
+    internal static IntPtr DataObjectFor(string path)
     {
+        if (WindowsLauncher.HandOff(path) is not null) return IntPtr.Zero;
+
         var iid = ShellItem;
 
         if (Native.SHCreateItemFromParsingName(path, IntPtr.Zero, in iid, out var itemPtr) != 0

@@ -93,20 +93,7 @@ internal static partial class ShellPropertySheet
     /// </summary>
     internal static bool Show(string path)
     {
-        if (string.IsNullOrWhiteSpace(path)) return false;
-
-        // **Checked here so the caller can fall back.** Handed a path that is
-        // gone — a tab still open on a deleted folder, a file removed by
-        // something else — the shell puts up its own "Windows cannot find"
-        // dialog, which is a dead end: it names a path with no context and
-        // offers nothing but OK. Returning false instead sends the request to
-        // Vaktari's own properties window, which reports the same fact inside
-        // the application that asked the question.
-        //
-        // It also has to happen BEFORE the thread starts, because the answer is
-        // needed synchronously and the shell's own failure arrives long after
-        // this method has returned.
-        if (!File.Exists(path) && !Directory.Exists(path)) return false;
+        if (!Accepts(path)) return false;
 
         var shown = false;
 
@@ -124,6 +111,35 @@ internal static partial class ShellPropertySheet
         // NOT joined. Waiting here would block Vaktari's UI thread for as long
         // as the sheet stayed open, which is the whole time it is useful.
         return true;
+    }
+
+    /// <summary>
+    /// Whether the shell can be asked for this path's sheet at all. False sends
+    /// the request to Vaktari's own window, which is the caller's fallback.
+    /// </summary>
+    internal static bool Accepts(string path)
+    {
+        if (string.IsNullOrWhiteSpace(path)) return false;
+
+        // **Not for a name the shell would read as another.** The sheet is
+        // bound through the shell's parser, which takes "…\report " for
+        // "…\report" — so the read-only and hidden boxes on it, and its
+        // Security page, were the neighbour's to change (seventh round, H6).
+        // Vaktari's own window reads the row's own name, through "\\?\".
+        if (WindowsLauncher.HandOff(path) is not null) return false;
+
+        // **Checked here so the caller can fall back.** Handed a path that is
+        // gone — a tab still open on a deleted folder, a file removed by
+        // something else — the shell puts up its own "Windows cannot find"
+        // dialog, which is a dead end: it names a path with no context and
+        // offers nothing but OK. Returning false instead sends the request to
+        // Vaktari's own properties window, which reports the same fact inside
+        // the application that asked the question.
+        //
+        // It also has to happen BEFORE the thread starts, because the answer is
+        // needed synchronously and the shell's own failure arrives long after
+        // this method has returned.
+        return File.Exists(path) || Directory.Exists(path);
     }
 
     private static bool ShowOnThisThread(string path)

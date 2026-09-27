@@ -23,10 +23,52 @@ public sealed class WindowsLauncher : IApplicationLauncher
     /// </summary>
     public bool CanChooseApplication => true;
 
+    /// <summary>
+    /// Starts a process the way every launch here asks the shell to. The
+    /// system's own in the application; a test hands in one that records, so
+    /// that what the launcher would have started can be asked about without
+    /// anything being started. Every launch below goes through it.
+    /// </summary>
+    internal Func<ProcessStartInfo, Process?> Starter { get; init; } = Process.Start;
+
+    /// <summary>
+    /// Shows the system's "Open with" chooser for one file, and says whether
+    /// it was shown. The shell's own dialog in the application; replaceable
+    /// for the same reason <see cref="Starter"/> is — the dialog is modal and
+    /// nobody is at a test machine to close it.
+    /// </summary>
+    internal Func<string, bool> Chooser { get; init; } = ShowOnStaThread;
+
+    /// <summary>
+    /// Why this path cannot be handed to the shell, or null when it can.
+    ///
+    /// **Every launch here goes through this, and it is
+    /// <see cref="ReachablePath.RefuseHandedOut"/>'s rule.** The shell parses a
+    /// plain path the way Win32 does: ShellExecute of "…\t.cmd." ran the
+    /// neighbour "t.cmd", and "t.cmd " ran nothing and said nothing; the
+    /// shell's parser bound "…\report " to "…\report" for Open with, the
+    /// properties sheet and the context menu alike (seventh review round, the
+    /// hunt, H1 and H6). A terminal given "…\album " as its folder opened in
+    /// "album". Nothing is handed over that the shell would read as another
+    /// name, however it is spelled here.
+    /// </summary>
+    internal static IOException? HandOff(string path)
+        => ReachablePath.RefuseHandedOut(path) is { } why ? new IOException(why) : null;
+
     public bool ChooseApplication(string path)
     {
-        if (string.IsNullOrWhiteSpace(path) || !File.Exists(path)) return false;
+        if (string.IsNullOrWhiteSpace(path) || HandOff(path) is not null || !File.Exists(path)) return false;
 
+        return Chooser(path);
+    }
+
+    /// <summary>An absolute address that is not a file: what the settings
+    /// and about windows hand this for a link.</summary>
+    private static bool IsWebAddress(string path)
+        => Uri.TryCreate(path, UriKind.Absolute, out var address) && !address.IsFile;
+
+    private static bool ShowOnStaThread(string path)
+    {
         var shown = false;
 
         // The shell wants an STA, exactly as IAssocHandler.Invoke and the
@@ -153,6 +195,12 @@ public sealed class WindowsLauncher : IApplicationLauncher
     /// </summary>
     public Exception? Open(string path)
     {
+        // Answered, not swallowed: the pane puts it on the status line, which
+        // is the only place a double-click that ran nothing can be explained.
+        // A web address is not a path, and is handed over as it is: the
+        // window opens its links through here too.
+        if (!IsWebAddress(path) && HandOff(path) is { } refused) return refused;
+
         try
         {
             // UseShellExecute is what makes this ShellExecute rather than
@@ -164,7 +212,7 @@ public sealed class WindowsLauncher : IApplicationLauncher
             // Vaktari's working directory, so a portable .exe or a .bat that
             // reads a file sitting beside it fails — and the failure looks like
             // the program being broken rather than how it was started.
-            Process.Start(new ProcessStartInfo(path)
+            Starter(new ProcessStartInfo(path)
             {
                 UseShellExecute = true,
                 WorkingDirectory = WorkingDirectoryFor(path),
@@ -255,9 +303,11 @@ public sealed class WindowsLauncher : IApplicationLauncher
     /// </summary>
     public void OpenElevated(string path)
     {
+        if (HandOff(path) is not null) return;
+
         try
         {
-            using var started = Process.Start(new ProcessStartInfo(path)
+            using var started = Starter(new ProcessStartInfo(path)
             {
                 UseShellExecute = true,
                 Verb = "runas",
@@ -291,8 +341,12 @@ public sealed class WindowsLauncher : IApplicationLauncher
         Elevate(chosen.Command, ArgumentsFor(chosen, directory), directory);
     }
 
-    private static void Elevate(string program, IReadOnlyList<string> arguments, string directory)
+    private void Elevate(string program, IReadOnlyList<string> arguments, string directory)
     {
+        // A folder whose name Win32 folds would start the terminal in its
+        // neighbour, where whatever is typed next runs — elevated here.
+        if (HandOff(directory) is not null) return;
+
         try
         {
             var info = new ProcessStartInfo(program)
@@ -304,7 +358,7 @@ public sealed class WindowsLauncher : IApplicationLauncher
 
             foreach (var argument in arguments) info.ArgumentList.Add(argument);
 
-            using var started = Process.Start(info);
+            using var started = Starter(info);
         }
         catch (Exception ex)
         {
@@ -459,8 +513,13 @@ public sealed class WindowsLauncher : IApplicationLauncher
         }
     }
 
-    private static bool Start(string program, IReadOnlyList<string> arguments, string directory)
+    private bool Start(string program, IReadOnlyList<string> arguments, string directory)
     {
+        // **Every terminal ends here**, the detected ones and the chain alike,
+        // so the folder is asked once: one that Win32 folds would open the
+        // terminal in its neighbour (the hunt, found beside H6).
+        if (HandOff(directory) is not null) return false;
+
         try
         {
             var info = new ProcessStartInfo(program)
@@ -471,7 +530,7 @@ public sealed class WindowsLauncher : IApplicationLauncher
 
             foreach (var argument in arguments) info.ArgumentList.Add(argument);
 
-            if (Process.Start(info) is not { } started) return false;
+            if (Starter(info) is not { } started) return false;
 
             started.Dispose();
             return true;
@@ -509,6 +568,10 @@ public sealed class WindowsLauncher : IApplicationLauncher
     /// </summary>
     public void OpenWith(string path, LaunchOption option)
     {
+        // Both halves hand the file over by name: the handler through the
+        // shell's parser, and the picker below through rundll32's.
+        if (HandOff(path) is not null) return;
+
         if (!string.IsNullOrEmpty(option.Id) && AssocHandlers.Invoke(path, option.Id)) return;
 
         try
@@ -517,7 +580,7 @@ public sealed class WindowsLauncher : IApplicationLauncher
             info.ArgumentList.Add("shell32.dll,OpenAs_RunDLL");
             info.ArgumentList.Add(path);
 
-            Process.Start(info)?.Dispose();
+            Starter(info)?.Dispose();
         }
         catch (Exception ex)
         {

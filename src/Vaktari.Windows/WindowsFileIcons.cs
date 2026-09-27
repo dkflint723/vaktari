@@ -80,6 +80,14 @@ public sealed class WindowsFileIcons : IFileIconProvider
 
     public IconPixels? IconFor(string path, bool isDirectory, int size)
     {
+        // **No icon read through a name the shell folds.** A folder, an
+        // extensionless file and the per-file types are asked of the shell by
+        // PATH, and its parser takes "…\report " for "…\report" (seventh
+        // round's hunt, H6): the row drew its neighbour's icon — a folder's,
+        // for a file beside a folder of that name. The glyph it already has
+        // is shown instead.
+        if (WindowsLauncher.HandOff(path) is not null) return null;
+
         // Rounded to the sizes the shell actually composes at, so a pane at 41
         // pixels and one at 43 share a cache entry instead of each building
         // their own copy of every icon in the folder.

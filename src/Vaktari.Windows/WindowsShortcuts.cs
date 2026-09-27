@@ -47,6 +47,15 @@ public sealed partial class WindowsShortcuts : IShortcutMaker
 
     public string CreateShortcut(string target, string destinationFolder)
     {
+        // **A shortcut hands its target to the shell every time it is
+        // opened**, and resolving "…\report " below folds it: the link was
+        // made to "report" and named after it (the hunt). And it is WRITTEN
+        // into the destination, so a folder there that folds is refused as
+        // any other landing is. Both before anything is made.
+        if (WindowsLauncher.HandOff(target) is { } refused) throw refused;
+
+        if (ReachablePath.Refuse(destinationFolder) is { } unreachable) throw new IOException(unreachable);
+
         var full = Path.GetFullPath(target);
 
         var stem = Path.Combine(
