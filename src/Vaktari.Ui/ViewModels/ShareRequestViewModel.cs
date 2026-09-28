@@ -38,14 +38,49 @@ public sealed partial class ShareRequestViewModel : ObservableObject
     /// </summary>
     public ObservableCollection<string> Folders { get; } = new();
 
-    public bool CanGoUp => PathRules.Parent(Path.Trim()) is not null;
+    public bool CanGoUp => PathRules.Parent(Folder) is not null;
+
+    /// <summary>
+    /// The folder the box names: the text exactly as it stands when that
+    /// folder exists, and otherwise the text with what was typed around it
+    /// taken off.
+    ///
+    /// **Every question here trimmed the path first**, so a folder called
+    /// "album " — legal on Linux, and on Windows through WSL or a share — was
+    /// shared as "album", its neighbour, and browsed as it too (the fix-8
+    /// verification). A trailing space that belongs to a name is part of the
+    /// name; one a person typed after a path that exists without it is not.
+    /// </summary>
+    private string Folder => Exists(Path) ? Path : Path.Trim();
+
+    /// <summary>Whether this exact folder is there: asked through the spelling
+    /// that reaches it, so on Windows "album " is not answered for by "album".</summary>
+    private static bool Exists(string path)
+        => ReachablePath.Exact(path) is { Length: > 0 } exact && Directory.Exists(exact);
+
+    /// <summary>
+    /// Why this folder cannot be served, or null. On Windows a name Win32 folds
+    /// would be served as its neighbour — the server is another program, handed
+    /// the folder by name — so it is the hand-off rule, in its own words. On
+    /// Linux it is null: the name is ordinary and the folder is served exactly.
+    /// </summary>
+    private string? Refused => ReachablePath.RefuseHandedOut(Folder);
 
     private void Refresh()
     {
         Folders.Clear();
 
-        var current = Path.Trim();
-        if (!Directory.Exists(current)) return;
+        var current = Folder;
+
+        // Said, and not browsed: listing it would list the neighbour's folders.
+        if (Refused is { } why)
+        {
+            Status = why;
+            OnPropertyChanged(nameof(CanGoUp));
+            return;
+        }
+
+        if (!Exists(current)) return;
 
         try
         {
@@ -70,7 +105,7 @@ public sealed partial class ShareRequestViewModel : ObservableObject
     {
         if (string.IsNullOrEmpty(name)) return;
 
-        Path = System.IO.Path.Combine(Path.Trim(), name);
+        Path = System.IO.Path.Combine(Folder, name);
     }
 
     [RelayCommand]
@@ -80,7 +115,7 @@ public sealed partial class ShareRequestViewModel : ObservableObject
         // DirectoryInfo whose FullName touches the current working directory for
         // a relative path, and this dialog only ever asks a question about the
         // shape of the string it holds.
-        if (PathRules.Parent(Path.Trim()) is { } parent) Path = parent;
+        if (PathRules.Parent(Folder) is { } parent) Path = parent;
     }
 
     [ObservableProperty] private string _path = "";
@@ -108,7 +143,8 @@ public sealed partial class ShareRequestViewModel : ObservableObject
     /// </summary>
     public bool CanShare => !Busy
                             && !string.IsNullOrWhiteSpace(Path)
-                            && Directory.Exists(Path.Trim());
+                            && Refused is null
+                            && Exists(Folder);
 
     public event EventHandler? Finished;
 
@@ -122,7 +158,7 @@ public sealed partial class ShareRequestViewModel : ObservableObject
 
         try
         {
-            await _share(Path.Trim(), new ShareOptions(Writable, Announce)).ConfigureAwait(true);
+            await _share(Folder, new ShareOptions(Writable, Announce)).ConfigureAwait(true);
             Finished?.Invoke(this, EventArgs.Empty);
         }
         catch (Exception ex)

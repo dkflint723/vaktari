@@ -297,16 +297,21 @@ should not be trusted for compatibility yet.
   checksum, a row's size and item count, and the watcher's refresh all read
   the neighbour — a hidden `report` hid the row `report `. Anything handed to
   another program — opening, *Open with*, *Run*, a terminal, a script, a
-  shortcut, a share, a drop out of an archiver's temporary folder — is now
-  refused, naming the file and the one it would have reached; *Open with* and
+  shortcut, a share from the menu or the *Share a folder* dialog, a drop out
+  of an archiver's temporary folder — is now refused, naming the file and
+  the one it would have reached; *Open with* and
   the *Windows menu* offer nothing for it, and *Properties* opens Vaktari's own
   window. Such a folder is not opened in place, in the folder tree or from a
   crumb. Reading goes through `\\?\` instead, so the preview, the zip and
   every size, date and attribute are the file's own.
-  From the bin, an item recorded as `report ` comes back as `report `, a
-  folder holding such a name can be deleted for good, and *Delete for good*
-  says so when it could not delete. On Linux these are ordinary names, and
-  nothing changes.
+  From the bin, a file or folder recorded as `report ` comes back as
+  `report `, where it came back as `report` or `report (1)`; a folder
+  holding such a name can be deleted for good; and an item whose own bin
+  names end in a space or a dot is listed. On Linux these
+  are ordinary names and nothing is refused; the *Share a folder* dialog,
+  which trimmed every path on both systems, now shares a folder named
+  `album ` as itself rather than `album` beside it. On both, *Delete for
+  good* says so when it could not delete.
 
 - **A closed window no longer stays in memory.** Every window you closed
   was kept whole for as long as Vaktari ran — its listings, its rows and
