@@ -1608,6 +1608,12 @@ public sealed partial class PaneViewModel : ObservableObject, IDisposable
                 // One failure must not abandon the rest of the selection, the
                 // same rule restoring follows.
                 failed++;
+
+                // **Into the log the status line points at.** The reason went
+                // to stderr alone, which a windowed Windows process does not
+                // have, so "see the log" sent people to a log that never
+                // heard of it (changelog check for 0.11.1).
+                Vaktari.Core.Diagnostics.Log.Warn("bin", $"could not delete {item.OriginalPath} for good: {ex.Message}");
                 Console.Error.WriteLine($"[vaktari] purge failed: {ex.Message}");
             }
         }

@@ -142,6 +142,7 @@ internal static class ArchiveExtraction
         private int _files, _folders, _items, _expected;
         private int _unsafe, _links, _special, _mac, _unwritable;
         private long _sinceFloorCheck;
+        private long? _floor;
         private long _compressedSeen;
         private long _declaredReported;
 
@@ -413,9 +414,13 @@ internal static class ArchiveExtraction
                 && options.Room.FreeBytes(root) is { } free
                 // Subtracted, never added: a PAX size of long.MaxValue plus
                 // the floor wrapped negative and passed (second verification).
-                && size > free - ArchiveRoom.StreamFloor)
+                && size > free - Floor)
                 throw new ArchiveRefusedException(ArchiveSentences.Floor(pass.Leaf, Place));
         }
+
+        /// <summary>What this run leaves free, asked once: the drive's size
+        /// does not change while it runs (<see cref="ArchiveRoom.FloorFor"/>).</summary>
+        private long Floor => _floor ??= options.Room.FloorFor(root);
 
         /// <summary>
         /// A time a file can carry. **Windows cannot date anything before
@@ -482,11 +487,11 @@ internal static class ArchiveExtraction
                     ReportCompressedProgress();
                 }
 
-                if (pass.DeclaredTotal is null && (_sinceFloorCheck += read) >= ArchiveRoom.FloorInterval)
+                if (pass.DeclaredTotal is null && (_sinceFloorCheck += read) >= ArchiveRoom.IntervalFor(Floor))
                 {
                     _sinceFloorCheck = 0;
 
-                    if (options.Room.BelowFloor(root))
+                    if (options.Room.BelowFloor(root, Floor))
                         throw new ArchiveRefusedException(ArchiveSentences.Floor(pass.Leaf, Place));
                 }
             }

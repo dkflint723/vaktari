@@ -42,13 +42,43 @@ public sealed class ArchiveRoomTests
         Assert.NotNull(Free(39 * MB).RefuseUpFront("x", 0, 10_000, "a.zip"));
     }
 
+    /// <summary>
+    /// **1% of the drive, between 16 MiB and 256 MiB.** A fixed 256 MiB
+    /// refused a 10 KB tar onto a stick with 200 MB free; a drive whose size
+    /// cannot be read, and any drive of 25.6 GB and up, keeps the old 256.
+    /// </summary>
+    [Theory]
+    [InlineData(null, 256 * MB)]
+    [InlineData(0L, 256 * MB)]
+    [InlineData(1L << 40, 256 * MB)]
+    [InlineData(25_600 * MB, 256 * MB)]
+    [InlineData(8_192 * MB, 8_192 * MB / 100)]
+    [InlineData(2_000 * MB, 20 * MB)]
+    [InlineData(1_000 * MB, 16 * MB)]
+    [InlineData(64 * MB, 16 * MB)]
+    public void The_floor_scales_with_the_drive(long? total, long floor)
+        => Assert.Equal(floor, new ArchiveRoom(_ => null, _ => null, _ => total).FloorFor("x"));
+
     [Fact]
-    public void The_floor_is_256_MiB()
+    public void Below_the_floor_is_below_the_floor_given()
     {
-        Assert.True(Free(255 * MB).BelowFloor("x"));
-        Assert.False(Free(257 * MB).BelowFloor("x"));
-        Assert.False(Free(null).BelowFloor("x"));
+        Assert.True(Free(255 * MB).BelowFloor("x", 256 * MB));
+        Assert.False(Free(257 * MB).BelowFloor("x", 256 * MB));
+        Assert.False(Free(null).BelowFloor("x", 256 * MB));
     }
+
+    /// <summary>A run that was above the floor at one look cannot reach a
+    /// full disk before the next: the interval is a quarter of the floor.</summary>
+    [Theory]
+    [InlineData(256 * MB, 64 * MB)]
+    [InlineData(82 * MB, 82 * MB / 4)]
+    [InlineData(16 * MB, 4 * MB)]
+    public void The_floor_is_looked_at_four_times_before_it_could_be_used_up(long floor, long interval)
+        => Assert.Equal(interval, ArchiveRoom.IntervalFor(floor));
+
+    [Fact]
+    public void The_real_room_knows_the_temp_folders_drive_size()
+        => Assert.True(ArchiveRoom.Real.TotalBytes!(Path.GetTempPath()) > 0);
 
     [Theory]
     [InlineData("FAT32", true)]

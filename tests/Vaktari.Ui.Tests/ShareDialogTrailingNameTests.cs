@@ -182,6 +182,79 @@ public sealed class ShareDialogTrailingNameTests : IDisposable
         Assert.Equal([typed], shared);
     }
 
+    /// <summary>The folder <paramref name="name"/> in the temp root, typed
+    /// with a "." or ".." in the way.</summary>
+    private string WithDots(string spelling, string name)
+    {
+        var leaf = Path.GetFileName(_root);
+
+        return spelling switch
+        {
+            "dot" => _root + @"\.\" + name,
+            "dotdot" => _root + @"\..\" + leaf + @"\" + name,
+            "slashes-dot" => (_root + "/./" + name).Replace('\\', '/'),
+            "device-dot" => @"\\.\" + _root + @"\.\" + name,
+            _ => _root + @"\album\..\" + name,
+        };
+    }
+
+    /// <summary>
+    /// **A "." or ".." in the path shared the neighbour.** "\\?\" takes them
+    /// as names, so ReachablePath.Exact had no spelling for the folder, the
+    /// dialog decided it was not there, trimmed the text, and the server —
+    /// which folds the path the way Win32 does — was handed "album"
+    /// (changelog check for 0.11.1). The dots are walked away before the
+    /// question, the trailing space is kept, and the folder is refused.
+    /// </summary>
+    [AvaloniaTheory(Skip = OnlyOn.Windows, SkipUnless = nameof(OnlyOn.IsWindows), SkipType = typeof(OnlyOn))]
+    [InlineData("dot")]
+    [InlineData("dotdot")]
+    [InlineData("slashes-dot")]
+    [InlineData("device-dot")]
+    [InlineData("back-in")]
+    public async Task On_windows_a_folded_folder_is_refused_with_dots_in_the_path(string spelling)
+    {
+        AlbumBeside();
+
+        var (model, shared) = Dialog(WithDots(spelling, "album "));
+
+        Assert.False(model.CanShare);
+        Assert.Empty(model.Folders);
+        Assert.Contains("\"album \" cannot be handed to another program", model.Status, StringComparison.Ordinal);
+
+        await model.ShareCommand.ExecuteAsync(null);
+
+        Assert.Empty(shared);
+    }
+
+    /// <summary>The same spellings of the ordinary folder beside it are
+    /// browsed and shared exactly as typed, with spaces typed after them
+    /// still taken off.</summary>
+    [AvaloniaTheory(Skip = OnlyOn.Windows, SkipUnless = nameof(OnlyOn.IsWindows), SkipType = typeof(OnlyOn))]
+    [InlineData("dot", "")]
+    [InlineData("dotdot", "")]
+    [InlineData("slashes-dot", "")]
+    [InlineData("device-dot", "")]
+    [InlineData("back-in", "")]
+    [InlineData("dot", "  ")]
+    [InlineData("device-dot", "  ")]
+    [InlineData("back-in", "  ")]
+    public async Task On_windows_an_ordinary_folder_with_dots_in_the_path_is_shared_as_typed(string spelling, string after)
+    {
+        AlbumBeside();
+
+        var typed = WithDots(spelling, "album");
+
+        var (model, shared) = Dialog(typed + after);
+
+        Assert.Equal(["neighbours-folder"], model.Folders);
+        Assert.True(model.CanShare);
+
+        await model.ShareCommand.ExecuteAsync(null);
+
+        Assert.Equal([typed], shared);
+    }
+
     [AvaloniaFact(Skip = OnlyOn.Linux, SkipUnless = nameof(OnlyOn.IsLinux), SkipType = typeof(OnlyOn))]
     public async Task On_linux_a_folder_named_album_space_is_served_as_itself()
     {
@@ -194,6 +267,26 @@ public sealed class ShareDialogTrailingNameTests : IDisposable
         await model.ShareCommand.ExecuteAsync(null);
 
         Assert.Equal([album], shared);
+    }
+
+    /// <summary>On Linux a "." or ".." is the kernel's to walk and nothing
+    /// folds: "album " with dots in its path is served as typed.</summary>
+    [AvaloniaTheory(Skip = OnlyOn.Linux, SkipUnless = nameof(OnlyOn.IsLinux), SkipType = typeof(OnlyOn))]
+    [InlineData("/./")]
+    [InlineData("/album/../")]
+    public async Task On_linux_album_space_with_dots_in_the_path_is_served_as_typed(string between)
+    {
+        AlbumBeside();
+        var typed = _root + between + "album ";
+
+        var (model, shared) = Dialog(typed);
+
+        Assert.Equal(["own-folder"], model.Folders);
+        Assert.True(model.CanShare);
+
+        await model.ShareCommand.ExecuteAsync(null);
+
+        Assert.Equal([typed], shared);
     }
 
     [AvaloniaFact(Skip = OnlyOn.Linux, SkipUnless = nameof(OnlyOn.IsLinux), SkipType = typeof(OnlyOn))]

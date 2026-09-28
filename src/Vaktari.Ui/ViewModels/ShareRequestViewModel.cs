@@ -67,6 +67,13 @@ public sealed partial class ShareRequestViewModel : ObservableObject
     /// is found, kept as typed, and refused by the hand-off rule, which reads
     /// every spelling. What is shared is never this text: an ordinary folder
     /// goes on as it was typed.
+    ///
+    /// **"." and ".." are walked away first, as Win32 walks them.** "\\?\"
+    /// takes them as names, so ReachablePath.Exact had no spelling for
+    /// "D:\x\.\album " or "D:\x\album\..\album ", the question answered no,
+    /// the text was trimmed, and the server — whose GetFullPath folds the
+    /// same way — was handed "album", the neighbour (changelog check for
+    /// 0.11.1).
     /// </summary>
     private static string AsWritten(string path)
     {
@@ -78,9 +85,42 @@ public sealed partial class ShareRequestViewModel : ObservableObject
 
         var unified = path.Replace('/', '\\');
 
-        return unified.StartsWith(@"\\.\", StringComparison.Ordinal) || unified.StartsWith(@"\\?\", StringComparison.Ordinal)
+        return WithoutDots(unified.StartsWith(@"\\.\", StringComparison.Ordinal) || unified.StartsWith(@"\\?\", StringComparison.Ordinal)
             ? @"\\?\" + unified[4..]
-            : unified;
+            : unified);
+    }
+
+    /// <summary>
+    /// A full path with its "." and ".." names walked away and its doubled
+    /// separators closed up, as Win32 does before it opens anything — and
+    /// nothing else: **the trailing space or dot of every name left stays**,
+    /// the one step of Win32's walk this must not take. ".." never climbs
+    /// past the root. A path that is not full comes back as it is.
+    /// </summary>
+    private static string WithoutDots(string path)
+    {
+        var root = System.IO.Path.GetPathRoot(path);
+
+        if (string.IsNullOrEmpty(root) || !System.IO.Path.IsPathFullyQualified(path)) return path;
+
+        var names = new List<string>();
+
+        foreach (var name in path[root.Length..].Split('\\'))
+        {
+            if (name is "" or ".") continue;
+
+            if (name == "..")
+            {
+                if (names.Count > 0) names.RemoveAt(names.Count - 1);
+                continue;
+            }
+
+            names.Add(name);
+        }
+
+        var joined = string.Join('\\', names);
+
+        return root.EndsWith('\\') || joined.Length == 0 ? root + joined : root + '\\' + joined;
     }
 
     /// <summary>Whether this exact folder is there: asked through the spelling

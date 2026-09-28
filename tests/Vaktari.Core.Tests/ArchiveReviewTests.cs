@@ -265,6 +265,58 @@ public sealed class ArchiveReviewTests : IDisposable
         Assert.Empty(Directory.EnumerateFileSystemEntries(At("out")));
     }
 
+    /// <summary>
+    /// **A small tar onto a nearly full stick extracts.** 10 KB onto an 8 GiB
+    /// drive with 200 MiB free: the fixed 256 MiB floor refused it as
+    /// "stopped before … filled", where the same files in a zip landed. The
+    /// floor is now 1% of the drive, 82 MiB here.
+    /// </summary>
+    [Theory]
+    [InlineData(ArchiveFormat.Tar)]
+    [InlineData(ArchiveFormat.TarGz)]
+    public void A_small_tar_onto_a_nearly_full_small_drive_extracts(ArchiveFormat format)
+    {
+        var name = format == ArchiveFormat.Tar ? "small.tar" : "small.tar.gz";
+        var archive = ArchiveTestData.Tar(At(name), t => t.WriteEntry(new PaxTarEntry(TarEntryType.RegularFile, "notes.bin")
+        {
+            DataStream = new MemoryStream(new byte[10 * 1024]),
+        }), format == ArchiveFormat.Tar ? null : ArchiveTestData.Compressor(format));
+
+        var room = new ArchiveRoom(_ => 200 * MiB, _ => null, _ => 8L << 30);
+
+        var done = Extract(archive, Dir("out"), room);
+
+        Assert.Equal(1, done.Files);
+        Assert.Equal(10 * 1024, new FileInfo(Path.Combine(done.Landed, "notes.bin")).Length);
+    }
+
+    /// <summary>
+    /// **A runaway stream still stops before a small drive fills.** 40 MiB of
+    /// zeros in a bare .gz, which says nothing of its size, onto a 1 GiB
+    /// drive with 24 MiB free: the floor is 16 MiB and it is looked at every
+    /// 4 MiB, so the run stops with the sentence and never sees the disk full.
+    /// At the old 64 MiB interval, all 40 MiB were written without a look.
+    /// </summary>
+    [Fact]
+    public void A_stream_that_would_fill_a_small_drive_is_still_stopped()
+    {
+        var archive = ArchiveTestData.Bare(At("zeros.gz"), ArchiveFormat.Gz, new byte[40 * MiB]);
+
+        var least = long.MaxValue;
+        var room = new ArchiveRoom(_ =>
+        {
+            var free = 24 * MiB - Written(At("out"));
+            least = Math.Min(least, free);
+            return free;
+        }, _ => null, _ => 1L << 30);
+
+        var stopped = Assert.Throws<ArchiveRefusedException>(() => Extract(archive, Dir("out"), room));
+
+        Assert.StartsWith("stopped before zeros.gz filled ", stopped.Message);
+        Assert.True(least > 0, $"the disk was allowed to fill: {least} bytes free at the last look");
+        Assert.Empty(Directory.EnumerateFileSystemEntries(At("out")));
+    }
+
     private static long Written(string folder)
         => Directory.Exists(folder)
             ? Directory.EnumerateFiles(folder, "*", SearchOption.AllDirectories).Sum(f => new FileInfo(f).Length)
