@@ -136,6 +136,28 @@ public sealed class ShareDialogTrailingNameTests : IDisposable
         Assert.Empty(shared);
     }
 
+    /// <summary>Three more spellings Win32 reads the same way: "//?/" and
+    /// "\\?/", which are not the literal prefix, and a trailing "/" (fix-9
+    /// verification, round 2).</summary>
+    [AvaloniaTheory(Skip = OnlyOn.Windows, SkipUnless = nameof(OnlyOn.IsWindows), SkipType = typeof(OnlyOn))]
+    [InlineData("//?/", "")]
+    [InlineData(@"\\?/", "")]
+    [InlineData("", "/")]
+    public async Task On_windows_a_folded_folder_is_refused_behind_a_slashed_prefix_or_before_a_trailing_slash(string prefix, string after)
+    {
+        var typed = prefix + AlbumBeside().Replace('\\', '/') + after;
+
+        var (model, shared) = Dialog(typed);
+
+        Assert.False(model.CanShare);
+        Assert.Empty(model.Folders);
+        Assert.Contains("\"album \" cannot be handed to another program", model.Status, StringComparison.Ordinal);
+
+        await model.ShareCommand.ExecuteAsync(null);
+
+        Assert.Empty(shared);
+    }
+
     /// <summary>The same spellings of an ordinary folder are shared exactly as
     /// typed, and spaces typed after one are still taken off — "album  " with
     /// two, when no such folder exists, is "album".</summary>

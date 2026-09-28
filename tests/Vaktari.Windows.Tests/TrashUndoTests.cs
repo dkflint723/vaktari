@@ -240,7 +240,7 @@ public sealed class TrashUndoTests
     /// A bin that hands out plain keys and lists a pair whose own names fold
     /// through "\\?\" — what RecycleBin.Read does — and refuses to restore it.
     /// </summary>
-    private sealed class SpelledBin(string key, string original) : ITrashMaintenance
+    private sealed class SpelledBin(string key, string original, string? listedAs = null) : ITrashMaintenance
     {
         private bool _arrived;
 
@@ -251,7 +251,7 @@ public sealed class TrashUndoTests
         public string? OriginalPathOf(string asked) => _arrived && asked == key ? original : null;
 
         public IReadOnlyList<TrashedItem> List()
-            => _arrived ? [new TrashedItem(@"\\?\" + key, original, "payload", DateTimeOffset.UnixEpoch, 0, false)] : [];
+            => _arrived ? [new TrashedItem(listedAs ?? @"\\?\" + key, original, "payload", DateTimeOffset.UnixEpoch, 0, false)] : [];
 
         public string Restore(string trashName) => throw new IOException("the disk is full");
 
@@ -293,6 +293,35 @@ public sealed class TrashUndoTests
         Assert.Equal(
             "notes.txt could not go back: the disk is full",
             Assert.IsAssignableFrom<IOException>(said).Message);
+    }
+
+    /// <summary>
+    /// The same through a share: "\\server\share\…" listed as
+    /// "\\?\UNC\server\share\…" is one item, and a key that differs in more
+    /// than its prefix is not taken for it (fix-9 verification, round 2).
+    /// </summary>
+    [WindowsTheory]
+    [InlineData(@"\\?\UNC\server\share\$Recycle.Bin\S-1-5-21\$IABC123.txt ", "notes.txt could not go back: the disk is full")]
+    [InlineData(@"\\?\UNC\server\share\$Recycle.Bin\S-1-5-21\$IABC124.txt ", "one item could not go back: the disk is full")]
+    [InlineData(@"\\?\server\share\$Recycle.Bin\S-1-5-21\$IABC123.txt ", "one item could not go back: the disk is full")]
+    public async Task An_item_the_bin_lists_through_the_extended_share_prefix_is_named_only_when_it_is_the_same(string listedAs, string expected)
+    {
+        using var tree = new TempTree();
+        var file = tree.Write("notes.txt", "keep");
+
+        var bin = new SpelledBin(@"\\server\share\$Recycle.Bin\S-1-5-21\$IABC123.txt ", file, listedAs);
+
+        var ops = new WindowsFileOperations
+        {
+            Bin = bin,
+            RecycleOverride = _ => { bin.Arrive(); return new RecycleResult(0, false); },
+        };
+
+        await ops.Trash([file]).Completion;
+
+        Assert.True(ops.CanUndo, "a recycle left nothing to undo");
+
+        Assert.Equal(expected, Assert.IsAssignableFrom<IOException>(await Undo(ops)).Message);
     }
 
     /// <summary>
