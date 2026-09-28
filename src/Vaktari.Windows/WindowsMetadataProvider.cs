@@ -28,6 +28,15 @@ public sealed class WindowsMetadataProvider : IFileMetadataProvider
     /// </summary>
     public async ValueTask<string?> DescribeAsync(string path, bool isDirectory, CancellationToken ct)
     {
+        // **The row's own entry, not its neighbour's.** "album " counted
+        // "album"'s items, and "report " took "report"'s attributes, because
+        // the plain spelling is opened without its trailing space or dot
+        // (seventh round's hunt). Read through the spelling that reaches it,
+        // or not at all.
+        if (ReachablePath.Exact(path) is not { } exact) return null;
+
+        path = exact;
+
         try
         {
             if (isDirectory)
@@ -70,6 +79,11 @@ public sealed class WindowsMetadataProvider : IFileMetadataProvider
     /// </summary>
     public ValueTask<string?> DescribeAccessAsync(string path, bool isDirectory, CancellationToken ct)
     {
+        // The same rule as the fact beside it.
+        if (ReachablePath.Exact(path) is not { } exact) return ValueTask.FromResult<string?>(null);
+
+        path = exact;
+
         try
         {
             var attributes = File.GetAttributes(path);

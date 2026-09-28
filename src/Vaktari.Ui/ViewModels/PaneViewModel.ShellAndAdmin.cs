@@ -25,6 +25,28 @@ namespace Vaktari.Ui.ViewModels;
 /// </summary>
 public sealed partial class PaneViewModel
 {
+    /// <summary>
+    /// Says why these cannot be handed to the shell or to another program, and
+    /// answers true; answers false, and says nothing, when every one can.
+    ///
+    /// **The one question every hand-off in this pane asks first**, and it is
+    /// <see cref="ReachablePath.RefuseHandedOut"/>'s. The shell reads a plain
+    /// path the way Win32 does, so "…\t.cmd." opened on a double-click RAN the
+    /// neighbour "t.cmd", "t.cmd " ran nothing and said nothing, and Open with,
+    /// the Windows menu, a terminal and a script were each handed the
+    /// neighbour (seventh review round, the hunt, H1, H2 and H6). The sentence
+    /// names the row and the file it would have reached. Never refuses on
+    /// Linux, where nothing folds.
+    /// </summary>
+    private bool RefusedHandOff(IEnumerable<string> paths)
+    {
+        if (paths.Select(ReachablePath.RefuseHandedOut).OfType<string>().FirstOrDefault() is not { } why)
+            return false;
+
+        Status = why;
+        return true;
+    }
+
     /// <summary>Whether to offer the entry at all — on the ITEM menu, where it
     /// asks the shell about the selected rows, which are real paths in a search
     /// and in This PC as well as in a folder.</summary>
@@ -192,6 +214,18 @@ public sealed partial class PaneViewModel
             CloseShellMenu();
             ShowShellRows([new Vaktari.Core.FileSystem.ShellMenuEntry(
                 "Nothing offered here", -1, IsEnabled: false)]);
+            return;
+        }
+
+        // **Not built for a name the shell would read as another.** The
+        // shell's parser takes "…\report " for "…\report", so the hosted
+        // menu's own Delete, Rename and Properties acted on the neighbour
+        // (the hunt, H6). The menu says why, in the row it would have filled,
+        // rather than offering nothing and leaving it to be guessed.
+        if (paths.Select(ReachablePath.RefuseHandedOut).OfType<string>().FirstOrDefault() is { } refused)
+        {
+            CloseShellMenu();
+            ShowShellRows([new Vaktari.Core.FileSystem.ShellMenuEntry(refused, -1, IsEnabled: false)]);
             return;
         }
 
@@ -449,6 +483,10 @@ public sealed partial class PaneViewModel
 
         if (runnable.Count == 0 || TooMany(runnable.Count)) return;
 
+        // All or none, as a drag is: starting four of five is the loss the
+        // loop below exists to prevent.
+        if (RefusedHandOff(runnable.Select(e => e.FullPath))) return;
+
         foreach (var entry in runnable) Start(entry, run: true);
     }
 
@@ -475,6 +513,8 @@ public sealed partial class PaneViewModel
             .ToList();
 
         if (runnable.Count == 0 || TooMany(runnable.Count)) return;
+
+        if (RefusedHandOff(runnable.Select(e => e.FullPath))) return;
 
         foreach (var entry in runnable) launcher.OpenElevated(entry.FullPath);
     }
@@ -571,7 +611,7 @@ public sealed partial class PaneViewModel
     [RelayCommand]
     public void OpenAdminTerminalHere()
     {
-        if (!ShowAdminEntries) return;
+        if (!ShowAdminEntries || RefusedHandOff([CurrentPath])) return;
 
         _launcher?.OpenElevatedTerminal(CurrentPath, Terminals.FirstOrDefault());
     }

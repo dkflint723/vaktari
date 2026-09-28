@@ -273,10 +273,20 @@ internal static class RecycleBin
         return originalPath.Length > 0 && Path.IsPathFullyQualified(originalPath);
     }
 
+    /// <summary>
+    /// The recorded path up to its terminating NUL, and nothing else taken off.
+    ///
+    /// **Whitespace was trimmed from both ends as well**, so an item binned as
+    /// "…\report " — by WSL, a Linux share, anything that reaches such a name —
+    /// came back as "report", or as "report (1)" beside it: the right bytes
+    /// under a name nobody gave them (seventh round's hunt). A path Windows
+    /// recorded is used exactly as recorded; the NUL padding of the v1 field is
+    /// the only thing that is not part of it.
+    /// </summary>
     private static string Trim(string value)
     {
         var nul = value.IndexOf('\0');
-        return (nul < 0 ? value : value[..nul]).Trim();
+        return nul < 0 ? value : value[..nul];
     }
 
     /// <summary>

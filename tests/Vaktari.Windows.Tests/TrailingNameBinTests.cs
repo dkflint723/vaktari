@@ -1,0 +1,150 @@
+using System.Runtime.Versioning;
+using System.Text;
+using Vaktari.Core.FileSystem;
+using Vaktari.Core.Tests;
+using Xunit;
+
+namespace Vaktari.Windows.Tests;
+
+/// <summary>
+/// **The bin and a name that ends in a space or a dot.** From the seventh
+/// review round's hunt: an item binned as "report " — by WSL, by a Linux share,
+/// by anything that reaches such a name — came back as "report" or "report (1)",
+/// because the recorded path had its whitespace trimmed and the move folded
+/// the target; a binned folder holding "x..." could never be purged, because
+/// the tree delete refuses a tree it would read by the wrong names; and
+/// "Delete for good" of one item ignored the purge failing and said it had
+/// deleted it.
+///
+/// None of this touches the real Recycle Bin. A bin entry is a "$I" metadata
+/// file and a "$R" payload beside it, and both are made here in a temporary
+/// folder: WindowsTrashMaintenance.Delete and Restore take the metadata path
+/// as the item's key, and read from wherever it is.
+/// </summary>
+[SupportedOSPlatform("windows")]
+public sealed class TrailingNameBinTests : IDisposable
+{
+    private readonly string _root = Directory.CreateTempSubdirectory("vaktari-binfold").FullName;
+
+    public void Dispose()
+    {
+        try
+        {
+            foreach (var f in Directory.GetFiles(@"\\?\" + _root, "*", SearchOption.AllDirectories))
+            {
+                File.SetAttributes(f, FileAttributes.Normal);
+                File.Delete(f);
+            }
+
+            Directory.Delete(@"\\?\" + _root, recursive: true);
+        }
+        catch (Exception e) when (e is IOException or UnauthorizedAccessException)
+        {
+            // A temp directory left behind is not worth failing a green run over.
+        }
+    }
+
+    /// <summary>A version 2 record, the shape Windows 10 and later write.</summary>
+    private static byte[] Version2(string path, long size, DateTimeOffset deleted)
+    {
+        var chars = Encoding.Unicode.GetBytes(path);
+        var bytes = new byte[28 + chars.Length + 2];
+
+        BitConverter.TryWriteBytes(bytes.AsSpan(0), 2L);
+        BitConverter.TryWriteBytes(bytes.AsSpan(8), size);
+        BitConverter.TryWriteBytes(bytes.AsSpan(16), deleted.ToFileTime());
+        BitConverter.TryWriteBytes(bytes.AsSpan(24), path.Length + 1);
+        chars.CopyTo(bytes, 28);
+
+        return bytes;
+    }
+
+    /// <summary>A bin entry for <paramref name="original"/> in a folder of this
+    /// test's own: the "$I" file, and the "$R" payload beside it.</summary>
+    private (string Info, string Payload) Binned(string original, bool directory)
+    {
+        var bin = Directory.CreateDirectory(Path.Combine(_root, "bin")).FullName;
+        var id = Guid.NewGuid().ToString("N")[..6].ToUpperInvariant();
+
+        var info = Path.Combine(bin, "$I" + id);
+        var payload = Path.Combine(bin, "$R" + id);
+
+        File.WriteAllBytes(info, Version2(original, 5, DateTimeOffset.Now));
+
+        if (directory) Directory.CreateDirectory(payload);
+        else File.WriteAllText(payload, "OWN-BYTES");
+
+        return (info, payload);
+    }
+
+    [WindowsTheory]
+    [InlineData(@"C:\work\report ")]
+    [InlineData(@"C:\work\report.")]
+    public void The_recorded_path_is_read_exactly_as_recorded(string recorded)
+    {
+        Assert.True(RecycleBin.TryParse(Version2(recorded, 5, DateTimeOffset.Now), out var original, out _, out _));
+
+        Assert.Equal(recorded, original);
+    }
+
+    [WindowsFact]
+    public void An_item_binned_as_report_space_comes_back_as_itself_beside_report()
+    {
+        var work = Directory.CreateDirectory(Path.Combine(_root, "work")).FullName;
+        File.WriteAllText(Path.Combine(work, "report"), "NEIGHBOUR");
+
+        var original = Path.Combine(work, "report ");
+        var (info, _) = Binned(original, directory: false);
+
+        var landed = new WindowsTrashMaintenance().Restore(info);
+
+        Assert.Equal(original, landed);
+        Assert.Equal("OWN-BYTES", File.ReadAllText(@"\\?\" + original));
+        Assert.Equal("NEIGHBOUR", File.ReadAllText(Path.Combine(work, "report")));
+        Assert.Equal(["report", "report "], Directory.GetFiles(@"\\?\" + work).Select(Path.GetFileName).Order(StringComparer.Ordinal));
+    }
+
+    /// <summary>
+    /// The tree delete refuses a tree it would read by the wrong names, so a
+    /// binned folder holding "x..." beside a read-only "x" stayed in the bin
+    /// for ever — Empty, the sweep and Delete for good alike. Purged through
+    /// "\\?\", every name is reached as itself and the whole payload goes.
+    /// </summary>
+    [WindowsFact]
+    public void A_binned_folder_holding_a_folded_name_is_purged_whole()
+    {
+        var (info, payload) = Binned(Path.Combine(_root, "album"), directory: true);
+
+        File.WriteAllText(@"\\?\" + Path.Combine(payload, "x..."), "trailing");
+        File.WriteAllText(Path.Combine(payload, "x"), "neighbour");
+        File.SetAttributes(Path.Combine(payload, "x"), FileAttributes.ReadOnly);
+
+        var entry = RecycleBin.Read(info);
+        Assert.NotNull(entry);
+
+        Assert.True(WindowsTrashMaintenance.Purge(entry), "the purge refused the tree");
+        Assert.False(Directory.Exists(@"\\?\" + payload));
+        Assert.False(File.Exists(info));
+    }
+
+    /// <summary>
+    /// **"Deleted 1 item(s) for good" over an item still in the bin.** Delete
+    /// dropped Purge's answer. A payload held open by another handle cannot go,
+    /// and now says so, naming it, so the pane counts it as failed.
+    /// </summary>
+    [WindowsFact]
+    public void Delete_for_good_that_could_not_delete_says_so()
+    {
+        var (info, payload) = Binned(Path.Combine(_root, "notes.txt"), directory: false);
+
+        using (new FileStream(payload, FileMode.Open, FileAccess.Read, FileShare.None))
+        {
+            var refused = Assert.IsType<IOException>(Record.Exception(() => new WindowsTrashMaintenance().Delete(info)));
+
+            Assert.Contains("\"notes.txt\" could not be deleted for good", refused.Message, StringComparison.Ordinal);
+        }
+
+        Assert.True(File.Exists(payload));
+        Assert.True(File.Exists(info));
+    }
+}

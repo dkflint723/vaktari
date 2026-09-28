@@ -63,9 +63,18 @@ public sealed class WindowsTrashMaintenance : ITrashMaintenance
     /// every other program on the machine, so between the click and the delete
     /// somebody else may have taken it.
     /// </summary>
+    /// <remarks>
+    /// **A delete that did not happen was reported as one that did.** Purge
+    /// answers false when it could not remove the item — locked, or a folder
+    /// holding a name the tree delete refuses — and this dropped the answer, so
+    /// "Delete for good" said "deleted 1 item(s) for good" over an item still
+    /// in the bin (seventh round's hunt). Thrown, so the pane counts it failed.
+    /// </remarks>
     public void Delete(string trashName)
     {
-        if (RecycleBin.Read(trashName) is { } entry) Purge(entry);
+        if (RecycleBin.Read(trashName) is { } entry && !Purge(entry))
+            throw new IOException(
+                $"\"{PathRules.LeafName(entry.OriginalPath)}\" could not be deleted for good; it is still in the Recycle Bin.");
     }
 
     /// <summary>
@@ -87,14 +96,20 @@ public sealed class WindowsTrashMaintenance : ITrashMaintenance
         // Something has taken the name back since. Restore beside it rather
         // than over it: the file being restored is the one the user asked for,
         // and the one in the way is one they may not know is there.
-        if (File.Exists(target) || Directory.Exists(target))
+        if (Occupied(target))
             target = Deduplicate(target, entry.IsDirectory);
 
-        var parent = Path.GetDirectoryName(target);
+        // **Landed through the spelling that keeps its name.** A plain
+        // "…\report " is written as "…\report" — Win32 folds the target as it
+        // folds a source — so every check and the move itself go through
+        // "\\?\". The path handed back is the one the listing will show.
+        var landing = Exact(target);
+
+        var parent = Path.GetDirectoryName(landing);
         if (!string.IsNullOrEmpty(parent)) Directory.CreateDirectory(parent);
 
-        if (entry.IsDirectory) Directory.Move(entry.PayloadPath, target);
-        else File.Move(entry.PayloadPath, target);
+        if (entry.IsDirectory) Directory.Move(entry.PayloadPath, landing);
+        else File.Move(entry.PayloadPath, landing);
 
         try { File.Delete(entry.InfoPath); }
         catch (Exception e) when (e is IOException or UnauthorizedAccessException)
@@ -105,6 +120,23 @@ public sealed class WindowsTrashMaintenance : ITrashMaintenance
         }
 
         return target;
+    }
+
+    /// <summary>
+    /// The spelling a restore reads and writes <paramref name="path"/> through:
+    /// its own when nothing in it folds, "\\?\" when something does, and a
+    /// refusal naming it when it has neither.
+    /// </summary>
+    private static string Exact(string path)
+        => ReachablePath.Exact(path) ?? throw new IOException(ReachablePath.Refuse(path) ?? path);
+
+    /// <summary>Whether anything already holds this name, asked of the name
+    /// itself rather than of what Win32 would fold it to.</summary>
+    private static bool Occupied(string path)
+    {
+        var exact = Exact(path);
+
+        return File.Exists(exact) || Directory.Exists(exact);
     }
 
     /// <summary>
@@ -125,7 +157,7 @@ public sealed class WindowsTrashMaintenance : ITrashMaintenance
         for (var n = 1; n < 10_000; n++)
         {
             var candidate = Path.Combine(directory, $"{stem} ({n}){extension}");
-            if (!File.Exists(candidate) && !Directory.Exists(candidate)) return candidate;
+            if (!Occupied(candidate)) return candidate;
         }
 
         throw new IOException("Could not find a free name beside " + path);
@@ -271,6 +303,15 @@ public sealed class WindowsTrashMaintenance : ITrashMaintenance
     /// </summary>
     internal static bool Purge(RecycleEntry entry)
     {
+        // **Through "\\?\", so the names inside are read as they are.** A
+        // binned folder holding "x..." beside "x" could never be purged: the
+        // tree delete refuses a tree it would read by the wrong names, so
+        // Empty, the sweep and "Delete for good" all left it in the bin for
+        // good (the hunt). The payload is the bin's own, all of it going,
+        // and spelled this way the walk reaches every name as itself — which
+        // is what DeleteTree's own note says such a tree needs.
+        var payload = ReachablePath.Extended(entry.PayloadPath) ?? entry.PayloadPath;
+
         try
         {
             // **Before the delete, because a read-only file refuses to be
@@ -289,7 +330,7 @@ public sealed class WindowsTrashMaintenance : ITrashMaintenance
             // WindowsFileOperations.Delete has cleared the tree first since the
             // day the same fault was found there; this is that same routine,
             // not a second copy of it.
-            WindowsFileOperations.ClearReadOnlyTree(entry.PayloadPath);
+            WindowsFileOperations.ClearReadOnlyTree(payload);
 
             // **And through the same tree delete, because a junction inside the
             // payload gutted it in exactly the same way.** .NET's recursive
@@ -304,8 +345,8 @@ public sealed class WindowsTrashMaintenance : ITrashMaintenance
             //
             // Not a second copy of that walk, for the reason the line above is
             // not a second copy of the read-only one.
-            if (entry.IsDirectory) WindowsFileOperations.DeleteTree(entry.PayloadPath);
-            else File.Delete(entry.PayloadPath);
+            if (entry.IsDirectory) WindowsFileOperations.DeleteTree(payload);
+            else File.Delete(payload);
 
             File.Delete(entry.InfoPath);
 

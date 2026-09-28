@@ -28,6 +28,11 @@ public sealed class TrailingNamePosixTests
             Assert.Null(ReachablePath.Refuse(path));
             Assert.Null(ReachablePath.RefuseLanding(path));
             Assert.Null(ReachablePath.RefuseHandedOut(path));
+
+            // And a read goes through the path as it is: there is no other
+            // spelling to reach it by, and none is needed.
+            Assert.Equal(path, ReachablePath.Exact(path));
+            Assert.Equal(path, ReachablePath.Extended(path));
         }
     }
 }

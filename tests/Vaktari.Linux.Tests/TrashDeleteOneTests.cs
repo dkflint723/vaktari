@@ -92,6 +92,39 @@ public sealed class TrashDeleteOneTests : IDisposable
         Assert.False(File.Exists(Path.Combine(Info, "notes.txt.trashinfo")));
     }
 
+    /// <summary>
+    /// **"Deleted for good" over an item still in the trash.** Remove's false
+    /// was dropped. A folder inside the payload that may not be written keeps
+    /// its file, so the item cannot go — and now says so, naming it.
+    /// </summary>
+    [PosixFact, System.Runtime.Versioning.SupportedOSPlatform("linux")]
+    public void Delete_for_good_that_could_not_delete_says_so()
+    {
+        var payload = Path.Combine(Files, "project");
+        var sealedIn = Path.Combine(payload, "sealed");
+
+        Directory.CreateDirectory(sealedIn);
+        File.WriteAllText(Path.Combine(sealedIn, "kept.txt"), "kept");
+
+        File.WriteAllText(
+            Path.Combine(Info, "project.trashinfo"),
+            "[Trash Info]\nPath=/home/me/project\nDeletionDate=2026-09-01T10:00:00\n");
+
+        File.SetUnixFileMode(sealedIn, UnixFileMode.UserRead | UnixFileMode.UserExecute);
+
+        try
+        {
+            var refused = Assert.IsType<IOException>(Record.Exception(() => Bin().Delete("project")));
+
+            Assert.Contains("\"project\" could not be deleted for good", refused.Message, StringComparison.Ordinal);
+            Assert.Single(Bin().List());
+        }
+        finally
+        {
+            File.SetUnixFileMode(sealedIn, UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute);
+        }
+    }
+
     /// <summary>A trashed folder goes whole, not one level of it.</summary>
     [Fact]
     public void A_folder_goes_with_everything_under_it()

@@ -195,7 +195,7 @@ public static class RowIcon
     /// empty when it is really unknown; the papers appearing late is a smaller
     /// lie than the whole listing flickering.
     /// </summary>
-    private static async Task ShowContentsIfAnyAsync(
+    internal static async Task ShowContentsIfAnyAsync(
         FileEntry entry, Action<IImage> paint, CancellationToken token)
     {
         if (!entry.IsDirectory) return;
@@ -232,7 +232,13 @@ public static class RowIcon
         {
             var full = await Task.Run(() =>
             {
-                try { return Directory.EnumerateFileSystemEntries(entry.FullPath).Any(); }
+                // Through the spelling that reaches it: "album " was drawn
+                // with its neighbour's papers.
+                try
+                {
+                    return Vaktari.Core.FileSystem.ReachablePath.Exact(entry.FullPath) is { } exact
+                           && Directory.EnumerateFileSystemEntries(exact).Any();
+                }
                 catch (Exception e) when (e is IOException or UnauthorizedAccessException)
                 {
                     return false;

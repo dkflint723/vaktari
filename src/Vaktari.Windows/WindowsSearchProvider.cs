@@ -279,6 +279,13 @@ public sealed class WindowsSearchProvider : ISearchProvider
 
             var directory = pending.Dequeue();
 
+            // **A folder whose name Win32 folds was searched as its
+            // neighbour**, and the neighbour's files came back under its name
+            // — then again under their own (the hunt). It cannot be read by
+            // name at all, so it is what SafeWalk makes of it: a folder that
+            // will not list. Its own row is still matched by name above it.
+            if (!ReachablePath.IsReachable(directory)) continue;
+
             // Materialised per directory so a mid-enumeration failure costs this
             // folder rather than everything still on the frontier — and so no
             // file is read while the directory handle is still open.

@@ -68,6 +68,9 @@ public static class ThumbnailLoader
     {
         if (Provider is null) return false;
 
+        // See LoadAsync: nothing is drawn from a name Win32 folds.
+        if (!ReachablePath.IsReachable(path)) return false;
+
         var general = Settings.AppSettings.Current.General;
         if (!general.ShowPreviews) return false;
 
@@ -130,6 +133,13 @@ public static class ThumbnailLoader
     public static async Task<Bitmap?> LoadAsync(string path, int size, CancellationToken ct)
     {
         if (Provider is not { } provider) return null;
+
+        // **No picture drawn from a name Win32 folds.** The header read, the
+        // decode and the shell all open a plain path without its trailing
+        // space or dot, so a row under "…\sub \" — a search hit, a recent
+        // file — showed the picture in "…\sub\" in its place. Nothing is
+        // drawn instead: the row keeps its icon.
+        if (!ReachablePath.IsReachable(path)) return null;
 
         var key = $"{path}|{size}";
         if (Cache.TryGetValue(key, out var cached)) return cached;

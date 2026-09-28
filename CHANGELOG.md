@@ -288,6 +288,26 @@ should not be trusted for compatibility yet.
   as `report_`, the name it reports, where it landed as `report` and said
   `report `.
 
+- **On Windows, opening, previewing or zipping a file whose name ends in a
+  space or a dot no longer reaches the file beside it.** Double-clicking
+  `t.cmd.` ran `t.cmd`, and so did typing or pasting its path into the
+  address bar; *Open with*, *Properties* and the *Windows menu* were handed
+  `report` for `report `; opening `album ` in place showed `album`'s files,
+  and deleting one of them deleted it; the preview, *Compress to ZIP*, a
+  checksum, a row's size and item count, and the watcher's refresh all read
+  the neighbour — a hidden `report` hid the row `report `. Anything handed to
+  another program — opening, *Open with*, *Run*, a terminal, a script, a
+  shortcut, a share, a drop out of an archiver's temporary folder — is now
+  refused, naming the file and the one it would have reached; *Open with* and
+  the *Windows menu* offer nothing for it, and *Properties* opens Vaktari's own
+  window. Such a folder is not opened in place, in the folder tree or from a
+  crumb. Reading goes through `\\?\` instead, so the preview, the zip and
+  every size, date and attribute are the file's own.
+  From the bin, an item recorded as `report ` comes back as `report `, a
+  folder holding such a name can be deleted for good, and *Delete for good*
+  says so when it could not delete. On Linux these are ordinary names, and
+  nothing changes.
+
 - **A closed window no longer stays in memory.** Every window you closed
   was kept whole for as long as Vaktari ran — its listings, its rows and
   everything they had drawn — because the version-control marks on its
