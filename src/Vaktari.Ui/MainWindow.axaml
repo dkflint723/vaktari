@@ -1069,7 +1069,11 @@
                        Both were drawn on every tab, so a lone tab offered to
                        close the others and the last tab offered to close the
                        ones to its right; the group tells each tab whether it
-                       has company — PaneGroupViewModel.NotifyTabNeighbours. -->
+                       has company — PaneGroupViewModel.NotifyTabNeighbours.
+
+                       **And the reopening row only where there is a tab to
+                       reopen**, by the same rule: it was drawn on every tab
+                       and did nothing until one had been closed. -->
                   <DockPanel.ContextMenu>
                     <ContextMenu>
                       <MenuItem Header="_Duplicate"
@@ -1087,9 +1091,11 @@
                                 Command="{Binding $parent[Window].((vm:ShellViewModel)DataContext).CloseTabsToTheRightCommand}"
                                 CommandParameter="{Binding}"
                                 IsVisible="{Binding HasTabsToTheRight}"/>
-                      <Separator/>
+                      <Separator IsVisible="{Binding CanReopenClosedTab}"/>
                       <MenuItem Header="Reopen closed _tab" in:KeyHint.Command="ReopenClosedTab"
-                                Command="{Binding $parent[Window].((vm:ShellViewModel)DataContext).ReopenClosedTabCommand}"/>
+                                Command="{Binding $parent[Window].((vm:ShellViewModel)DataContext).ReopenClosedTabCommand}"
+                                CommandParameter="{Binding}"
+                                IsVisible="{Binding CanReopenClosedTab}"/>
                     </ContextMenu>
                   </DockPanel.ContextMenu>
                 </DockPanel>

@@ -195,15 +195,30 @@ public sealed class WindowsTrashMaintenance : ITrashMaintenance
     }
 
     private static TrashSweepResult Sweep(TrashSettings policy, CancellationToken ct)
+        => Sweep(
+            policy,
+            SweptBins(RecycleBin.Directories(), SystemRoot()),
+            policy.LimitSize ? Allowance(policy.MaximumPercentOfDisk) : 0,
+            DateTimeOffset.UtcNow,
+            ct);
+
+    /// <summary>
+    /// The sweep itself, over the bins it is handed and nothing else, so a
+    /// test can run it on "$I"/"$R" pairs in folders of its own rather than on
+    /// anybody's Recycle Bin.
+    /// </summary>
+    internal static TrashSweepResult Sweep(
+        TrashSettings policy, IReadOnlyList<string> bins, long allowance, DateTimeOffset now, CancellationToken ct)
     {
-        var entries = RecycleBin.List();
+        List<RecycleEntry> Listed()
+            => bins.SelectMany(RecycleBin.InfoFiles).Select(RecycleBin.Read).OfType<RecycleEntry>().ToList();
 
         var removed = 0;
         long freed = 0;
 
-        if (AgeCutoff(policy, DateTimeOffset.UtcNow) is { } cutoff)
+        if (AgeCutoff(policy, now) is { } cutoff)
         {
-            foreach (var entry in entries.Where(e => e.Deleted < cutoff))
+            foreach (var entry in Listed().Where(e => e.Deleted < cutoff))
             {
                 ct.ThrowIfCancellationRequested();
                 if (Purge(entry)) { removed++; freed += entry.Size; }
@@ -217,17 +232,27 @@ public sealed class WindowsTrashMaintenance : ITrashMaintenance
 
         if (policy.LimitSize)
         {
-            var total = RecycleBin.List().Sum(e => e.Size);
-            var allowance = Allowance(policy.MaximumPercentOfDisk);
+            var entries = Listed();
+            var total = entries.Sum(e => e.Size);
 
             if (allowance > 0 && total > allowance)
             {
                 if (policy.WhenLimitReached == TrashLimitAction.Warn) overLimit = true;
                 else
                 {
-                    // Oldest first, until it fits. Deleting newest-first would
-                    // take the thing most likely to be wanted back.
-                    foreach (var entry in RecycleBin.List().OrderBy(e => e.Deleted))
+                    // **The largest first when that is what was picked.** Every
+                    // choice but Warn went oldest-first here, so "Delete the
+                    // largest until it fits" took the oldest items instead —
+                    // any number of small ones, before the one large file the
+                    // setting names (0.11.1 changelog check). The Linux sweep
+                    // has read the choice all along; this is its ordering.
+                    // Oldest-first otherwise: deleting newest-first would take
+                    // the thing most likely to be wanted back.
+                    var queue = policy.WhenLimitReached == TrashLimitAction.DeleteLargest
+                        ? entries.OrderByDescending(e => e.Size)
+                        : entries.OrderBy(e => e.Deleted);
+
+                    foreach (var entry in queue)
                     {
                         if (total <= allowance) break;
                         ct.ThrowIfCancellationRequested();
@@ -264,6 +289,39 @@ public sealed class WindowsTrashMaintenance : ITrashMaintenance
             ? now.AddDays(-policy.DeleteAfterDays)
             : null;
 
+    /// <summary>
+    /// The bins a sweep may delete from: the one on the system drive, and no
+    /// other.
+    ///
+    /// **Every drive's bin was swept**, although the page has said since the
+    /// bin was first called the Recycle Bin that "files deleted from another
+    /// drive live in a Recycle Bin on that drive and are not covered"
+    /// (0.11.1 changelog check). The listing walks every drive, rightly — the
+    /// bin view has to show all of it — and the sweep read that same listing,
+    /// so a USB stick or a second disk was aged and trimmed with nobody
+    /// watching, and its bytes were counted against a share of the SYSTEM
+    /// drive. The page's promise is the Linux sweep's design, which stays in
+    /// the home trash for the reason XdgTrashMaintenance gives: a drive that
+    /// is not always there cannot have a policy applied to it consistently.
+    /// Unattended deletion never reaches further than the page says.
+    ///
+    /// A bin is <c>&lt;drive root&gt;\$Recycle.Bin\&lt;sid&gt;</c>, so its
+    /// drive is its grandparent — asked that way so a test can hand it bins in
+    /// folders of its own.
+    /// </summary>
+    internal static IReadOnlyList<string> SweptBins(IEnumerable<string> bins, string? systemRoot)
+        => string.IsNullOrEmpty(systemRoot)
+            ? []
+            : bins.Where(bin => string.Equals(
+                    Path.GetDirectoryName(Path.GetDirectoryName(bin)), systemRoot,
+                    StringComparison.OrdinalIgnoreCase))
+                .ToList();
+
+    /// <summary>The root of the drive Windows runs from — the drive whose bin
+    /// a sweep covers, and whose size its allowance is a share of.</summary>
+    private static string? SystemRoot()
+        => Path.GetPathRoot(Environment.GetFolderPath(Environment.SpecialFolder.System));
+
     /// <summary>The size the bin is allowed, as a share of the system volume.
     /// Zero — nothing is ever over it — for a share of zero or less.</summary>
     internal static long Allowance(int percent)
@@ -272,7 +330,7 @@ public sealed class WindowsTrashMaintenance : ITrashMaintenance
 
         try
         {
-            var root = Path.GetPathRoot(Environment.GetFolderPath(Environment.SpecialFolder.System));
+            var root = SystemRoot();
             if (string.IsNullOrEmpty(root)) return 0;
 
             return (long)(new DriveInfo(root).TotalSize * (percent / 100.0));

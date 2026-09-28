@@ -61,16 +61,18 @@ public sealed class BinSweepPolicyTests
     /// like the other call-site rules: the age half goes through
     /// <see cref="WindowsTrashMaintenance.AgeCutoff"/> and nothing else in the
     /// sweep reads the day count, and the size half deletes only under an
-    /// allowance there is one of.
+    /// allowance there is one of. (The sweep can now be run on bins of a
+    /// test's own — see BinSweepScopeTests — and these reads stay as the
+    /// cheaper pin on the same two rules.)
     /// </summary>
     [Fact]
     public void The_sweep_asks_the_cutoff_and_a_zero_allowance_deletes_nothing()
     {
         var sweep = RepoSource.Body(
             RepoSource.Read("src", "Vaktari.Windows", "WindowsTrashMaintenance.cs"),
-            "private static TrashSweepResult Sweep(");
+            "internal static TrashSweepResult Sweep(");
 
-        Assert.Contains("AgeCutoff(policy, DateTimeOffset.UtcNow) is { } cutoff", sweep, StringComparison.Ordinal);
+        Assert.Contains("AgeCutoff(policy, now) is { } cutoff", sweep, StringComparison.Ordinal);
         Assert.DoesNotContain("DeleteAfterDays", sweep, StringComparison.Ordinal);
         Assert.Contains("if (allowance > 0 && total > allowance)", sweep, StringComparison.Ordinal);
     }

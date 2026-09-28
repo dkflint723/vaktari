@@ -462,6 +462,34 @@ public sealed class ListingMenuGatesTests : OwnedViewModels
     }
 
     /// <summary>
+    /// **"Reopen closed tab" was on every tab menu, and did nothing until a
+    /// tab had been closed** (0.11.1 changelog check). It is gated like the
+    /// closing rows: shown once this side has a closed tab, on every tab of
+    /// the side, and gone again once the last one is put back.
+    /// </summary>
+    [AvaloniaFact]
+    public void The_tab_menus_reopen_row_follows_the_closed_tabs()
+    {
+        var group = new PaneGroupViewModel(() => Own(new PaneViewModel(new Inert()) { CurrentPath = Temp }));
+
+        var first = group.AddTab(Temp);
+        var second = group.AddTab(Temp);
+
+        Assert.False(first.CanReopenClosedTab);
+        Assert.False(second.CanReopenClosedTab);
+
+        group.CloseTab(second);
+
+        Assert.True(first.CanReopenClosedTab);
+
+        var back = group.ReopenClosedTab();
+
+        Assert.NotNull(back);
+        Assert.False(first.CanReopenClosedTab, "nothing is left to reopen");
+        Assert.False(back.CanReopenClosedTab);
+    }
+
+    /// <summary>
     /// **A tab's menu in the inactive half acted on the active half.** Close
     /// other tabs, Close tabs to the right and Duplicate all used ActiveGroup,
     /// so with the left side active, "Close other tabs" on a right-side tab
@@ -505,6 +533,17 @@ public sealed class ListingMenuGatesTests : OwnedViewModels
 
         Assert.Equal(left, shell.Left.Tabs.Count);
         Assert.Same(right, Assert.Single(shell.Right.Tabs));
+
+        // And Reopen closed tab, whose row is gated on the tab's own side: the
+        // left side has closed nothing, so reopening there would do nothing
+        // under a row that promised a tab.
+        shell.ActivateGroup(shell.Left);
+        Assert.True(right.CanReopenClosedTab);
+
+        shell.ReopenClosedTabCommand.Execute(right);
+
+        Assert.Equal(left, shell.Left.Tabs.Count);
+        Assert.Equal(2, shell.Right.Tabs.Count);
     }
 
     // ---- doubles -----------------------------------------------------------------------

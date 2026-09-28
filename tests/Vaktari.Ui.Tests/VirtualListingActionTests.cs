@@ -204,8 +204,10 @@ public sealed class VirtualListingActionTests : OwnedViewModels
     /// <c>IsTrashListing</c> gate for, and one the current-folder row above
     /// escaped only because <c>IsRealFolder</c> is false in the bin.
     ///
-    /// This PC is the control: its rows are drives, whose paths are real, so
-    /// the gate has to name the bin rather than every listing that is a view.
+    /// A search is the control: its folders are really there and are worth
+    /// pinning, so the gate has to name the bin rather than every listing that
+    /// is a view. (This PC was the control, until its own row was found to
+    /// refuse — see the test below.)
     /// </summary>
     [AvaloniaFact]
     public async Task The_add_selection_row_is_not_offered_in_the_bin()
@@ -220,12 +222,31 @@ public sealed class VirtualListingActionTests : OwnedViewModels
         Assert.True(shell.ActiveTab.HasDirectorySelected);
         Assert.False(shell.ShowAddSelectionToPlaces);
 
-        await shell.ActiveTab.NavigateAsync(VirtualPaths.Computer);
+        await shell.ActiveTab.NavigateAsync("vaktari:search:report::everywhere");
         global::Avalonia.Threading.Dispatcher.UIThread.RunJobs();
 
         shell.ActiveTab.SelectedEntry = Row();
 
         Assert.True(shell.ShowAddSelectionToPlaces);
+    }
+
+    /// <summary>
+    /// **Offered on a drive in This PC, and then refused.** This PC's rows are
+    /// the drives of the same places provider the sidebar draws, so each is
+    /// already a place and the row could only answer "already in places"
+    /// (0.11.1 changelog check). Hidden there, by the rule the listing menus
+    /// keep: a row whose command refuses where the menu opened is not drawn.
+    /// </summary>
+    [AvaloniaFact]
+    public async Task The_add_selection_row_is_not_offered_on_a_drive_in_this_pc()
+    {
+        var shell = await ShellOn(VirtualPaths.Computer);
+
+        shell.ActiveTab!.SelectedEntry = Row();
+
+        // Asserted, not assumed: it is what makes the next line mean anything.
+        Assert.True(shell.ActiveTab.HasDirectorySelected);
+        Assert.False(shell.ShowAddSelectionToPlaces);
     }
 
     /// <summary>
