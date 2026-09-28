@@ -194,6 +194,126 @@ public sealed class TrailingNameBinTests : IDisposable
     }
 
     /// <summary>
+    /// **A second "album " is numbered beside the first, and keeps what is in
+    /// it.** The landing is taken, so the name gains a number and no longer
+    /// ends in a space, while the payload is still moved through "\\?\" — the
+    /// inner "x..." and "inner " arrive as themselves (fix-9 verification).
+    /// </summary>
+    [WindowsFact]
+    public void A_second_folder_binned_as_album_space_is_numbered_beside_the_first_with_its_contents()
+    {
+        var work = Directory.CreateDirectory(Path.Combine(_root, "work")).FullName;
+        Directory.CreateDirectory(Path.Combine(work, "album"));
+        var original = Path.Combine(work, "album ");
+
+        var restore = new WindowsTrashMaintenance();
+
+        var (first, _) = Binned(original, directory: true);
+        Assert.Equal(original, restore.Restore(first));
+
+        var (second, payload) = Binned(original, directory: true);
+        File.WriteAllText(@"\\?\" + Path.Combine(payload, "x..."), "TRAIL");
+        Directory.CreateDirectory(@"\\?\" + Path.Combine(payload, "inner "));
+        File.WriteAllText(@"\\?\" + Path.Combine(payload, "inner ", "deep."), "DEEP");
+
+        var landed = restore.Restore(second);
+
+        Assert.Equal(Path.Combine(work, "album  (1)"), landed);
+        Assert.Equal("TRAIL", File.ReadAllText(@"\\?\" + Path.Combine(landed, "x...")));
+        Assert.Equal("DEEP", File.ReadAllText(@"\\?\" + Path.Combine(landed, "inner ", "deep.")));
+        Assert.Empty(Directory.GetFileSystemEntries(@"\\?\" + original));
+        Assert.Empty(Directory.GetFileSystemEntries(Path.Combine(work, "album")));
+    }
+
+    /// <summary>
+    /// **A folder whose recorded path is itself spelled "\\?\" stayed in the
+    /// bin**, an ordinary name included: the landing was extended and the "$R"
+    /// payload was not, and Directory.Move refused the pair for having two
+    /// roots (fix-9 verification; main threw for both names below).
+    /// </summary>
+    [WindowsTheory]
+    [InlineData("plain")]
+    [InlineData("album ")]
+    public void A_folder_recorded_through_the_extended_prefix_comes_back(string name)
+    {
+        var work = Directory.CreateDirectory(Path.Combine(_root, "work")).FullName;
+        Directory.CreateDirectory(Path.Combine(work, "album"));
+
+        var recorded = @"\\?\" + Path.Combine(work, name);
+        var (info, payload) = Binned(recorded, directory: true);
+        File.WriteAllText(Path.Combine(payload, "own.txt"), "OWN");
+
+        var landed = new WindowsTrashMaintenance().Restore(info);
+
+        Assert.Equal(recorded, landed);
+        Assert.Equal("OWN", File.ReadAllText(Path.Combine(recorded, "own.txt")));
+        Assert.False(Directory.Exists(payload));
+        Assert.Empty(Directory.GetFileSystemEntries(Path.Combine(work, "album")));
+    }
+
+    /// <summary>
+    /// A folder whose PARENT's name folds lands in that parent, made through
+    /// "\\?\" when it is not there, and not in the neighbour "dir" beside it.
+    /// </summary>
+    [WindowsFact]
+    public void A_folder_under_a_folded_parent_lands_there_and_not_in_its_neighbour()
+    {
+        var work = Directory.CreateDirectory(Path.Combine(_root, "work")).FullName;
+        Directory.CreateDirectory(Path.Combine(work, "dir"));
+        File.WriteAllText(Path.Combine(work, "dir", "neighbour.txt"), "NEIGHBOUR");
+
+        var original = Path.Combine(work, "dir ", "album");
+        var (info, payload) = Binned(original, directory: true);
+        File.WriteAllText(Path.Combine(payload, "own.txt"), "OWN");
+
+        Assert.Equal(original, new WindowsTrashMaintenance().Restore(info));
+
+        Assert.Equal("OWN", File.ReadAllText(@"\\?\" + Path.Combine(original, "own.txt")));
+        Assert.Equal(["neighbour.txt"], Directory.GetFileSystemEntries(Path.Combine(work, "dir")).Select(Path.GetFileName));
+    }
+
+    /// <summary>
+    /// **Delete for good of a pair whose own names fold took its neighbour's
+    /// metadata.** "$I…." was read as "$I…" and deleted as it too, so the
+    /// neighbour item lost its record and the pair asked for stayed half there
+    /// (fix-9 verification, measured on main). Now exactly that pair goes, by
+    /// the key the bin's walk hands out, and the neighbour pair is untouched.
+    /// </summary>
+    [WindowsTheory]
+    [InlineData(".", true)]
+    [InlineData(".txt ", false)]
+    public void Delete_for_good_of_a_pair_whose_own_name_folds_leaves_the_neighbour_pair(string suffix, bool directory)
+    {
+        var bin = Directory.CreateDirectory(Path.Combine(_root, "bin")).FullName;
+        var plainSuffix = suffix.TrimEnd(' ', '.');
+
+        var neighbourInfo = Path.Combine(bin, "$IDEL001" + plainSuffix);
+        var neighbourPayload = Path.Combine(bin, "$RDEL001" + plainSuffix);
+        File.WriteAllBytes(neighbourInfo, Version2(Path.Combine(_root, "neighbour"), 9, DateTimeOffset.Now));
+        if (directory) File.WriteAllText(Path.Combine(Directory.CreateDirectory(neighbourPayload).FullName, "n.txt"), "NEIGHBOUR");
+        else File.WriteAllText(neighbourPayload, "NEIGHBOUR");
+
+        var ownInfo = Path.Combine(bin, "$IDEL001" + suffix);
+        var ownPayload = @"\\?\" + Path.Combine(bin, "$RDEL001" + suffix);
+        File.WriteAllBytes(@"\\?\" + ownInfo, Version2(Path.Combine(_root, "own "), 3, DateTimeOffset.Now));
+        if (directory)
+        {
+            Directory.CreateDirectory(ownPayload);
+            File.WriteAllText(Path.Combine(ownPayload, "x..."), "TRAIL");
+            File.WriteAllText(Path.Combine(ownPayload, "x"), "PLAIN");
+            File.SetAttributes(Path.Combine(ownPayload, "x"), FileAttributes.ReadOnly);
+        }
+        else File.WriteAllText(ownPayload, "OWN");
+
+        new WindowsTrashMaintenance().Delete(ownInfo);
+
+        Assert.False(File.Exists(@"\\?\" + ownInfo));
+        Assert.False(File.Exists(ownPayload) || Directory.Exists(ownPayload));
+        Assert.True(File.Exists(neighbourInfo));
+        Assert.Equal(Path.Combine(_root, "neighbour"), RecycleBin.Read(neighbourInfo)?.OriginalPath);
+    }
+
+    /// <summary>
     /// The tree delete refuses a tree it would read by the wrong names, so a
     /// binned folder holding "x..." beside a read-only "x" stayed in the bin
     /// for ever — Empty, the sweep and Delete for good alike. Purged through

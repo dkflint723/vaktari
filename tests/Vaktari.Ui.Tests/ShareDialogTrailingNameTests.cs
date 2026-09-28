@@ -78,6 +78,29 @@ public sealed class ShareDialogTrailingNameTests : IDisposable
         Assert.Empty(model.Folders);
     }
 
+    /// <summary>
+    /// **However it is spelled**: through "\\?\", which opens "album " as
+    /// itself and which the hand-off rule reads without its prefix, and as the
+    /// parent of the folder named — the server would be handed a path that
+    /// Win32 folds either way (fix-9 verification).
+    /// </summary>
+    [AvaloniaTheory(Skip = OnlyOn.Windows, SkipUnless = nameof(OnlyOn.IsWindows), SkipType = typeof(OnlyOn))]
+    [InlineData(@"\\?\", "")]
+    [InlineData("", "own-folder")]
+    [InlineData(@"\\?\", "own-folder")]
+    public async Task On_windows_a_folded_folder_is_refused_however_it_is_spelled(string prefix, string below)
+    {
+        var (model, shared) = Dialog(prefix + Path.Combine(AlbumBeside(), below));
+
+        Assert.False(model.CanShare);
+        Assert.Empty(model.Folders);
+        Assert.Contains("\"album \" cannot be handed to another program", model.Status, StringComparison.Ordinal);
+
+        await model.ShareCommand.ExecuteAsync(null);
+
+        Assert.Empty(shared);
+    }
+
     [AvaloniaFact(Skip = OnlyOn.Linux, SkipUnless = nameof(OnlyOn.IsLinux), SkipType = typeof(OnlyOn))]
     public async Task On_linux_a_folder_named_album_space_is_served_as_itself()
     {
@@ -126,5 +149,38 @@ public sealed class ShareDialogTrailingNameTests : IDisposable
         await model.ShareCommand.ExecuteAsync(null);
 
         Assert.Equal([plain], shared);
+    }
+
+    /// <summary>Up, and into a folder, from a path typed with spaces around
+    /// it: both start from the folder the box names, not from the raw text
+    /// (fix-9 verification).</summary>
+    [AvaloniaFact]
+    public void Up_and_in_from_a_folder_typed_with_spaces_around_it_start_from_that_folder()
+    {
+        var plain = Directory.CreateDirectory(Path.Combine(_root, "plain")).FullName;
+        Directory.CreateDirectory(Path.Combine(plain, "inside"));
+
+        var (up, _) = Dialog("  " + plain + "  ");
+        up.GoUpCommand.Execute(null);
+
+        Assert.Equal(_root, up.Path);
+        Assert.Contains("plain", up.Folders);
+
+        var (down, _) = Dialog("  " + plain + "  ");
+        down.EnterCommand.Execute("inside");
+
+        Assert.Equal(Path.Combine(plain, "inside"), down.Path);
+        Assert.True(down.CanShare);
+    }
+
+    /// <summary>A root typed with spaces around it has nowhere to go up to.</summary>
+    [AvaloniaFact]
+    public void A_root_typed_with_spaces_around_it_has_no_parent()
+    {
+        var root = Path.GetPathRoot(_root)!;
+        var (model, _) = Dialog("  " + root + "  ");
+
+        Assert.True(model.CanShare);
+        Assert.False(model.CanGoUp);
     }
 }
