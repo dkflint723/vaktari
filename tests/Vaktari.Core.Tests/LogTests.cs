@@ -223,3 +223,17 @@ public sealed class LogTests : IDisposable
         Assert.EndsWith("line 5", tail[1], StringComparison.Ordinal);
     }
 }
+
+/// <summary>
+/// **The log is one static, and every class that swallows a failure writes to
+/// it.** The "log" collection only kept LogTests from running beside itself:
+/// an archive, share or metadata test running at the same time wrote its
+/// Quiet line into the folder a LogTests case had just configured — traced at
+/// 16 of the 17 foreign lines in one Windows run — so
+/// Nothing_is_written_before_it_is_configured could find a file it never
+/// wrote, and The_tail_is_the_last_lines_in_order could read a stranger's line
+/// as its last (fix-11 verification). Run alone, after the parallel classes,
+/// nothing else is writing while a case has the log configured.
+/// </summary>
+[CollectionDefinition("log", DisableParallelization = true)]
+public sealed class LogCollection;

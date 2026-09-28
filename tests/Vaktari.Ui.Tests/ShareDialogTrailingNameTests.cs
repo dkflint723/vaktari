@@ -194,6 +194,11 @@ public sealed class ShareDialogTrailingNameTests : IDisposable
             "dotdot" => _root + @"\..\" + leaf + @"\" + name,
             "slashes-dot" => (_root + "/./" + name).Replace('\\', '/'),
             "device-dot" => @"\\.\" + _root + @"\.\" + name,
+
+            // "C:\Users\..\Users\…": a ".." that takes away the only name
+            // before it, and "C:\..\Users\…", one that finds none to take.
+            "first-back" => _root[.._root.IndexOf('\\', 3)] + @"\..\" + _root[3..] + @"\" + name,
+            "above-root" => _root[..3] + @"..\" + _root[3..] + @"\" + name,
             _ => _root + @"\album\..\" + name,
         };
     }
@@ -212,6 +217,8 @@ public sealed class ShareDialogTrailingNameTests : IDisposable
     [InlineData("slashes-dot")]
     [InlineData("device-dot")]
     [InlineData("back-in")]
+    [InlineData("first-back")]
+    [InlineData("above-root")]
     public async Task On_windows_a_folded_folder_is_refused_with_dots_in_the_path(string spelling)
     {
         AlbumBeside();
@@ -239,6 +246,8 @@ public sealed class ShareDialogTrailingNameTests : IDisposable
     [InlineData("dot", "  ")]
     [InlineData("device-dot", "  ")]
     [InlineData("back-in", "  ")]
+    [InlineData("first-back", "")]
+    [InlineData("above-root", "")]
     public async Task On_windows_an_ordinary_folder_with_dots_in_the_path_is_shared_as_typed(string spelling, string after)
     {
         AlbumBeside();

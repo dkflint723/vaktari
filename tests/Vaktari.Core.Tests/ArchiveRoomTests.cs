@@ -80,6 +80,38 @@ public sealed class ArchiveRoomTests
     public void The_real_room_knows_the_temp_folders_drive_size()
         => Assert.True(ArchiveRoom.Real.TotalBytes!(Path.GetTempPath()) > 0);
 
+    /// <summary>
+    /// **The size of the drive, not what is left of it.** "More than nothing"
+    /// held for a reader that answered free space, or half of it, and the
+    /// reserve is 1% of whatever it answers (fix-11 verification). Asked of
+    /// the mount the temp folder lives on, found here from the list of drives
+    /// rather than the way the room finds it.
+    /// </summary>
+    [Fact]
+    public void The_real_room_reads_the_size_of_the_drive_not_its_free_space()
+    {
+        var temp = Path.GetFullPath(Path.GetTempPath());
+        var sep = Path.DirectorySeparatorChar;
+        var comparison = OperatingSystem.IsWindows() ? StringComparison.OrdinalIgnoreCase : StringComparison.Ordinal;
+
+        bool Holds(DriveInfo drive)
+        {
+            try
+            {
+                var root = drive.RootDirectory.FullName;
+                return drive.IsReady && (temp.TrimEnd(sep) + sep).StartsWith(root.EndsWith(sep) ? root : root + sep, comparison);
+            }
+            catch (Exception e) when (e is IOException or UnauthorizedAccessException)
+            {
+                return false;
+            }
+        }
+
+        var drive = DriveInfo.GetDrives().Where(Holds).MaxBy(d => d.RootDirectory.FullName.Length)!;
+
+        Assert.Equal(drive.TotalSize, ArchiveRoom.Real.TotalBytes!(temp));
+    }
+
     [Theory]
     [InlineData("FAT32", true)]
     [InlineData("vfat", true)]

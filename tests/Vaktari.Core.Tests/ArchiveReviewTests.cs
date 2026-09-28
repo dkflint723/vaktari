@@ -378,6 +378,70 @@ public sealed class ArchiveReviewTests : IDisposable
         Assert.Empty(Directory.EnumerateFileSystemEntries(At("out")));
     }
 
+    /// <summary>
+    /// **Every compressor that gives no size is watched, and early.** 40 MiB
+    /// of zeros onto a 1 GiB drive with 24 MiB free: the reserve is 16 MiB,
+    /// looked at every 4 MiB, so the run stops with at least 12 MiB left —
+    /// not merely before the disk is full. A look that asked for half the
+    /// reserve still stopped short of a full disk, and "more than nothing"
+    /// could not tell (fix-11 verification).
+    /// </summary>
+    [Theory]
+    [InlineData(ArchiveFormat.Gz, "zeros.gz")]
+    [InlineData(ArchiveFormat.Zst, "zeros.zst")]
+    [InlineData(ArchiveFormat.Lz, "zeros.lz")]
+    [InlineData(ArchiveFormat.Bz2, "zeros.bz2")]
+    public void A_bare_stream_of_any_compressor_stops_with_most_of_the_reserve_left(ArchiveFormat format, string name)
+    {
+        var archive = ArchiveTestData.Bare(At(name), format, new byte[40 * MiB]);
+
+        var least = long.MaxValue;
+        var room = new ArchiveRoom(_ =>
+        {
+            var free = 24 * MiB - Written(At("out"));
+            least = Math.Min(least, free);
+            return free;
+        }, _ => null, _ => 1L << 30);
+
+        var stopped = Assert.Throws<ArchiveRefusedException>(() => Extract(archive, Dir("out"), room));
+
+        Assert.StartsWith($"stopped before {name} filled ", stopped.Message);
+        Assert.True(least >= ArchiveRoom.LeastReserve - ArchiveRoom.IntervalFor(ArchiveRoom.LeastReserve),
+            $"stopped with {least} bytes free, less than three quarters of the reserve");
+        Assert.Empty(Directory.EnumerateFileSystemEntries(At("out")));
+    }
+
+    /// <summary>
+    /// **Each entry is asked about, so what they add up to is too.** 400
+    /// entries of 64 KiB — 25 MiB, none of them large — onto a drive with
+    /// 16 MiB free that falls as they land: refused before the margin is
+    /// gone, and nothing left. Each question reads what is free now, so no
+    /// entry is waved through on the room an earlier one already took.
+    /// </summary>
+    [Fact]
+    public void Many_small_tar_entries_are_held_to_what_they_add_up_to()
+    {
+        var archive = ArchiveTestData.Tar(At("many.tar.gz"), t =>
+        {
+            for (var i = 0; i < 400; i++)
+                t.WriteEntry(new PaxTarEntry(TarEntryType.RegularFile, $"f{i:D3}.bin") { DataStream = new MemoryStream(new byte[64 * 1024]) });
+        }, ArchiveTestData.Compressor(ArchiveFormat.TarGz));
+
+        var least = long.MaxValue;
+        var room = new ArchiveRoom(_ =>
+        {
+            var free = 16 * MiB - Written(At("out"));
+            least = Math.Min(least, free);
+            return free;
+        }, _ => null, _ => 1L << 40);
+
+        var stopped = Assert.Throws<ArchiveRefusedException>(() => Extract(archive, Dir("out"), room));
+
+        Assert.StartsWith("stopped before many.tar.gz filled ", stopped.Message);
+        Assert.True(least >= ArchiveRoom.SizedMargin, $"the entries left {least} bytes free");
+        Assert.Empty(Directory.EnumerateFileSystemEntries(At("out")));
+    }
+
     private static long Written(string folder)
         => Directory.Exists(folder)
             ? Directory.EnumerateFiles(folder, "*", SearchOption.AllDirectories).Sum(f => new FileInfo(f).Length)
