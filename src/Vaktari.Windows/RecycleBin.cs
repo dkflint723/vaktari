@@ -181,6 +181,17 @@ internal static class RecycleBin
     /// <summary>One entry, or null if its metadata cannot be trusted.</summary>
     internal static RecycleEntry? Read(string infoPath)
     {
+        // **The bin's own names are read as themselves.** A pair named
+        // "$RABC123." or "$RABC123.txt " was opened as "$RABC123" — another
+        // item's, or nothing — so it was not listed, or was listed as its
+        // neighbour (fix-8 verification). Through the spelling that reaches it;
+        // the entry then carries that spelling, so every later step — restore,
+        // purge, the metadata's own delete — acts on this pair and no other.
+        // An ordinary name is its own spelling and nothing changes.
+        if (Vaktari.Core.FileSystem.ReachablePath.Exact(infoPath) is not { } exact) return null;
+
+        infoPath = exact;
+
         byte[] bytes;
         try { bytes = File.ReadAllBytes(infoPath); }
         catch (Exception e) when (e is IOException or UnauthorizedAccessException) { return null; }

@@ -108,8 +108,18 @@ public sealed class WindowsTrashMaintenance : ITrashMaintenance
         var parent = Path.GetDirectoryName(landing);
         if (!string.IsNullOrEmpty(parent)) Directory.CreateDirectory(parent);
 
-        if (entry.IsDirectory) Directory.Move(entry.PayloadPath, landing);
-        else File.Move(entry.PayloadPath, landing);
+        // **Both ends in one spelling.** Directory.Move compares the two roots
+        // as written, so a plain "$R" payload moved to "\\?\…\album " threw
+        // "Source and destination path must have identical roots" and the
+        // folder stayed in the bin (fix-8 verification) — and a payload read
+        // through "\\?\" (RecycleBin.Read) is the same mismatch the other way
+        // round. When either side is extended, both are.
+        var extended = IsExtended(landing) || IsExtended(entry.PayloadPath);
+        var from = extended ? ReachablePath.Extended(entry.PayloadPath) ?? entry.PayloadPath : entry.PayloadPath;
+        var to = extended ? ReachablePath.Extended(landing) ?? landing : landing;
+
+        if (entry.IsDirectory) Directory.Move(from, to);
+        else File.Move(from, to);
 
         try { File.Delete(entry.InfoPath); }
         catch (Exception e) when (e is IOException or UnauthorizedAccessException)
@@ -129,6 +139,9 @@ public sealed class WindowsTrashMaintenance : ITrashMaintenance
     /// </summary>
     private static string Exact(string path)
         => ReachablePath.Exact(path) ?? throw new IOException(ReachablePath.Refuse(path) ?? path);
+
+    private static bool IsExtended(string path)
+        => path.StartsWith(@"\\?\", StringComparison.Ordinal);
 
     /// <summary>Whether anything already holds this name, asked of the name
     /// itself rather than of what Win32 would fold it to.</summary>
