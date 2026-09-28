@@ -48,8 +48,8 @@ A few things you would notice in the first ten minutes:
 
 **Tabs, splits and windows.** Open as many tabs as you like — drag to reorder
 them, middle-click to close one, double-click the empty strip for a new one.
-Right-click a tab for *Duplicate*, *Close other tabs*, *Close tabs to the
-right* and *Reopen closed tab* — the closing rows only when there is a tab for
+Right-click a tab for *Duplicate*, *Close*, *Close other tabs*, *Close tabs
+to the right* and *Reopen closed tab* — the closing rows only when there is a tab for
 them to close; each side of the window remembers its last ten.
 `F3` splits the window in two, each half with its own tabs, history, selection
 and zoom, and `Tab` moves between them. `Ctrl+N` opens a whole second window on
@@ -355,15 +355,17 @@ both* is the default, and *Do the same for the rest* starts unticked. What you
 pasted comes back selected, under the names the files actually landed with, so
 a *Keep both* arrival is picked out under its new name.
 
-**Dragging follows Explorer's rules** — plain drag moves within a drive and
-copies between drives, `Ctrl` copies, `Shift` moves, `Alt` or `Ctrl+Shift`
-leaves a shortcut. A small label follows the pointer naming what you are
+**Dragging follows Explorer's rules within a window** — a plain drag moves
+within a drive and copies between drives, `Ctrl` copies, `Shift` moves, `Alt`
+or `Ctrl+Shift` leaves a shortcut; a plain drag from another program, or from
+another Vaktari window, copies. On Windows, a program that allows only copying
+gets a copy whichever key is held. A small label follows the pointer naming what you are
 carrying, so a drag begun by accident does not look like the drag of twenty
 files you meant. The folder under the pointer takes a ring; files can also be
 dropped on another tab, which pauses and then switches, on a breadcrumb to move
 them up the tree, on a place or a folder in the sidebar's tree, or on the bin.
 A folder cannot be dropped into itself by any
-route. Drag with the *right* button instead and the drop asks. On Windows a
+route. Drag with the *right* button within a window and the drop asks. On Windows a
 drag straight out of 7-Zip or Explorer's own zip view lands too, even though
 those files do not exist on disk until they are dropped. *Copy to* and *Move
 to* send a selection somewhere without opening it first.
@@ -396,33 +398,36 @@ split to the other always ask.
 **Two right-click menus: one for what you clicked, one for the folder.**
 Right-click a file, a folder or a tile — anywhere on its row — and the menu is
 about that: open it, cut, copy, send it somewhere, rename it, bin it, compress
-it, share a folder, and its properties. Right-click the empty space around the rows
-and the menu is about the folder: *View* (the layouts, hidden files, and
-sorting, grouping and columns), *Select all*, *Paste*, *Undo* and *Redo* when
+it, share it, and its properties. Right-click the empty space around the rows
+and the menu is about the folder: *View* (the layouts, hidden files, sorting,
+and in the List layout grouping and columns), *Select all*, *Paste*, *Undo* and *Redo* when
 there is something to take back, *New*, *Refresh*, the terminal, *Analyse* for
 the space and duplicate scans and, in a split, comparing the sides, *Scripts*,
 *Add this folder to places*, *Share* and the folder's own *Properties*.
 Right-clicking empty space keeps your selection; the folder's menu simply does
 not act on it. The Menu key and `Shift+F10` open the first when something is
-selected and the second when nothing is. A row is left off wherever it would
-refuse or do the wrong thing — nothing copies, moves, renames or bins a drive
-in *This PC*, and nothing writes into a search, a recent list or the bin — and the rows
-are compact, 24 pixels to the toolkit's 30.
+selected and the second when nothing is. A row is left off where the listing
+it is in would refuse it — nothing copies, moves, renames or bins a drive in
+*This PC*, and nothing writes into a search, a recent list or the bin — and
+the rows are compact, 24 pixels to the toolkit's 30 at the default text size.
+On Windows only, the menus also end in the *Windows menu*; see
+[Fitting your desktop](#fitting-your-desktop).
 
 **Also on those menus:** *Mount* for a disk image, which attaches it and takes
 you inside, and *Unmount* when you are done. *New folder*, *New file* and *New
 from template*, each opening straight into the rename box. *Compress to ZIP*
 and *Extract all* — Vaktari's own, undoable, written beside what they act on,
 and refusing any archive entry that points outside the folder it is landing
-in. *Extract all* opens zip, 7z, RAR and tar however it is compressed
-(`.tar.gz`, `.tar.bz2`, `.tar.xz`, `.tar.zst`, `.tar.lz`), and a single
+in. *Extract all* opens zip, 7z, RAR and tar, plain or compressed as
+`.tar.gz`, `.tar.bz2`, `.tar.xz`, `.tar.zst` or `.tar.lz`, and a single
 compressed file such as `report.txt.gz`. It lands as one new thing and never
 over anything already there: an archive holding one folder becomes that
 folder, a compressed single file becomes the file, and anything else goes into
 a folder named after the archive. It runs on the transfer bar with progress,
 pause and cancel, and a cancelled or failed run removes what it wrote (should
-Vaktari itself stop part-way, the next *Extract all* into that folder clears
-the hidden `.vaktari-extracting-…` folder it left). Names Windows cannot hold,
+Vaktari itself stop part-way, a later *Extract all* into that folder clears
+the hidden `.vaktari-extracting-…` folder it left, once that has sat untouched
+for ten minutes). Names Windows cannot hold,
 or that would display misleadingly, are written with `_` in place of the
 offending characters (`_CON.txt`, `inv_gpj.exe`), two entries with one name
 both arrive (the second numbered), and on Windows what comes out of a
@@ -447,7 +452,9 @@ boxes, and owner and group as choosers, each live only where the change would
 actually be allowed. On Windows, Properties for a single item opens Windows'
 own sheet instead — the one with Security, Details and the Unblock checkbox —
 while Vaktari's own window answers a multi-item selection, reading *mixed*
-where the files disagree.
+where the files disagree. The exception is a name that ends in a space or a
+dot, which Windows' sheet would show as the file beside it: that one opens
+Vaktari's own window.
 
 **Scripts.** Drop a script in Vaktari's scripts folder and it appears under
 *Scripts* on the right-click menus: from a row's menu it runs on the selection,
@@ -531,7 +538,7 @@ theme chosen is your desktop's own icon theme.
 default, because a file manager that repaints itself to match your desktop the
 first time you launch it is a surprise rather than a courtesy. One *Colour*
 list in Settings ▸ Appearance chooses: Vaktari's colours, light or dark as your
-desktop is; Vaktari's colours always light; always dark; or *the desktop's own
+desktop is; Vaktari's colours always light; always dark; or *The desktop's own
 colours and accent*, which layers your scheme, accent and interface font over
 it and takes your desktop's light or dark with them. The bundled scheme is
 drawn for both lightnesses, so neither is an inversion of the other. Sizes and
@@ -557,7 +564,8 @@ more options*: the item's own menu on a row, and the folder's on empty space. It
 pays for other people's code.
 
 **Where Vaktari opens is yours to choose** — last session's folders, tabs and
-windows (the default), your home folder, *This PC*, or a folder you browse for.
+windows (the default), your home folder, *This PC* (*this computer* on Linux),
+or a folder you browse for.
 The same section decides how it opens: straight into a split, with the filter
 bar showing or with the path bar already editable — in windows opened from
 then on and at the next launch; the full path in the title bar changes as soon
@@ -570,17 +578,18 @@ as you apply it.
 | **General** | where Vaktari opens and how, whether one click or two opens things, what Backspace and Tab do, the split, and what asks before it happens |
 | **Appearance** | colour, font and text size, extensions, selection boxes and version-control marks on rows, the status bar, free space and the folder tree in the sidebar, what happens when the details panel does not fit, and the file icons |
 | **Folders and lists** | sort order and folders first, per-folder view memory, what a folder's size shows, date style, row tooltips, previews and their size limits, grid spacing |
-| **Privacy and system** | the recent lists and search history, with a button to empty each; the default file manager; the terminal; the Proton Drive folder; the update check |
+| **Privacy and system** | the recent lists and search history, with a button to empty each while it holds anything; the default file manager; the terminal; the Proton Drive folder; the update check |
 | **Keyboard** | every command and its keys |
-| **Context menu** | which entries the right-click menu shows |
+| **Context menu** | which entries the right-click menus show |
 | **Recycle Bin** (*Trash* on Linux) | how the bin is swept |
 
-Each setting's explanation is its tooltip, and what a screen reader reads out
-for it. *Apply* makes what is on screen take effect without closing the
+Most settings' explanations are their tooltips, and what a screen reader reads
+out for them; the bin page's warning and, on Windows, what *Make Vaktari the
+default* cannot change stay on the page as a short paragraph. *Apply* makes what is on screen take effect without closing the
 dialog; *Cancel* afterwards closes it without undoing what was applied.
 `Ctrl+Tab` and `Ctrl+PageDown` turn to the next page (`Ctrl+Shift+Tab`,
 `Ctrl+PageUp` back), `Alt` and the underlined letter goes straight to one, and
-the dialog opens on the page you last left it on. It can also show you the
+until Vaktari closes the dialog opens on the page you last left it on. It can also show you the
 settings file itself, save a copy of it, put one back from another machine,
 and restore every setting to its default.
 
@@ -737,8 +746,9 @@ promise yet. Worth knowing before you decide:
   all read from `kdeglobals`; on GNOME, Xfce or Cinnamon, "follow the desktop"
   for light/dark resolves to dark. The icon theme chooser and everything else
   in Settings work everywhere.
-- Fedora is the only distribution with a real package. There is no `.deb`, PPA,
-  Flatpak, Snap or AppImage; everyone else uses the tarball. That tarball links
+- Fedora is the only distribution with a real package. The PKGBUILD in
+  `packaging/` builds one on Arch, but no Arch package is published. There is
+  no `.deb`, PPA, Flatpak, Snap or AppImage; everyone else uses the tarball. That tarball links
   against the glibc of GitHub's current Ubuntu runner, so it will not start on
   a long-term-support distribution several years older.
 - The interface is **English only**.
@@ -776,8 +786,23 @@ promise yet. Worth knowing before you decide:
   under [Working with files](#working-with-files), with these limits:
   - **Password-protected archives are refused**, with a sentence saying so;
     asking for the password comes in a later version.
-  - **Split archives** (`.part1.rar`, `.7z.001`, `.z01` and the like) are
-    refused.
+  - **Split archives are not extracted.** A RAR that is one part of a set
+    (`.part1.rar` and the like) is refused with a sentence saying so. The
+    numbered parts of a split 7z or zip (`.7z.001`, `.zip.001`, `.z01`) and
+    an old-style `.r00` are not offered *Extract all*, and the last part of a
+    split zip, which is named `.zip`, is refused as damaged or not a zip
+    rather than as one part of a set.
+  - **The row is offered by name.** *Extract all* appears for the endings
+    listed above; the file's contents decide only how it is read, so a 7z
+    renamed to `.zip` opens but one renamed to `.bin` is not offered it.
+  - **A tar is checked only as far as its structure and its compression
+    go.** A tar keeps no checksum of its files, and the checksum at the end
+    of a `.tar.gz` or `.tar.zst` is not read, so a damaged byte inside one
+    can arrive without a word. Zip, 7z and RAR entries are checked against
+    their CRC.
+  - **Only a zip whose entries share the same compressed bytes is refused
+    for unpacking to far more than it holds.** An entry that honestly
+    compresses very well is extracted in full.
   - **Links, devices and pipes are never created.** They are left out and
     counted on the status line; a hard link to a file in the same archive
     arrives as a copy of it.
@@ -837,6 +862,10 @@ a file name — paste that in.
 MIT — see [LICENSE](LICENSE).
 
 Built with [Avalonia](https://avaloniaui.net). Published binaries include
-SkiaSharp, HarfBuzzSharp and the Inter typeface; their licences are in
-[THIRD-PARTY-NOTICES.txt](THIRD-PARTY-NOTICES.txt), which ships inside every
-tarball, installer and package.
+SkiaSharp, HarfBuzzSharp, the Inter typeface and SharpCompress; their licences
+are in [THIRD-PARTY-NOTICES.txt](THIRD-PARTY-NOTICES.txt), which ships inside
+every tarball, installer and package. SharpCompress carries a RAR decoder
+under the unRAR licence, whose terms are quoted there too. Because of it the
+Fedora package declares `MIT AND LicenseRef-unRAR` rather than MIT alone, and
+the PKGBUILD for building on Arch lists both; the unRAR licence is not a free
+licence as Fedora counts them.
