@@ -326,13 +326,14 @@ should not be trusted for compatibility yet.
   one in memory for as long as it stayed open, and the window opened last
   stayed in memory after closing until another was opened.
 
-- **A small tar extracts onto a nearly full USB stick.** Extracting a `.tar`
+- **A small tar extracts onto a nearly full drive.** Extracting a `.tar`
   or `.tar.gz` kept 256 MiB free whatever the drive, so a 10 KB archive onto
-  a stick with 200 MB left stopped at once, saying it would fill the drive,
-  where the same files in a zip landed. The room kept free is now 1% of the
-  drive, between 16 MiB and 256 MiB, so drives of 25.6 GB and up keep what
-  they kept before, and an archive that really would fill the drive is
-  still stopped before it does.
+  a drive with 200 MB left stopped at once, saying it would fill the drive,
+  where the same files in a zip landed. Each file in a tar is now checked
+  against the size the archive gives it, plus a few MiB, as a zip's files
+  are. A single compressed file such as `.gz` or `.xz`, which gives no size,
+  is still stopped before it fills the drive: it keeps 1% of the drive free,
+  between 16 MiB and 256 MiB.
 
 - **On Windows, *Share a folder* no longer shares the folder beside the one
   you typed when the path has a `.` or `..` in it.** With `album` and
@@ -341,10 +342,11 @@ should not be trusted for compatibility yet.
   ends in a space or a dot always got. An ordinary folder typed with a `.`
   or `..` in its path is shared as before.
 
-- **A failed *Delete permanently* in the bin writes its reason to the
-  log.** The status line said "could not delete 1 item(s) — see the log",
-  but on Windows the reason was written nowhere you could read it. It is in
-  the log now, with the item's name.
+- **A failed *Delete permanently* or *Restore* in the bin writes its reason
+  to the log.** The status line said "could not delete 1 item(s) — see the
+  log" or "could not restore 1 item(s) — see the log", but on Windows the
+  reason was written nowhere you could read it. It is in the log now, with
+  the item's name.
 
 ## [0.11.0] — 2026-09-25
 

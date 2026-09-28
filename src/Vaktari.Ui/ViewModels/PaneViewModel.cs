@@ -1709,6 +1709,9 @@ public sealed partial class PaneViewModel : ObservableObject, IDisposable
             {
                 // One failure must not abandon the rest of the selection.
                 failed++;
+
+                // Into the log the status line points at, as a failed purge's.
+                Vaktari.Core.Diagnostics.Log.Warn("bin", $"could not restore {item.OriginalPath}: {ex.Message}");
                 Console.Error.WriteLine($"[vaktari] restore failed: {ex.Message}");
             }
         }

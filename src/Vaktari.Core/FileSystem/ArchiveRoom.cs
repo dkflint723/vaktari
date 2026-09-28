@@ -10,16 +10,23 @@ namespace Vaktari.Core.FileSystem;
 /// <c>FreeSpaceOn</c> says the same). A draft rule of "total plus 1 GiB"
 /// refused a 10 KB zip onto a stick with 500 MB free (Core-6).
 ///
-/// **A running floor for sizes nobody declared.** A tar stream and a bare
-/// .gz say nothing about their size before the bytes arrive, and a 200 MB
-/// tar.xz of zeros is 29 KB on disk — a ratio of 6,800 that is perfectly
-/// legitimate. Rather than ask about ratios, the run checks free space every
-/// 64 MiB it writes and stops once less than 256 MiB is left, before the
-/// disk is full rather than when it is — on a drive of 25.6 GB and up.
+/// **A tar entry is held to the size it declares.** A tar has no total up
+/// front, but each entry's header says its exact size, and the run stops an
+/// entry that delivers more (the damage guard in the copy). So each entry is
+/// asked about before it is written, as the engines ask: refused only when
+/// its size, a cluster of <see cref="Slack"/> and <see cref="SizedMargin"/>
+/// are more than is free. A 256 MiB floor asked here refused a 10 KB .tar
+/// onto a drive with 200 MB free, however large the drive, where the same
+/// files in a zip landed.
 ///
-/// **The reserve scales with the drive.** A fixed 256 MiB refused a 10 KB
-/// .tar onto an 8 GB stick with 200 MB free, which zip, 7z and RAR (up-front
-/// check only) extracted happily. The reserve is 1% of the drive, never more
+/// **A running floor for sizes nobody declared.** A bare .gz, .xz, .bz2,
+/// .lz or .zst says nothing about its size before the bytes arrive, and a
+/// 200 MB .xz of zeros is 29 KB on disk — a ratio of 6,800 that is perfectly
+/// legitimate. Rather than ask about ratios, the run checks free space as it
+/// writes such a stream and stops once less than the reserve is left, before
+/// the disk is full rather than when it is.
+///
+/// **The reserve scales with the drive.** The reserve is 1% of the drive, never more
 /// than 256 MiB and never less than 16 MiB (<see cref="FloorFor"/>): any
 /// drive of 25.6 GB and up keeps the old 256 MiB exactly, and a stick, an SD
 /// card or a small tmpfs gets a margin its own size. The check interval is a
@@ -60,6 +67,17 @@ internal sealed record ArchiveRoom(
     /// filesystems: counted per entry so ten thousand tiny files are not
     /// measured as the few bytes they declare.</summary>
     public const long Slack = 4096;
+
+    /// <summary>What a sized entry leaves free besides its own bytes and
+    /// cluster: room for the folder entries, the filesystem's own metadata
+    /// and the temporary name the entry is written under.</summary>
+    public const long SizedMargin = 4L * 1024 * 1024;
+
+    /// <summary>Whether an entry of this declared size would leave less than
+    /// its cluster and <see cref="SizedMargin"/> free. Subtracted, never
+    /// added: a PAX size of long.MaxValue plus a margin wraps negative and
+    /// passes (second verification).</summary>
+    public static bool TooBigFor(long size, long free) => size > free - Slack - SizedMargin;
 
     public static ArchiveRoom Real { get; } = new(FreeOn, FormatOf, TotalOn);
 

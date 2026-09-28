@@ -118,11 +118,10 @@ public sealed class ArchiveVerifyTests : IDisposable
 
     /// <summary>
     /// **A hard link is asked about before it is copied, like any file.**
-    /// The existing test writes 400 MiB of links, so the running check every
-    /// 64 MiB stops it whether or not the links are asked about one by one.
-    /// Here all of it is 63 MiB, under that interval, so only the question
-    /// asked per entry can stop it: 3 MiB and twenty links to it, onto a
-    /// disk with 270 MiB free that fills as it is written.
+    /// A sized entry is never watched while it is written — the running check
+    /// is for streams that declare nothing — so only the question asked per
+    /// entry can stop it: 3 MiB and twenty links to it, 63 MiB in all, onto
+    /// a disk with 30 MiB free that fills as it is written.
     /// </summary>
     [Fact]
     public void Each_hard_link_copy_is_asked_about_before_it_is_written()
@@ -140,7 +139,7 @@ public sealed class ArchiveVerifyTests : IDisposable
         });
 
         var into = Dir("out");
-        var room = new ArchiveRoom(_ => 270 * MiB - Written(into), _ => null);
+        var room = new ArchiveRoom(_ => 30 * MiB - Written(into), _ => null);
 
         Assert.Throws<ArchiveRefusedException>(() => Archives.Extract(archive, into, null, default, room, null));
         Assert.Empty(Directory.EnumerateFileSystemEntries(into));

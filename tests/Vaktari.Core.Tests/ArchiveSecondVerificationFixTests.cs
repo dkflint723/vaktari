@@ -107,17 +107,53 @@ public sealed class ArchiveSecondVerificationFixTests : IDisposable
     /// A PAX tar entry declaring long.MaxValue bytes: the per-entry floor
     /// check added the floor to it and wrapped negative. It is refused before
     /// a byte is written, in the floor's words.
+    ///
+    /// Inside a gzip, because a plain tar cannot hold more than itself and
+    /// such an entry is now damage before the room is asked about (see
+    /// <see cref="A_plain_tar_entry_declaring_more_than_the_archive_holds_is_damage_before_anything_is_written"/>);
+    /// a compressed one can, so only the room check stands in its way.
     /// </summary>
     [Fact]
     public void A_tar_entry_declaring_the_largest_long_is_refused_by_the_floor()
     {
-        File.WriteAllBytes(At("huge.tar"), PaxTarDeclaring(long.MaxValue));
+        using (var file = File.Create(At("huge.tar.gz")))
+        using (var gzip = ArchiveTestData.Compressor(ArchiveFormat.TarGz)(file))
+            gzip.Write(PaxTarDeclaring(long.MaxValue));
 
         var refused = Assert.Throws<ArchiveRefusedException>(() => Archives.Extract(
-            At("huge.tar"), Dir("out"), null, default, new ArchiveRoom(_ => 1L << 40, _ => null), observer: null));
+            At("huge.tar.gz"), Dir("out"), null, default, new ArchiveRoom(_ => 1L << 40, _ => null), observer: null));
 
-        Assert.StartsWith("stopped before huge.tar filled ", refused.Message);
+        Assert.StartsWith("stopped before huge.tar.gz filled ", refused.Message);
         Assert.Empty(Directory.EnumerateFileSystemEntries(At("out")));
+    }
+
+    /// <summary>
+    /// **A plain tar entry larger than the whole archive is a header that
+    /// lies**, and the room check would be asked in its terms: 500 MiB
+    /// declared in a 3 KB tar, onto a drive with room for it, is damage said
+    /// before anything is created.
+    /// </summary>
+    [Fact]
+    public void A_plain_tar_entry_declaring_more_than_the_archive_holds_is_damage_before_anything_is_written()
+    {
+        File.WriteAllBytes(At("liar.tar"), PaxTarDeclaring(500L * 1024 * 1024));
+
+        var created = new Creations();
+
+        Assert.Throws<ArchiveDamagedException>(() => Archives.Extract(
+            At("liar.tar"), Dir("out"), null, default, new ArchiveRoom(_ => 1L << 40, _ => null), created));
+
+        Assert.Empty(created.Paths);
+        Assert.Empty(Directory.EnumerateFileSystemEntries(At("out")));
+    }
+
+    private sealed class Creations : IExtractionObserver
+    {
+        public List<string> Paths { get; } = [];
+
+        public void BeforeCreate(string path) => Paths.Add(path);
+        public void WhileWriting(string temporary, string final) { }
+        public void BeforeLanding(string target) { }
     }
 
     /// <summary>A PAX header setting the size, then a file header of size 0,

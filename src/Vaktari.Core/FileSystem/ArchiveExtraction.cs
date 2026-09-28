@@ -320,6 +320,14 @@ internal static class ArchiveExtraction
                 return;
             }
 
+            // **A size a plain tar cannot hold is damage, said before a byte
+            // is written.** Its data is stored as it is, so an entry larger
+            // than the whole archive is a header that lies — and the room
+            // check below is asked in its terms. A compressed tar can hold
+            // any size, and the copy still stops an entry at its declared size.
+            if (pass.Format == ArchiveFormat.Tar && info.Size > pass.ArchiveLength)
+                throw Damaged();
+
             using var data = item.OpenData();
 
             Write(node, info, data, Key(segments));
@@ -401,25 +409,28 @@ internal static class ArchiveExtraction
 
         /// <summary>
         /// **For a format that declares no total, each entry's own size is
-        /// asked about before it is written**: a tar declares every entry's
-        /// size, so the running floor below — which used to run only for
-        /// entries with no size at all — never ran for tar, and a 3 MB
-        /// tar.gz holding 300 MB extracted in full onto a disk the room check
-        /// said had 100 MB (review of Stage A).
+        /// asked about before it is written**: a 3 MB tar.gz holding 300 MB
+        /// once extracted in full onto a disk the room check said had 100 MB
+        /// (review of Stage A).
+        ///
+        /// **Against its size and a small margin, not the floor.** The copy
+        /// stops an entry at the size it declared, so what it will take is
+        /// known; the floor is for a stream that says nothing
+        /// (<see cref="ArchiveRoom.TooBigFor"/>). Asked of the floor, a 10 KB
+        /// .tar onto a 1 TB drive with 200 MB free was refused.
         /// </summary>
         private void RoomFor(ArchiveEntryInfo info)
         {
             if (pass.DeclaredTotal is null
                 && info.Size is { } size
                 && options.Room.FreeBytes(root) is { } free
-                // Subtracted, never added: a PAX size of long.MaxValue plus
-                // the floor wrapped negative and passed (second verification).
-                && size > free - Floor)
+                && ArchiveRoom.TooBigFor(size, free))
                 throw new ArchiveRefusedException(ArchiveSentences.Floor(pass.Leaf, Place));
         }
 
-        /// <summary>What this run leaves free, asked once: the drive's size
-        /// does not change while it runs (<see cref="ArchiveRoom.FloorFor"/>).</summary>
+        /// <summary>What this run leaves free of a stream with no declared
+        /// size, asked once: the drive's size does not change while it runs
+        /// (<see cref="ArchiveRoom.FloorFor"/>).</summary>
         private long Floor => _floor ??= options.Room.FloorFor(root);
 
         /// <summary>
@@ -487,7 +498,11 @@ internal static class ArchiveExtraction
                     ReportCompressedProgress();
                 }
 
-                if (pass.DeclaredTotal is null && (_sinceFloorCheck += read) >= ArchiveRoom.IntervalFor(Floor))
+                // Only for bytes nobody declared: an entry with a size was
+                // asked about in RoomFor and is stopped at that size above.
+                if (pass.DeclaredTotal is null
+                    && info.Size is null
+                    && (_sinceFloorCheck += read) >= ArchiveRoom.IntervalFor(Floor))
                 {
                     _sinceFloorCheck = 0;
 

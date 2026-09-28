@@ -56,7 +56,7 @@ public sealed class BinPurgeTests : OwnedViewModels
 
         public List<string> Purged { get; } = [];
 
-        /// <summary>When set, every delete fails with this reason.</summary>
+        /// <summary>When set, every delete and restore fails with this reason.</summary>
         public string? Refusing { get; init; }
 
         public RecordingBin Holding(string key, string original, DateTimeOffset deleted)
@@ -75,7 +75,8 @@ public sealed class BinPurgeTests : OwnedViewModels
             _items.RemoveAll(i => i.TrashName == trashName);
         }
 
-        public string Restore(string trashName) => trashName;
+        public string Restore(string trashName)
+            => Refusing is { } reason ? throw new IOException(reason) : trashName;
 
         public ValueTask<TrashSweepResult> SweepAsync(TrashSettings policy, CancellationToken ct)
             => ValueTask.FromResult(TrashSweepResult.Nothing);
@@ -196,6 +197,40 @@ public sealed class BinPurgeTests : OwnedViewModels
             var line = Assert.Single(
                 Vaktari.Core.Diagnostics.Log.Tail(50).Split('\n'),
                 l => l.Contains("the bin's own folder is read-only", StringComparison.Ordinal));
+
+            Assert.Contains("notes.txt", line, StringComparison.Ordinal);
+        }
+        finally
+        {
+            Vaktari.Core.Diagnostics.Log.Reset();
+            Directory.Delete(logs, recursive: true);
+        }
+    }
+
+    /// <summary>A failed restore said "see the log" the same way, and its
+    /// reason went to stderr alone too.</summary>
+    [AvaloniaFact]
+    public async Task A_failed_restore_writes_its_reason_to_the_log()
+    {
+        var logs = Directory.CreateTempSubdirectory("vaktari-restore-log").FullName;
+        Vaktari.Core.Diagnostics.Log.Configure(logs, includePaths: false);
+
+        try
+        {
+            var bin = new RecordingBin { Refusing = "the old folder is gone" }
+                .Holding("k1", "/tmp/notes.txt", DateTimeOffset.UnixEpoch);
+
+            var pane = await BinPane(bin);
+
+            Select(pane, "notes.txt");
+
+            await pane.RestoreFromTrashCommand.ExecuteAsync(null);
+
+            Assert.Equal("could not restore 1 item(s) — see the log", pane.Status);
+
+            var line = Assert.Single(
+                Vaktari.Core.Diagnostics.Log.Tail(50).Split('\n'),
+                l => l.Contains("the old folder is gone", StringComparison.Ordinal));
 
             Assert.Contains("notes.txt", line, StringComparison.Ordinal);
         }
