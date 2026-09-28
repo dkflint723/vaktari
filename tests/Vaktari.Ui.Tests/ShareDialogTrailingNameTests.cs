@@ -101,6 +101,65 @@ public sealed class ShareDialogTrailingNameTests : IDisposable
         Assert.Empty(shared);
     }
 
+    /// <summary>
+    /// **Forward slashes and the "\\.\" device spelling were served as the
+    /// neighbour.** ReachablePath.Exact has no spelling for either, so the
+    /// dialog decided the folder was not there, trimmed the text, and shared
+    /// "album" (fix-9 verification). Each is read as Win32 reads its names and
+    /// refused like any other spelling.
+    /// </summary>
+    [AvaloniaTheory(Skip = OnlyOn.Windows, SkipUnless = nameof(OnlyOn.IsWindows), SkipType = typeof(OnlyOn))]
+    [InlineData("slashes")]
+    [InlineData("device")]
+    [InlineData("device-slashes")]
+    [InlineData("mixed")]
+    public async Task On_windows_a_folded_folder_is_refused_in_a_device_or_slashed_spelling(string spelling)
+    {
+        var album = AlbumBeside();
+
+        var typed = spelling switch
+        {
+            "slashes" => album.Replace('\\', '/'),
+            "device" => @"\\.\" + album,
+            "device-slashes" => "//./" + album.Replace('\\', '/'),
+            _ => album[..album.LastIndexOf('\\')] + "/album ",
+        };
+
+        var (model, shared) = Dialog(typed);
+
+        Assert.False(model.CanShare);
+        Assert.Empty(model.Folders);
+        Assert.Contains("\"album \" cannot be handed to another program", model.Status, StringComparison.Ordinal);
+
+        await model.ShareCommand.ExecuteAsync(null);
+
+        Assert.Empty(shared);
+    }
+
+    /// <summary>The same spellings of an ordinary folder are shared exactly as
+    /// typed, and spaces typed after one are still taken off — "album  " with
+    /// two, when no such folder exists, is "album".</summary>
+    [AvaloniaTheory(Skip = OnlyOn.Windows, SkipUnless = nameof(OnlyOn.IsWindows), SkipType = typeof(OnlyOn))]
+    [InlineData("slashes", "")]
+    [InlineData("device", "")]
+    [InlineData("slashes", "  ")]
+    [InlineData("device", "  ")]
+    public async Task On_windows_an_ordinary_folder_in_those_spellings_is_shared_as_typed(string spelling, string after)
+    {
+        AlbumBeside();
+        var album = Path.Combine(_root, "album");
+
+        var typed = spelling == "slashes" ? album.Replace('\\', '/') : @"\\.\" + album;
+
+        var (model, shared) = Dialog(typed + after);
+
+        Assert.True(model.CanShare);
+
+        await model.ShareCommand.ExecuteAsync(null);
+
+        Assert.Equal([typed], shared);
+    }
+
     [AvaloniaFact(Skip = OnlyOn.Linux, SkipUnless = nameof(OnlyOn.IsLinux), SkipType = typeof(OnlyOn))]
     public async Task On_linux_a_folder_named_album_space_is_served_as_itself()
     {

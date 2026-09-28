@@ -51,7 +51,37 @@ public sealed partial class ShareRequestViewModel : ObservableObject
     /// verification). A trailing space that belongs to a name is part of the
     /// name; one a person typed after a path that exists without it is not.
     /// </summary>
-    private string Folder => Exists(Path) ? Path : Path.Trim();
+    private string Folder => Exists(AsWritten(Path)) ? Path : Path.Trim();
+
+    /// <summary>
+    /// The text as Win32 will read its names, with none of them folded: "/"
+    /// is a separator, and a device spelling — "\\.\X:\…", or "//?/" and the
+    /// other forms that are not a literal "\\?\" — reads the names under it
+    /// as a plain path's (ReachablePath.Unopenable reads them the same way),
+    /// so it is asked here through "\\?\", which keeps the last one as it is.
+    ///
+    /// **Only to ask whether the exact folder is there.** "D:/x/album " and
+    /// "\\.\D:\x\album " have no spelling ReachablePath.Exact will make,
+    /// so the question answered no, the text was trimmed, and "album" — the
+    /// neighbour — was shared (fix-9 verification). Asked this way, the folder
+    /// is found, kept as typed, and refused by the hand-off rule, which reads
+    /// every spelling. What is shared is never this text: an ordinary folder
+    /// goes on as it was typed.
+    /// </summary>
+    private static string AsWritten(string path)
+    {
+        if (!OperatingSystem.IsWindows()) return path;
+
+        // A literal "\\?\" or "\??\" is opened as written, "/" and all.
+        if (path.StartsWith(@"\\?\", StringComparison.Ordinal) || path.StartsWith(@"\??\", StringComparison.Ordinal))
+            return path;
+
+        var unified = path.Replace('/', '\\');
+
+        return unified.StartsWith(@"\\.\", StringComparison.Ordinal) || unified.StartsWith(@"\\?\", StringComparison.Ordinal)
+            ? @"\\?\" + unified[4..]
+            : unified;
+    }
 
     /// <summary>Whether this exact folder is there: asked through the spelling
     /// that reaches it, so on Windows "album " is not answered for by "album".</summary>

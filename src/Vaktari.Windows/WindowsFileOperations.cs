@@ -563,7 +563,7 @@ public sealed class WindowsFileOperations : IFileOperations
 
                     listed ??= Listed(bin);
 
-                    if (listed.FirstOrDefault(i => i.TrashName == name) is { } item)
+                    if (listed.FirstOrDefault(i => SameKey(i.TrashName, name)) is { } item)
                         blocked.Add((PathRules.LeafName(item.OriginalPath), why));
                     else
                         nameless.Add(why);
@@ -581,6 +581,22 @@ public sealed class WindowsFileOperations : IFileOperations
 
             throw new PartlyUndone(said, done: null, left: null);
         }
+
+        /// <summary>
+        /// Whether two keys name one item, whichever spelling each came in.
+        /// The bin's Keys() hands out plain "$I" paths, and its listing spells a
+        /// pair whose own names fold through "\\?\" (RecycleBin.Read), so the
+        /// text of the two never matched and such an item that would not come
+        /// back was left unnamed (fix-9 verification). Only the literal prefix
+        /// is taken off: under it the names are as written in both.
+        /// </summary>
+        private static bool SameKey(string listed, string key)
+            => string.Equals(Plain(listed), Plain(key), StringComparison.Ordinal);
+
+        private static string Plain(string key)
+            => key.StartsWith(@"\\?\UNC\", StringComparison.Ordinal) ? @"\\" + key[8..]
+             : key.StartsWith(@"\\?\", StringComparison.Ordinal) ? key[4..]
+             : key;
 
         /// <summary>Read once; a bin that will not answer names nothing.</summary>
         private static IReadOnlyList<TrashedItem> Listed(ITrashMaintenance bin)

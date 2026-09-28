@@ -237,6 +237,65 @@ public sealed class TrashUndoTests
     }
 
     /// <summary>
+    /// A bin that hands out plain keys and lists a pair whose own names fold
+    /// through "\\?\" — what RecycleBin.Read does — and refuses to restore it.
+    /// </summary>
+    private sealed class SpelledBin(string key, string original) : ITrashMaintenance
+    {
+        private bool _arrived;
+
+        public void Arrive() => _arrived = true;
+
+        public IEnumerable<string> Keys() => _arrived ? [key] : [];
+
+        public string? OriginalPathOf(string asked) => _arrived && asked == key ? original : null;
+
+        public IReadOnlyList<TrashedItem> List()
+            => _arrived ? [new TrashedItem(@"\\?\" + key, original, "payload", DateTimeOffset.UnixEpoch, 0, false)] : [];
+
+        public string Restore(string trashName) => throw new IOException("the disk is full");
+
+        public void Delete(string trashName) { }
+
+        public ValueTask<TrashSweepResult> SweepAsync(TrashSettings policy, CancellationToken ct)
+            => ValueTask.FromResult(TrashSweepResult.Nothing);
+
+        public ValueTask<TrashSweepResult> EmptyAsync(CancellationToken ct)
+            => ValueTask.FromResult(TrashSweepResult.Nothing);
+    }
+
+    /// <summary>
+    /// **Named whichever spelling the bin used.** Keys() handed the undo a
+    /// plain "$I" path and the listing spelled the same pair "\\?\", so an
+    /// item that would not come back was said as "one item" (fix-9
+    /// verification).
+    /// </summary>
+    [WindowsFact]
+    public async Task An_item_the_bin_lists_by_another_spelling_is_still_named()
+    {
+        using var tree = new TempTree();
+        var file = tree.Write("notes.txt", "keep");
+
+        var bin = new SpelledBin(@"C:\$Recycle.Bin\S-1-5-21\$IABC123.txt ", file);
+
+        var ops = new WindowsFileOperations
+        {
+            Bin = bin,
+            RecycleOverride = _ => { bin.Arrive(); return new RecycleResult(0, false); },
+        };
+
+        await ops.Trash([file]).Completion;
+
+        Assert.True(ops.CanUndo, "a recycle left nothing to undo");
+
+        var said = await Undo(ops);
+
+        Assert.Equal(
+            "notes.txt could not go back: the disk is full",
+            Assert.IsAssignableFrom<IOException>(said).Message);
+    }
+
+    /// <summary>
     /// One refused with the bin still listing it, one purged: the named one
     /// leads, the nameless one joins the count, and the reason is the first
     /// there is — the shape the undo of a move uses past three names.
