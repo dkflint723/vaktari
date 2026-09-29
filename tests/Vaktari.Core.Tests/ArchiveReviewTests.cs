@@ -516,6 +516,64 @@ public sealed class ArchiveReviewTests : IDisposable
         }
     }
 
+    /// <summary>
+    /// **The budget is held to the byte, and before the bytes that would
+    /// break it are written.** 20 MiB free on a 1 TiB drive gives a budget
+    /// of exactly 10 MiB: that lands, and one byte more is stopped. A check
+    /// made a chunk late let the last 80 KiB through, and 9 MiB against
+    /// 12 MiB could not tell (fix-11 verification).
+    /// </summary>
+    [Theory]
+    [InlineData(0, true)]
+    [InlineData(1, false)]
+    public void A_bare_stream_is_held_to_its_budget_to_the_byte(int over, bool lands)
+    {
+        var archive = ArchiveTestData.Bare(At("zeros.gz"), ArchiveFormat.Gz, new byte[10 * MiB + over]);
+
+        var room = new ArchiveRoom(_ => 20 * MiB, _ => null, _ => 1L << 40);
+
+        if (lands)
+        {
+            Assert.Equal(10 * MiB, new FileInfo(Extract(archive, Dir("out"), room).Landed).Length);
+        }
+        else
+        {
+            Assert.Throws<ArchiveRefusedException>(() => Extract(archive, Dir("out"), room));
+            Assert.Empty(Directory.EnumerateFileSystemEntries(At("out")));
+        }
+    }
+
+    /// <summary>
+    /// **Free space that cannot be read as a stream starts leaves it
+    /// unbudgeted, not unwatched.** Unknown until the first bytes land, then
+    /// 10 MiB on a 1 GiB drive: the look still asks for the drive's 16 MiB
+    /// reserve and stops it. A reserve of nothing in that case let all
+    /// 40 MiB through (fix-11 verification). Unknown throughout, it lands,
+    /// as it always did.
+    /// </summary>
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public void A_bare_stream_whose_free_space_is_unknown_as_it_starts_is_still_watched(bool readableLater)
+    {
+        var archive = ArchiveTestData.Bare(At("zeros.gz"), ArchiveFormat.Gz, new byte[40 * MiB]);
+
+        var room = new ArchiveRoom(
+            _ => readableLater && Written(At("out")) > 0 ? 10 * MiB : null, _ => null, _ => 1L << 30);
+
+        if (readableLater)
+        {
+            var stopped = Assert.Throws<ArchiveRefusedException>(() => Extract(archive, Dir("out"), room));
+
+            Assert.StartsWith("stopped before zeros.gz filled ", stopped.Message);
+            Assert.Empty(Directory.EnumerateFileSystemEntries(At("out")));
+        }
+        else
+        {
+            Assert.Equal(40 * MiB, new FileInfo(Extract(archive, Dir("out"), room).Landed).Length);
+        }
+    }
+
     private static long Written(string folder)
         => Directory.Exists(folder)
             ? Directory.EnumerateFiles(folder, "*", SearchOption.AllDirectories).Sum(f => new FileInfo(f).Length)
