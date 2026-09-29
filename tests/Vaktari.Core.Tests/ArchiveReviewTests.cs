@@ -278,27 +278,24 @@ public sealed class ArchiveReviewTests : IDisposable
     }
 
     /// <summary>
-    /// **A bare .gz still stops before a large drive fills.** 70 MiB of zeros
-    /// that say nothing of their size, onto a 1 TiB drive with 300 MiB free:
-    /// the first look, 64 MiB in, sees less than the 256 MiB reserve.
+    /// **Someone else filling the drive is caught by the look.** 70 MiB of
+    /// zeros in a bare .gz onto a 1 TiB drive that had 10 GiB free as the
+    /// stream started — a budget of all but 256 MiB — and 100 MiB once it
+    /// was under way: the look 64 MiB in sees less than the reserve left.
     /// </summary>
     [Fact]
-    public void A_bare_stream_that_would_fill_a_large_drive_is_still_stopped()
+    public void A_bare_stream_is_stopped_when_the_drive_fills_from_elsewhere()
     {
         var archive = ArchiveTestData.Bare(At("zeros.gz"), ArchiveFormat.Gz, new byte[70 * MiB]);
 
-        var least = long.MaxValue;
-        var room = new ArchiveRoom(_ =>
-        {
-            var free = 300 * MiB - Written(At("out"));
-            least = Math.Min(least, free);
-            return free;
-        }, _ => null, _ => 1L << 40);
+        // Up front, and as the stream starts: plenty. After that: not.
+        var asked = 0;
+        var room = new ArchiveRoom(_ => ++asked <= 2 ? 10L << 30 : 100 * MiB, _ => null, _ => 1L << 40);
 
         var stopped = Assert.Throws<ArchiveRefusedException>(() => Extract(archive, Dir("out"), room));
 
         Assert.StartsWith("stopped before zeros.gz filled ", stopped.Message);
-        Assert.True(least > 200 * MiB, $"the stream ran past the first look: {least} bytes free");
+        Assert.True(asked > 2, "free space was never looked at while writing");
         Assert.Empty(Directory.EnumerateFileSystemEntries(At("out")));
     }
 
@@ -443,28 +440,80 @@ public sealed class ArchiveReviewTests : IDisposable
     }
 
     /// <summary>
-    /// **A bare stream is asked about before its first byte.** The running
-    /// check first looks one interval in, so with less free than that — 3
-    /// MiB on a 1 GiB drive (interval 4 MiB), 50 MiB on a 1 TiB one
-    /// (interval 64 MiB) — the stream wrote until the disk was full. It is
-    /// now refused before anything is created (fix-11 verification).
+    /// **A bare stream cannot fill the disk before its first look.** The
+    /// look comes an interval in, and with less free than that — 3 MiB on a
+    /// 1 GiB drive, 50 MiB on a 1 TiB one — the stream wrote until the disk
+    /// was full. It is held instead to a budget set as it starts, half of
+    /// what was free here, and stopped with the sentence, nothing left and
+    /// free space never at 0 (fix-11 verification).
     /// </summary>
     [Theory]
     [InlineData(1L << 30, 3, 2)]
     [InlineData(1L << 40, 50, 40)]
-    public void A_bare_stream_onto_less_than_the_reserve_is_refused_before_its_first_byte(long total, long freeMiB, int sizeMiB)
+    public void A_bare_stream_onto_little_free_space_is_stopped_before_the_disk_fills(long total, long freeMiB, int sizeMiB)
     {
         var archive = ArchiveTestData.Bare(At("zeros.gz"), ArchiveFormat.Gz, new byte[sizeMiB * MiB]);
 
-        var created = new List<string>();
-        var room = new ArchiveRoom(_ => freeMiB * MiB - Written(At("out")), _ => null, _ => total);
+        var least = long.MaxValue;
+        var room = new ArchiveRoom(_ =>
+        {
+            var free = freeMiB * MiB - Written(At("out"));
+            least = Math.Min(least, free);
+            return free;
+        }, _ => null, _ => total);
 
-        var stopped = Assert.Throws<ArchiveRefusedException>(
-            () => Extract(archive, Dir("out"), room, new Hooks { Before = created.Add }));
+        var stopped = Assert.Throws<ArchiveRefusedException>(() => Extract(archive, Dir("out"), room));
 
         Assert.Equal($"stopped before zeros.gz filled {ArchiveRoom.Drive(At("out"))} — nothing was extracted", stopped.Message);
-        Assert.Empty(created);
+        Assert.True(least > 0, $"the disk was allowed to fill: {least} bytes free at the last look");
         Assert.Empty(Directory.EnumerateFileSystemEntries(At("out")));
+    }
+
+    /// <summary>
+    /// **A small bare file lands wherever there is plenty of room for it.**
+    /// 5 KB in a .gz onto a 1 TiB drive with 200 MiB free — less than the
+    /// drive's 256 MiB reserve, and refused outright when the reserve was
+    /// asked for whole (fix-11 verification).
+    /// </summary>
+    [Fact]
+    public void A_small_bare_file_lands_on_a_large_drive_with_less_free_than_its_reserve()
+    {
+        var archive = ArchiveTestData.Bare(At("report.txt.gz"), ArchiveFormat.Gz, new byte[5 * 1024]);
+
+        var room = new ArchiveRoom(_ => 200 * MiB, _ => null, _ => 1L << 40);
+
+        var done = Extract(archive, Dir("out"), room);
+
+        Assert.Equal(1, done.Files);
+        Assert.Equal(5 * 1024, new FileInfo(done.Landed).Length);
+    }
+
+    /// <summary>
+    /// **Never more than half of what was free**, where the drive's reserve
+    /// would allow more: 20 MiB free on a 1 TiB drive. 9 MiB lands; 12 MiB
+    /// is stopped. The free space reported here does not fall as the stream
+    /// writes, so no look can stop it — only the budget taken as it started.
+    /// </summary>
+    [Theory]
+    [InlineData(9, true)]
+    [InlineData(12, false)]
+    public void A_bare_stream_is_held_to_half_of_the_free_space_it_found(int sizeMiB, bool lands)
+    {
+        var archive = ArchiveTestData.Bare(At("zeros.gz"), ArchiveFormat.Gz, new byte[sizeMiB * MiB]);
+
+        var room = new ArchiveRoom(_ => 20 * MiB, _ => null, _ => 1L << 40);
+
+        if (lands)
+        {
+            Assert.Equal(1, Extract(archive, Dir("out"), room).Files);
+        }
+        else
+        {
+            var stopped = Assert.Throws<ArchiveRefusedException>(() => Extract(archive, Dir("out"), room));
+
+            Assert.StartsWith("stopped before zeros.gz filled ", stopped.Message);
+            Assert.Empty(Directory.EnumerateFileSystemEntries(At("out")));
+        }
     }
 
     private static long Written(string folder)

@@ -332,9 +332,10 @@ should not be trusted for compatibility yet.
   where the same files in a zip landed. Each file in a tar is now checked
   against the size the archive gives it, and goes ahead when that size plus
   4 KiB plus 4 MiB is free. A single compressed file such as `.gz` or `.xz`
-  gives no size, so it is refused before it starts when less than 1% of the
-  drive is free (at least 16 MiB, at most 256 MiB), and otherwise stopped
-  part-way, with what it wrote removed, before it fills the drive.
+  gives no size, so it always leaves free at least half the space it found
+  when it started, or 1% of the drive (between 16 MiB and 256 MiB) if that
+  is less, and is stopped part-way, with what it wrote removed, before it
+  would leave less.
 
 - **On Windows, *Share a folder* no longer shares the folder beside the one
   you typed when the path has a `.` or `..` in it.** With `album` and

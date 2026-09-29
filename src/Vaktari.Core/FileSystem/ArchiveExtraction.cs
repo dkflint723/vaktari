@@ -143,6 +143,13 @@ internal static class ArchiveExtraction
         private int _unsafe, _links, _special, _mac, _unwritable;
         private long _sinceFloorCheck;
         private long? _floor;
+
+        /// <summary>What the stream being written may leave free, and what
+        /// it may write, from the free space measured as it started — see
+        /// <see cref="ArchiveRoom.StreamReserve"/>. The budget is null when
+        /// free space could not be read.</summary>
+        private long _streamReserve;
+        private long? _streamBudget;
         private long _compressedSeen;
         private long _declaredReported;
 
@@ -419,11 +426,14 @@ internal static class ArchiveExtraction
         /// (<see cref="ArchiveRoom.TooBigFor"/>). Asked of the floor, a 10 KB
         /// .tar onto a 1 TB drive with 200 MB free was refused.
         ///
-        /// **A stream with no size is asked about before its first byte
-        /// too.** The running check first looks one interval in, so with
-        /// less free than that interval — 3 MiB on a 1 GiB drive, 50 MiB on
-        /// a 1 TiB one — a bare .gz filled the disk before it was ever
-        /// looked at, and failed as disk-full (fix-11 verification).
+        /// **A stream with no size is measured as it starts, not refused.**
+        /// The free space found then sets what it may leave free — the
+        /// smaller of the drive's reserve and half of what was found — and
+        /// what it may write, which the copy holds it to byte by byte. A
+        /// refusal against the whole reserve turned away a 5 KB .gz onto a
+        /// 1 TiB drive with 200 MiB free; no refusal at all let 2 MiB onto
+        /// 3 MiB free write until the disk was full before the first look
+        /// (fix-11 verification).
         /// </summary>
         private void RoomFor(ArchiveEntryInfo info)
         {
@@ -433,10 +443,14 @@ internal static class ArchiveExtraction
                 && ArchiveRoom.TooBigFor(size, free))
                 throw new ArchiveRefusedException(ArchiveSentences.Floor(pass.Leaf, Place));
 
-            if (pass.DeclaredTotal is null
-                && info.Size is null
-                && options.Room.BelowFloor(root, Floor))
-                throw new ArchiveRefusedException(ArchiveSentences.Floor(pass.Leaf, Place));
+            if (pass.DeclaredTotal is null && info.Size is null)
+            {
+                var found = options.Room.FreeBytes(root);
+
+                _streamReserve = found is { } f ? ArchiveRoom.StreamReserve(Floor, f) : Floor;
+                _streamBudget = found - _streamReserve;
+                _sinceFloorCheck = 0;
+            }
         }
 
         /// <summary>What this run leaves free of a stream with no declared
@@ -497,6 +511,13 @@ internal static class ArchiveExtraction
 
                 crc?.SlurpBlock(buffer, 0, read);
 
+                // **Held to its budget before the bytes are written**, so a
+                // stream never takes more than it was given, however soon
+                // after it started that would be and whatever the size of
+                // the chunk.
+                if (pass.DeclaredTotal is null && info.Size is null && _streamBudget is { } budget && total > budget)
+                    throw new ArchiveRefusedException(ArchiveSentences.Floor(pass.Leaf, Place));
+
                 to.Write(buffer, 0, read);
 
                 if (pass.DeclaredTotal is not null)
@@ -511,13 +532,15 @@ internal static class ArchiveExtraction
 
                 // Only for bytes nobody declared: an entry with a size was
                 // asked about in RoomFor and is stopped at that size above.
+                // The budget covers what this stream writes; this look
+                // covers everyone else writing to the same drive meanwhile.
                 if (pass.DeclaredTotal is null
                     && info.Size is null
-                    && (_sinceFloorCheck += read) >= ArchiveRoom.IntervalFor(Floor))
+                    && (_sinceFloorCheck += read) >= ArchiveRoom.IntervalFor(_streamReserve))
                 {
                     _sinceFloorCheck = 0;
 
-                    if (options.Room.BelowFloor(root, Floor))
+                    if (options.Room.BelowFloor(root, _streamReserve))
                         throw new ArchiveRefusedException(ArchiveSentences.Floor(pass.Leaf, Place));
                 }
             }

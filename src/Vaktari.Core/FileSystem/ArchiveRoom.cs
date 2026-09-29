@@ -22,9 +22,11 @@ namespace Vaktari.Core.FileSystem;
 /// **A running floor for sizes nobody declared.** A bare .gz, .xz, .bz2,
 /// .lz or .zst says nothing about its size before the bytes arrive, and a
 /// 200 MB .xz of zeros is 29 KB on disk — a ratio of 6,800 that is perfectly
-/// legitimate. Rather than ask about ratios, the run checks free space as it
-/// writes such a stream and stops once less than the reserve is left, before
-/// the disk is full rather than when it is.
+/// legitimate. Rather than ask about ratios, the run measures free space as
+/// such a stream starts and gives it a budget: all of it but the reserve, or
+/// half of it when the reserve is more than half (<see cref="StreamReserve"/>).
+/// Its own bytes are held to that budget before they are written, and free
+/// space is looked at again as it goes, for anyone else filling the drive.
 ///
 /// **The reserve scales with the drive.** The reserve is 1% of the drive, never more
 /// than 256 MiB and never less than 16 MiB (<see cref="FloorFor"/>): any
@@ -108,6 +110,16 @@ internal sealed record ArchiveRoom(
     /// <summary>How often a run with no declared total looks at free space:
     /// every 64 MiB, or every quarter of a smaller reserve.</summary>
     public static long IntervalFor(long floor) => Math.Min(FloorInterval, floor / 4);
+
+    /// <summary>
+    /// What a stream with no declared size leaves free, from the free space
+    /// found as it starts: the drive's reserve, or half of what was found
+    /// when that is less. So it may write the rest — never less than half
+    /// of what was free, and on a roomy drive all but the reserve — and a
+    /// 5 KB .gz lands on a 1 TiB drive with 200 MiB free, where asking for
+    /// the whole 256 MiB turned it away.
+    /// </summary>
+    public static long StreamReserve(long floor, long found) => Math.Min(floor, Math.Max(0, found) / 2);
 
     public bool BelowFloor(string destination, long floor) => FreeBytes(destination) is { } free && free < floor;
 
