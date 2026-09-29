@@ -418,6 +418,12 @@ internal static class ArchiveExtraction
         /// known; the floor is for a stream that says nothing
         /// (<see cref="ArchiveRoom.TooBigFor"/>). Asked of the floor, a 10 KB
         /// .tar onto a 1 TB drive with 200 MB free was refused.
+        ///
+        /// **A stream with no size is asked about before its first byte
+        /// too.** The running check first looks one interval in, so with
+        /// less free than that interval — 3 MiB on a 1 GiB drive, 50 MiB on
+        /// a 1 TiB one — a bare .gz filled the disk before it was ever
+        /// looked at, and failed as disk-full (fix-11 verification).
         /// </summary>
         private void RoomFor(ArchiveEntryInfo info)
         {
@@ -425,6 +431,11 @@ internal static class ArchiveExtraction
                 && info.Size is { } size
                 && options.Room.FreeBytes(root) is { } free
                 && ArchiveRoom.TooBigFor(size, free))
+                throw new ArchiveRefusedException(ArchiveSentences.Floor(pass.Leaf, Place));
+
+            if (pass.DeclaredTotal is null
+                && info.Size is null
+                && options.Room.BelowFloor(root, Floor))
                 throw new ArchiveRefusedException(ArchiveSentences.Floor(pass.Leaf, Place));
         }
 

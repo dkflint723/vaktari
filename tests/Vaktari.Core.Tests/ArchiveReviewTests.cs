@@ -442,6 +442,31 @@ public sealed class ArchiveReviewTests : IDisposable
         Assert.Empty(Directory.EnumerateFileSystemEntries(At("out")));
     }
 
+    /// <summary>
+    /// **A bare stream is asked about before its first byte.** The running
+    /// check first looks one interval in, so with less free than that — 3
+    /// MiB on a 1 GiB drive (interval 4 MiB), 50 MiB on a 1 TiB one
+    /// (interval 64 MiB) — the stream wrote until the disk was full. It is
+    /// now refused before anything is created (fix-11 verification).
+    /// </summary>
+    [Theory]
+    [InlineData(1L << 30, 3, 2)]
+    [InlineData(1L << 40, 50, 40)]
+    public void A_bare_stream_onto_less_than_the_reserve_is_refused_before_its_first_byte(long total, long freeMiB, int sizeMiB)
+    {
+        var archive = ArchiveTestData.Bare(At("zeros.gz"), ArchiveFormat.Gz, new byte[sizeMiB * MiB]);
+
+        var created = new List<string>();
+        var room = new ArchiveRoom(_ => freeMiB * MiB - Written(At("out")), _ => null, _ => total);
+
+        var stopped = Assert.Throws<ArchiveRefusedException>(
+            () => Extract(archive, Dir("out"), room, new Hooks { Before = created.Add }));
+
+        Assert.Equal($"stopped before zeros.gz filled {ArchiveRoom.Drive(At("out"))} — nothing was extracted", stopped.Message);
+        Assert.Empty(created);
+        Assert.Empty(Directory.EnumerateFileSystemEntries(At("out")));
+    }
+
     private static long Written(string folder)
         => Directory.Exists(folder)
             ? Directory.EnumerateFiles(folder, "*", SearchOption.AllDirectories).Sum(f => new FileInfo(f).Length)

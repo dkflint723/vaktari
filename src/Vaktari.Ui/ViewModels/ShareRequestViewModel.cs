@@ -85,9 +85,9 @@ public sealed partial class ShareRequestViewModel : ObservableObject
 
         var unified = path.Replace('/', '\\');
 
-        return WithoutDots(unified.StartsWith(@"\\.\", StringComparison.Ordinal) || unified.StartsWith(@"\\?\", StringComparison.Ordinal)
-            ? @"\\?\" + unified[4..]
-            : unified);
+        return unified.StartsWith(@"\\.\", StringComparison.Ordinal) || unified.StartsWith(@"\\?\", StringComparison.Ordinal)
+            ? WithoutDots(@"\\?\" + unified[4..], device: true)
+            : WithoutDots(unified, device: false);
     }
 
     /// <summary>
@@ -96,10 +96,16 @@ public sealed partial class ShareRequestViewModel : ObservableObject
     /// nothing else: **the trailing space or dot of every name left stays**,
     /// the one step of Win32's walk this must not take. ".." never climbs
     /// past the root. A path that is not full comes back as it is.
+    ///
+    /// **A device spelling's root is the prefix alone.** Win32 lets ".."
+    /// climb past the drive in "\\.\C:\..\C:\x\album ", to "\\.\" and back
+    /// down to "C:\x\album " — GetFullPath gives the same — and a walk
+    /// that stopped at "C:\" asked about "C:\C:\x\album ", found nothing,
+    /// and shared the neighbour (fix-11 verification).
     /// </summary>
-    private static string WithoutDots(string path)
+    private static string WithoutDots(string path, bool device)
     {
-        var root = System.IO.Path.GetPathRoot(path);
+        var root = device ? @"\\?\" : System.IO.Path.GetPathRoot(path);
 
         if (string.IsNullOrEmpty(root) || !System.IO.Path.IsPathFullyQualified(path)) return path;
 

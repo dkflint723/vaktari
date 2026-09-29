@@ -330,10 +330,11 @@ should not be trusted for compatibility yet.
   or `.tar.gz` kept 256 MiB free whatever the drive, so a 10 KB archive onto
   a drive with 200 MB left stopped at once, saying it would fill the drive,
   where the same files in a zip landed. Each file in a tar is now checked
-  against the size the archive gives it, plus a few MiB, as a zip's files
-  are. A single compressed file such as `.gz` or `.xz`, which gives no size,
-  is still stopped before it fills the drive: it keeps 1% of the drive free,
-  between 16 MiB and 256 MiB.
+  against the size the archive gives it, and goes ahead when that size plus
+  4 KiB plus 4 MiB is free. A single compressed file such as `.gz` or `.xz`
+  gives no size, so it is refused before it starts when less than 1% of the
+  drive is free (at least 16 MiB, at most 256 MiB), and otherwise stopped
+  part-way, with what it wrote removed, before it fills the drive.
 
 - **On Windows, *Share a folder* no longer shares the folder beside the one
   you typed when the path has a `.` or `..` in it.** With `album` and
