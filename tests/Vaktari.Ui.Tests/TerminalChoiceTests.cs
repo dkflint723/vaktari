@@ -1,3 +1,4 @@
+using Avalonia.Headless.XUnit;
 using Vaktari.Core.FileSystem;
 using Vaktari.Ui.ViewModels;
 using Xunit;
@@ -16,9 +17,32 @@ namespace Vaktari.Ui.Tests;
 /// something since uninstalled must not break F4, and the menu's first entry
 /// and F4 must never disagree about which terminal is the default — two routes
 /// to one action that pick differently is the fault this project keeps finding.
+///
+/// **Headless, and every pane disposed, or the whole Ui suite fails.** These
+/// were plain [Fact]s whose panes were never disposed, so each pane stayed
+/// subscribed to the static AppSettings.Changed. The next test's Prefer then
+/// ran PaneViewModel.OnSettingsChanged on those leftovers, which asks
+/// Dispatcher.UIThread — and Avalonia creates its UI dispatcher, bound to
+/// whichever thread asks first, on that first question. When xUnit ran this
+/// class before any [AvaloniaFact], the dispatcher belonged to a test worker
+/// thread, the headless session's own setup then failed with "the calling
+/// thread cannot access this object", and every Avalonia test after it failed
+/// in a millisecond (2,268 of 3,242 in one run, 2026-09-28).
 /// </summary>
-public sealed class TerminalChoiceTests
+public sealed class TerminalChoiceTests : OwnedViewModels
 {
+    private readonly Vaktari.Core.Settings.SettingsState _settingsBefore =
+        Vaktari.Ui.Settings.AppSettings.Current;
+
+    /// <summary>Puts back the preference this class writes, after the panes
+    /// have gone, so no later class inherits a chosen terminal.</summary>
+    public override void Dispose()
+    {
+        base.Dispose();
+        Vaktari.Ui.Settings.AppSettings.Apply(_settingsBefore);
+        GC.SuppressFinalize(this);
+    }
+
     private sealed class InertFileSystem : IFileSystemProvider
     {
         public async IAsyncEnumerable<IReadOnlyList<FileEntry>> EnumerateAsync(
@@ -63,8 +87,8 @@ public sealed class TerminalChoiceTests
         public void OpenWith(string path, LaunchOption option) { }
     }
 
-    private static PaneViewModel Pane(FakeLauncher launcher) =>
-        new(new InertFileSystem(), null, launcher) { CurrentPath = Path.GetTempPath() };
+    private PaneViewModel Pane(FakeLauncher launcher) =>
+        Own(new PaneViewModel(new InertFileSystem(), null, launcher) { CurrentPath = Path.GetTempPath() });
 
     private static void Prefer(string id)
     {
@@ -77,7 +101,7 @@ public sealed class TerminalChoiceTests
 
     public TerminalChoiceTests() => Prefer("");
 
-    [Fact]
+    [AvaloniaFact]
     public void With_no_preference_the_first_one_found_is_used()
     {
         var launcher = new FakeLauncher("windows-terminal", "warp", "cmd");
@@ -87,7 +111,7 @@ public sealed class TerminalChoiceTests
         Assert.Equal("windows-terminal", launcher.Opened?.Id);
     }
 
-    [Fact]
+    [AvaloniaFact]
     public void The_chosen_terminal_is_the_one_that_opens()
     {
         Prefer("warp");
@@ -103,7 +127,7 @@ public sealed class TerminalChoiceTests
     /// top of that submenu and F4 have to be the same terminal — two routes to
     /// one action that disagree is the fault this codebase keeps finding.
     /// </summary>
-    [Fact]
+    [AvaloniaFact]
     public void The_chosen_terminal_leads_the_menu_and_is_marked()
     {
         Prefer("warp");
@@ -116,7 +140,7 @@ public sealed class TerminalChoiceTests
 
     /// <summary>Everything installed stays reachable — choosing one is not
     /// hiding the others.</summary>
-    [Fact]
+    [AvaloniaFact]
     public void Choosing_one_does_not_drop_the_rest()
     {
         Prefer("warp");
@@ -131,7 +155,7 @@ public sealed class TerminalChoiceTests
     /// is a stored id, so it outlives the program it names — and honouring a
     /// dead one would turn "open a terminal" into nothing at all.
     /// </summary>
-    [Fact]
+    [AvaloniaFact]
     public void A_preference_for_something_uninstalled_is_ignored()
     {
         Prefer("warp");
@@ -146,7 +170,7 @@ public sealed class TerminalChoiceTests
     /// Detecting nothing is not the same fact as nothing being installed, so
     /// the launcher's own fall-through still gets its turn.
     /// </summary>
-    [Fact]
+    [AvaloniaFact]
     public void With_nothing_detected_the_launcher_still_gets_asked()
     {
         var launcher = new FakeLauncher();
@@ -158,7 +182,7 @@ public sealed class TerminalChoiceTests
 
     /// <summary>One terminal gets the plain entry; a submenu holding a single
     /// row is a hover that buys nothing.</summary>
-    [Fact]
+    [AvaloniaFact]
     public void A_choice_is_only_offered_when_there_is_one()
     {
         Assert.False(Pane(new FakeLauncher("cmd")).HasSeveralTerminals);
