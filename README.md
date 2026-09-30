@@ -805,8 +805,9 @@ promise yet. Worth knowing before you decide:
     the xz, bzip2 and lzip checks, a zstd frame's checksum), but a
     `.tar.zst` or `.tar.xz` written without a checksum has nothing to check.
     Zip, 7z and RAR entries are checked against their CRC.
-  - **Only a zip whose entries share the same compressed bytes is refused
-    for unpacking to far more than it holds.** An entry that honestly
+  - **Only a zip whose entries overlap one another, or run into its
+    directory, is refused for unpacking to far more than it holds.** An
+    entry that honestly
     compresses very well is extracted in full.
   - **Links, devices and pipes are never created.** They are left out and
     counted on the status line; a hard link to a file in the same archive

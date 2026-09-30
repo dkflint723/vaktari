@@ -21,12 +21,15 @@ should not be trusted for compatibility yet.
   a `.lz` of several members (what `plzip` writes) arrive whole.
   Password-protected archives, and a RAR that is one part of a set, are
   refused with a sentence saying so; the numbered parts of a split 7z or zip
-  are not offered *Extract all*. A file in a tar is written only when the
-  size the archive gives it, plus 4 KiB and 4 MiB, is free. A single
-  compressed file such as `report.txt.gz` gives no size, so it always leaves
-  free at least half the space it found when it started, or 1% of the drive
-  (between 16 MiB and 256 MiB) if that is less, and is stopped part-way,
-  with what it wrote removed, before it would leave less.
+  are not offered *Extract all*. Where free space can be read, a file in a
+  tar is written only when the size the archive gives it, plus 4 KiB and
+  4 MiB, is free. A single compressed file such as `report.txt.gz` gives no
+  size, so, where free space can be read, it writes no more than would leave
+  free half the space it found when it started, or 1% of the drive (between
+  16 MiB and 256 MiB; 256 MiB when the drive's size cannot be read) if that
+  is less, and is stopped part-way, with what it wrote removed, before it
+  would write more; if something else fills the drive meanwhile, it is
+  stopped at its next look.
 
 - **Extracting is an operation on the transfer bar**, with progress, pause
   and cancel, and is listed among running operations as "Extracting a.zip to
