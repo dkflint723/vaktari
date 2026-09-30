@@ -292,8 +292,13 @@ public sealed class ExplorerConventionTests : OwnedViewModels
     /// cross-check cannot tell them apart** — it prints both as "Ctrl+0", so
     /// either binding alone satisfies it and the other could be deleted with a
     /// green suite.
+    ///
+    /// **Headless, because it builds and starts a real shell** — whose panes
+    /// subscribe to settings that later ask Dispatcher.UIThread. As a plain
+    /// theory it could bind the UI dispatcher to a test worker and break every
+    /// Avalonia test after it (see PlatformBoundStaticsTests).
     /// </summary>
-    [Theory]
+    [AvaloniaTheory]
     [InlineData("Ctrl+NumPad0", "ZoomReset")]
     [InlineData("Ctrl+D0", "ZoomReset")]
 
