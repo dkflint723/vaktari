@@ -167,10 +167,16 @@ public sealed partial class ShellViewModel
     /// out of the bin, because <c>IsRealFolder</c> is false there, so without
     /// this the only "Add to places" the bin offered was the one that could
     /// only get it wrong.
+    ///
+    /// **Nor on This PC, where it could only refuse.** Its rows are the
+    /// drives and shares of the same <c>IPlacesProvider</c> the sidebar draws
+    /// (see ComputerListing), so every one of them is already a place, and the
+    /// row answered "C:\ is already in places" every time it was chosen
+    /// (0.11.1 changelog check).
     /// </summary>
     public bool ShowAddSelectionToPlaces
         => Menu.ShowAddToPlaces
-           && ActiveTab is { HasDirectorySelected: true, IsTrashListing: false };
+           && ActiveTab is { HasDirectorySelected: true, IsTrashListing: false, IsComputerListing: false };
 
     /// <summary>
     /// "Add this folder to places", on the background menu.

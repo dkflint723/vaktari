@@ -371,6 +371,32 @@ should not be trusted for compatibility yet.
   reason was written nowhere you could read it. It is in the log now, with
   the item's name.
 
+- **A damaged `.tar.gz` no longer extracts with the wrong bytes in it.** A
+  compressed tar was read only as far as the tar's own end, and the check its
+  compression keeps after that — gzip's CRC and length, the xz, bzip2 and
+  lzip checks, a zstd frame's checksum — was never read, so one changed byte
+  could land a file with different contents and no word said. The whole
+  stream is read now, and a check that fails says the archive is damaged and
+  extracts nothing. A `.tar.zst` or `.xz` written without a checksum still has
+  nothing to check.
+
+- **On Windows, the bin sweep no longer reaches other drives' Recycle Bins.**
+  The page says files deleted from another drive are not covered, and they
+  were: deleting after a number of days and keeping the bin under a share of
+  the disk both acted on every drive's bin, and counted every drive's against
+  a share of the system drive. Both now cover the system drive's bin only, as
+  the Linux sweep covers only the home trash.
+
+- **On Windows, *Delete the largest until it fits* deleted the oldest.** The
+  sweep took the oldest items first whichever of the two was chosen; it now
+  takes the largest first, as it always has on Linux.
+
+- ***Add to places* is no longer offered on a drive in *This PC*,** where
+  every drive is already in places and the row could only say so.
+
+- ***Reopen closed tab* appears on a tab's menu only when there is a tab to
+  reopen**, and reopens on the side of the tab it was chosen from.
+
 ## [0.11.0] — 2026-09-25
 
 ### Added

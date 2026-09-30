@@ -674,6 +674,17 @@ public sealed partial class PaneViewModel : ObservableObject, IDisposable
     [ObservableProperty] private bool _hasTabsToTheRight;
 
     /// <summary>
+    /// Whether this tab's side has a closed tab to put back — the gate on the
+    /// tab menu's "Reopen closed tab".
+    ///
+    /// **Drawn on every tab menu, and doing nothing until a tab had been
+    /// closed** (0.11.1 changelog check): the same fault the two closing rows
+    /// had, answered the same way. Written by the group — see
+    /// PaneGroupViewModel.NotifyTabNeighbours.
+    /// </summary>
+    [ObservableProperty] private bool _canReopenClosedTab;
+
+    /// <summary>
     /// The folder row a drop would land IN, as opposed to the pane it is over.
     ///
     /// **The outline round the pane was never the question.** Which pane the

@@ -36,6 +36,14 @@ public sealed class XdgTrashMaintenance : ITrashMaintenance
     }
 
     private static TrashSweepResult Sweep(TrashSettings policy, CancellationToken ct)
+        => Sweep(policy, Allowance, ct);
+
+    /// <summary>
+    /// The sweep, with the allowance asked of <paramref name="allowanceFor"/>
+    /// rather than of the disk, so a test can put a trash of its own over a
+    /// limit without filling a real share of a volume.
+    /// </summary>
+    internal static TrashSweepResult Sweep(TrashSettings policy, Func<int, long> allowanceFor, CancellationToken ct)
     {
         var entries = new List<Entry>();
         var skipped = 0;
@@ -85,7 +93,7 @@ public sealed class XdgTrashMaintenance : ITrashMaintenance
         if (!policy.LimitSize || policy.MaximumPercentOfDisk <= 0)
             return new TrashSweepResult { Removed = removed, BytesFreed = freed, Skipped = skipped };
 
-        var allowance = Allowance(policy.MaximumPercentOfDisk);
+        var allowance = allowanceFor(policy.MaximumPercentOfDisk);
         if (allowance <= 0) return new TrashSweepResult
         {
             Removed = removed, BytesFreed = freed, Skipped = skipped,

@@ -603,6 +603,33 @@ internal sealed class ArchivePass : IDisposable
             // GetNextEntry.
             yield return Item(info, () => new ArchiveReader.Unowned(current.DataStream ?? Stream.Null), i++);
         }
+
+        Drain(decoded);
+    }
+
+    /// <summary>
+    /// The rest of a compressed tar, read and thrown away, so the compressor's
+    /// own check is read too.
+    ///
+    /// **A damaged .tar.gz extracted with wrong bytes and no word said** (0.11.1
+    /// changelog check: 55 byte flips in 60 on one fixture). A tar keeps no
+    /// checksum of its files; the compressor around it does — gzip's CRC-32
+    /// and length, the xz block check, lzip's and bzip2's CRCs, a zstd frame's
+    /// checksum — and every one of them sits at the END of the stream, past
+    /// the tar's end blocks, where the reader stopped. Each decoder checks
+    /// when it reaches its end, so reaching it is the whole fix; what it
+    /// throws there is classified as damage like any other failure while
+    /// reading, and the run is discarded. What is left is the end blocks and
+    /// the padding to a record, so this costs next to nothing. A plain tar has
+    /// no end to reach and no check to read, and its decoder passes the file
+    /// through, so draining it only reads the padding. A bare stream needs
+    /// none of this: its one entry IS the stream, read to its end by the copy.
+    /// </summary>
+    private void Drain(Stream decoded)
+    {
+        var rest = new byte[64 * 1024];
+
+        while (decoded.Read(rest) > 0) Token.ThrowIfCancellationRequested();
     }
 
     private static bool IsPaxSparse(TarEntry entry)

@@ -185,8 +185,13 @@ public sealed partial class ShellViewModel
     /// Ctrl+Shift+T. Closing a tab used to throw its whole state away — where
     /// it was, its history, its view — so a tab closed by accident was gone.
     /// </summary>
+    /// <remarks>
+    /// **On the side of the tab whose menu it was chosen from**, like the
+    /// closing rows beside it: that side is the one its gate asks about. The
+    /// key hands in no tab, which is the active side.
+    /// </remarks>
     [RelayCommand]
-    private void ReopenClosedTab() => ActiveGroup.ReopenClosedTab();
+    private void ReopenClosedTab(PaneViewModel? pane) => GroupOf(pane).ReopenClosedTab();
 
     /// <summary>
     /// Opens a folder in a tab BEHIND the current one, which is what the middle

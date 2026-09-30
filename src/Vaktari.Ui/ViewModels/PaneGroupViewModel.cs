@@ -38,8 +38,9 @@ public sealed partial class PaneGroupViewModel : ObservableObject
     public ObservableCollection<PaneViewModel> Tabs { get; } = new();
 
     /// <summary>
-    /// Tells every tab whether it has company, and whether any of it is to its
-    /// right — what the tab menu's two closing rows are gated on.
+    /// Tells every tab whether it has company, whether any of it is to its
+    /// right, and whether this side has a closed tab to put back — what the
+    /// tab menu's two closing rows and its reopening row are gated on.
     ///
     /// **On every change to the collection**, because each of them moves the
     /// answer for tabs that were not touched: opening one gives the lone tab
@@ -54,6 +55,7 @@ public sealed partial class PaneGroupViewModel : ObservableObject
         {
             Tabs[i].HasOtherTabs = Tabs.Count > 1;
             Tabs[i].HasTabsToTheRight = i < Tabs.Count - 1;
+            Tabs[i].CanReopenClosedTab = _closed.Count > 0;
         }
     }
 
@@ -565,6 +567,10 @@ public sealed partial class PaneGroupViewModel : ObservableObject
         var pane = AddRestoredTab(_closed.First!.Value);
 
         _closed.RemoveFirst();
+
+        // Tabs.Add told every tab there was still one to reopen: this was it
+        // until a moment ago, so they are told again now it is gone.
+        NotifyTabNeighbours();
 
         ActiveTab = pane;
         pane.RefreshIfUnloaded();
