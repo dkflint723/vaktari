@@ -21,7 +21,12 @@ should not be trusted for compatibility yet.
   a `.lz` of several members (what `plzip` writes) arrive whole.
   Password-protected archives, and a RAR that is one part of a set, are
   refused with a sentence saying so; the numbered parts of a split 7z or zip
-  are not offered *Extract all*.
+  are not offered *Extract all*. A file in a tar is written only when the
+  size the archive gives it, plus 4 KiB and 4 MiB, is free. A single
+  compressed file such as `report.txt.gz` gives no size, so it always leaves
+  free at least half the space it found when it started, or 1% of the drive
+  (between 16 MiB and 256 MiB) if that is less, and is stopped part-way,
+  with what it wrote removed, before it would leave less.
 
 - **Extracting is an operation on the transfer bar**, with progress, pause
   and cancel, and is listed among running operations as "Extracting a.zip to
@@ -74,9 +79,13 @@ should not be trusted for compatibility yet.
 
 - **A damaged archive is refused whole.** Every zip, 7z and RAR entry is
   checked against its CRC, and every entry that declares a size is stopped
-  the moment it runs past it or falls short; a tar keeps no checksum of its
-  files, so damage inside one is caught only where its structure or its
-  compression breaks. A zip whose entries share the same compressed bytes,
+  the moment it runs past it or falls short. A tar keeps no checksum of its
+  files, so damage inside a plain `.tar` is caught only where its structure
+  breaks; a compressed tar is read to the end of its compression, so the
+  check kept there — gzip's CRC and length, the xz, bzip2 and lzip checks, a
+  zstd frame's checksum — is read too, and one that fails refuses the
+  archive. A `.tar.zst` or `.tar.xz` written without a checksum has nothing
+  to check. A zip whose entries share the same compressed bytes,
   so that it unpacks to far more than it holds, is refused before anything
   is written.
 
@@ -150,14 +159,16 @@ should not be trusted for compatibility yet.
   `Ctrl+Shift+A` as before, and *Add your own scripts* is gone — *Scripts ▸
   Open scripts folder* makes the folder if it is missing. Rows are left off
   where the listing they are in would refuse them: nothing copies, moves,
-  renames or bins a drive in *This PC*; *Open with*, *Copy* and *Scripts*
+  renames or bins a drive in *This PC*, and *Add to places* is not offered
+  there, since every drive is in places already; *Open with*, *Copy* and *Scripts*
   are not offered in the bin; *Paste*, *New* and *Duplicate* only appear in
   a real folder; *Select what differs from the other side* and *Copy what
   is newer or missing here to the other side* only when both sides are
   folders; *Scripts* are offered in a folder and not in a search, a recent
   list or *This PC*, where they could not start; and a tab's *Close other
   tabs* and *Close tabs to the right* appear only when there is a tab to
-  close. *Share* on a file no longer shares the folder around it. Every
+  close, and its *Reopen closed tab* only when that side of the window has
+  closed one. *Share* on a file no longer shares the folder around it. Every
   listing now ends in a blank strip below its last row, so the folder's menu
   can be reached with the mouse however long the folder is; a right-click on
   a group heading opens it without selecting the row under the heading, and
@@ -323,10 +334,12 @@ should not be trusted for compatibility yet.
 
   The *Share a folder* dialog trimmed every path, on both systems, so a
   folder named `album ` was shared as the `album` beside it. On Windows it
-  is now refused, as above, whether typed with either slash or as `\\.\`;
+  is now refused, as above, whether typed with either slash, as `\\.\`, or
+  with a `.` or `..` in the path (`D:\x\.\album `, `D:\x\album\..\album `);
   on Linux, where `album ` is an ordinary name and nothing here is refused,
   it is shared as itself. Spaces typed after a folder that has no such name
-  are still taken off.
+  are still taken off, and an ordinary folder typed with a `.` or `..` in
+  its path is shared as before.
 
   From the bin, a file or folder recorded as `report ` comes back as
   `report `, where it came back as `report` or `report (1)`; a binned folder
@@ -347,38 +360,11 @@ should not be trusted for compatibility yet.
   and the window opened last stayed in memory after closing until another
   was opened.
 
-- **A small tar extracts onto a nearly full drive.** Extracting a `.tar`
-  or `.tar.gz` kept 256 MiB free whatever the drive, so a 10 KB archive onto
-  a drive with 200 MB left stopped at once, saying it would fill the drive,
-  where the same files in a zip landed. Each file in a tar is now checked
-  against the size the archive gives it, and goes ahead when that size plus
-  4 KiB plus 4 MiB is free. A single compressed file such as `.gz` or `.xz`
-  gives no size, so it always leaves free at least half the space it found
-  when it started, or 1% of the drive (between 16 MiB and 256 MiB) if that
-  is less, and is stopped part-way, with what it wrote removed, before it
-  would leave less.
-
-- **On Windows, *Share a folder* no longer shares the folder beside the one
-  you typed when the path has a `.` or `..` in it.** With `album` and
-  `album ` side by side, typing `D:\x\.\album ` or `D:\x\album\..\album `
-  shared `album`. It is now refused with the sentence a folder whose name
-  ends in a space or a dot always got. An ordinary folder typed with a `.`
-  or `..` in its path is shared as before.
-
 - **A failed *Delete permanently* or *Restore* in the bin writes its reason
   to the log.** The status line said "could not delete 1 item(s) — see the
   log" or "could not restore 1 item(s) — see the log", but on Windows the
   reason was written nowhere you could read it. It is in the log now, with
   the item's name.
-
-- **A damaged `.tar.gz` no longer extracts with the wrong bytes in it.** A
-  compressed tar was read only as far as the tar's own end, and the check its
-  compression keeps after that — gzip's CRC and length, the xz, bzip2 and
-  lzip checks, a zstd frame's checksum — was never read, so one changed byte
-  could land a file with different contents and no word said. The whole
-  stream is read now, and a check that fails says the archive is damaged and
-  extracts nothing. A `.tar.zst` or `.xz` written without a checksum still has
-  nothing to check.
 
 - **On Windows, the bin sweep no longer reaches other drives' Recycle Bins.**
   The page says files deleted from another drive are not covered, and they
@@ -390,12 +376,6 @@ should not be trusted for compatibility yet.
 - **On Windows, *Delete the largest until it fits* deleted the oldest.** The
   sweep took the oldest items first whichever of the two was chosen; it now
   takes the largest first, as it always has on Linux.
-
-- ***Add to places* is no longer offered on a drive in *This PC*,** where
-  every drive is already in places and the row could only say so.
-
-- ***Reopen closed tab* appears on a tab's menu only when there is a tab to
-  reopen**, and reopens on the side of the tab it was chosen from.
 
 ## [0.11.0] — 2026-09-25
 

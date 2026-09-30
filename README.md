@@ -50,7 +50,7 @@ A few things you would notice in the first ten minutes:
 them, middle-click to close one, double-click the empty strip for a new one.
 Right-click a tab for *Duplicate*, *Close*, *Close other tabs*, *Close tabs
 to the right* and *Reopen closed tab* — the closing rows only when there is a tab for
-them to close; each side of the window remembers its last ten.
+them to close, and the reopening row only when that side has closed one; each side of the window remembers its last ten.
 `F3` splits the window in two, each half with its own tabs, history, selection
 and zoom, and `Tab` moves between them. `Ctrl+N` opens a whole second window on
 the folder you are in. Every window is a peer, and all of them come back when
@@ -383,7 +383,10 @@ in Vaktari's bin view, each row showing where it came from — so *Restore* puts
 it back where it belongs, beside a name that has since been taken rather than
 over it. A single item can be thrown out with *Delete permanently* without
 emptying the lot. Vaktari can also sweep it for you: delete anything older than
-a number of days, and keep it under a share of the disk. Because a bin row
+a number of days, and keep it under a share of the disk. The sweep covers the
+trash in your home folder on Linux and the system drive's Recycle Bin on
+Windows; files deleted from another drive go to a bin on that drive and are
+left alone. Because a bin row
 names where a file *used to be*, opening, renaming or dragging one is refused
 rather than acting on whatever sits there now.
 
@@ -408,7 +411,7 @@ Right-clicking empty space keeps your selection; the folder's menu simply does
 not act on it. The Menu key and `Shift+F10` open the first when something is
 selected and the second when nothing is. A row is left off where the listing
 it is in would refuse it — nothing copies, moves, renames or bins a drive in
-*This PC*, and nothing writes into a search, a recent list or the bin — and
+*This PC* or offers to add one to places, where every drive already is, and nothing writes into a search, a recent list or the bin — and
 the rows are compact, 24 pixels to the toolkit's 30 at the default text size.
 On Windows only, the menus also end in the *Windows menu*; see
 [Fitting your desktop](#fitting-your-desktop).
@@ -795,11 +798,13 @@ promise yet. Worth knowing before you decide:
   - **The row is offered by name.** *Extract all* appears for the endings
     listed above; the file's contents decide only how it is read, so a 7z
     renamed to `.zip` opens but one renamed to `.bin` is not offered it.
-  - **A tar is checked only as far as its structure and its compression
-    go.** A tar keeps no checksum of its files, and the checksum at the end
-    of a `.tar.gz` or `.tar.zst` is not read, so a damaged byte inside one
-    can arrive without a word. Zip, 7z and RAR entries are checked against
-    their CRC.
+  - **A plain tar is checked only as far as its structure goes.** A tar
+    keeps no checksum of its files, so a damaged byte inside a plain `.tar`
+    can arrive without a word. A compressed tar is read to its end and
+    refused when the check its compression keeps there fails (gzip's CRC,
+    the xz, bzip2 and lzip checks, a zstd frame's checksum), but a
+    `.tar.zst` or `.tar.xz` written without a checksum has nothing to check.
+    Zip, 7z and RAR entries are checked against their CRC.
   - **Only a zip whose entries share the same compressed bytes is refused
     for unpacking to far more than it holds.** An entry that honestly
     compresses very well is extracted in full.
