@@ -158,6 +158,36 @@ public sealed class ArchiveDrainHonestyTests : IDisposable
         Assert.Empty(Directory.EnumerateFileSystemEntries(into));
     }
 
+    /// <summary>
+    /// **The drain reads to the end, not one buffer's worth** (RC QA). Every
+    /// other trailer test here is on an archive whose whole tail fits in the
+    /// drain's first read, so a drain that read once and stopped passed them
+    /// all but the lzip cases. Two MiB of NUL blocks after the end marker put
+    /// the check well past one read; a failed check there is damage, and the
+    /// same archive with its check intact still lands.
+    /// </summary>
+    [Theory]
+    [InlineData(ArchiveFormat.TarGz, "tail.tar.gz", 8)]
+    [InlineData(ArchiveFormat.TarBz2, "tail.tar.bz2", 1)]
+    [InlineData(ArchiveFormat.TarLz, "tail.tar.lz", 20)]
+    public void A_failed_check_past_a_long_tail_is_still_damage(ArchiveFormat format, string name, int fromEnd)
+    {
+        var bytes = Compress(format, Tar(extraNulBlocks: 4096));
+
+        AssertExtractsAsThePlainTar(name, bytes);
+
+        bytes[^fromEnd] ^= 0xFF;
+
+        var archive = At("bad-" + name);
+        File.WriteAllBytes(archive, bytes);
+        var into = Directory.CreateDirectory(At("out-bad-" + name)).FullName;
+
+        var damaged = Assert.Throws<ArchiveDamagedException>(() => Archives.Extract(archive, into));
+
+        Assert.Contains($"bad-{name} is damaged", damaged.Message, StringComparison.Ordinal);
+        Assert.Empty(Directory.EnumerateFileSystemEntries(into));
+    }
+
     // ---- cancelled while the drain reads ----------------------------------------------
 
     private sealed class CancelAtLastFile(CancellationTokenSource cts, string lastLeaf) : IExtractionObserver
