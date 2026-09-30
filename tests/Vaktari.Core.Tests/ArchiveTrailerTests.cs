@@ -7,7 +7,7 @@ using Xunit;
 namespace Vaktari.Core.Tests;
 
 /// <summary>
-/// Every gzip member's trailer is read and checked (0.11.1 RC QA).
+/// Where a compressed stream ends, and what is checked there (0.11.1 RC QA).
 ///
 /// **A .gz cut short landed as the part that arrived.** The runtime's
 /// GZipStream ends at the end of its input without reading the CRC-32 and
@@ -15,6 +15,15 @@ namespace Vaktari.Core.Tests;
 /// 40 places extracted 40 times with the wrong bytes, and a .tar.gz cut inside
 /// its first hundred bytes landed as a partial bare "tree.tar". Every gzip
 /// member's trailer must now be there and match.
+///
+/// **And harmless bytes after the last stream refused a compressed tar.**
+/// Once the tar reader read to the end of its compression, zero padding or
+/// junk after a .tar.bz2 or .tar.zst, and junk after a .tar.xz, became
+/// "damaged" — they had landed before, and GNU tar extracts them. Each decoder
+/// now ends after its last clean stream and leaves trailing bytes alone, for a
+/// bare stream as for a tar; bytes that begin with the format's own signature
+/// are another stream and must be whole; a failure inside a stream is still
+/// damage.
 ///
 /// Every archive is written into the test's own folder; the committed
 /// fixtures are only read.
@@ -278,5 +287,151 @@ public sealed class ArchiveTrailerTests : IDisposable
             Assert.Equal(ZipDirectory.Crc32(bytes[..length]), Crc32.Update(0, bytes[..length]));
 
         Assert.Equal(ZipDirectory.Crc32(bytes), Crc32.Update(Crc32.Update(0, bytes[..1001]), bytes[1001..]));
+    }
+
+    // ---- 2. trailing bytes after the last stream ---------------------------------------
+
+    /// <summary>What QA appended: zero padding of four sizes, and two kinds of junk.</summary>
+    private static byte[] Tail(string tail) => tail switch
+    {
+        "zeros-3" => new byte[3],
+        "zeros-4" => new byte[4],
+        "zeros-512" => new byte[512],
+        "zeros-10240" => new byte[10240],
+        "garbage" => "garbage!"u8.ToArray(),
+        "pk" => "PK\u0003\u0004 junk after"u8.ToArray(),
+        _ => throw new ArgumentOutOfRangeException(nameof(tail)),
+    };
+
+    /// <summary>Honest archives of every compressor, compressed tars and
+    /// bare streams, with the file they are written as.</summary>
+    private static byte[] Honest(string name) => name switch
+    {
+        "bare.txt.bz2" => Compress(ArchiveFormat.Bz2, Text[..30000]),
+        "bare.txt.zst" => Compress(ArchiveFormat.Zst, Text[..30000]),
+        _ => Fixture(name),
+    };
+
+    public static TheoryData<string, string> Trailed()
+    {
+        var data = new TheoryData<string, string>();
+
+        foreach (var name in new[]
+                 {
+                     "tree.tar.bz2", "tree.tar.zst", "tree.tar.xz", "tree.tar.gz", "tree.tar.lz", "sc-tar.tar.zst",
+                     "bare.txt.bz2", "bare.txt.zst", "bare.txt.xz", "bare.txt.gz", "multi.txt.lz", "concat.txt.xz",
+                 })
+        {
+            foreach (var tail in new[] { "zeros-3", "zeros-4", "zeros-512", "zeros-10240", "garbage", "pk" })
+                data.Add(name, tail);
+        }
+
+        return data;
+    }
+
+    /// <summary>
+    /// **Trailing bytes are not part of the archive.** The .tar.bz2,
+    /// .tar.zst and .tar.xz cases were refused as damaged in the RC and had
+    /// landed before it; the bare streams and lzip had refused them all along.
+    /// Each lands exactly as the same archive without the tail.
+    /// </summary>
+    [Theory]
+    [MemberData(nameof(Trailed))]
+    public void Bytes_after_the_last_stream_are_left_alone(string name, string tail)
+    {
+        var honest = Honest(name);
+
+        Assert.Equal(Landed(name, honest), Landed(name, [.. honest, .. Tail(tail)]));
+    }
+
+    /// <summary>Where each compressor keeps the check that ends its stream,
+    /// counted from the end: a byte there, flipped, fails it. The zstd one is
+    /// sc-tar.tar.zst because tree.tar.zst was written without a checksum.</summary>
+    public static TheoryData<string, int> Checks() => new()
+    {
+        { "tree.tar.bz2", 1 },
+        { "sc-tar.tar.zst", 1 },
+        { "tree.tar.xz", 1 },
+        { "tree.tar.gz", 8 },
+        { "tree.tar.lz", 20 },
+        { "bare.txt.bz2", 1 },
+        { "bare.txt.xz", 1 },
+        { "bare.txt.gz", 8 },
+        { "multi.txt.lz", 20 },
+    };
+
+    /// <summary>A tail after the stream does not make a failed check at its
+    /// end pass: the check is read before the tail is left alone.</summary>
+    [Theory]
+    [MemberData(nameof(Checks))]
+    public void A_failed_check_before_trailing_bytes_is_still_damage(string name, int fromEnd)
+    {
+        var bytes = Honest(name);
+        bytes[^fromEnd] ^= 0xFF;
+
+        AssertDamaged(name, [.. bytes, .. Tail("zeros-512")]);
+    }
+
+    /// <summary>And a byte changed in the middle of the stream, with a tail
+    /// after it, is damage.</summary>
+    [Theory]
+    [InlineData("tree.tar.bz2")]
+    [InlineData("sc-tar.tar.zst")]
+    [InlineData("tree.tar.xz")]
+    [InlineData("tree.tar.gz")]
+    [InlineData("tree.tar.lz")]
+    [InlineData("bare.txt.bz2")]
+    [InlineData("multi.txt.lz")]
+    public void A_changed_byte_inside_the_stream_is_still_damage(string name)
+    {
+        var bytes = Honest(name);
+        bytes[bytes.Length / 2] ^= 0x01;
+
+        AssertDamaged(name, [.. bytes, .. Tail("garbage")]);
+    }
+
+    /// <summary>
+    /// **Bytes that begin with the format's own signature are another stream**,
+    /// and one cut short is damage — never trailing data to drop. Without this
+    /// a multi-member file cut in its last member would land without it.
+    /// </summary>
+    [Theory]
+    [InlineData("bare.txt.bz2")]
+    [InlineData("bare.txt.zst")]
+    [InlineData("bare.txt.gz")]
+    [InlineData("bare.txt.xz")]
+    [InlineData("multi.txt.lz")]
+    public void A_second_stream_cut_short_is_damage(string name)
+    {
+        var one = Honest(name);
+
+        AssertDamaged(name, [.. one, .. one[..(one.Length / 2)]]);
+    }
+
+    /// <summary>A zstd frame whose blocks run past the end of the file is
+    /// damage however far short it stops, and so is a skippable frame.</summary>
+    [Theory]
+    [InlineData(1)]
+    [InlineData(4)]
+    [InlineData(5)]
+    [InlineData(100)]
+    public void A_zstd_frame_cut_short_is_damage(int missing)
+        => AssertDamaged("tree.tar.zst", Fixture("tree.tar.zst")[..^missing]);
+
+    [Fact]
+    public void A_zstd_skippable_frame_cut_short_is_damage()
+    {
+        byte[] skippable = [.. BitConverter.GetBytes(0x184D2A50u), .. BitConverter.GetBytes(64u), .. new byte[10]];
+
+        AssertDamaged("skip.txt.zst", [.. Honest("bare.txt.zst"), .. skippable]);
+    }
+
+    /// <summary>Null padding BETWEEN xz streams must still come in fours.</summary>
+    [Fact]
+    public void Xz_padding_before_another_stream_that_is_not_in_fours_is_damage()
+    {
+        var one = Fixture("bare.txt.xz");
+
+        AssertDamaged("pad.txt.xz", [.. one, 0, 0, 0, .. one]);
     }
 }

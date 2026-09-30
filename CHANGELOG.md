@@ -90,9 +90,11 @@ should not be trusted for compatibility yet.
   one that fails, or is missing because the file was cut short, refuses the
   archive; only a file written as several streams and cut exactly between
   two of them may not be told from a whole one. A `.tar.zst` or `.tar.xz`
-  written without a checksum has nothing to check. A zip whose entries share
-  the same compressed bytes, so that it unpacks to far more than it holds,
-  is refused before anything is written.
+  written without a checksum has nothing to check. Bytes after the end of
+  a compressed tar's or compressed file's last stream, such as padding added
+  by a copying tool, are not part of the archive and are left alone. A zip
+  whose entries share the same compressed bytes, so that it unpacks to far
+  more than it holds, is refused before anything is written.
 
 - **The settings window is seven pages that each hold what their name
   says.** *General* is where Vaktari opens and how, what a click and

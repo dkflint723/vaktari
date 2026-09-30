@@ -4,6 +4,18 @@ using SharpCompressionMode = SharpCompress.Compressors.CompressionMode;
 
 namespace Vaktari.Core.FileSystem;
 
+// **Where a compressed stream ends, for every decoder in this file.** Each one
+// reads stream after stream (gzip and lzip members, bzip2 and xz streams, zstd
+// frames) and ends after the last one that finished cleanly with its own check
+// passed. What follows it is trailing data, not part of the archive, and is
+// left unread: gzip, bzip2 and lzip ignore it with at most a warning, and GNU
+// tar extracts a padded .tar.bz2; xz and zstd are held to the same rule, so
+// there is one rule rather than five. Bytes that START with the format's own
+// signature are not trailing data but another stream, which must be whole —
+// so a second member cut short is damage, not something to drop. A failure
+// anywhere inside a stream is damage. A bare stream and a compressed tar are
+// read through the same decoders, so the rule is the same for both.
+
 /// <summary>
 /// An .xz file made of several streams, read as one.
 ///
@@ -13,8 +25,9 @@ namespace Vaktari.Core.FileSystem;
 /// followed by null padding in multiples of four bytes, and
 /// <see cref="SharpCompress.Compressors.Xz.XZStream"/> stops at the end of
 /// the first. Measured: it leaves the file exactly at that end, so the next
-/// stream can be started where it stopped. Anything after the padding that is
-/// not another stream is damage, never ignored.
+/// stream can be started where it stopped. Padding before another stream must
+/// be in fours; anything after the last stream that is not another is
+/// trailing data (see the note at the top of this file).
 /// </summary>
 internal sealed class XzMembers(Stream compressed) : Stream
 {
@@ -47,19 +60,15 @@ internal sealed class XzMembers(Stream compressed) : Stream
 
         while ((b = compressed.ReadByte()) == 0) zeros++;
 
-        if (b < 0)
-        {
-            if (zeros % 4 != 0) throw new InvalidDataException("xz stream padding is not a multiple of four");
-            return false;
-        }
-
-        if (zeros % 4 != 0) throw new InvalidDataException("xz stream padding is not a multiple of four");
+        if (b < 0) return false;
 
         Span<byte> head = stackalloc byte[6];
         head[0] = (byte)b;
 
         if (compressed.ReadAtLeast(head[1..], 5, throwOnEndOfStream: false) < 5 || !head.SequenceEqual(Magic))
-            throw new InvalidDataException("data after the end of the xz stream");
+            return false;
+
+        if (zeros % 4 != 0) throw new InvalidDataException("xz stream padding is not a multiple of four");
 
         compressed.Seek(-6, SeekOrigin.Current);
 
@@ -98,6 +107,11 @@ internal sealed class XzMembers(Stream compressed) : Stream
 /// starts, and so on back to the first. Each member is then decoded inside its
 /// own bounds. A walk that does not land exactly on the start of the file, on
 /// an <c>LZIP</c> header each time, is damage.
+///
+/// **Trailing data is stepped over first, the way the lzip tools' own index
+/// does it**: when the last eight bytes do not name a member, the walk looks
+/// back for the last place one ends, and what follows it is trailing data —
+/// unless it starts <c>LZIP</c>, which makes it a member cut short.
 /// </summary>
 internal sealed class LzipMembers(Stream compressed) : Stream
 {
@@ -134,7 +148,7 @@ internal sealed class LzipMembers(Stream compressed) : Stream
     private Queue<(long, long)> Walk()
     {
         var found = new Stack<(long, long)>();
-        var end = compressed.Length;
+        var end = EndOfMembers(compressed.Length);
         Span<byte> field = stackalloc byte[8];
 
         while (end > 0)
@@ -161,6 +175,47 @@ internal sealed class LzipMembers(Stream compressed) : Stream
         }
 
         return new Queue<(long, long)>(found);
+    }
+
+    /// <summary>
+    /// Where the last member ends: the end of the file, or the last place
+    /// before it whose eight bytes name a member that starts <c>LZIP</c>.
+    /// </summary>
+    private long EndOfMembers(long length)
+    {
+        var window = new byte[64 * 1024];
+        long from = 0, to = 0;
+
+        for (var end = length; end >= 26; end--)
+        {
+            if (end - 8 < from || end > to)
+            {
+                to = end;
+                from = Math.Max(0, to - window.Length);
+                compressed.Position = from;
+                compressed.ReadExactly(window.AsSpan(0, (int)(to - from)));
+            }
+
+            var size = BinaryPrimitives.ReadInt64LittleEndian(window.AsSpan((int)(end - 8 - from), 8));
+
+            if (size < 26 || size > end || !StartsLzip(end - size)) continue;
+
+            if (end < length && StartsLzip(end))
+                throw new InvalidDataException("an lzip member after the last whole one is cut short or damaged");
+
+            return end;
+        }
+
+        throw new InvalidDataException("lzip file does not divide into members");
+    }
+
+    private bool StartsLzip(long at)
+    {
+        Span<byte> magic = stackalloc byte[4];
+
+        compressed.Position = at;
+
+        return compressed.ReadAtLeast(magic, 4, throwOnEndOfStream: false) == 4 && magic.SequenceEqual("LZIP"u8);
     }
 
     public override bool CanRead => true;
@@ -431,6 +486,253 @@ internal sealed class GzipMembers(Stream compressed) : Stream
             }
 
             return n;
+        }
+
+        public override bool CanRead => true;
+        public override bool CanSeek => false;
+        public override bool CanWrite => false;
+        public override long Length => throw new NotSupportedException();
+        public override long Position { get => throw new NotSupportedException(); set => throw new NotSupportedException(); }
+        public override long Seek(long offset, SeekOrigin origin) => throw new NotSupportedException();
+        public override void Flush() { }
+        public override void SetLength(long value) => throw new NotSupportedException();
+        public override void Write(byte[] buffer, int offset, int count) => throw new NotSupportedException();
+    }
+}
+
+/// <summary>
+/// A .bz2 file of one or more streams — what pbzip2 writes — read as one.
+///
+/// **SharpCompress's own concatenated mode refuses whatever follows the last
+/// stream**, zero padding included, which made a padded .tar.bz2 "damaged"
+/// once the tar reader read to the end of its compression (RC QA; GNU tar
+/// extracts it with a warning). Measured: one stream decoded on its own
+/// leaves the input exactly at its end, so the next is started only when the
+/// next bytes are a bzip2 signature, and anything else is trailing data.
+/// </summary>
+internal sealed class Bzip2Members(Stream compressed) : Stream
+{
+    private Stream _current = Open(compressed);
+    private bool _ended;
+
+    private static Stream Open(Stream compressed) => SharpCompress.Compressors.BZip2.BZip2Stream.Create(
+        compressed, SharpCompressionMode.Decompress, decompressConcatenated: false, leaveOpen: true);
+
+    public override int Read(byte[] buffer, int offset, int count) => Read(buffer.AsSpan(offset, count));
+
+    public override int Read(Span<byte> buffer)
+    {
+        while (!_ended && buffer.Length > 0)
+        {
+            var n = _current.Read(buffer);
+
+            if (n > 0) return n;
+
+            if (!AnotherStream()) _ended = true;
+        }
+
+        return 0;
+    }
+
+    private bool AnotherStream()
+    {
+        Span<byte> head = stackalloc byte[4];
+
+        var got = compressed.ReadAtLeast(head, 4, throwOnEndOfStream: false);
+
+        compressed.Position -= got;
+
+        if (got < 4 || !head[..3].SequenceEqual("BZh"u8) || head[3] is < (byte)'1' or > (byte)'9') return false;
+
+        _current.Dispose();
+        _current = Open(compressed);
+
+        return true;
+    }
+
+    public override bool CanRead => true;
+    public override bool CanSeek => false;
+    public override bool CanWrite => false;
+    public override long Length => throw new NotSupportedException();
+    public override long Position { get => throw new NotSupportedException(); set => throw new NotSupportedException(); }
+    public override long Seek(long offset, SeekOrigin origin) => throw new NotSupportedException();
+    public override void Flush() { }
+    public override void SetLength(long value) => throw new NotSupportedException();
+    public override void Write(byte[] buffer, int offset, int count) => throw new NotSupportedException();
+
+    protected override void Dispose(bool disposing)
+    {
+        if (disposing) _current.Dispose();
+
+        base.Dispose(disposing);
+    }
+}
+
+/// <summary>
+/// A .zst file of one or more frames, handed to the decoder only as far as
+/// its frames go.
+///
+/// **The decoder refuses whatever follows the last frame** ("Unknown frame
+/// descriptor", for zero padding too), and it reads its input in chunks, so it
+/// cannot be stopped at a frame's end afterwards. The frames are found by
+/// their structure instead, as the decoder reaches them: a frame header, then
+/// blocks whose three-byte headers say how long each is and which is last,
+/// then the checksum if the frame has one; a skippable frame says its own
+/// length. The decoder is given the input up to the end of the last frame and
+/// sees end of input there. The walk only marks bounds: every block still
+/// passes through the decoder and its checks, and a frame whose blocks run
+/// past the end of the file is damage.
+/// </summary>
+internal sealed class ZstdFrames(Stream compressed) : Stream
+{
+    private Stream? _decoder;
+
+    public override int Read(byte[] buffer, int offset, int count) => Read(buffer.AsSpan(offset, count));
+
+    public override int Read(Span<byte> buffer)
+    {
+        if (buffer.Length == 0) return 0;
+
+        _decoder ??= new SharpCompress.Compressors.ZStandard.DecompressionStream(new Walked(compressed), leaveOpen: false);
+
+        return _decoder.Read(buffer);
+    }
+
+    public override bool CanRead => true;
+    public override bool CanSeek => false;
+    public override bool CanWrite => false;
+    public override long Length => throw new NotSupportedException();
+    public override long Position { get => throw new NotSupportedException(); set => throw new NotSupportedException(); }
+    public override long Seek(long offset, SeekOrigin origin) => throw new NotSupportedException();
+    public override void Flush() { }
+    public override void SetLength(long value) => throw new NotSupportedException();
+    public override void Write(byte[] buffer, int offset, int count) => throw new NotSupportedException();
+
+    protected override void Dispose(bool disposing)
+    {
+        if (disposing) _decoder?.Dispose();
+
+        base.Dispose(disposing);
+    }
+
+    /// <summary>The input up to the end of the frames walked so far, walking
+    /// one more piece whenever the decoder reaches that end.</summary>
+    private sealed class Walked(Stream inner) : Stream
+    {
+        private enum Next { Frame, Block, Checksum, End }
+
+        private readonly long _length = inner.Length;
+        private long _at = inner.Position;
+        private long _known = inner.Position;
+        private Next _next = Next.Frame;
+        private bool _checksum;
+        private bool _first = true;
+
+        public override int Read(byte[] buffer, int offset, int count) => Read(buffer.AsSpan(offset, count));
+
+        public override int Read(Span<byte> buffer)
+        {
+            if (buffer.Length == 0) return 0;
+
+            while (_at == _known)
+            {
+                if (_next == Next.End) return 0;
+
+                Walk();
+            }
+
+            if (inner.Position != _at) inner.Position = _at;
+
+            var n = inner.Read(buffer[..(int)Math.Min(buffer.Length, _known - _at)]);
+
+            if (n == 0) throw new InvalidDataException("zstd frame is cut short");
+
+            _at += n;
+
+            return n;
+        }
+
+        private void Walk()
+        {
+            switch (_next)
+            {
+                case Next.Frame:
+                {
+                    Span<byte> head = stackalloc byte[8];
+                    var got = Peek(head);
+                    var magic = got >= 4 ? BinaryPrimitives.ReadUInt32LittleEndian(head) : 0;
+
+                    if (magic == 0xFD2FB528)
+                    {
+                        if (got < 5) throw new InvalidDataException("zstd frame header is cut short");
+
+                        var descriptor = head[4];
+
+                        if ((descriptor & 0x08) != 0) throw new InvalidDataException("zstd frame header sets its reserved bit");
+
+                        var single = (descriptor & 0x20) != 0;
+                        int[] dictionary = [0, 1, 2, 4];
+                        var contentSize = (descriptor >> 6) switch { 0 => single ? 1 : 0, 1 => 2, 2 => 4, _ => 8 };
+
+                        _checksum = (descriptor & 0x04) != 0;
+                        Take(5 + (single ? 0 : 1) + dictionary[descriptor & 3] + contentSize);
+                        _next = Next.Block;
+                    }
+                    else if (got >= 4 && (magic & 0xFFFFFFF0) == 0x184D2A50)
+                    {
+                        if (got < 8) throw new InvalidDataException("zstd skippable frame is cut short");
+
+                        Take(8L + BinaryPrimitives.ReadUInt32LittleEndian(head[4..]));
+                    }
+                    else if (_first)
+                    {
+                        throw new InvalidDataException("not a zstd frame");
+                    }
+                    else
+                    {
+                        _next = Next.End;
+                    }
+
+                    _first = false;
+                    break;
+                }
+
+                case Next.Block:
+                {
+                    Span<byte> head = stackalloc byte[3];
+
+                    if (Peek(head) < 3) throw new InvalidDataException("zstd block header is cut short");
+
+                    var value = head[0] | (head[1] << 8) | (head[2] << 16);
+                    var type = (value >> 1) & 3;
+
+                    if (type == 3) throw new InvalidDataException("zstd block has the reserved type");
+
+                    Take(3 + (type == 1 ? 1 : value >> 3));
+
+                    if ((value & 1) != 0) _next = _checksum ? Next.Checksum : Next.Frame;
+                    break;
+                }
+
+                case Next.Checksum:
+                    Take(4);
+                    _next = Next.Frame;
+                    break;
+            }
+        }
+
+        private int Peek(Span<byte> into)
+        {
+            inner.Position = _known;
+
+            return inner.ReadAtLeast(into, into.Length, throwOnEndOfStream: false);
+        }
+
+        private void Take(long size)
+        {
+            if (size > _length - _known) throw new InvalidDataException("zstd frame runs past the end of the file");
+
+            _known += size;
         }
 
         public override bool CanRead => true;

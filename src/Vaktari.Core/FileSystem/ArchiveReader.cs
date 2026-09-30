@@ -148,14 +148,18 @@ internal static class ArchiveReader
     /// decode cleanly. Every decoder goes through <see cref="Decoded"/>, not
     /// only lzip, because the next one to validate on "end" would fail the
     /// same way.
+    ///
+    /// **Every decoder ends after the last stream that ends cleanly**, and
+    /// leaves what follows it unread as trailing data; bytes that begin with
+    /// the format's own signature are another stream and must be whole. The
+    /// rule, and why, is at the top of ArchiveMembers.cs.
     /// </summary>
     internal static Stream Decompress(Stream compressed, ArchiveFormat format) => new Decoded(format switch
     {
         ArchiveFormat.Gz or ArchiveFormat.TarGz => new GzipMembers(compressed),
-        ArchiveFormat.Bz2 or ArchiveFormat.TarBz2 => SharpCompress.Compressors.BZip2.BZip2Stream.Create(
-            compressed, SharpCompressionMode.Decompress, decompressConcatenated: true, leaveOpen: true),
+        ArchiveFormat.Bz2 or ArchiveFormat.TarBz2 => new Bzip2Members(compressed),
         ArchiveFormat.Xz or ArchiveFormat.TarXz => new XzMembers(compressed),
-        ArchiveFormat.Zst or ArchiveFormat.TarZst => new SharpCompress.Compressors.ZStandard.DecompressionStream(compressed, leaveOpen: true),
+        ArchiveFormat.Zst or ArchiveFormat.TarZst => new ZstdFrames(compressed),
         ArchiveFormat.Lz or ArchiveFormat.TarLz => new LzipMembers(compressed),
         _ => new Unowned(compressed),
     });
@@ -626,6 +630,14 @@ internal sealed class ArchivePass : IDisposable
     /// no end to reach and no check to read, and its decoder passes the file
     /// through, so draining it only reads the padding. A bare stream needs
     /// none of this: its one entry IS the stream, read to its end by the copy.
+    ///
+    /// **"The end" is the end of the compressor's last stream, not of the
+    /// file** (RC QA: zero padding or junk after a .tar.bz2 or .tar.zst, and
+    /// junk after a .tar.xz, were refused as damage once this read that far,
+    /// though they had landed before and GNU tar extracts them). Each decoder
+    /// ends after its last clean stream with that stream's check passed, and
+    /// leaves any trailing bytes unread, so the drain stops there too — see
+    /// the note at the top of ArchiveMembers.cs.
     /// </summary>
     private void Drain(Stream decoded)
     {

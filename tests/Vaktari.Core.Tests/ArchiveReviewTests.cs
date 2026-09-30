@@ -626,15 +626,23 @@ public sealed class ArchiveReviewTests : IDisposable
         Assert.Equal("Vaktari archive fixture\nVaktari archive fixture\n", File.ReadAllText(done.Landed));
     }
 
+    /// <summary>
+    /// Bytes after the last stream that are not another one are trailing
+    /// data, not part of the archive. **This used to be refused as damage**;
+    /// the RC QA found the same rule refusing junk after a .tar.xz that had
+    /// always landed, and trailing bytes are now left alone for every
+    /// compressor, bare or tar (ArchiveTrailerTests).
+    /// </summary>
     [Fact]
-    public void Bytes_after_an_xz_stream_that_are_not_another_are_damage()
+    public void Bytes_after_an_xz_stream_that_are_not_another_are_left_alone()
     {
         var one = File.ReadAllBytes(ArchiveTestData.Fixture("bare.txt.xz"));
 
         File.WriteAllBytes(At("junk.txt.xz"), [.. one, .. "not xz at all"u8.ToArray()]);
 
-        Assert.Throws<ArchiveDamagedException>(() => Extract(At("junk.txt.xz"), Dir("out")));
-        Assert.Empty(Directory.EnumerateFileSystemEntries(At("out")));
+        var done = Extract(At("junk.txt.xz"), Dir("out"));
+
+        Assert.Equal("Vaktari archive fixture\n", File.ReadAllText(done.Landed));
     }
 
     [Fact]
