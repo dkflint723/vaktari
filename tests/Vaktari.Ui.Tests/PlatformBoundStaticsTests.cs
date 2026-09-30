@@ -105,23 +105,83 @@ public sealed class PlatformBoundStaticsTests
                && a is not Avalonia.Headless.XUnit.AvaloniaFactAttribute
                && a is not Avalonia.Headless.XUnit.AvaloniaTheoryAttribute);
 
+    private const BindingFlags AnyStatic = BindingFlags.Static | BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.FlattenHierarchy;
+
     /// <summary>
-    /// What xunit runs for one test on the test's own thread: the test, and for
-    /// an instance test its class's constructor (field initialisers included)
-    /// and Dispose, which run before and after it on the same thread.
+    /// What xunit runs for one test on a thread that is not the headless
+    /// session's: the test; its class's static constructor, which runs on
+    /// whichever thread touches the class first; for an instance test its
+    /// constructor (field initialisers included) and whatever it implements of
+    /// IDisposable, IAsyncDisposable and IAsyncLifetime, explicitly or not;
+    /// and the members a theory's data comes from.
+    ///
+    /// **An explicit <c>void IDisposable.Dispose()</c>, InitializeAsync and
+    /// DisposeAsync, a static constructor and a data source were all missed**
+    /// (0.11.1 RC QA, each with a probe the guard passed). Lifetime methods
+    /// are found through the interface map, which names an explicit
+    /// implementation as readily as a public one.
     /// </summary>
     private static IEnumerable<MethodBase> Roots(MethodInfo test)
     {
         yield return test;
 
-        if (test.IsStatic || test.DeclaringType is not { } type) yield break;
+        if (test.DeclaringType is not { } type) yield break;
+
+        if (type.TypeInitializer is { } initialiser) yield return initialiser;
+
+        foreach (var source in DataSources(test)) yield return source;
+
+        if (test.IsStatic) yield break;
 
         foreach (var ctor in type.GetConstructors(BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic))
             yield return ctor;
 
-        if (typeof(IDisposable).IsAssignableFrom(type)
-            && type.GetMethod(nameof(IDisposable.Dispose), Type.EmptyTypes) is { } dispose)
-            yield return dispose;
+        foreach (var lifetime in new[] { typeof(IDisposable), typeof(IAsyncDisposable), typeof(IAsyncLifetime) })
+        {
+            if (!lifetime.IsAssignableFrom(type)) continue;
+
+            foreach (var method in type.GetInterfaceMap(lifetime).TargetMethods) yield return method;
+        }
+    }
+
+    /// <summary>
+    /// The code a theory's rows come from: a [MemberData] method, property
+    /// getter or field (a field's value is made by its type's static
+    /// constructor), with that type's static constructor; and a [ClassData]
+    /// type's constructors, static constructor and enumerator. A TheoryData
+    /// is reached as whichever of these returns it.
+    /// </summary>
+    private static IEnumerable<MethodBase> DataSources(MethodInfo test)
+    {
+        foreach (var data in test.GetCustomAttributes<Xunit.v3.MemberDataAttributeBase>())
+        {
+            if ((data.MemberType ?? test.DeclaringType) is not { } owner) continue;
+
+            if (owner.TypeInitializer is { } initialiser) yield return initialiser;
+
+            foreach (var member in owner.GetMember(data.MemberName, AnyStatic))
+            {
+                switch (member)
+                {
+                    case MethodInfo method: yield return method; break;
+                    case PropertyInfo { GetMethod: { } getter }: yield return getter; break;
+                }
+            }
+        }
+
+        foreach (var data in test.GetCustomAttributes<ClassDataAttribute>())
+        {
+            var rows = data.Class;
+
+            if (rows.TypeInitializer is { } initialiser) yield return initialiser;
+
+            foreach (var ctor in rows.GetConstructors(BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic))
+                yield return ctor;
+
+            foreach (var method in rows.GetMethods(BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic)
+                         .Where(m => m.Name.EndsWith("GetEnumerator", StringComparison.Ordinal)))
+                yield return method;
+        }
     }
 
     /// <summary>What the test's body reaches, following the calls it makes into
@@ -184,17 +244,27 @@ public sealed class PlatformBoundStaticsTests
 
     /// <summary>
     /// Why a member binds Avalonia's UI dispatcher, or null when it does not.
-    /// The dispatcher itself, and the two view models whose construction
-    /// subscribes to something that later asks it.
+    /// Anything of the dispatcher's own; the construction of any Avalonia
+    /// object; and the two view models whose construction subscribes to
+    /// something that later asks it.
+    ///
+    /// **Constructing any Avalonia object binds it** (0.11.1 RC QA, measured:
+    /// <c>new Border()</c> on a plain test's thread set
+    /// <c>Dispatcher.s_uiThread</c>), because an AvaloniaObject takes the UI
+    /// dispatcher as it is made. Recognised by the type's own ancestry, read
+    /// through reflection, so a control, a brush, a window or a class of ours
+    /// deriving from one are all the same case.
     /// </summary>
     private static string? BindsTheDispatcher(MemberInfo member) => member switch
     {
-        MethodInfo { Name: "get_UIThread" } m when m.DeclaringType == typeof(Avalonia.Threading.Dispatcher)
-            => "asks Dispatcher.UIThread",
+        _ when member.DeclaringType == typeof(Avalonia.Threading.Dispatcher)
+            => $"asks Dispatcher.{member.Name.Replace("get_", "", StringComparison.Ordinal)}",
         ConstructorInfo c when c.DeclaringType == typeof(Vaktari.Ui.ViewModels.PaneViewModel)
             => "constructs a PaneViewModel",
         ConstructorInfo c when c.DeclaringType == typeof(Vaktari.Ui.ViewModels.ShellViewModel)
             => "constructs a ShellViewModel",
+        ConstructorInfo { IsStatic: false } c when typeof(Avalonia.AvaloniaObject).IsAssignableFrom(c.DeclaringType)
+            => $"constructs an Avalonia object, {c.DeclaringType!.Name}",
         _ => null,
     };
 
@@ -273,4 +343,138 @@ public sealed class PlatformBoundStaticsTests
             "these DispatcherExemptions no longer match a plain test that reaches the dispatcher; remove them:\n"
             + string.Join("\n", stale));
     }
+
+    /// <summary>
+    /// **The walk reaches the dispatcher by every route a plain test has to
+    /// it**, each shown on a specimen below. The guard above can only pass
+    /// by finding nothing, so without this a route dropped from Roots or
+    /// BindsTheDispatcher would leave it green and blind.
+    /// </summary>
+    [Theory]
+    [InlineData(typeof(Specimens.ExplicitDispose), "asks Dispatcher.UIThread")]
+    [InlineData(typeof(Specimens.InitializeAsyncAsks), "asks Dispatcher.UIThread")]
+    [InlineData(typeof(Specimens.DisposeAsyncAsks), "asks Dispatcher.UIThread")]
+    [InlineData(typeof(Specimens.StaticConstructor), "asks Dispatcher.UIThread")]
+    [InlineData(typeof(Specimens.MemberDataMethod), "asks Dispatcher.UIThread")]
+    [InlineData(typeof(Specimens.MemberDataTheoryDataProperty), "constructs an Avalonia object, Border")]
+    [InlineData(typeof(Specimens.MemberDataFieldElsewhere), "asks Dispatcher.UIThread")]
+    [InlineData(typeof(Specimens.ClassDataRows), "asks Dispatcher.UIThread")]
+    [InlineData(typeof(Specimens.BuildsAControl), "constructs an Avalonia object, Border")]
+    [InlineData(typeof(Specimens.BuildsAWindowOfOurs), "constructs an Avalonia object, MainWindow")]
+    [InlineData(typeof(Specimens.AsksTheCurrentDispatcher), "asks Dispatcher.CurrentDispatcher")]
+    public void The_walk_finds_every_route_to_the_dispatcher(Type specimen, string why)
+    {
+        var run = specimen.GetMethod(nameof(Specimens.ExplicitDispose.Run), BindingFlags.Instance | BindingFlags.Public)!;
+
+        Assert.Contains(why, Reached(run).Select(r => BindsTheDispatcher(r.Member)));
+    }
+
+    /// <summary>
+    /// Shapes for the walk to find, and never run: none is a test (no fact
+    /// attribute), so the guard's scan passes over them, and each class's
+    /// Run stands where a test would.
+    /// </summary>
+#pragma warning disable xUnit1008 // Data attributes on a method that is not a theory: the walk reads them, nothing runs them.
+    internal static class Specimens
+    {
+        internal sealed class ExplicitDispose : IDisposable
+        {
+            void IDisposable.Dispose() => _ = Avalonia.Threading.Dispatcher.UIThread;
+
+            public void Run() { }
+        }
+
+        internal sealed class InitializeAsyncAsks : IAsyncLifetime
+        {
+            public ValueTask InitializeAsync()
+            {
+                _ = Avalonia.Threading.Dispatcher.UIThread;
+                return ValueTask.CompletedTask;
+            }
+
+            public ValueTask DisposeAsync() => ValueTask.CompletedTask;
+
+            public void Run() { }
+        }
+
+        internal sealed class DisposeAsyncAsks : IAsyncLifetime
+        {
+            ValueTask IAsyncLifetime.InitializeAsync() => ValueTask.CompletedTask;
+
+            async ValueTask IAsyncDisposable.DisposeAsync()
+            {
+                await Task.Yield();
+                _ = Avalonia.Threading.Dispatcher.UIThread;
+            }
+
+            public void Run() { }
+        }
+
+        internal sealed class StaticConstructor
+        {
+            private static readonly object Bound;
+
+            static StaticConstructor() => Bound = Avalonia.Threading.Dispatcher.UIThread;
+
+            public void Run() => _ = Bound;
+        }
+
+        internal sealed class MemberDataMethod
+        {
+            public static IEnumerable<object[]> Rows()
+            {
+                _ = Avalonia.Threading.Dispatcher.UIThread;
+                yield return [1];
+            }
+
+            [MemberData(nameof(Rows))]
+            public void Run(int n) => _ = n;
+        }
+
+        internal sealed class MemberDataTheoryDataProperty
+        {
+            public static TheoryData<string> Rows => [new Avalonia.Controls.Border().Name ?? ""];
+
+            [MemberData(nameof(Rows))]
+            public void Run(string name) => _ = name;
+        }
+
+        internal static class RowsElsewhere
+        {
+            public static readonly TheoryData<int> Rows = [Avalonia.Threading.Dispatcher.UIThread.GetHashCode()];
+        }
+
+        internal sealed class MemberDataFieldElsewhere
+        {
+            [MemberData(nameof(RowsElsewhere.Rows), MemberType = typeof(RowsElsewhere))]
+            public void Run(int n) => _ = n;
+        }
+
+        internal sealed class AskingRows : TheoryData<int>
+        {
+            public AskingRows() => Add(Avalonia.Threading.Dispatcher.UIThread.GetHashCode());
+        }
+
+        internal sealed class ClassDataRows
+        {
+            [ClassData(typeof(AskingRows))]
+            public void Run(int n) => _ = n;
+        }
+
+        internal sealed class BuildsAControl
+        {
+            public void Run() => _ = new Avalonia.Controls.Border();
+        }
+
+        internal sealed class BuildsAWindowOfOurs
+        {
+            public void Run() => _ = new MainWindow();
+        }
+
+        internal sealed class AsksTheCurrentDispatcher
+        {
+            public void Run() => _ = Avalonia.Threading.Dispatcher.CurrentDispatcher;
+        }
+    }
+#pragma warning restore xUnit1008
 }
