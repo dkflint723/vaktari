@@ -56,6 +56,9 @@ public sealed class BinPurgeTests : OwnedViewModels
 
         public List<string> Purged { get; } = [];
 
+        /// <summary>When set, every delete and restore fails with this reason.</summary>
+        public string? Refusing { get; init; }
+
         public RecordingBin Holding(string key, string original, DateTimeOffset deleted)
         {
             _items.Add(new TrashedItem(key, original, "payload/" + key, deleted, 1, false));
@@ -66,11 +69,14 @@ public sealed class BinPurgeTests : OwnedViewModels
 
         public void Delete(string trashName)
         {
+            if (Refusing is { } reason) throw new IOException(reason);
+
             Purged.Add(trashName);
             _items.RemoveAll(i => i.TrashName == trashName);
         }
 
-        public string Restore(string trashName) => trashName;
+        public string Restore(string trashName)
+            => Refusing is { } reason ? throw new IOException(reason) : trashName;
 
         public ValueTask<TrashSweepResult> SweepAsync(TrashSettings policy, CancellationToken ct)
             => ValueTask.FromResult(TrashSweepResult.Nothing);
@@ -161,6 +167,78 @@ public sealed class BinPurgeTests : OwnedViewModels
 
         Assert.Equal(2, bin.Purged.Count);
         Assert.Contains("2", pane.Status);
+    }
+
+    /// <summary>
+    /// **"See the log" pointed at a log that never heard of it.** A failed
+    /// purge's reason went to stderr alone, and the Windows build has no
+    /// console, so the status line's advice led nowhere (changelog check for
+    /// 0.11.1). The reason is in the log now, beside the item's name.
+    /// </summary>
+    [AvaloniaFact]
+    public async Task A_failed_purge_writes_its_reason_to_the_log()
+    {
+        var logs = Directory.CreateTempSubdirectory("vaktari-purge-log").FullName;
+        Vaktari.Core.Diagnostics.Log.Configure(logs, includePaths: false);
+
+        try
+        {
+            var bin = new RecordingBin { Refusing = "the bin's own folder is read-only" }
+                .Holding("k1", "/tmp/notes.txt", DateTimeOffset.UnixEpoch);
+
+            var pane = await BinPane(bin);
+
+            Select(pane, "notes.txt");
+
+            await pane.PurgeFromTrashAsync();
+
+            Assert.Equal("could not delete 1 item(s) — see the log", pane.Status);
+
+            var line = Assert.Single(
+                Vaktari.Core.Diagnostics.Log.Tail(50).Split('\n'),
+                l => l.Contains("the bin's own folder is read-only", StringComparison.Ordinal));
+
+            Assert.Contains("notes.txt", line, StringComparison.Ordinal);
+        }
+        finally
+        {
+            Vaktari.Core.Diagnostics.Log.Reset();
+            Directory.Delete(logs, recursive: true);
+        }
+    }
+
+    /// <summary>A failed restore said "see the log" the same way, and its
+    /// reason went to stderr alone too.</summary>
+    [AvaloniaFact]
+    public async Task A_failed_restore_writes_its_reason_to_the_log()
+    {
+        var logs = Directory.CreateTempSubdirectory("vaktari-restore-log").FullName;
+        Vaktari.Core.Diagnostics.Log.Configure(logs, includePaths: false);
+
+        try
+        {
+            var bin = new RecordingBin { Refusing = "the old folder is gone" }
+                .Holding("k1", "/tmp/notes.txt", DateTimeOffset.UnixEpoch);
+
+            var pane = await BinPane(bin);
+
+            Select(pane, "notes.txt");
+
+            await pane.RestoreFromTrashCommand.ExecuteAsync(null);
+
+            Assert.Equal("could not restore 1 item(s) — see the log", pane.Status);
+
+            var line = Assert.Single(
+                Vaktari.Core.Diagnostics.Log.Tail(50).Split('\n'),
+                l => l.Contains("the old folder is gone", StringComparison.Ordinal));
+
+            Assert.Contains("notes.txt", line, StringComparison.Ordinal);
+        }
+        finally
+        {
+            Vaktari.Core.Diagnostics.Log.Reset();
+            Directory.Delete(logs, recursive: true);
+        }
     }
 
     /// <summary>

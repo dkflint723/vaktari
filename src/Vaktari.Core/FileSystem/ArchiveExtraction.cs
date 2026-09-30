@@ -142,6 +142,14 @@ internal static class ArchiveExtraction
         private int _files, _folders, _items, _expected;
         private int _unsafe, _links, _special, _mac, _unwritable;
         private long _sinceFloorCheck;
+        private long? _floor;
+
+        /// <summary>What the stream being written may leave free, and what
+        /// it may write, from the free space measured as it started — see
+        /// <see cref="ArchiveRoom.StreamReserve"/>. The budget is null when
+        /// free space could not be read.</summary>
+        private long _streamReserve;
+        private long? _streamBudget;
         private long _compressedSeen;
         private long _declaredReported;
 
@@ -319,6 +327,14 @@ internal static class ArchiveExtraction
                 return;
             }
 
+            // **A size a plain tar cannot hold is damage, said before a byte
+            // is written.** Its data is stored as it is, so an entry larger
+            // than the whole archive is a header that lies — and the room
+            // check below is asked in its terms. A compressed tar can hold
+            // any size, and the copy still stops an entry at its declared size.
+            if (pass.Format == ArchiveFormat.Tar && info.Size > pass.ArchiveLength)
+                throw Damaged();
+
             using var data = item.OpenData();
 
             Write(node, info, data, Key(segments));
@@ -400,22 +416,47 @@ internal static class ArchiveExtraction
 
         /// <summary>
         /// **For a format that declares no total, each entry's own size is
-        /// asked about before it is written**: a tar declares every entry's
-        /// size, so the running floor below — which used to run only for
-        /// entries with no size at all — never ran for tar, and a 3 MB
-        /// tar.gz holding 300 MB extracted in full onto a disk the room check
-        /// said had 100 MB (review of Stage A).
+        /// asked about before it is written**: a 3 MB tar.gz holding 300 MB
+        /// once extracted in full onto a disk the room check said had 100 MB
+        /// (review of Stage A).
+        ///
+        /// **Against its size and a small margin, not the floor.** The copy
+        /// stops an entry at the size it declared, so what it will take is
+        /// known; the floor is for a stream that says nothing
+        /// (<see cref="ArchiveRoom.TooBigFor"/>). Asked of the floor, a 10 KB
+        /// .tar onto a 1 TB drive with 200 MB free was refused.
+        ///
+        /// **A stream with no size is measured as it starts, not refused.**
+        /// The free space found then sets what it may leave free — the
+        /// smaller of the drive's reserve and half of what was found — and
+        /// what it may write, which the copy holds it to byte by byte. A
+        /// refusal against the whole reserve turned away a 5 KB .gz onto a
+        /// 1 TiB drive with 200 MiB free; no refusal at all let 2 MiB onto
+        /// 3 MiB free write until the disk was full before the first look
+        /// (fix-11 verification).
         /// </summary>
         private void RoomFor(ArchiveEntryInfo info)
         {
             if (pass.DeclaredTotal is null
                 && info.Size is { } size
                 && options.Room.FreeBytes(root) is { } free
-                // Subtracted, never added: a PAX size of long.MaxValue plus
-                // the floor wrapped negative and passed (second verification).
-                && size > free - ArchiveRoom.StreamFloor)
+                && ArchiveRoom.TooBigFor(size, free))
                 throw new ArchiveRefusedException(ArchiveSentences.Floor(pass.Leaf, Place));
+
+            if (pass.DeclaredTotal is null && info.Size is null)
+            {
+                var found = options.Room.FreeBytes(root);
+
+                _streamReserve = found is { } f ? ArchiveRoom.StreamReserve(Floor, f) : Floor;
+                _streamBudget = found - _streamReserve;
+                _sinceFloorCheck = 0;
+            }
         }
+
+        /// <summary>What this run leaves free of a stream with no declared
+        /// size, asked once: the drive's size does not change while it runs
+        /// (<see cref="ArchiveRoom.FloorFor"/>).</summary>
+        private long Floor => _floor ??= options.Room.FloorFor(root);
 
         /// <summary>
         /// A time a file can carry. **Windows cannot date anything before
@@ -470,6 +511,13 @@ internal static class ArchiveExtraction
 
                 crc?.SlurpBlock(buffer, 0, read);
 
+                // **Held to its budget before the bytes are written**, so a
+                // stream never takes more than it was given, however soon
+                // after it started that would be and whatever the size of
+                // the chunk.
+                if (pass.DeclaredTotal is null && info.Size is null && _streamBudget is { } budget && total > budget)
+                    throw new ArchiveRefusedException(ArchiveSentences.Floor(pass.Leaf, Place));
+
                 to.Write(buffer, 0, read);
 
                 if (pass.DeclaredTotal is not null)
@@ -482,11 +530,17 @@ internal static class ArchiveExtraction
                     ReportCompressedProgress();
                 }
 
-                if (pass.DeclaredTotal is null && (_sinceFloorCheck += read) >= ArchiveRoom.FloorInterval)
+                // Only for bytes nobody declared: an entry with a size was
+                // asked about in RoomFor and is stopped at that size above.
+                // The budget covers what this stream writes; this look
+                // covers everyone else writing to the same drive meanwhile.
+                if (pass.DeclaredTotal is null
+                    && info.Size is null
+                    && (_sinceFloorCheck += read) >= ArchiveRoom.IntervalFor(_streamReserve))
                 {
                     _sinceFloorCheck = 0;
 
-                    if (options.Room.BelowFloor(root))
+                    if (options.Room.BelowFloor(root, _streamReserve))
                         throw new ArchiveRefusedException(ArchiveSentences.Floor(pass.Leaf, Place));
                 }
             }

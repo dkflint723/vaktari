@@ -204,43 +204,98 @@ public sealed class ArchiveReviewTests : IDisposable
     // ---- 2. room while a tar is written ----------------------------------
 
     /// <summary>
-    /// **Every tar entry declares its size, and the running floor ran only
-    /// for entries that did not.** 70 MiB of zeros in a tar.gz, with the
-    /// disk falling to 100 MiB free once writing starts: stopped, and
-    /// nothing left.
+    /// **Every tar entry declares its size, and is asked about by it.** A
+    /// 3 MB tar.gz holding 70 MiB of zeros, onto a disk with 60 MiB free:
+    /// refused before a byte is written, in the floor's words, and nothing
+    /// left (review of Stage A found it extracted in full).
     /// </summary>
     [Fact]
-    public void The_running_floor_holds_for_a_tar()
+    public void A_tar_entry_declaring_more_than_is_free_is_refused_before_it_is_written()
     {
         var archive = ArchiveTestData.Tar(At("zeros.tar.gz"), t => t.WriteEntry(new PaxTarEntry(TarEntryType.RegularFile, "zeros.bin")
         {
             DataStream = new MemoryStream(new byte[70 * MiB]),
         }), ArchiveTestData.Compressor(ArchiveFormat.TarGz));
 
-        // Up front: plenty. Before the entry: plenty. While writing: not.
-        var asked = 0;
-        var room = new ArchiveRoom(_ => ++asked <= 2 ? 10L << 30 : 100 * MiB, _ => null);
+        var created = new List<string>();
+        var room = new ArchiveRoom(_ => 60 * MiB, _ => null, _ => 1L << 40);
 
-        var stopped = Assert.Throws<ArchiveRefusedException>(() => Extract(archive, Dir("out"), room));
+        var stopped = Assert.Throws<ArchiveRefusedException>(
+            () => Extract(archive, Dir("out"), room, new Hooks { Before = created.Add }));
 
-        Assert.StartsWith("stopped before zeros.tar.gz filled ", stopped.Message);
-        Assert.True(asked > 2, "the floor was never checked while writing");
+        Assert.Equal($"stopped before zeros.tar.gz filled {ArchiveRoom.Drive(At("out"))} — nothing was extracted", stopped.Message);
+        Assert.Empty(created);
         Assert.Empty(Directory.EnumerateFileSystemEntries(At("out")));
     }
 
-    /// <summary>A tar entry whose own declared size would leave less than
-    /// the floor is refused before a byte of it is written.</summary>
-    [Fact]
-    public void A_tar_entry_that_would_leave_less_than_the_floor_is_refused_up_front()
+    /// <summary>
+    /// **Its size, a cluster and 4 MiB.** An 8 MiB tar entry fits in 13 MiB
+    /// free and not in 12 — the margin is the whole of what a sized entry
+    /// keeps, whatever the drive.
+    /// </summary>
+    [Theory]
+    [InlineData(13, true)]
+    [InlineData(12, false)]
+    public void A_tar_entry_is_held_to_its_size_and_a_small_margin(long freeMiB, bool lands)
     {
         var archive = ArchiveTestData.Tar(At("big.tar.gz"), t => t.WriteEntry(new PaxTarEntry(TarEntryType.RegularFile, "big.bin")
         {
             DataStream = new MemoryStream(new byte[8 * MiB]),
         }), ArchiveTestData.Compressor(ArchiveFormat.TarGz));
 
-        var room = new ArchiveRoom(_ => 200 * MiB, _ => null);
+        var room = new ArchiveRoom(_ => freeMiB * MiB, _ => null, _ => 1L << 40);
 
-        Assert.Throws<ArchiveRefusedException>(() => Extract(archive, Dir("out"), room));
+        if (lands)
+        {
+            Assert.Equal(1, Extract(archive, Dir("out"), room).Files);
+        }
+        else
+        {
+            Assert.Throws<ArchiveRefusedException>(() => Extract(archive, Dir("out"), room));
+            Assert.Empty(Directory.EnumerateFileSystemEntries(At("out")));
+        }
+    }
+
+    /// <summary>
+    /// **A sized entry is not stopped by the floor while it is written.**
+    /// 70 MiB of zeros in a tar.gz onto a 1 TiB drive with 200 MiB free: it
+    /// fits, and the running check — which would see less than 256 MiB left
+    /// after the first 64 MiB — is for streams that declare nothing.
+    /// </summary>
+    [Fact]
+    public void A_large_tar_entry_that_fits_is_not_stopped_by_the_floor()
+    {
+        var archive = ArchiveTestData.Tar(At("zeros.tar.gz"), t => t.WriteEntry(new PaxTarEntry(TarEntryType.RegularFile, "zeros.bin")
+        {
+            DataStream = new MemoryStream(new byte[70 * MiB]),
+        }), ArchiveTestData.Compressor(ArchiveFormat.TarGz));
+
+        var room = new ArchiveRoom(_ => 200 * MiB, _ => null, _ => 1L << 40);
+
+        var done = Extract(archive, Dir("out"), room);
+
+        Assert.Equal(70 * MiB, new FileInfo(Path.Combine(done.Landed, "zeros.bin")).Length);
+    }
+
+    /// <summary>
+    /// **Someone else filling the drive is caught by the look.** 70 MiB of
+    /// zeros in a bare .gz onto a 1 TiB drive that had 10 GiB free as the
+    /// stream started — a budget of all but 256 MiB — and 100 MiB once it
+    /// was under way: the look 64 MiB in sees less than the reserve left.
+    /// </summary>
+    [Fact]
+    public void A_bare_stream_is_stopped_when_the_drive_fills_from_elsewhere()
+    {
+        var archive = ArchiveTestData.Bare(At("zeros.gz"), ArchiveFormat.Gz, new byte[70 * MiB]);
+
+        // Up front, and as the stream starts: plenty. After that: not.
+        var asked = 0;
+        var room = new ArchiveRoom(_ => ++asked <= 2 ? 10L << 30 : 100 * MiB, _ => null, _ => 1L << 40);
+
+        var stopped = Assert.Throws<ArchiveRefusedException>(() => Extract(archive, Dir("out"), room));
+
+        Assert.StartsWith("stopped before zeros.gz filled ", stopped.Message);
+        Assert.True(asked > 2, "free space was never looked at while writing");
         Assert.Empty(Directory.EnumerateFileSystemEntries(At("out")));
     }
 
@@ -259,10 +314,264 @@ public sealed class ArchiveReviewTests : IDisposable
             for (var i = 0; i < 400; i++) t.WriteEntry(ArchiveTestData.Link_(TarEntryType.HardLink, $"copy{i}.bin", "one.bin"));
         });
 
-        var room = new ArchiveRoom(_ => 330 * MiB - Written(At("out")), _ => null);
+        var room = new ArchiveRoom(_ => 100 * MiB - Written(At("out")), _ => null);
 
         Assert.Throws<ArchiveRefusedException>(() => Extract(archive, Dir("out"), room));
         Assert.Empty(Directory.EnumerateFileSystemEntries(At("out")));
+    }
+
+    /// <summary>
+    /// **A small tar onto a nearly full drive extracts, however large the
+    /// drive.** 10 KB with 200 MiB free, on an 8 GiB stick and on a 1 TiB
+    /// disk: the fixed 256 MiB floor refused both as "stopped before …
+    /// filled", where the same files in a zip landed. A tar entry is now
+    /// asked about by its declared size.
+    /// </summary>
+    [Theory]
+    [InlineData(ArchiveFormat.Tar, 8L << 30)]
+    [InlineData(ArchiveFormat.TarGz, 8L << 30)]
+    [InlineData(ArchiveFormat.Tar, 1L << 40)]
+    [InlineData(ArchiveFormat.TarGz, 1L << 40)]
+    public void A_small_tar_onto_a_nearly_full_drive_extracts(ArchiveFormat format, long total)
+    {
+        var name = format == ArchiveFormat.Tar ? "small.tar" : "small.tar.gz";
+        var archive = ArchiveTestData.Tar(At(name), t => t.WriteEntry(new PaxTarEntry(TarEntryType.RegularFile, "notes.bin")
+        {
+            DataStream = new MemoryStream(new byte[10 * 1024]),
+        }), format == ArchiveFormat.Tar ? null : ArchiveTestData.Compressor(format));
+
+        var room = new ArchiveRoom(_ => 200 * MiB, _ => null, _ => total);
+
+        var done = Extract(archive, Dir("out"), room);
+
+        Assert.Equal(1, done.Files);
+        Assert.Equal(10 * 1024, new FileInfo(Path.Combine(done.Landed, "notes.bin")).Length);
+    }
+
+    /// <summary>
+    /// **A runaway stream still stops before a small drive fills.** 40 MiB of
+    /// zeros in a bare .gz, which says nothing of its size, onto a 1 GiB
+    /// drive with 24 MiB free: the floor is 16 MiB and it is looked at every
+    /// 4 MiB, so the run stops with the sentence and never sees the disk full.
+    /// At the old 64 MiB interval, all 40 MiB were written without a look.
+    /// </summary>
+    [Fact]
+    public void A_stream_that_would_fill_a_small_drive_is_still_stopped()
+    {
+        var archive = ArchiveTestData.Bare(At("zeros.gz"), ArchiveFormat.Gz, new byte[40 * MiB]);
+
+        var least = long.MaxValue;
+        var room = new ArchiveRoom(_ =>
+        {
+            var free = 24 * MiB - Written(At("out"));
+            least = Math.Min(least, free);
+            return free;
+        }, _ => null, _ => 1L << 30);
+
+        var stopped = Assert.Throws<ArchiveRefusedException>(() => Extract(archive, Dir("out"), room));
+
+        Assert.StartsWith("stopped before zeros.gz filled ", stopped.Message);
+        Assert.True(least > 0, $"the disk was allowed to fill: {least} bytes free at the last look");
+        Assert.Empty(Directory.EnumerateFileSystemEntries(At("out")));
+    }
+
+    /// <summary>
+    /// **Every compressor that gives no size is watched, and early.** 40 MiB
+    /// of zeros onto a 1 GiB drive with 24 MiB free: the reserve is 16 MiB,
+    /// looked at every 4 MiB, so the run stops with at least 12 MiB left —
+    /// not merely before the disk is full. A look that asked for half the
+    /// reserve still stopped short of a full disk, and "more than nothing"
+    /// could not tell (fix-11 verification).
+    /// </summary>
+    [Theory]
+    [InlineData(ArchiveFormat.Gz, "zeros.gz")]
+    [InlineData(ArchiveFormat.Zst, "zeros.zst")]
+    [InlineData(ArchiveFormat.Lz, "zeros.lz")]
+    [InlineData(ArchiveFormat.Bz2, "zeros.bz2")]
+    public void A_bare_stream_of_any_compressor_stops_with_most_of_the_reserve_left(ArchiveFormat format, string name)
+    {
+        var archive = ArchiveTestData.Bare(At(name), format, new byte[40 * MiB]);
+
+        var least = long.MaxValue;
+        var room = new ArchiveRoom(_ =>
+        {
+            var free = 24 * MiB - Written(At("out"));
+            least = Math.Min(least, free);
+            return free;
+        }, _ => null, _ => 1L << 30);
+
+        var stopped = Assert.Throws<ArchiveRefusedException>(() => Extract(archive, Dir("out"), room));
+
+        Assert.StartsWith($"stopped before {name} filled ", stopped.Message);
+        Assert.True(least >= ArchiveRoom.LeastReserve - ArchiveRoom.IntervalFor(ArchiveRoom.LeastReserve),
+            $"stopped with {least} bytes free, less than three quarters of the reserve");
+        Assert.Empty(Directory.EnumerateFileSystemEntries(At("out")));
+    }
+
+    /// <summary>
+    /// **Each entry is asked about, so what they add up to is too.** 400
+    /// entries of 64 KiB — 25 MiB, none of them large — onto a drive with
+    /// 16 MiB free that falls as they land: refused before the margin is
+    /// gone, and nothing left. Each question reads what is free now, so no
+    /// entry is waved through on the room an earlier one already took.
+    /// </summary>
+    [Fact]
+    public void Many_small_tar_entries_are_held_to_what_they_add_up_to()
+    {
+        var archive = ArchiveTestData.Tar(At("many.tar.gz"), t =>
+        {
+            for (var i = 0; i < 400; i++)
+                t.WriteEntry(new PaxTarEntry(TarEntryType.RegularFile, $"f{i:D3}.bin") { DataStream = new MemoryStream(new byte[64 * 1024]) });
+        }, ArchiveTestData.Compressor(ArchiveFormat.TarGz));
+
+        var least = long.MaxValue;
+        var room = new ArchiveRoom(_ =>
+        {
+            var free = 16 * MiB - Written(At("out"));
+            least = Math.Min(least, free);
+            return free;
+        }, _ => null, _ => 1L << 40);
+
+        var stopped = Assert.Throws<ArchiveRefusedException>(() => Extract(archive, Dir("out"), room));
+
+        Assert.StartsWith("stopped before many.tar.gz filled ", stopped.Message);
+        Assert.True(least >= ArchiveRoom.SizedMargin, $"the entries left {least} bytes free");
+        Assert.Empty(Directory.EnumerateFileSystemEntries(At("out")));
+    }
+
+    /// <summary>
+    /// **A bare stream cannot fill the disk before its first look.** The
+    /// look comes an interval in, and with less free than that — 3 MiB on a
+    /// 1 GiB drive, 50 MiB on a 1 TiB one — the stream wrote until the disk
+    /// was full. It is held instead to a budget set as it starts, half of
+    /// what was free here, and stopped with the sentence, nothing left and
+    /// free space never at 0 (fix-11 verification).
+    /// </summary>
+    [Theory]
+    [InlineData(1L << 30, 3, 2)]
+    [InlineData(1L << 40, 50, 40)]
+    public void A_bare_stream_onto_little_free_space_is_stopped_before_the_disk_fills(long total, long freeMiB, int sizeMiB)
+    {
+        var archive = ArchiveTestData.Bare(At("zeros.gz"), ArchiveFormat.Gz, new byte[sizeMiB * MiB]);
+
+        var least = long.MaxValue;
+        var room = new ArchiveRoom(_ =>
+        {
+            var free = freeMiB * MiB - Written(At("out"));
+            least = Math.Min(least, free);
+            return free;
+        }, _ => null, _ => total);
+
+        var stopped = Assert.Throws<ArchiveRefusedException>(() => Extract(archive, Dir("out"), room));
+
+        Assert.Equal($"stopped before zeros.gz filled {ArchiveRoom.Drive(At("out"))} — nothing was extracted", stopped.Message);
+        Assert.True(least > 0, $"the disk was allowed to fill: {least} bytes free at the last look");
+        Assert.Empty(Directory.EnumerateFileSystemEntries(At("out")));
+    }
+
+    /// <summary>
+    /// **A small bare file lands wherever there is plenty of room for it.**
+    /// 5 KB in a .gz onto a 1 TiB drive with 200 MiB free — less than the
+    /// drive's 256 MiB reserve, and refused outright when the reserve was
+    /// asked for whole (fix-11 verification).
+    /// </summary>
+    [Fact]
+    public void A_small_bare_file_lands_on_a_large_drive_with_less_free_than_its_reserve()
+    {
+        var archive = ArchiveTestData.Bare(At("report.txt.gz"), ArchiveFormat.Gz, new byte[5 * 1024]);
+
+        var room = new ArchiveRoom(_ => 200 * MiB, _ => null, _ => 1L << 40);
+
+        var done = Extract(archive, Dir("out"), room);
+
+        Assert.Equal(1, done.Files);
+        Assert.Equal(5 * 1024, new FileInfo(done.Landed).Length);
+    }
+
+    /// <summary>
+    /// **Never more than half of what was free**, where the drive's reserve
+    /// would allow more: 20 MiB free on a 1 TiB drive. 9 MiB lands; 12 MiB
+    /// is stopped. The free space reported here does not fall as the stream
+    /// writes, so no look can stop it — only the budget taken as it started.
+    /// </summary>
+    [Theory]
+    [InlineData(9, true)]
+    [InlineData(12, false)]
+    public void A_bare_stream_is_held_to_half_of_the_free_space_it_found(int sizeMiB, bool lands)
+    {
+        var archive = ArchiveTestData.Bare(At("zeros.gz"), ArchiveFormat.Gz, new byte[sizeMiB * MiB]);
+
+        var room = new ArchiveRoom(_ => 20 * MiB, _ => null, _ => 1L << 40);
+
+        if (lands)
+        {
+            Assert.Equal(1, Extract(archive, Dir("out"), room).Files);
+        }
+        else
+        {
+            var stopped = Assert.Throws<ArchiveRefusedException>(() => Extract(archive, Dir("out"), room));
+
+            Assert.StartsWith("stopped before zeros.gz filled ", stopped.Message);
+            Assert.Empty(Directory.EnumerateFileSystemEntries(At("out")));
+        }
+    }
+
+    /// <summary>
+    /// **The budget is held to the byte, and before the bytes that would
+    /// break it are written.** 20 MiB free on a 1 TiB drive gives a budget
+    /// of exactly 10 MiB: that lands, and one byte more is stopped. A check
+    /// made a chunk late let the last 80 KiB through, and 9 MiB against
+    /// 12 MiB could not tell (fix-11 verification).
+    /// </summary>
+    [Theory]
+    [InlineData(0, true)]
+    [InlineData(1, false)]
+    public void A_bare_stream_is_held_to_its_budget_to_the_byte(int over, bool lands)
+    {
+        var archive = ArchiveTestData.Bare(At("zeros.gz"), ArchiveFormat.Gz, new byte[10 * MiB + over]);
+
+        var room = new ArchiveRoom(_ => 20 * MiB, _ => null, _ => 1L << 40);
+
+        if (lands)
+        {
+            Assert.Equal(10 * MiB, new FileInfo(Extract(archive, Dir("out"), room).Landed).Length);
+        }
+        else
+        {
+            Assert.Throws<ArchiveRefusedException>(() => Extract(archive, Dir("out"), room));
+            Assert.Empty(Directory.EnumerateFileSystemEntries(At("out")));
+        }
+    }
+
+    /// <summary>
+    /// **Free space that cannot be read as a stream starts leaves it
+    /// unbudgeted, not unwatched.** Unknown until the first bytes land, then
+    /// 10 MiB on a 1 GiB drive: the look still asks for the drive's 16 MiB
+    /// reserve and stops it. A reserve of nothing in that case let all
+    /// 40 MiB through (fix-11 verification). Unknown throughout, it lands,
+    /// as it always did.
+    /// </summary>
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public void A_bare_stream_whose_free_space_is_unknown_as_it_starts_is_still_watched(bool readableLater)
+    {
+        var archive = ArchiveTestData.Bare(At("zeros.gz"), ArchiveFormat.Gz, new byte[40 * MiB]);
+
+        var room = new ArchiveRoom(
+            _ => readableLater && Written(At("out")) > 0 ? 10 * MiB : null, _ => null, _ => 1L << 30);
+
+        if (readableLater)
+        {
+            var stopped = Assert.Throws<ArchiveRefusedException>(() => Extract(archive, Dir("out"), room));
+
+            Assert.StartsWith("stopped before zeros.gz filled ", stopped.Message);
+            Assert.Empty(Directory.EnumerateFileSystemEntries(At("out")));
+        }
+        else
+        {
+            Assert.Equal(40 * MiB, new FileInfo(Extract(archive, Dir("out"), room).Landed).Length);
+        }
     }
 
     private static long Written(string folder)

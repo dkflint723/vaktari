@@ -101,7 +101,7 @@ public sealed class ArchiveVerificationFixTests : IDisposable
         var into = Dir("out");
 
         var refused = Assert.Throws<ArchiveRefusedException>(
-            () => Extract(archive, into, new ArchiveRoom(_ => 200 * MiB, _ => null)));
+            () => Extract(archive, into, new ArchiveRoom(_ => 10 * MiB, _ => null)));
 
         Assert.Equal($"stopped before big.tar.gz filled {ArchiveRoom.Drive(into)} — nothing was extracted", refused.Message);
         Assert.DoesNotContain(".vaktari", refused.Message);
