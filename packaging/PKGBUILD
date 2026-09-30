@@ -41,7 +41,7 @@ optdepends=('git: version-control decorations'
             'copyparty: file sharing over HTTP')
 
 source=("$pkgname-$pkgver.tar.gz::$url/archive/refs/tags/v$pkgver.tar.gz")
-sha256sums=('4919cb3d8d581363cdeb06859e65ff86bcfc3a4251c589cd8b75951f34aa373c')   # of the v$pkgver archive; recompute whenever pkgver changes
+sha256sums=('70c58baf43ec95ca67e28cf7b59947e639103190840ea64c30eafbc7413f6682')   # of the v$pkgver archive; recompute whenever pkgver changes
 
 build() {
     cd "$srcdir/$_projname-$pkgver"
