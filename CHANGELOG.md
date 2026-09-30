@@ -84,15 +84,15 @@ should not be trusted for compatibility yet.
   checked against its CRC, and every entry that declares a size is stopped
   the moment it runs past it or falls short. A tar keeps no checksum of its
   files, so damage inside a plain `.tar` is caught only where its structure
-  breaks; a compressed tar is read to the end of its compression, so the
-  check kept there — gzip's CRC and length, the xz, bzip2 and lzip checks, a
-  zstd frame's checksum — is read too, and one that fails refuses the
-  archive. A `.tar.zst` or `.tar.xz` written without a checksum has nothing
-  to check, and a single compressed `.gz` file cut short before its CRC and
-  length is not noticed: what arrived is extracted as if it were whole. A zip whose entries share
-  the same compressed bytes,
-  so that it unpacks to far more than it holds, is refused before anything
-  is written.
+  breaks; a compressed tar, like a single compressed file, is read to the
+  end of its compression, so the check kept there — gzip's CRC and length,
+  the xz, bzip2 and lzip checks, a zstd frame's checksum — is read too, and
+  one that fails, or is missing because the file was cut short, refuses the
+  archive; only a file written as several streams and cut exactly between
+  two of them may not be told from a whole one. A `.tar.zst` or `.tar.xz`
+  written without a checksum has nothing to check. A zip whose entries share
+  the same compressed bytes, so that it unpacks to far more than it holds,
+  is refused before anything is written.
 
 - **The settings window is seven pages that each hold what their name
   says.** *General* is where Vaktari opens and how, what a click and

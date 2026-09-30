@@ -25,9 +25,11 @@ namespace Vaktari.Core.FileSystem;
 /// the only check.</item>
 /// <item>RAR4 and RAR5: checked — "file crc mismatch", stored and
 /// compressed alike.</item>
-/// <item>gzip (the BCL's): CRC-32 and length checked, though it words a
-/// mismatch as "unsupported compression method". bzip2, xz, lzip, and zstd
-/// when the frame carries a checksum: all checked.</item>
+/// <item>gzip: every member's CRC-32 and length checked by
+/// <see cref="GzipMembers"/>, and a trailer that is missing is damage too —
+/// the runtime's own GZipStream ended quietly at the end of a file cut short.
+/// bzip2, xz, lzip, and zstd when the frame carries a checksum: all checked
+/// by their decoders.</item>
 /// </list>
 ///
 /// **How each format is walked.** A tar is one forward pass. 7z, and a solid
@@ -149,7 +151,7 @@ internal static class ArchiveReader
     /// </summary>
     internal static Stream Decompress(Stream compressed, ArchiveFormat format) => new Decoded(format switch
     {
-        ArchiveFormat.Gz or ArchiveFormat.TarGz => new GZipStream(compressed, CompressionMode.Decompress, leaveOpen: true),
+        ArchiveFormat.Gz or ArchiveFormat.TarGz => new GzipMembers(compressed),
         ArchiveFormat.Bz2 or ArchiveFormat.TarBz2 => SharpCompress.Compressors.BZip2.BZip2Stream.Create(
             compressed, SharpCompressionMode.Decompress, decompressConcatenated: true, leaveOpen: true),
         ArchiveFormat.Xz or ArchiveFormat.TarXz => new XzMembers(compressed),
