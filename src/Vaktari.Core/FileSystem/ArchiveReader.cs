@@ -25,9 +25,10 @@ namespace Vaktari.Core.FileSystem;
 /// the only check.</item>
 /// <item>RAR4 and RAR5: checked — "file crc mismatch", stored and
 /// compressed alike.</item>
-/// <item>gzip: every member's CRC-32 and length checked by
-/// <see cref="GzipMembers"/>, and a trailer that is missing is damage too —
-/// the runtime's own GZipStream ended quietly at the end of a file cut short.
+/// <item>gzip: every member's CRC-32 and length checked by the runtime's
+/// GZipStream, which words a mismatch as "unsupported compression method";
+/// a file that ends before its last member does is refused by
+/// <see cref="GzipMembers"/>, since GZipStream alone ends there quietly.
 /// bzip2, xz, lzip, and zstd when the frame carries a checksum: all checked
 /// by their decoders.</item>
 /// </list>

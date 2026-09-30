@@ -1,5 +1,6 @@
 using System.Buffers.Binary;
 using System.IO.Compression;
+using System.Security.Cryptography;
 using SharpCompressionMode = SharpCompress.Compressors.CompressionMode;
 
 namespace Vaktari.Core.FileSystem;
@@ -270,182 +271,91 @@ internal sealed class LzipMembers(Stream compressed) : Stream
 }
 
 /// <summary>
-/// A .gz file of one or more members, each checked against its own trailer.
+/// A .gz file of one or more members, decoded by the runtime's
+/// <see cref="GZipStream"/>, with a file cut short refused.
 ///
 /// **A .gz cut short landed as the part that arrived** (RC QA: a 460 KB
 /// .txt.gz cut at 40 places, and all 40 extracted with wrong bytes and no word
-/// said). The runtime's <see cref="GZipStream"/> checks a member's CRC-32 and
-/// length when it reaches them, but at the end of its input it simply ends —
-/// so a file that stops before its trailer was never checked at all. Here each
-/// member's header is read by hand, its deflate data goes through the
-/// runtime's <see cref="DeflateStream"/>, and its eight-byte trailer must be
-/// there and must hold the CRC-32 and the length (mod 2^32) of exactly what
-/// that member decoded. Missing, short or different is damage. A .tar.gz cut
-/// inside its first few hundred bytes no longer reads as a tar and is tried
-/// as a bare .gz, and the same check refuses it there.
+/// said). GZipStream does everything else a gzip reader must, inside zlib: it
+/// parses each header (a reserved flag or a wrong header CRC is an error),
+/// checks each member's CRC-32 and length against its trailer, starts another
+/// member only where the bytes after one begin 1F 8B, and leaves anything else
+/// after the last member alone. And because zlib itself says where each
+/// member's deflate data ends, it is exact: an empty member as gzip(1) and
+/// zlib write it (<c>03 00</c> and eight zero bytes), and a stored member that
+/// carries eight bytes equal to its own CRC and length, decode as gzip -d
+/// decodes them. What it does not do is complain when its input simply runs
+/// out: at the end of the file it ends, trailer or not.
 ///
-/// **Where the deflate data ends is found from the trailer.** DeflateStream
-/// reads its input in chunks and neither says how much of the last one it
-/// used nor puts the rest back (measured on .NET 10: the input stays where the
-/// last chunk left it). It only asks for more once it has used everything it
-/// was given, so the data ends inside the last two chunks it read, and the
-/// trailer is the first eight bytes from there that match what was decoded.
-/// For compressed bytes to match instead, 64 bits would have to agree by
-/// chance.
+/// **So the end of the file is marked.** When GZipStream asks for more input
+/// after the last byte of the file, it is handed one more whole member, made
+/// here, whose content is sixteen random bytes. If the file ended cleanly —
+/// its last member whole and checked — GZipStream reads that member as the
+/// next one and decodes it, and the sixteen bytes are exactly what comes out
+/// after the file's own data. If the file was cut inside a member, header or
+/// trailer, the marker's bytes are read as the rest of that member instead,
+/// and what comes out is an error, or anything but those sixteen bytes. The
+/// bytes are new for every file, so no file can be made to produce them. If
+/// GZipStream never asks, the file ended cleanly and bytes it leaves alone
+/// follow.
 ///
-/// Chosen over SharpCompress's gzip reader, measured: it checks the trailer,
-/// but it failed on the second member of a multi-member file and decoded
-/// forty times slower than the runtime's inflater.
+/// **Chosen over finding each member's end by hand** (RC QA round 2: the
+/// search for a trailer took eight zero bytes one byte early in an empty
+/// member, and dropped every member after it). The runtime's own
+/// System.IO.Compression.UseStrictValidation switch refuses a cut file too,
+/// but it is read once per process and changes how zips are read as well.
+/// This also restores the speed of the runtime's reader: the CRC-32 is zlib's.
 /// </summary>
-internal sealed class GzipMembers(Stream compressed) : Stream
+internal sealed class GzipMembers : Stream
 {
-    private DeflateStream? _deflate;
-    private Watched? _watched;
-    private long _dataStart;
-    private uint _crc;
-    private long _length;
-    private bool _started;
+    private const int MarkerLength = 16;
+
+    private readonly Input _input;
+    private readonly GZipStream _gzip;
+    private readonly byte[] _marker = RandomNumberGenerator.GetBytes(MarkerLength);
     private bool _ended;
+
+    public GzipMembers(Stream compressed)
+    {
+        var member = new MemoryStream();
+
+        using (var z = new GZipStream(member, CompressionLevel.Optimal, leaveOpen: true)) z.Write(_marker);
+
+        _input = new Input(compressed, member.ToArray());
+        _gzip = new GZipStream(_input, CompressionMode.Decompress);
+    }
 
     public override int Read(byte[] buffer, int offset, int count) => Read(buffer.AsSpan(offset, count));
 
     public override int Read(Span<byte> buffer)
     {
-        while (!_ended && buffer.Length > 0)
+        if (_ended || buffer.IsEmpty) return 0;
+
+        // GZipStream reads input only when it has nothing left to give, so a
+        // Read that asked for the marker returned nothing from the file.
+        var n = _gzip.Read(buffer);
+
+        if (!_input.MarkerGiven)
         {
-            if (_deflate is null)
-            {
-                if (_started && !AnotherMember())
-                {
-                    _ended = true;
-                    break;
-                }
+            if (n > 0) return n;
 
-                _started = true;
-                Begin();
-            }
-
-            var n = _deflate!.Read(buffer);
-
-            if (n > 0)
-            {
-                _crc = Crc32.Update(_crc, buffer[..n]);
-                _length += n;
-
-                return n;
-            }
-
-            _deflate.Dispose();
-            _deflate = null;
-
-            CheckTrailer();
+            _ended = true;
+            return 0;
         }
+
+        _ended = true;
+
+        Span<byte> after = stackalloc byte[MarkerLength + 1];
+        var got = Math.Min(n, after.Length);
+
+        buffer[..got].CopyTo(after);
+
+        while (got < after.Length && (n = _gzip.Read(after[got..])) > 0) got += n;
+
+        if (got != MarkerLength || !after[..got].SequenceEqual(_marker))
+            throw new InvalidDataException("gzip data ends before its last member does");
 
         return 0;
-    }
-
-    /// <summary>Reads a member's header and starts its deflate data.</summary>
-    private void Begin()
-    {
-        Span<byte> head = stackalloc byte[10];
-
-        Need(head);
-
-        if (head[0] != 0x1F || head[1] != 0x8B) throw new InvalidDataException("not a gzip member");
-        if (head[2] != 8) throw new InvalidDataException("gzip member is not deflate");
-
-        var flags = head[3];
-
-        if ((flags & 0xE0) != 0) throw new InvalidDataException("gzip header sets reserved flags");
-
-        var headerCrc = Crc32.Update(0, head);
-
-        if ((flags & 0x04) != 0)
-        {
-            Span<byte> size = stackalloc byte[2];
-            Need(size);
-
-            var extra = new byte[BinaryPrimitives.ReadUInt16LittleEndian(size)];
-            Need(extra);
-
-            headerCrc = Crc32.Update(Crc32.Update(headerCrc, size), extra);
-        }
-
-        if ((flags & 0x08) != 0) headerCrc = PastZero(headerCrc);
-        if ((flags & 0x10) != 0) headerCrc = PastZero(headerCrc);
-
-        if ((flags & 0x02) != 0)
-        {
-            Span<byte> check = stackalloc byte[2];
-            Need(check);
-
-            if (BinaryPrimitives.ReadUInt16LittleEndian(check) != (ushort)headerCrc)
-                throw new InvalidDataException("gzip header CRC does not match");
-        }
-
-        _dataStart = compressed.Position;
-        _watched = new Watched(compressed);
-        _deflate = new DeflateStream(_watched, CompressionMode.Decompress, leaveOpen: true);
-        _crc = 0;
-        _length = 0;
-    }
-
-    /// <summary>
-    /// Finds the member's trailer and checks it, leaving the input just past
-    /// it. See the class summary for why it is searched for.
-    /// </summary>
-    private void CheckTrailer()
-    {
-        var end = compressed.Position;
-        var from = Math.Max(_dataStart, _watched!.Previous >= 0 ? _watched.Previous : _watched.Last);
-        var window = new byte[(int)(end - from) + 8];
-
-        compressed.Position = from;
-
-        var got = compressed.ReadAtLeast(window, window.Length, throwOnEndOfStream: false);
-
-        Span<byte> expected = stackalloc byte[8];
-        BinaryPrimitives.WriteUInt32LittleEndian(expected, _crc);
-        BinaryPrimitives.WriteUInt32LittleEndian(expected[4..], unchecked((uint)_length));
-
-        var at = window.AsSpan(0, got).IndexOf(expected);
-
-        if (at < 0) throw new InvalidDataException("gzip member's CRC-32 and length are missing or do not match what it decoded");
-
-        compressed.Position = from + at + 8;
-    }
-
-    /// <summary>Whether another member follows; if not, what is left is trailing data.</summary>
-    private bool AnotherMember()
-    {
-        Span<byte> magic = stackalloc byte[2];
-
-        var got = compressed.ReadAtLeast(magic, 2, throwOnEndOfStream: false);
-
-        compressed.Position -= got;
-
-        return got == 2 && magic[0] == 0x1F && magic[1] == 0x8B;
-    }
-
-    private void Need(Span<byte> field)
-    {
-        if (compressed.ReadAtLeast(field, field.Length, throwOnEndOfStream: false) < field.Length)
-            throw new InvalidDataException("gzip header is cut short");
-    }
-
-    /// <summary>Past a zero-terminated name or comment, adding it to the header's CRC.</summary>
-    private uint PastZero(uint crc)
-    {
-        Span<byte> one = stackalloc byte[1];
-
-        do
-        {
-            Need(one);
-            crc = Crc32.Update(crc, one);
-        }
-        while (one[0] != 0);
-
-        return crc;
     }
 
     public override bool CanRead => true;
@@ -460,32 +370,40 @@ internal sealed class GzipMembers(Stream compressed) : Stream
 
     protected override void Dispose(bool disposing)
     {
-        if (disposing) _deflate?.Dispose();
+        if (disposing) _gzip.Dispose();
 
         base.Dispose(disposing);
     }
 
-    /// <summary>The input as DeflateStream sees it, remembering where its
-    /// last two reads started.</summary>
-    private sealed class Watched(Stream inner) : Stream
+    /// <summary>The file, then the marker member once, then nothing. Leaves
+    /// the file open.</summary>
+    private sealed class Input(Stream inner, byte[] marker) : Stream
     {
-        public long Previous { get; private set; } = -1;
-        public long Last { get; private set; } = -1;
+        private int _given;
+
+        public bool MarkerGiven { get; private set; }
 
         public override int Read(byte[] buffer, int offset, int count) => Read(buffer.AsSpan(offset, count));
 
         public override int Read(Span<byte> buffer)
         {
-            var at = inner.Position;
-            var n = inner.Read(buffer);
+            if (buffer.IsEmpty) return 0;
 
-            if (n > 0)
+            if (!MarkerGiven)
             {
-                Previous = Last;
-                Last = at;
+                var n = inner.Read(buffer);
+
+                if (n > 0) return n;
+
+                MarkerGiven = true;
             }
 
-            return n;
+            var take = Math.Min(buffer.Length, marker.Length - _given);
+
+            marker.AsSpan(_given, take).CopyTo(buffer);
+            _given += take;
+
+            return take;
         }
 
         public override bool CanRead => true;
@@ -744,57 +662,5 @@ internal sealed class ZstdFrames(Stream compressed) : Stream
         public override void Flush() { }
         public override void SetLength(long value) => throw new NotSupportedException();
         public override void Write(byte[] buffer, int offset, int count) => throw new NotSupportedException();
-    }
-}
-
-/// <summary>CRC-32 as gzip and zip use it (IEEE, reflected), eight bytes at a
-/// time — the runtime has no public one outside a package.</summary>
-internal static class Crc32
-{
-    private static readonly uint[] Table = Build();
-
-    private static uint[] Build()
-    {
-        var table = new uint[8 * 256];
-
-        for (uint i = 0; i < 256; i++)
-        {
-            var c = i;
-
-            for (var k = 0; k < 8; k++) c = (c & 1) != 0 ? 0xEDB88320 ^ (c >> 1) : c >> 1;
-
-            table[i] = c;
-        }
-
-        for (var i = 0; i < 256; i++)
-            for (var k = 1; k < 8; k++)
-                table[(k * 256) + i] = (table[((k - 1) * 256) + i] >> 8) ^ table[table[((k - 1) * 256) + i] & 0xFF];
-
-        return table;
-    }
-
-    /// <summary>The CRC of what <paramref name="crc"/> covered followed by
-    /// <paramref name="data"/>; start from 0.</summary>
-    public static uint Update(uint crc, ReadOnlySpan<byte> data)
-    {
-        var t = Table;
-        crc = ~crc;
-
-        while (data.Length >= 8)
-        {
-            var one = BinaryPrimitives.ReadUInt32LittleEndian(data) ^ crc;
-            var two = BinaryPrimitives.ReadUInt32LittleEndian(data[4..]);
-
-            crc = t[(7 * 256) + (one & 0xFF)] ^ t[(6 * 256) + ((one >> 8) & 0xFF)]
-                ^ t[(5 * 256) + ((one >> 16) & 0xFF)] ^ t[(4 * 256) + (one >> 24)]
-                ^ t[(3 * 256) + (two & 0xFF)] ^ t[(2 * 256) + ((two >> 8) & 0xFF)]
-                ^ t[256 + ((two >> 16) & 0xFF)] ^ t[two >> 24];
-
-            data = data[8..];
-        }
-
-        foreach (var b in data) crc = t[(crc ^ b) & 0xFF] ^ (crc >> 8);
-
-        return ~crc;
     }
 }

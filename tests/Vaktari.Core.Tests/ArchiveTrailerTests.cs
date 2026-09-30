@@ -278,17 +278,6 @@ public sealed class ArchiveTrailerTests : IDisposable
     public void A_gz_whose_header_CRC_does_not_match_is_damage()
         => AssertDamaged("hcrc.txt.gz", Member(Text[..5000], true, true, true, true, breakHeaderCrc: true));
 
-    [Fact]
-    public void The_CRC_is_the_one_zip_and_gzip_use()
-    {
-        var bytes = Text[..4099];
-
-        foreach (var length in new[] { 0, 1, 7, 8, 9, 15, 16, 17, 1000, 4099 })
-            Assert.Equal(ZipDirectory.Crc32(bytes[..length]), Crc32.Update(0, bytes[..length]));
-
-        Assert.Equal(ZipDirectory.Crc32(bytes), Crc32.Update(Crc32.Update(0, bytes[..1001]), bytes[1001..]));
-    }
-
     // ---- 2. trailing bytes after the last stream ---------------------------------------
 
     /// <summary>What QA appended: zero padding of four sizes, and two kinds of junk.</summary>
@@ -433,5 +422,217 @@ public sealed class ArchiveTrailerTests : IDisposable
         var one = Fixture("bare.txt.xz");
 
         AssertDamaged("pad.txt.xz", [.. one, 0, 0, 0, .. one]);
+    }
+
+    // ---- 3. members as gzip(1) writes them, and where each one ends -------------------
+
+    /// <summary>
+    /// An empty member exactly as <c>gzip -n</c> writes it (Fedora 44, gzip
+    /// 1.13: <c>printf '' | gzip -n</c>), and as zlib and Python's gzip module
+    /// do: the header, the deflate data <c>03 00</c> — one empty final block —
+    /// and a trailer of eight zero bytes. The runtime's GZipStream writes
+    /// nothing at all for an empty input, so a test that compresses an empty
+    /// array with it has no empty member in it.
+    /// </summary>
+    private static readonly byte[] GnuEmpty =
+        [0x1F, 0x8B, 0x08, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x03, 0x03, 0x00, 0, 0, 0, 0, 0, 0, 0, 0];
+
+    public static TheoryData<string> EmptyPlacements() => ["before", "between", "after", "twice before", "only"];
+
+    /// <summary>The members <paramref name="placement"/> names, with
+    /// <paramref name="data"/> split in two where there are two.</summary>
+    private static (byte[] File, byte[] Content) WithEmpty(string placement, byte[] data)
+    {
+        var half = data.Length / 2 + 11;
+        var whole = Compress(ArchiveFormat.Gz, data);
+
+        return placement switch
+        {
+            "before" => ([.. GnuEmpty, .. whole], data),
+            "between" => ([.. Compress(ArchiveFormat.Gz, data[..half]), .. GnuEmpty, .. Compress(ArchiveFormat.Gz, data[half..])], data),
+            "after" => ([.. whole, .. GnuEmpty], data),
+            "twice before" => ([.. GnuEmpty, .. GnuEmpty, .. whole], data),
+            "only" => (GnuEmpty, []),
+            _ => throw new ArgumentOutOfRangeException(nameof(placement)),
+        };
+    }
+
+    /// <summary>
+    /// **An empty member hid every member after it** (RC QA round 2: gzip
+    /// wrote <c>cat empty.gz data.gz</c> as 108,894 bytes, and it landed as an
+    /// empty file with no word said). The trailer search found the eight zero
+    /// bytes one byte early, starting at the <c>00</c> of <c>03 00</c>, and the
+    /// next member's <c>1F 8B</c> was then read one byte late.
+    /// </summary>
+    [Theory]
+    [MemberData(nameof(EmptyPlacements))]
+    public void An_empty_member_as_gzip_writes_it_hides_nothing(string placement)
+    {
+        var (file, content) = WithEmpty(placement, Text[..20000]);
+
+        Assert.Equal(Convert.ToHexString(content), Landed("empty.txt.gz", file)[""]);
+    }
+
+    /// <summary>The same in a .tar.gz: the tar is the members' content, and
+    /// lands whole.</summary>
+    [Theory]
+    [InlineData("before")]
+    [InlineData("between")]
+    [InlineData("after")]
+    [InlineData("twice before")]
+    public void An_empty_member_as_gzip_writes_it_hides_nothing_in_a_tar_gz(string placement)
+    {
+        var tar = new MemoryStream();
+
+        using (var z = new GZipStream(new MemoryStream(Fixture("tree.tar.gz")), CompressionMode.Decompress)) z.CopyTo(tar);
+
+        var (file, _) = WithEmpty(placement, tar.ToArray());
+
+        Assert.Equal(Landed("tree.tar.gz", Fixture("tree.tar.gz")), Landed("tree.tar.gz", file));
+    }
+
+    /// <summary>
+    /// **Every cut of a file with an empty member in it, one byte at a time.**
+    /// A cut that falls exactly between two members leaves a shorter file
+    /// that is whole in every way gzip can tell, and lands as the members
+    /// before it; every other cut is damage. This is the rule the trailer
+    /// search could not keep: it needs each member's end found exactly.
+    /// </summary>
+    [Fact]
+    public void Every_cut_is_damage_except_one_between_members()
+    {
+        byte[] first = Compress(ArchiveFormat.Gz, Text[..700]), last = Compress(ArchiveFormat.Gz, Text[700..1500]);
+        byte[] file = [.. first, .. GnuEmpty, .. last];
+        var boundaries = new Dictionary<int, byte[]>
+        {
+            [first.Length] = Text[..700],
+            [first.Length + GnuEmpty.Length] = Text[..700],
+        };
+        var wrong = new List<string>();
+
+        for (var cut = 1; cut < file.Length; cut++)
+        {
+            var name = $"cut{cut}.txt.gz";
+            File.WriteAllBytes(At(name), file[..cut]);
+            var into = Directory.CreateDirectory(At("out-cut" + cut)).FullName;
+
+            try
+            {
+                var done = Archives.Extract(At(name), into);
+                var landed = File.ReadAllBytes(done.Landed);
+
+                if (!boundaries.TryGetValue(cut, out var expected) || !landed.AsSpan().SequenceEqual(expected))
+                    wrong.Add($"cut at {cut} of {file.Length} landed {landed.Length} bytes");
+            }
+            // Too short to be told as gzip at all is refused as not one.
+            catch (Exception e) when (e is ArchiveDamagedException or InvalidDataException)
+            {
+                if (boundaries.ContainsKey(cut)) wrong.Add($"cut at {cut}, between members, was refused");
+                if (Directory.EnumerateFileSystemEntries(into).Any()) wrong.Add($"cut at {cut} left something behind");
+            }
+        }
+
+        Assert.True(wrong.Count == 0, string.Join("\n", wrong));
+    }
+
+    /// <summary>
+    /// **A member whose stored data holds its own CRC and length** (RC QA
+    /// round 2). Its content P is 3,000 bytes, then eight bytes equal to P's
+    /// own CRC-32 and length (the CRC forced by four free bytes after them),
+    /// then a whole gzip member M2, then 500 more bytes, all in one stored
+    /// block. The trailer search took the first eight as the trailer and
+    /// decoded M2 as a member of the file. gzip -d and the runtime's
+    /// GZipStream, reading member by member, give P and nothing else, and so
+    /// must Extract all.
+    /// </summary>
+    [Fact]
+    public void A_member_whose_data_holds_its_own_trailer_decodes_as_gzip_does()
+    {
+        var a = new byte[3000];
+        new Random(1).NextBytes(a);
+        var z = new byte[500];
+        new Random(2).NextBytes(z);
+        var hidden = Compress(ArchiveFormat.Gz, "SMUGGLED: read only by a reader that guesses where a member ends\n"u8.ToArray());
+        var len = a.Length + 8 + 4 + hidden.Length + z.Length;
+
+        byte[] p = [.. a, .. new byte[12], .. hidden, .. z];
+        const uint target = 0x5EC0DE01;
+        BinaryPrimitives.WriteUInt32LittleEndian(p.AsSpan(a.Length), target);
+        BinaryPrimitives.WriteUInt32LittleEndian(p.AsSpan(a.Length + 4), (uint)len);
+        ForceCrc(p, a.Length + 8, target);
+
+        Assert.Equal(target, ZipDirectory.Crc32(p));
+
+        byte[] trailer = new byte[8];
+        BinaryPrimitives.WriteUInt32LittleEndian(trailer, target);
+        BinaryPrimitives.WriteUInt32LittleEndian(trailer.AsSpan(4), (uint)len);
+        byte[] file =
+        [
+            0x1F, 0x8B, 0x08, 0x00, 0, 0, 0, 0, 0, 0x03,
+            0x01, (byte)len, (byte)(len >> 8), (byte)~len, (byte)(~len >> 8), .. p,
+            .. trailer,
+        ];
+
+        var runtime = new MemoryStream();
+
+        using (var g = new GZipStream(new MemoryStream(file), CompressionMode.Decompress)) g.CopyTo(runtime);
+
+        Assert.Equal(Convert.ToHexString(p), Convert.ToHexString(runtime.ToArray()));
+        Assert.Equal(Convert.ToHexString(p), Landed("fake.txt.gz", file)[""]);
+
+        // With its real trailer gone, nothing inside it can stand in for one.
+        file.AsSpan(file.Length - 8).Clear();
+        AssertDamaged("fake.txt.gz", file);
+    }
+
+    /// <summary>
+    /// Sets the four bytes at <paramref name="at"/> so the CRC-32 of
+    /// <paramref name="p"/> is <paramref name="target"/>. CRC-32 is linear
+    /// over GF(2), so each of the 32 bits flips a fixed pattern of the CRC and
+    /// the bits are found by elimination.
+    /// </summary>
+    private static void ForceCrc(byte[] p, int at, uint target)
+    {
+        p.AsSpan(at, 4).Clear();
+
+        var start = ZipDirectory.Crc32(p);
+        var rows = new ulong[32];
+
+        for (var bit = 0; bit < 32; bit++)
+        {
+            p[at + (bit / 8)] ^= (byte)(1 << (bit % 8));
+            var column = ZipDirectory.Crc32(p) ^ start;
+            p[at + (bit / 8)] ^= (byte)(1 << (bit % 8));
+
+            for (var r = 0; r < 32; r++)
+                if (((column >> r) & 1) != 0) rows[r] |= 1UL << bit;
+        }
+
+        var want = start ^ target;
+
+        for (var r = 0; r < 32; r++)
+            if (((want >> r) & 1) != 0) rows[r] |= 1UL << 32;
+
+        var pivots = new int[32];
+        var rank = 0;
+
+        for (var c = 0; c < 32; c++)
+        {
+            pivots[c] = -1;
+
+            var found = Enumerable.Range(rank, 32 - rank).FirstOrDefault(r => ((rows[r] >> c) & 1) != 0, -1);
+
+            if (found < 0) continue;
+
+            (rows[rank], rows[found]) = (rows[found], rows[rank]);
+
+            for (var r = 0; r < 32; r++)
+                if (r != rank && ((rows[r] >> c) & 1) != 0) rows[r] ^= rows[rank];
+
+            pivots[c] = rank++;
+        }
+
+        for (var c = 0; c < 32; c++)
+            if (pivots[c] >= 0 && ((rows[pivots[c]] >> 32) & 1) != 0) p[at + (c / 8)] ^= (byte)(1 << (c % 8));
     }
 }
