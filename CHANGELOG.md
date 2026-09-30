@@ -88,7 +88,9 @@ should not be trusted for compatibility yet.
   check kept there — gzip's CRC and length, the xz, bzip2 and lzip checks, a
   zstd frame's checksum — is read too, and one that fails refuses the
   archive. A `.tar.zst` or `.tar.xz` written without a checksum has nothing
-  to check. A zip whose entries share the same compressed bytes,
+  to check, and a single compressed `.gz` file cut short before its CRC and
+  length is not noticed: what arrived is extracted as if it were whole. A zip whose entries share
+  the same compressed bytes,
   so that it unpacks to far more than it holds, is refused before anything
   is written.
 

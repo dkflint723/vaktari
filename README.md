@@ -804,6 +804,9 @@ promise yet. Worth knowing before you decide:
     refused when the check its compression keeps there fails (gzip's CRC,
     the xz, bzip2 and lzip checks, a zstd frame's checksum), but a
     `.tar.zst` or `.tar.xz` written without a checksum has nothing to check.
+    A single compressed `.gz` file cut short before its CRC and length, such
+    as an interrupted download, is not noticed: what arrived is extracted as
+    if it were whole.
     Zip, 7z and RAR entries are checked against their CRC.
   - **Only a zip whose entries overlap one another, or run into its
     directory, is refused for unpacking to far more than it holds.** An
