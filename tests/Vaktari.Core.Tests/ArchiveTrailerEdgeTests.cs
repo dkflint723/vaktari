@@ -11,9 +11,13 @@ namespace Vaktari.Core.Tests;
 /// round 2: a mutation of each stayed green).
 ///
 /// - A gzip header with a reserved flag set is refused.
-/// - The gzip trailer is found wherever the deflate data ends relative to the
-///   chunks the inflater reads — at the start of its last chunk or straddling
-///   the edge between its last two — and nowhere earlier.
+/// - A gzip member ends where its deflate data ends, wherever that falls
+///   relative to the chunks the inflater reads — at the start of its last
+///   chunk or straddling the edge between its last two.
+/// - The end-of-file marker is handed over only once the file has given its
+///   last byte, including when that last read returns a single byte (RC QA,
+///   round 3: GZipStream reads its input 128 KiB at a time, so only a file of
+///   one byte more than a multiple of that ends that way).
 /// - A zstd frame header is sized by its own descriptor: the single-segment
 ///   flag drops the window byte, and each content-size flag gives its field's
 ///   width. The writers the other tests use set neither, so frames here are
@@ -89,6 +93,32 @@ public sealed class ArchiveTrailerEdgeTests
             Assert.Equal([.. first, .. second], Decode(file, ArchiveFormat.Gz));
             Assert.ThrowsAny<InvalidDataException>(() => Decode(file[..^1], ArchiveFormat.Gz));
         }
+    }
+
+    /// <summary>A stored .gz whose length is one, two or seventeen bytes more
+    /// than a multiple of 128 KiB — GZipStream's input read — so its last read
+    /// returns that few bytes: it decodes whole, and cut by one byte it is
+    /// damage.</summary>
+    [Theory]
+    [InlineData(131072 + 1)]
+    [InlineData(131072 + 2)]
+    [InlineData(131072 + 17)]
+    [InlineData(262144 + 1)]
+    public void A_gz_whose_last_input_read_is_a_few_bytes_decodes_whole(int length)
+    {
+        byte[]? file = null, data = null;
+
+        for (var n = length - 80; n < length && file is null; n++)
+        {
+            var candidate = Random_(n, n);
+            var made = Gz(candidate, CompressionLevel.NoCompression);
+
+            if (made.Length == length) (file, data) = (made, candidate);
+        }
+
+        Assert.True(file is not null, $"no stored .gz of exactly {length} bytes was found");
+        Assert.Equal(data, Decode(file, ArchiveFormat.Gz));
+        Assert.ThrowsAny<InvalidDataException>(() => Decode(file[..^1], ArchiveFormat.Gz));
     }
 
     // ---- zstd -----------------------------------------------------------------------------
