@@ -19,55 +19,66 @@ should not be trusted for compatibility yet.
   `report.txt.gz`. What the file is decides how it is read, not what it is
   called, so a 7z renamed to .zip still opens. A `.xz` of several streams and
   a `.lz` of several members (what `plzip` writes) arrive whole.
-  Password-protected and split archives are refused with a sentence saying so.
+  Password-protected archives, and a RAR that is one part of a set, are
+  refused with a sentence saying so; the numbered parts of a split 7z or zip
+  are not offered *Extract all*.
 
-- **Extracting is an operation on the transfer bar**, "Extracting a.zip to
-  Downloads", with progress, pause and cancel. A cancelled or failed run
-  removes what it wrote. If Vaktari itself stops part-way, the hidden
-  `.vaktari-extracting-…` folder it was writing is cleared away by the next
-  Extract all into the same folder.
+- **Extracting is an operation on the transfer bar**, with progress, pause
+  and cancel, and is listed among running operations as "Extracting a.zip to
+  Downloads". A cancelled or failed run removes what it wrote. If Vaktari
+  itself stops part-way, the hidden `.vaktari-extracting-…` folder it was
+  writing is cleared away by a later Extract all into the same folder once
+  it has sat untouched for ten minutes.
 
 - **The folder tree takes drops.** Dropping files on a row of the *FOLDERS*
   section puts them in that folder by the rules a place row uses — a drag
-  from another Vaktari folder on the same drive moves, one from another
-  program copies, and Ctrl, Shift and Alt change that as usual — and the
-  row lights up while it would take the drop, the way a place does. A row
-  whose drive or share is not there, or whose folder could not be read,
-  refuses the drop as its place row does. Before, the whole tree refused
+  from another folder in the same Vaktari window, on the same drive, moves;
+  one from another program or another Vaktari window copies; and Ctrl,
+  Shift and Alt change that as usual — and the row lights up while it would
+  take the drop, the way a place does. A row whose drive or share is not
+  there refuses the drop as its place row does, and so does a folder the
+  tree has already found it cannot open. Before, the whole tree refused
   every drag.
 
 ### Changed
 
 - **Extract all no longer wraps a folder in another folder.** An archive that
   holds one folder extracts as that folder, `project.zip` holding `project/`
-  arriving as `project` rather than `project\project`; a compressed single
-  file arrives as the file itself, beside the archive. Anything else still
-  goes into a new folder named after the archive, and nothing already there
-  is ever written over — a taken name is numbered.
+  arriving as `project` rather than as `project` inside `project`; a
+  compressed single file arrives as the file itself, beside the archive.
+  Anything else still goes into a new folder named after the archive, and
+  nothing already there is ever written over — a taken name is numbered.
 
 - **Two entries with the same name both arrive.** An archive holding two
   `notes.txt` used to leave only the second; now the first keeps its name and
   the second lands as `notes (2).txt`.
 
-- **Names Windows cannot hold are written with `_` instead**, as 7-Zip does:
-  `CON.txt` arrives as `_CON.txt`, `a:b` as `a_b`, and a name using invisible
-  or right-to-left control characters to disguise itself — `inv\u202Egpj.exe`
-  showing as "invexe.jpg" — as `inv_gpj.exe`. The status line says how many
-  were renamed, and what was left out and why: "3 left out (2 links, 1 unsafe
-  name)".
+- **Names that cannot or should not be written are written with `_`
+  instead**, as 7-Zip does. On Windows, and on a FAT, exFAT or NTFS drive on
+  Linux, `CON.txt` arrives as `_CON.txt` and `a:b` as `a_b`. On every
+  system, a name using invisible or right-to-left control characters to
+  disguise itself — `inv\u202Egpj.exe` showing as "invexe.jpg" — arrives as
+  `inv_gpj.exe`. The status line says how many were renamed, and what was
+  left out and why: "3 left out (2 links, 1 unsafe name)".
 
 - **What comes out of a downloaded archive keeps the mark of the web** on
   Windows, as it does from Explorer and 7-Zip, so Office still opens it in
-  Protected View and SmartScreen still asks before running it — and each file
-  keeps its own date from the archive.
+  Protected View and SmartScreen still asks before running it. On both
+  systems each file keeps its modified date from the archive.
 
-- **The Fedora and Arch packages declare `MIT AND LicenseRef-unRAR`.** They
-  now carry SharpCompress's RAR decoder, whose unRAR licence is reproduced in
-  THIRD-PARTY-NOTICES.txt; it is not a free licence as Fedora counts them.
+- **The Fedora package declares `MIT AND LicenseRef-unRAR`**, and the
+  PKGBUILD for building on Arch lists both licences; no Arch package is
+  published. Vaktari now carries SharpCompress's RAR decoder, whose unRAR
+  licence terms are quoted in THIRD-PARTY-NOTICES.txt; it is not a free
+  licence as Fedora counts them.
 
-- **A damaged archive is refused whole.** Every entry is checked against its
-  CRC and its declared size as it is written, and a zip built to unpack to far
-  more than it holds is refused before anything is written.
+- **A damaged archive is refused whole.** Every zip, 7z and RAR entry is
+  checked against its CRC, and every entry that declares a size is stopped
+  the moment it runs past it or falls short; a tar keeps no checksum of its
+  files, so damage inside one is caught only where its structure or its
+  compression breaks. A zip whose entries share the same compressed bytes,
+  so that it unpacks to far more than it holds, is refused before anything
+  is written.
 
 - **The settings window is seven pages that each hold what their name
   says.** *General* is where Vaktari opens and how, what a click and
@@ -76,107 +87,118 @@ should not be trusted for compatibility yet.
   *Folders and lists* is sorting, per-folder views, what a folder's size shows,
   dates, tooltips, previews and grid spacing; *Privacy and system* is the
   recent lists and search history, the default file manager, the terminal,
-  Proton Drive and the update check; then *Keyboard*, *Context menu* and the
-  bin. The *Startup*, *View modes* and *Navigation* pages are gone. Nothing
-  in settings.json moved, so no setting changes on upgrade. General was four
-  screens tall at the default size and is under a screen and a half.
+  Proton Drive and the update check; then *Keyboard*, *Context menu* and
+  *Recycle Bin* (*Trash* on Linux). The *Startup*, *View modes* and
+  *Navigation* pages are gone. No setting was renamed or moved in
+  settings.json, so the new pages reset nothing; the fixes below change how
+  a few older files are read. General was several screens tall at the
+  default size and is under a screen and a half.
 
-- **Each setting's explanation is its tooltip**, and what a screen reader
-  reads for it, rather than a paragraph always on the page. A note on the page
-  is one short line at most. Short groups of check boxes sit in two columns,
-  and fall back to one when the window is narrow.
+- **Most settings' explanations are their tooltips**, and what a screen
+  reader reads for them, rather than a paragraph always on the page. Most
+  notes left on a page are one short line; the bin page's warning and, on
+  Windows, what *Make Vaktari the default* cannot change are still a short
+  paragraph. Short groups of check boxes sit in two columns, and fall back
+  to one when the window is narrow or the text is large.
 
-- **Paired controls are one each.** *File icons* is one list — Vaktari's own,
-  your desktop's (on Windows), and every installed or downloaded theme — where
-  a check box, a list and a paragraph explaining which of the two won used to
-  be. *Colour* is one list, and *the desktop's own colours and accent* brings
-  the desktop's light or dark with it: a forced lightness under a desktop's
-  own backgrounds could put dark text on dark surfaces, so a settings file that
-  still pairs the two is drawn in the desktop's lightness too. The sort order is one
-  list — naturally, alphabetically, or alphabetically with capitals first —
-  instead of a *Case sensitive* box that was greyed out without saying why.
-  Where Vaktari opens, what a folder's size shows and what happens when the
-  details panel does not fit are each a dropdown.
+- **Paired controls are one each.** *File icons* is one list — on Windows
+  Vaktari's own icons and Windows' own, on Linux your desktop's icon theme,
+  and on both every theme Vaktari fetched or installed from a file and one
+  you browsed to — where on Windows a check box, a list and a paragraph
+  explaining which of the two won used to be. *Colour* is one list, and its
+  row *The desktop's own colours and accent* brings the desktop's light or
+  dark with it: a forced lightness under a desktop's own backgrounds could
+  put dark text on dark surfaces, so a settings file that still pairs the
+  two is drawn in the desktop's lightness too, wherever the desktop's
+  colours are read. The sort order is one list — naturally, alphabetically,
+  or alphabetically with capitals first — instead of a *Case sensitive* box
+  that was greyed out without saying why. Where Vaktari opens, what a
+  folder's size shows and what happens when the details panel does not fit
+  are each a dropdown.
 
 - **The settings window has an Apply button**: what is on screen takes effect
   without closing the window. *Cancel* after an Apply closes without undoing
-  it, and the footer says so when it happens.
+  it, and the line beside the buttons says so when it happens — in full when
+  you point at it, if the window is too narrow to show all of it.
 
 - **The settings window works from the keyboard.** `Ctrl+Tab` and
   `Ctrl+PageDown` go to the next page, `Ctrl+Shift+Tab` and `Ctrl+PageUp` to
   the previous one; every page name has an `Alt` letter; `Tab` reaches the
-  page before the buttons at the bottom; and the window reopens on the page it
-  was last closed on. The tour's line about changing keys opens it straight on
-  the Keyboard page.
+  page before the buttons at the bottom; and, until Vaktari closes, the
+  window reopens on the page it was last closed on. The tour's line about
+  changing keys opens it straight on the Keyboard page.
 
 - **The right-click menu is two smaller menus: one for what you clicked,
   one for the folder.** A right-click on a file, a folder or a tile —
-  anywhere on its row — opens a menu about it: *Open*, *Open with*, the
-  clipboard, *Copy to* and *Move to*, *Rename*, the bin, *Compress to ZIP*,
-  *Duplicate*, *Create shortcut*, *Share*, *Properties* and the *Windows
-  menu*. A right-click on the empty space around the rows opens the folder's
-  menu: *View*, which now holds sorting, grouping and columns as well as the
-  layouts and hidden files; *Select all*; *Paste*; *New*; *Refresh*; the
-  terminal; *Analyse*, holding the space and duplicate scans and, in a split,
-  comparing the sides; *Scripts*, ending in *Open scripts folder*; *Add this
-  folder to places*; *Share*; the folder's own *Properties*; and the
-  *Windows menu* for the folder. Right-clicking empty space still keeps
-  your selection; the folder's menu just does not act on it. The Menu key
-  and `Shift+F10` open the first with something selected and the second
-  without. *Undo* and *Redo* now appear only when there is something to take
-  back or put back, *Open file location* and *Forget* sit beside *Open*,
-  *Select nothing* and *Invert the selection* lose their rows but stay in
-  the command box, inverting on `Ctrl+Shift+A` as before,
-  and *Add your own scripts* is gone — *Scripts ▸ Open scripts folder* makes
-  the folder if it is missing. Rows are left off wherever they would refuse
-  or do the wrong thing: nothing copies, moves, renames or bins a drive in
-  *This PC*; *Open with*, *Copy* and *Scripts* are not offered in the bin; *Paste*,
-  *New* and *Duplicate* only appear in a real folder; *Select what differs*
-  and *Copy what is newer or missing* only when both sides are folders;
-  *Share* on a file no longer shares the folder around it; *Scripts* are
-  offered in a folder and not in a search, a recent list or *This PC*,
-  where they could not start; and a tab's *Close other tabs* and
-  *Close tabs to the right* appear only when there is a tab to close. Every
+  anywhere on its row — opens a menu about it, with *Open*, *Open with*,
+  the clipboard, *Copy to* and *Move to*, *Rename*, the bin, *Compress to
+  ZIP*, *Duplicate*, *Create shortcut*, *Share*, *Scripts*, *Properties*
+  and, on Windows, the *Windows menu* among its rows. A right-click on the
+  empty space around the rows opens the folder's menu: *View*, which now
+  holds sorting and, in the List layout, grouping and columns as well as
+  the layouts and hidden files; *Select all*; *Paste*; *New*; *Refresh*; the
+  terminal; *Analyse*, holding the space and duplicate scans and, in a
+  split, comparing the sides; *Scripts*, ending in *Open scripts folder*;
+  *Add this folder to places*; *Share*; the folder's own *Properties*; and,
+  on Windows, the *Windows menu* for the folder. Right-clicking empty space
+  still keeps your selection; the folder's menu just does not act on it.
+  The Menu key and `Shift+F10` open the first with something selected and
+  the second without. *Undo* and *Redo* now appear only when there is
+  something to take back or put back, *Open file location* and *Forget
+  (keeps the file)* sit in *Open*'s group, *Select nothing* and *Invert the
+  selection* lose their rows but stay in the command box, inverting on
+  `Ctrl+Shift+A` as before, and *Add your own scripts* is gone — *Scripts ▸
+  Open scripts folder* makes the folder if it is missing. Rows are left off
+  where the listing they are in would refuse them: nothing copies, moves,
+  renames or bins a drive in *This PC*; *Open with*, *Copy* and *Scripts*
+  are not offered in the bin; *Paste*, *New* and *Duplicate* only appear in
+  a real folder; *Select what differs from the other side* and *Copy what
+  is newer or missing here to the other side* only when both sides are
+  folders; *Scripts* are offered in a folder and not in a search, a recent
+  list or *This PC*, where they could not start; and a tab's *Close other
+  tabs* and *Close tabs to the right* appear only when there is a tab to
+  close. *Share* on a file no longer shares the folder around it. Every
   listing now ends in a blank strip below its last row, so the folder's menu
   can be reached with the mouse however long the folder is; a right-click on
   a group heading opens it without selecting the row under the heading, and
-  one on the preview opens the previewed file's menu. Every menu row is 24
-  pixels tall rather than 30, so a file's menu on Windows is under half the
-  height it was. The *Context menu* settings page's sort checkbox now reads
-  *Sorting, grouping and columns in View*.
+  one on the preview opens the previewed file's menu. Every row of the main
+  window's and the settings window's menus is 24 pixels tall rather than 30
+  at the default text size, and with the folder's rows gone a plain file's
+  menu on Windows is under half the height it was. The *Context menu*
+  settings page's sort checkbox now reads *Sorting, grouping and columns in
+  View*.
 
 ### Fixed
 
-- **A drag out of a zip open in Explorer is no longer called off by one
-  moment of Explorer not answering.** Whether the drag carried files from
-  inside the zip was asked again every time the pointer moved, and if
-  Explorer failed to answer just before you let go, Windows called the
-  drag off instead of dropping it, with nothing said anywhere. The answer
-  is now kept for the whole drag, even while the pointer crosses the
-  address bar, the status bar or the edge between the listing
-  and the sidebar; a busy answer
-  is asked once more; and a drop the drag already accepted is taken even
-  when asking again at the drop fails. Letting go over the folder tree used
-  to end the drag the same way; see above.
+- **A drag out of a zip open in Explorer no longer depends on Explorer
+  answering at every move.** Whether the drag carried files from inside the
+  zip was asked again every time the pointer moved, and if Explorer failed
+  to answer just before you let go, Windows could call the drag off instead
+  of dropping it, with nothing said anywhere. Once the drag is known to
+  carry files from the zip, that is kept for as long as it stays over the
+  window, even while the pointer crosses the address bar, the status bar or
+  the edge between the listing and the sidebar; a busy answer is asked once
+  more; and a drop the drag already accepted is taken even when asking again
+  at the drop fails. Letting go over the folder tree used to end the drag
+  the same way; see above.
 
 - **A file dragged from Explorer is no longer mistaken for one inside a
   zip.** Explorer describes an ordinary file the same way it describes a
   zip's contents, alongside its path. Vaktari now goes by the path, so
-  Shift-dragging a file onto the folder it is already in is refused as
-  "already here" instead of putting a second copy beside it.
+  Shift-dragging a file onto the folder it is already in is refused — the
+  cursor says no — instead of putting a second copy beside it.
 
-- **Shift- and Alt-drags from most programs work on Windows.** A program
-  that allows only copying — 7-Zip and most others — showed the no-drop
-  cursor for a Shift-drag (move) or an Alt-drag (shortcut), and nothing was
-  dropped. Those now copy, which is what the program allows, and the cursor
-  says so.
+- **Shift- and Alt-drags from programs that allow only copying work on
+  Windows.** Such a program showed the no-drop cursor for a Shift-drag
+  (move) or an Alt-drag (shortcut), and nothing was dropped. Those now copy,
+  which is what the program allows, and the cursor says so.
 
-- **A drop tells the program it came from what was done.** Vaktari answered
-  every drop with whatever the source had allowed, so a copy out of a zip
-  was reported as possibly a move. A copy now reports a copy and a shortcut
-  a shortcut. A move Vaktari makes itself reports, on Windows, that the
-  source has nothing left to delete; on Linux it reports the move, where
-  answering nothing had made the source show the drop as failed.
+- **A drop tells the program it came from what it set out to do.** Vaktari
+  answered every drop with whatever the source had allowed, so a copy out of
+  a zip was reported as possibly a move. A copy now reports a copy and a
+  shortcut a shortcut. A move Vaktari makes itself reports, on Windows, that
+  the source has nothing left to delete; on Linux it reports the move, since
+  answering nothing there tells the source the drop failed.
 
 - **A drop that lands a moment after the listing scrolled goes where the
   highlight said.** Resting a drag at the edge of a listing scrolls it,
@@ -186,22 +208,25 @@ should not be trusted for compatibility yet.
 - **A drop that goes wrong says so.** A failure while a drop was being
   taken made it silently not happen; it now shows on the status line. It,
   a failure while a drag was over the window, the reason a drag was
-  refused because Explorer did not answer, and everything a drop out of an
-  archive could not take are written to the log in the `logs` folder beside
-  your settings — until now they went to a console the Windows build does
-  not have.
+  refused because Explorer did not answer, and what a drop out of an
+  archive could not take — the first few refusals by name, and how many in
+  all — are written to the log in the `logs` folder beside your settings.
+  Until now the first three were written nowhere, and the archive lines
+  only to a console the Windows build does not have.
 
-- **Upgrading from 0.9.x switched the recent lists off and took *Open in new
-  window* off the right-click menu.** Both settings arrived in 0.10.0 switched
-  on, and a settings file written before then read them as off. A setting a
-  file does not mention now gets its real default; a file that switched either
-  off keeps it off. So an install that has not saved a setting since 0.9 finds
-  the recent lists recording again without being asked. But if you saved any
-  setting under 0.10 or 0.11 — in Settings, by dragging a column's width, or
-  with *Use this view for all folders* — that file already says off for both,
-  and Vaktari cannot tell that from a choice you made: tick *Remember recently
-  opened files and folders* under Settings ▸ Privacy and system, and *Open in
-  new window* under Settings ▸ Context menu, if you want them back.
+- **Upgrading from 0.9 or earlier switched the recent lists off and took
+  *Open in new window* off the right-click menu.** Both settings arrived in
+  0.10.0 switched on, and a settings file written before then read them as
+  off. A setting a file does not mention now gets its real default — all but
+  the bin sweep's number of days and share of the disk, which are never
+  guessed — and a file that switched either off keeps it off. So an install
+  that has not saved a setting since 0.9 finds the recent lists recording
+  again without being asked. But if you saved any setting under 0.10 or
+  0.11 — in Settings, with *Use this view for all folders*, or, under 0.11,
+  by changing a column's width — that file already says off for both, and
+  Vaktari cannot tell that from a choice you made: tick *Remember recently
+  opened files and folders* under Settings ▸ Privacy and system, and *Open
+  in new window* under Settings ▸ Context menu, if you want them back.
 
 - **On Windows, a bin sweep switched on with no number of days emptied the
   Recycle Bin of everything older than a day.** A settings file saying
@@ -213,12 +238,13 @@ should not be trusted for compatibility yet.
   path in the title bar reached new windows only after a restart; a window
   opened with `Ctrl+N` now starts the way Settings says.
 
-- **Settings notes that were not true.** *Show the full path in the title bar*
-  sat under "changes to how it opens apply on the next launch" and changes as
-  soon as it is saved; the click choice said it "takes effect immediately" and
-  lands on Save like everything else; the Proton Drive box had no label and
-  suggested a `D:\` path on Linux; and on Linux the icon list offered
-  *Vaktari's own icons* for the row that draws your desktop's icon theme.
+- **Settings notes that were not true.** *Show the full path in the title
+  bar* sat under "Changes to how it opens apply on the next launch." and
+  changes as soon as it is applied or saved; the click choice said it
+  "Takes effect immediately" and lands on Apply or Save like everything
+  else; the Proton Drive box had no visible label and suggested a `D:\`
+  path on Linux; and on Linux the icon list offered *Vaktari's own icons*
+  for the row that draws your desktop's icon theme.
 
 - **`Shift+Delete` on a drive in *This PC* deleted what was on it.** The
   delete cleared and removed the drive's files one by one before refusing
@@ -227,94 +253,88 @@ should not be trusted for compatibility yet.
   drive the same way, and `Ctrl+C` then `Ctrl+V` or a drag copied one,
   though a drive has no name of its own for the copy to take. Every one of
   them now says a drive cannot be copied, moved, renamed or deleted, and
-  the file operations themselves refuse the root of a drive — on Linux any
-  mount point — whatever asks and however it is spelled (`Z:\.`,
-  `\\server\share\`, `\\.\Z:\ `, `/media/me/STICK/.`), through a linked
-  folder, or mounted a moment before; each operation also asks Windows or
-  the Linux kernel itself before it starts. A Windows device path other than
-  a drive letter's, a share's or a volume's (`\\?\GLOBALROOT\…`,
-  `\??\GLOBALROOT\…`, `\\?\Global\…`) is not copied, moved or deleted
-  through at all — open the folder by its ordinary name — and nor is one
-  whose `..` climbs out of the device it names (`\\.\W:\..\NAME\`), nor a
-  name with a colon after the drive, which is a stream
-  (`Z:\::$INDEX_ALLOCATION` is the drive itself). A device path is read the
-  way Windows opens it, so `//?/Z:/ ` is the drive. Each refusal says which
-  of these it was. *Duplicate* on a
-  drive says so too. `Ctrl+C` in the bin no longer puts the path a binned
-  file used to have on the clipboard.
+  the file operations themselves refuse to copy, move, bin or delete the
+  root of a drive — on Linux any mount point — whatever asks, whether it is
+  spelled plainly or as `Z:\.`, `\\server\share\`, `\\.\Z:\ ` or
+  `/media/me/STICK/.`, reached through a linked folder, or mounted a moment
+  before; each of those also asks Windows or the Linux kernel itself before
+  it starts. A Windows device path other than a drive letter's, a share's
+  or a volume's (`\\?\GLOBALROOT\…`, `\??\GLOBALROOT\…`, `\\?\Global\…`) is
+  not copied, moved or deleted through at all — open the folder by its
+  ordinary name — and nor is one whose `..` climbs out of the device it
+  names (`\\.\W:\..\NAME\`), nor a name with a colon after the drive, which
+  is a stream (`Z:\::$INDEX_ALLOCATION` is the drive itself). A device path
+  is read the way Windows opens it, so `//?/Z:/ ` is the drive. Each refusal
+  says which of these it was. *Duplicate* on a drive says so too. `Ctrl+C`
+  in the bin no longer puts the path a binned file used to have on the
+  clipboard.
 
 - **The Menu key's menu closed as soon as the key was let go.** It opened on
   the press, and the release put it away again.
 
-- **A tab's *Close other tabs*, *Close tabs to the right* and *Duplicate*
-  acted on the other side of a split** when the tab was on the side that was
-  not active.
+- **On Windows, copying, moving or deleting a name that ends in a space or a
+  dot no longer reaches the file beside it.** With `report`, `report ` and
+  `report.` in one folder, Windows reads the last two as `report` unless the
+  path begins with `\\?\` or `\??\`. So deleting, moving, copying or binning
+  `\\.\C:\…\report ` acted on `report`; copying or moving `report ` from a
+  folder opened through `\\?\` or `\??\` into one opened by its ordinary
+  name wrote it as `report`, and when that folder already had a `report`,
+  the prompt asked about `report ` and *Replace* overwrote `report`. A
+  folder holding `x...` next to `x` fared no better: copying it wrote `x`
+  twice and never copied `x...`, a prompt set to keep `x` could still have
+  it replaced, a move could take a skipped `x` along, *Duplicate* made
+  `x (2)` from the wrong file, and a delete removed `x` and stopped
+  half-way.
 
-- **On Windows, a file whose name ends in a space or a dot is no longer
-  acted on as the file beside it through a `\\.\` path.** With `report`,
-  `report ` and `report.` in one folder, deleting, moving, copying or
-  binning `\\.\C:\…\report ` acted on `report`. Only a literal `\\?\` or
-  `\??\` path reaches such a name as written; every other spelling now
-  refuses it, as an ordinary path always did. And the file operations read
-  a relative path against the current folder, the way Windows opens it, so
-  none reaches a drive's root through a current folder named by a device
-  path.
+  Now only a literal `\\?\` or `\??\` path reaches such a name as written,
+  and every other spelling is refused. Every name is checked as it will be
+  written: a copy or move that would land a name the destination cannot
+  hold is refused before anything is asked or moved, naming the file, and
+  copy, move, *Duplicate*, delete and their retries refuse a folder holding
+  such a name before touching it, naming the file. From and into folders
+  opened through `\\?\`, such a name lands as it is and such a folder is
+  copied exactly. A drag of a row whose own name ends in a space or a dot
+  is refused too — it carried the file beside it, so a Shift-drop moved a
+  file nobody dragged — and *Copy* and *Cut* leave such a row out of what
+  other programs can paste, saying so. *Extract all* of `report .zip` now
+  lands as `report_`, the name it reports, where it landed as `report` and
+  said `report `. On both systems, the file operations also refuse, in so
+  many words, any path that is not written out in full or has a NUL
+  character in it, and never hand one to the bin.
 
-- **On Windows, pasting a file whose name ends in a space or a dot could
-  overwrite a different file.** With the source folder opened through
-  `\\?\` or `\??\`, copying or moving `report ` into a folder opened by its
-  ordinary name wrote it as `report`: when that folder already had a
-  `report`, the prompt asked about `report ` and *Replace* overwrote
-  `report`. The same went for such a name inside a copied folder. Every
-  name is now checked as it will be written, and a copy or move that would
-  land a name the destination cannot hold is refused before anything is
-  asked or moved, naming the file; into a folder opened through `\\?\` it
-  still lands as it is. The file operations also refuse, in so many words,
-  any path that is not written out in full or has a NUL character in it,
-  and never hand one to the Recycle Bin.
-
-- **On Windows, a folder holding a name that ends in a space or a dot was
-  copied, moved or deleted through the file beside it.** Copying a folder
-  that held `x...` next to `x` wrote `x` twice and never copied `x...`; a
-  prompt set to keep `x` could still have it replaced, a move could take a
-  skipped `x` along, *Duplicate* made `x (2)` from the wrong file, and a
-  delete removed `x` and stopped half-way. Copy, move, *Duplicate*, delete
-  and their retries now refuse such a folder before anything happens,
-  naming the file; opened through `\\?\`, the folder is copied exactly. A
-  drag that would carry such a name is refused too — it carried the file
-  beside it, so a Shift-drop moved a file nobody dragged — and *Copy* and
-  *Cut* leave it out of what other programs can paste, saying so, while
-  still pasting it inside Vaktari. *Extract all* of `report .zip` now lands
-  as `report_`, the name it reports, where it landed as `report` and said
-  `report `.
-
-- **On Windows, opening, previewing or zipping a file whose name ends in a
+- **On Windows, opening, previewing or handing on a name that ends in a
   space or a dot no longer reaches the file beside it.** Double-clicking
   `t.cmd.` ran `t.cmd`, and so did typing or pasting its path into the
   address bar; *Open with*, *Properties* and the *Windows menu* were handed
   `report` for `report `; opening `album ` in place showed `album`'s files,
-  and deleting one of them deleted it; the preview, *Compress to ZIP*, a
+  and deleting one of them deleted it; and the preview, *Compress to ZIP*, a
   checksum, a row's size and item count, and the watcher's refresh all read
-  the neighbour — a hidden `report` hid the row `report `. Anything handed to
-  another program — opening, *Open with*, *Run*, a terminal, a script, a
-  shortcut, a share from the menu or the *Share a folder* dialog (typed with
-  either slash, or as `\\.\`), a drop out of an archiver's temporary
-  folder — is now refused, naming the file and the one it would have
-  reached; *Open with* and the *Windows menu* offer nothing for it, and
+  the neighbour — a hidden `report` hid the row `report `. Now opening such
+  a name, *Open with*, *Run*, a terminal, a script, a shortcut, and a
+  network share from the menu or from the *Share a folder* dialog are
+  refused, naming the file and the one it would have reached. *Open with*
+  offers nothing for it, the *Windows menu* shows only that refusal, and
   *Properties* opens Vaktari's own window. Such a folder is not opened in
-  place, in the folder tree or from a crumb. Reading goes through `\\?\`
-  instead, so the preview, the zip and every size, date and attribute are
-  the file's own. From the bin, a file or folder recorded as `report ` comes
-  back as `report `, where it came back as `report` or `report (1)`; a
-  folder holding such a name can be deleted for good; and an item whose own
-  bin names end in a space or a dot is listed.
+  place, in the folder tree or from a crumb. A drop of such a name out of an
+  archiver's temporary folder is no longer taken as the file beside it; the
+  copy refuses it, naming the file. Reading goes through `\\?\` instead, so
+  the preview, the zip, a checksum and a row's size, dates and item count
+  are the file's own.
 
   The *Share a folder* dialog trimmed every path, on both systems, so a
-  folder named `album ` was shared as the `album` beside it. On Windows it is
-  now refused, as above; on Linux, where `album ` is an ordinary name and
-  nothing here is refused, it is shared as itself. Spaces typed after a
-  folder that has no such name are still taken off. On both systems,
-  *Delete for good* says so when it could not delete.
+  folder named `album ` was shared as the `album` beside it. On Windows it
+  is now refused, as above, whether typed with either slash or as `\\.\`;
+  on Linux, where `album ` is an ordinary name and nothing here is refused,
+  it is shared as itself. Spaces typed after a folder that has no such name
+  are still taken off.
+
+  From the bin, a file or folder recorded as `report ` comes back as
+  `report `, where it came back as `report` or `report (1)`; a binned folder
+  holding such a name can be emptied, swept or deleted permanently, where it
+  stayed in the bin; and an item whose own bin names end in a space or a dot
+  is listed. On both systems, *Delete permanently* in the bin says so when
+  it could not delete an item, where it could report one deleted that was
+  still there.
 
 - **A closed window no longer stays in memory.** Every window you closed
   was kept whole for as long as Vaktari ran — its listings, its rows and
@@ -322,9 +342,10 @@ should not be trusted for compatibility yet.
   rows went on listening after the window had gone. Each window opened
   afterwards was also a little slower to appear, since applying the theme
   and the text size reached the closed ones too.
-  Two smaller holds went with it: a window opened from another kept that
-  one in memory for as long as it stayed open, and the window opened last
-  stayed in memory after closing until another was opened.
+  Two smaller holds went with it: a window opened from another kept the one
+  it was opened from in memory for as long as the new window stayed open,
+  and the window opened last stayed in memory after closing until another
+  was opened.
 
 ## [0.11.0] — 2026-09-25
 
