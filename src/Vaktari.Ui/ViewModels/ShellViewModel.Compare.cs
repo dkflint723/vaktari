@@ -356,8 +356,10 @@ public sealed partial class ShellViewModel
     }
 
     /// <summary>Calls off a walk inside marked folders, for a shell that is
-    /// going away.</summary>
-    private void StopLookingAcross() => _copyAcrossLooking?.Cancel();
+    /// going away — from Dispose, and before that from the window's OnClosing,
+    /// which awaits the session write before the window is closed and this
+    /// shell disposed. See MainWindow.OnClosing.</summary>
+    internal void StopLookingAcross() => _copyAcrossLooking?.Cancel();
 
     /// <summary>
     /// The marks on the rows the listing shows. **A filter narrows what is

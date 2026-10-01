@@ -950,7 +950,10 @@ public sealed class CompareSidesTests : OwnedViewModels
     /// disposes the shell, which calls the walk off; and the panes it
     /// disposes leave neither side with an active tab, so the check for sides
     /// that moved drops the plan too. With either taken out this stays green;
-    /// with both, a prompt is raised for a window that has gone.
+    /// with both, a prompt is raised for a window that has gone. A third guard
+    /// now stands in front of those two — OnClosing calls the walk off at the
+    /// first close — and hides them as well; the test below is the one that
+    /// reddens without it.
     /// </summary>
     [AvaloniaFact(Skip = OnlyOn.Windows, SkipUnless = nameof(OnlyOn.IsWindows), SkipType = typeof(OnlyOn))]
     public async Task A_window_closed_while_looking_inside_asks_nothing()
@@ -964,6 +967,37 @@ public sealed class CompareSidesTests : OwnedViewModels
 
         // Closed still split; Shown() closes a split the next window
         // inherits, and this class's Dispose has nothing left to do.
+        window.Close();
+        _windows.Remove(window);
+
+        await Until(() => request.IsCompleted && !window.IsVisible);
+
+        Assert.True(request.IsCompletedSuccessfully, "the request failed");
+        Assert.Empty(plans);
+    }
+
+    /// <summary>
+    /// **A window closed as its walk finishes asks nothing either.** The
+    /// close is not one step: OnClosing calls it off, saves the session on the
+    /// pool, and only then closes for real, and the shell is disposed — the
+    /// walk called off — in OnClosed at the end of that. A walk that finished
+    /// inside the gap was delivered on this thread while the session was
+    /// still being written, saw no token cancelled and both sides as they
+    /// were, and raised its prompt over a window on its way out (main's
+    /// Windows CI, run 36862490124: the test above, on a runner whose
+    /// session write outlasted a 3,000-folder walk). One folder makes the
+    /// walk finish inside the gap every time.
+    /// </summary>
+    [AvaloniaFact(Skip = OnlyOn.Windows, SkipUnless = nameof(OnlyOn.IsWindows), SkipType = typeof(OnlyOn))]
+    public async Task A_window_closed_as_its_walk_finishes_asks_nothing()
+    {
+        var (shell, plans, _, _) = await Walking(folders: 1);
+        var window = _windows[^1];
+
+        var request = shell.RequestCopyAcrossCommand.ExecuteAsync(null);
+
+        Assert.False(request.IsCompleted, "the marked folder was not walked off the window's thread");
+
         window.Close();
         _windows.Remove(window);
 
