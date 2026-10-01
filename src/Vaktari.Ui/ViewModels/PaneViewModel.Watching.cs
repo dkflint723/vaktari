@@ -113,12 +113,50 @@ public sealed partial class PaneViewModel
                 Detached(LoadAsync(path), "reload");
             }), PollInterval);
 
+            var waiting = new ReturnWait(wait, Places);
+
             Dispatcher.UIThread.Post(() =>
             {
-                if (generation == _generation && !_disposed) ReplaceWatch(wait);
-                else wait.Dispose();
+                if (generation == _generation && !_disposed) ReplaceWatch(waiting);
+                else waiting.Dispose();
             });
         });
+    }
+
+    /// <summary>
+    /// A wait for a folder to come back, and the places list it listens to as
+    /// well, let go of together.
+    ///
+    /// **A drive mounted again is a place that changed, not a name arriving.**
+    /// A stick or a tmpfs unmounted and mounted again under a waiting pane
+    /// gives the folder above nothing to hear: the mount point was there
+    /// throughout. On Windows a drive letter or a server coming back has
+    /// nothing above it at all to watch. Both are what the places provider
+    /// says changed (batch-0.11.2c QA, round 3), so the wait is asked again
+    /// then — off the provider's thread, on the pool, since asking reads the
+    /// disk.
+    /// </summary>
+    private sealed class ReturnWait : IDisposable
+    {
+        private readonly FolderReturnWatch _wait;
+        private readonly Vaktari.Core.Places.IPlacesProvider? _places;
+        private readonly EventHandler _changed;
+
+        public ReturnWait(FolderReturnWatch wait, Vaktari.Core.Places.IPlacesProvider? places)
+        {
+            _wait = wait;
+            _places = places;
+            _changed = (_, _) => ThreadPool.QueueUserWorkItem(static w => ((FolderReturnWatch)w!).Recheck(), _wait);
+
+            if (_places is not null) _places.PlacesChanged += _changed;
+        }
+
+        public void Dispose()
+        {
+            if (_places is not null) _places.PlacesChanged -= _changed;
+
+            _wait.Dispose();
+        }
     }
 
     /// <summary>
