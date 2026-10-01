@@ -133,6 +133,79 @@ public sealed class KdeThemeWatcherTests : IDisposable
     }
 
     /// <summary>
+    /// **The watcher a provider starts is the one that tells its
+    /// subscribers** (batch-0.11.2b QA). Every other test here makes a
+    /// watcher of its own through Watch, so the provider's constructor could
+    /// stop starting one at all — and the theme stop following Plasma — with
+    /// every test still green. The process's watcher is set aside for the
+    /// length of this test, so the provider made here is the first, starts it
+    /// over a temporary folder, and a kdeglobals written there reaches a
+    /// subscriber with nothing else watching. Put back after, and the one
+    /// made here disposed.
+    /// </summary>
+    [PosixFact]
+    public void The_first_provider_starts_the_watcher_its_subscribers_hear()
+    {
+        var field = typeof(KdeThemeProvider).GetField(
+            "_watcher", System.Reflection.BindingFlags.Static | System.Reflection.BindingFlags.NonPublic)!;
+        var gate = (Lock)typeof(KdeThemeProvider).GetField(
+            "Gate", System.Reflection.BindingFlags.Static | System.Reflection.BindingFlags.NonPublic)!.GetValue(null)!;
+
+        var configHome = Directory.CreateDirectory(Path.Combine(_root, "first")).FullName;
+        var kdeglobals = Path.Combine(configHome, "kdeglobals");
+
+        using var heard = new SemaphoreSlim(0);
+        EventHandler handler = (_, _) => heard.Release();
+
+        object? kept;
+        lock (gate)
+        {
+            kept = field.GetValue(null);
+            field.SetValue(null, null);
+        }
+
+        FileSystemWatcher? started = null;
+
+        try
+        {
+            var provider = new KdeThemeProvider(configHome);
+
+            started = (FileSystemWatcher?)field.GetValue(null);
+            Assert.NotNull(started);
+            Assert.Equal(configHome, started.Path);
+
+            provider.Changed += handler;
+
+            try
+            {
+                var deadline = DateTime.UtcNow + Ceiling;
+                var woke = false;
+
+                for (var n = 0; !woke && DateTime.UtcNow < deadline; n++)
+                {
+                    File.WriteAllLines(kdeglobals, ["[KDE]", "SingleClick=true", "# " + n]);
+                    woke = heard.Wait(TimeSpan.FromMilliseconds(200));
+                }
+
+                Assert.True(woke, "the provider's own watcher never told its subscriber");
+            }
+            finally
+            {
+                provider.Changed -= handler;
+            }
+        }
+        finally
+        {
+            lock (gate)
+            {
+                field.SetValue(null, kept);
+            }
+
+            started?.Dispose();
+        }
+    }
+
+    /// <summary>
     /// The watcher itself, over a temporary XDG_CONFIG_HOME: kdeglobals
     /// written there wakes it and reaches the subscriber of a provider that
     /// read that folder from the variable, and that provider reads what was

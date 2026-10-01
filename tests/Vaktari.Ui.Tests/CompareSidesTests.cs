@@ -852,6 +852,146 @@ public sealed class CompareSidesTests : OwnedViewModels
         }
     }
 
+    // ---- the walk inside marked folders, off the window's thread ---------------
+
+    /// <summary>The status line while the marked folders are being looked
+    /// inside: see ShellViewModel.RequestCopyAcrossAsync.</summary>
+    private const string Looking = "looking inside the folders to copy…";
+
+    /// <summary>
+    /// A left side whose marked folder takes a while to walk — "docs" with
+    /// thousands of empty folders in it, each one a read — beside one plain
+    /// file, split against an empty right side and compared. Long enough that
+    /// a second request, a closed window or a side that moves lands while the
+    /// first walk is still going; a tenth of that walks in a few milliseconds.
+    /// </summary>
+    private async Task<(ShellViewModel Shell, List<CopyAcrossPlan> Plans, string Left, string Right)> Walking(int folders = 3000)
+    {
+        var left = Folder("left");
+        var right = Folder("right");
+        var docs = Directory.CreateDirectory(Path.Combine(left, "docs")).FullName;
+
+        for (var i = 0; i < folders; i++) Directory.CreateDirectory(Path.Combine(docs, $"f{i:D5}"));
+
+        Write(left, "plain.txt", "plain", Noon);
+
+        var shell = await Split(left, right, 2, 0);
+
+        shell.ToggleCompareCommand.Execute(null);
+        Pump();
+
+        var plans = new List<CopyAcrossPlan>();
+        shell.CopyAcrossRequested += (_, plan) => plans.Add(plan);
+
+        shell.ActiveGroup = shell.Left;
+
+        foreach (var pane in new[] { shell.Left.ActiveTab!, shell.Right!.ActiveTab! })
+        {
+            pane.SelectedEntries.Clear();
+            pane.SelectedEntry = null;
+        }
+
+        Pump();
+
+        return (shell, plans, left, right);
+    }
+
+    /// <summary>
+    /// **Asked again while the first walk is going, the person is asked
+    /// once.** The second request calls the first walk off; without that, the
+    /// first one's prompt arrives as well, after or over the second one's.
+    /// The status says it is looking while it does, and nothing once the
+    /// prompt is up with nothing left out.
+    /// </summary>
+    [AvaloniaFact(Skip = OnlyOn.Windows, SkipUnless = nameof(OnlyOn.IsWindows), SkipType = typeof(OnlyOn))]
+    public async Task Asked_again_while_looking_inside_the_person_is_asked_once()
+    {
+        var (shell, plans, left, _) = await Walking();
+        var window = _windows[^1];
+        var pane = shell.Left.ActiveTab!;
+
+        var first = shell.RequestCopyAcrossCommand.ExecuteAsync(null);
+
+        Assert.False(first.IsCompleted, "the marked folder was not walked off the window's thread");
+        Assert.Equal(Looking, pane.Status);
+        Assert.True(shell.IsComparing);
+
+        var second = shell.RequestCopyAcrossCommand.ExecuteAsync(null);
+
+        await Until(() => first.IsCompleted && second.IsCompleted && Asking(window));
+
+        Assert.True(first.IsCompletedSuccessfully && second.IsCompletedSuccessfully, "a request failed");
+
+        var plan = Assert.Single(plans);
+
+        Assert.Equal([Path.Combine(left, "docs"), Path.Combine(left, "plain.txt")], plan.Missing);
+        Assert.Empty(plan.Withheld);
+        Assert.Equal("", pane.Status);
+
+        window.KeyPress(Key.Escape, RawInputModifiers.None, PhysicalKey.Escape, null);
+        Pump();
+    }
+
+    /// <summary>
+    /// **A window closed while its walk is going asks nothing afterwards.**
+    /// Two guards, each hiding the other (measured, batch-0.11.2b QA): closing
+    /// disposes the shell, which calls the walk off; and the panes it
+    /// disposes leave neither side with an active tab, so the check for sides
+    /// that moved drops the plan too. With either taken out this stays green;
+    /// with both, a prompt is raised for a window that has gone.
+    /// </summary>
+    [AvaloniaFact(Skip = OnlyOn.Windows, SkipUnless = nameof(OnlyOn.IsWindows), SkipType = typeof(OnlyOn))]
+    public async Task A_window_closed_while_looking_inside_asks_nothing()
+    {
+        var (shell, plans, _, _) = await Walking();
+        var window = _windows[^1];
+
+        var request = shell.RequestCopyAcrossCommand.ExecuteAsync(null);
+
+        Assert.False(request.IsCompleted, "the marked folder was not walked off the window's thread");
+
+        // Closed still split; Shown() closes a split the next window
+        // inherits, and this class's Dispose has nothing left to do.
+        window.Close();
+        _windows.Remove(window);
+
+        await Until(() => request.IsCompleted && !window.IsVisible);
+
+        Assert.True(request.IsCompletedSuccessfully, "the request failed");
+        Assert.Empty(plans);
+    }
+
+    /// <summary>
+    /// **A side that moves while the walk is going gets no prompt about the
+    /// folders it showed.** The plan is dropped, and the status line stops
+    /// saying it is looking. Either side moving does it; here, the other one.
+    /// </summary>
+    [AvaloniaFact(Skip = OnlyOn.Windows, SkipUnless = nameof(OnlyOn.IsWindows), SkipType = typeof(OnlyOn))]
+    public async Task A_side_that_moves_while_looking_inside_gets_no_prompt()
+    {
+        var (shell, plans, _, _) = await Walking();
+        var window = _windows[^1];
+        var pane = shell.Left.ActiveTab!;
+        var elsewhere = Folder("elsewhere");
+
+        var request = shell.RequestCopyAcrossCommand.ExecuteAsync(null);
+
+        Assert.False(request.IsCompleted, "the marked folder was not walked off the window's thread");
+
+        var moved = shell.Right!.ActiveTab!.NavigateAsync(elsewhere);
+
+        Assert.Equal(elsewhere, shell.Right.ActiveTab.CurrentPath);
+        Assert.False(request.IsCompleted, "the walk finished before the side moved, so this proves nothing");
+
+        await Until(() => request.IsCompleted && moved.IsCompleted);
+
+        Assert.True(request.IsCompletedSuccessfully, "the request failed");
+        Assert.Empty(plans);
+        Assert.False(Asking(window), "a prompt opened for the side as it was");
+        Assert.Equal("", pane.Status);
+    }
+
+
     /// <summary>A filter narrows what is copied as it narrows what is seen.</summary>
     [AvaloniaFact]
     public async Task Copying_across_takes_only_the_rows_the_filter_shows()
