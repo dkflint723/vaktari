@@ -169,6 +169,89 @@ public sealed class CopyAcrossWalkTests : IDisposable
         }
     }
 
+    /// <summary>IO_REPARSE_TAG_CLOUD_3: a sync client's placeholder folder
+    /// (OneDrive's), whose tag is not a name surrogate.</summary>
+    private const uint CloudTag = 0x9000301A;
+
+    /// <summary>
+    /// Has every path whose last name is <paramref name="name"/> read as a
+    /// cloud folder through the SafeWalk.ReparseTag seam, and every other as
+    /// the platform reads it. Another class running alongside meets only its
+    /// own paths, which read as before.
+    /// </summary>
+    private static Seam CloudFolder(string name)
+    {
+        var before = SafeWalk.ReparseTag;
+        SafeWalk.ReparseTag = p => PathRules.LeafName(p) == name ? CloudTag : ReparseTags.Of(p);
+        return new Seam(before);
+    }
+
+    private sealed class Seam(Func<string, uint?>? before) : IDisposable
+    {
+        public void Dispose() => SafeWalk.ReparseTag = before;
+    }
+
+    /// <summary>
+    /// **A marked folder whose reparse tag is no name surrogate is looked
+    /// inside, as the engine walks it** (batch-0.11.2b QA, QaProbeCloudRoot).
+    /// The engine takes a root for a link only by its tag (SafeWalk.IsLink)
+    /// and walked the cloud folder to "report " — and refused the whole copy,
+    /// the plain file beside it included — while the plan, asking only the
+    /// attribute, took the folder for a link and offered it. Modelled with a
+    /// junction the seam reports as a cloud folder.
+    /// </summary>
+    [WindowsFact]
+    public async Task A_marked_cloud_folder_is_looked_inside_as_the_engine_walks_it()
+    {
+        var target = Elsewhere();
+        var cloud = Junction(@"src\OneDriveFolder", target);
+        var plain = _tree.Write(@"src\plain.txt", "plain");
+        var dst = _tree.Dir("dst");
+
+        using var seam = CloudFolder("OneDriveFolder");
+
+        var plan = CopyAcrossPlan.From(OnlyHere(cloud, plain), dst);
+
+        Assert.Equal([new Withheld(cloud, WithheldBecause.NameWindowsCannotOpen, "report ")], plan.Withheld);
+        Assert.Equal([plain], plan.Missing);
+
+        var handle = await Run(plan);
+
+        Assert.Null(handle.Error?.Message);
+        Assert.Equal(OperationState.Completed, handle.State);
+        Assert.Equal("plain", File.ReadAllText(Path.Combine(dst, "plain.txt")));
+    }
+
+    /// <summary>
+    /// **Below the marked folder, any reparse point is a leaf**, a cloud
+    /// folder included — the engine's own walk (WindowsFileOperations.Descend)
+    /// asks the attribute there and copies it as itself, so the plan does not
+    /// look inside one either, and offers the folder that holds it.
+    /// </summary>
+    [WindowsFact]
+    public async Task A_cloud_folder_inside_a_marked_folder_is_not_looked_inside()
+    {
+        var target = Elsewhere();
+        var docs = _tree.Dir("src", "docs");
+        File.WriteAllText(Path.Combine(docs, "fine.txt"), "fine");
+        Junction(@"src\docs\OneDriveFolder", target);
+        var dst = _tree.Dir("dst");
+
+        using var seam = CloudFolder("OneDriveFolder");
+
+        var plan = CopyAcrossPlan.From(OnlyHere(docs), dst);
+
+        Assert.Empty(plan.Withheld);
+        Assert.Equal([docs], plan.Missing);
+
+        var handle = await Run(plan);
+        _links.Add(Path.Combine(dst, "docs", "OneDriveFolder"));
+
+        Assert.Null(handle.Error?.Message);
+        Assert.Equal(OperationState.Completed, handle.State);
+        Assert.Equal("fine", File.ReadAllText(Path.Combine(dst, "docs", "fine.txt")));
+    }
+
     private static Denied Deny(string folder) => new(folder);
 
     /// <summary>A deny entry for the person running the test on one folder,

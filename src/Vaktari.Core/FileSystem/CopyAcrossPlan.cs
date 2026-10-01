@@ -182,7 +182,17 @@ public sealed class CopyAcrossPlan
         var top = new DirectoryInfo(root);
 
         // A file is planned as itself, and so is a link to a folder.
-        if (!top.Exists || (top.Attributes & FileAttributes.ReparsePoint) != 0) return null;
+        //
+        // **A link by the engine's rule, not by the attribute** (batch-0.11.2b
+        // QA). The engine takes a root for a link only when its reparse tag
+        // is a name surrogate (SafeWalk.IsLink), and walks any other marked
+        // folder — a sync client's cloud folder, tag 0x9000301A, is one. The
+        // plan took every reparse point for a link and did not look inside,
+        // so a bad name in such a folder still stopped the whole copy.
+        //
+        // Below the root the engine's own walk takes every reparse point for
+        // a leaf (WindowsFileOperations.Descend), and so does the loop below.
+        if (!top.Exists || SafeWalk.IsLink(top)) return null;
 
         var target = Path.Combine(destination, PathRules.LeafName(root));
         var pending = new Stack<string>();
