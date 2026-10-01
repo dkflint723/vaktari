@@ -145,9 +145,20 @@ public sealed class PartialFailureTests
         var ops = new WindowsFileOperations();
         var handle = ops.Copy([source], tree.At("dst"), Always(ConflictResolution.Overwrite));
 
-        // Cancel as soon as the first bytes have moved, so the target exists.
+        // Cancel as soon as the first bytes have moved, so the target exists —
+        // and held there first. Only signalled, the copy ran on while this
+        // test's continuation waited for the pool, and a slow runner could see
+        // all 24 MB land before the cancel (the race AtomicCopyTests.Held
+        // describes). Paused from the handler, on the copying thread, it
+        // cannot finish before the cancel reaches it.
         var cancelled = new TaskCompletionSource();
-        handle.Progressed += (_, p) => { if (p.BytesDone > 0) cancelled.TrySetResult(); };
+        handle.Progressed += (_, p) =>
+        {
+            if (p.BytesDone <= 0) return;
+
+            handle.Pause();
+            cancelled.TrySetResult();
+        };
 
         await Task.WhenAny(cancelled.Task, Task.Delay(TimeSpan.FromSeconds(10)));
         handle.Cancel();

@@ -54,13 +54,43 @@ public sealed class AtomicCopyTests : IDisposable
         catch (OperationCanceledException) { /* the point */ }
     }
 
-    /// <summary>A copy that has written at least one buffer, and is still going.</summary>
-    private static async Task<IOperationHandle> Writing(IOperationHandle handle)
+    /// <summary>
+    /// A copy that has written at least one buffer, and is held there.
+    ///
+    /// **Waiting for the first progress report proved only that the copy had
+    /// started, and every assertion after it was about a copy left free to
+    /// finish.** The report is raised on the copying thread inside the write
+    /// loop; the waiting continuation runs on the pool. On a slow runner it ran
+    /// late, the other 63 MB were down and the staging file had been renamed
+    /// into place, so the test read a whole, finished copy under the real name
+    /// and called it partial (main's Windows CI, run 36862490124). Measured by
+    /// delaying the continuation 1.5 s: both mid-copy tests failed with the
+    /// handle already Completed. The Windows twin met the same race on
+    /// 2026-09-13 and holds its copy the same way.
+    ///
+    /// Pause is called FROM the progress handler, which the engine raises
+    /// synchronously from <c>BytesCopied</c>, so the gate is shut before that
+    /// thread reaches its next <c>WaitIfPausedAsync</c>: at most the staging
+    /// file grows, and nothing waits on a clock.
+    /// </summary>
+    private static async Task<IOperationHandle> Held(IOperationHandle handle)
     {
-        var started = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
-        handle.Progressed += (_, p) => { if (p.BytesDone > 0) started.TrySetResult(); };
+        var held = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
 
-        await started.Task.WaitAsync(TimeSpan.FromSeconds(30));
+        handle.Progressed += (_, p) =>
+        {
+            if (p.BytesDone <= 0) return;
+
+            handle.Pause();
+            held.TrySetResult();
+        };
+
+        await held.Task.WaitAsync(TimeSpan.FromSeconds(30));
+
+        // The hold, asserted rather than assumed: everything after this reads a
+        // copy that cannot move on.
+        Assert.Equal(OperationState.Paused, handle.State);
+
         return handle;
     }
 
@@ -79,7 +109,7 @@ public sealed class AtomicCopyTests : IDisposable
         var original = Write(Path.Combine(_into, "report.odt"), "the original, in full");
 
         var ops = new LinuxFileOperations();
-        var handle = await Writing(ops.Copy([source], _into, _ => Answer(ConflictResolution.Overwrite)));
+        var handle = await Held(ops.Copy([source], _into, _ => Answer(ConflictResolution.Overwrite)));
 
         // Mid-copy. Under the old code this read an empty, truncated file.
         Assert.Equal("the original, in full", File.ReadAllText(original));
@@ -98,7 +128,7 @@ public sealed class AtomicCopyTests : IDisposable
         File.WriteAllBytes(source, new byte[BigEnough]);
 
         var ops = new LinuxFileOperations();
-        var handle = await Writing(ops.Copy([source], _into, _ => Answer(ConflictResolution.Overwrite)));
+        var handle = await Held(ops.Copy([source], _into, _ => Answer(ConflictResolution.Overwrite)));
 
         Assert.False(File.Exists(Path.Combine(_into, "big.bin")), "a partial file sits under the real name");
 
