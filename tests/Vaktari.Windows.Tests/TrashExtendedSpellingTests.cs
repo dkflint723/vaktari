@@ -141,4 +141,57 @@ public sealed class TrashExtendedSpellingTests : IDisposable
         Assert.Null(spelling);
         Assert.Contains("cannot be handed to another program", refusal, StringComparison.Ordinal);
     }
+
+    /// <summary>
+    /// **The shell folds more than Win32 does.** Win32 keeps a trailing space
+    /// on a name in the MIDDLE of a path — "…\sp \a.txt" opens the file under
+    /// "sp " — so a rule taught Win32's exact folding would hand this path on.
+    /// SHFileOperation does not keep it: given that same plain spelling, it
+    /// deleted "…\sp\a.txt", the file beside it (FO_DELETE without
+    /// FOF_ALLOWUNDO on a probe's own temporary files, so no bin was involved;
+    /// batch-0.11.2 QA, probe-middle-fold). The hand-off rule refuses a space
+    /// on any name, and that is what keeps the bin off the neighbour here.
+    /// </summary>
+    [WindowsFact]
+    public async Task A_folder_ending_in_a_space_midway_is_refused_because_the_shell_folds_it()
+    {
+        var neighbour = Path.Combine(_root, "sp", "a.txt");
+        var row = Path.Combine(_root, "sp ", "a.txt");
+
+        Directory.CreateDirectory(@"\\?\" + Path.Combine(_root, "sp"));
+        Directory.CreateDirectory(@"\\?\" + Path.Combine(_root, "sp "));
+        File.WriteAllText(@"\\?\" + neighbour, "neighbour");
+        File.WriteAllText(@"\\?\" + row, "row");
+
+        var handle = await Settled(_ops.Trash([@"\\?\" + row]));
+
+        Assert.Equal(OperationState.Failed, handle.State);
+        Assert.StartsWith("\"sp \" cannot be handed to another program", handle.Error?.Message, StringComparison.Ordinal);
+        Assert.Empty(_asked);
+
+        Assert.Equal("neighbour", File.ReadAllText(@"\\?\" + neighbour));
+        Assert.Equal("row", File.ReadAllText(@"\\?\" + row));
+    }
+
+    /// <summary>
+    /// **One name with no ordinary spelling keeps the whole batch from the
+    /// shell**, the ones that have one included: the bin is one call for the
+    /// batch, and a delete that went through for some rows and was refused for
+    /// one would leave the person to work out which. Nothing is handed over,
+    /// and the file that could have gone is where it was.
+    /// </summary>
+    [WindowsFact]
+    public async Task One_name_without_an_ordinary_spelling_keeps_the_whole_batch_from_the_shell()
+    {
+        var fine = Made("notes.txt");
+        Made("report");
+        var row = Made("report ");
+
+        var handle = await Settled(_ops.Trash([@"\\?\" + fine, @"\\?\" + row]));
+
+        Assert.Equal(OperationState.Failed, handle.State);
+        Assert.StartsWith("\"report \" cannot be handed to another program", handle.Error?.Message, StringComparison.Ordinal);
+        Assert.Empty(_asked);
+        Assert.True(File.Exists(fine), "the file with an ordinary spelling went anyway");
+    }
 }
