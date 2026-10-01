@@ -145,6 +145,36 @@ public class SettingsViewModelTests
         }
     }
 
+    /// <summary>
+    /// **"Not covered" was not the whole story on Linux.** A drive whose own
+    /// trash cannot be used — its top folder is not this user's to write in,
+    /// or it will not say where it is mounted — sends what is deleted from it
+    /// to the home trash (XdgTrash.PrepareRoot, RootFor), which the sweep
+    /// does cover. Windows has no such fallback, and its sentence stays whole.
+    /// </summary>
+    [AvaloniaTheory]
+    [InlineData("trash", "linux", true)]
+    [InlineData("Recycle Bin", "windows", false)]
+    public void The_bin_page_says_where_another_drives_files_are_swept(string bin, string platform, bool fallsBack)
+    {
+        var previousBin = Core.Naming.BinName;
+        var previousPlatform = Core.Naming.Platform;
+
+        try
+        {
+            Core.Naming.Adopt(bin, platform);
+
+            var vm = new SettingsViewModel(With(ThemeMode.FollowDesktop, followColours: false));
+
+            Assert.Contains("are not covered", vm.BinSweepExplanation, StringComparison.Ordinal);
+            Assert.Equal(fallsBack, vm.BinSweepExplanation.Contains("home folder", StringComparison.Ordinal));
+        }
+        finally
+        {
+            Core.Naming.Adopt(previousBin, previousPlatform);
+        }
+    }
+
     [AvaloniaTheory]
     [InlineData(true)]
     [InlineData(false)]

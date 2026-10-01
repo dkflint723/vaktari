@@ -15,15 +15,16 @@ should not be trusted for compatibility yet.
 
 - **On Windows, the share dialog no longer offers a named pipe as a folder
   to share.** Typing `\\.\pipe\` or `\\.\mailslot\` — or any other device
-  path that is not a drive, a network share or a volume — enabled *Share*, because Windows answers that such a path is a folder. It
-  is now refused, with a line saying that only a folder on a drive, a
-  network share or a volume can be shared.
+  path that is not a drive, a network share or a volume — enabled *Share*,
+  because Windows answers that such a path is a folder. It is now refused,
+  with a line saying that only a folder on a drive, a network share or a
+  volume can be shared.
 
-- **On Windows, an item whose name ends in a space or a dot no longer wears
-  the link arrow of the item beside it.** The listing, search results and
-  *Show space usage* asked whether `x ` is a link by its plain name, which
-  Windows opens as `x`, so the row showed `x`'s answer: an arrow it should
-  not have, or none where it should.
+- **On Windows, a link or other reparse point whose name ends in a space or
+  a dot no longer takes the link arrow from the item beside it.** The
+  listing, search results and *Show space usage* asked whether `x ` is a
+  link by its plain name, which Windows opens as `x`, so the row showed
+  `x`'s answer: an arrow it should not have, or none where it should.
 
 - **On Windows, a shortcut or a disk image in a folder whose name ends in a
   dot no longer reaches the one in the folder beside it.** Windows opens
@@ -41,21 +42,27 @@ should not be trusted for compatibility yet.
   out, as it already was from an ordinarily opened side, and the status line
   says why: the other side, opened by its ordinary name, cannot take it.
 
-- **On Windows, git decorations work in a folder opened through `\\?\`.**
-  Folders there never showed a git mark, because git names them with a `/`
-  that the `\\?\` spelling kept. And a folder whose path has a name ending in
-  a space or a dot is no longer handed to git, which answered for the folder
-  beside it, so a row could show the state of the file of the same name
-  there; such a folder shows no git marks.
+- **On Windows, git marks folders in a folder opened through `\\?\`.** Only
+  files there were marked: git writes a folder as `sub/`, and in a `\\?\`
+  path that `/` was kept as part of the name instead of being read as a
+  separator. And a folder whose name, or a parent's, ends in a space or a
+  dot is no longer handed to git — asked about `repo ` beside `repo`, git
+  answered for `repo`, so a row could show the state of the file of the same
+  name there. Such a folder shows no git marks.
 
-- **On Windows, *Delete* to the Recycle Bin works in a folder opened through
+- **On Windows, moving to the Recycle Bin works in a folder opened through
   `\\?\`.** The Windows shell, which does the binning, refuses any path
-  spelled `\\?\` (or `\??\` or `\\.\`), so every such delete failed with the
-  shell's error and nothing moved. It is now handed the ordinary spelling of
+  spelled `\\?\` (or `\??\` or `\\.\`), so every such move failed with the
+  shell's error and nothing went. It is now handed the ordinary spelling of
   the same file. A name ending in a space or a dot has no ordinary spelling
   that reaches it — the bin would take the file beside it — so it is refused
   with a sentence saying so, as is a file named through a volume's
   `\\?\Volume{…}` path.
+
+- **On Linux, the bin page no longer says that everything deleted from
+  another drive is outside the sweep.** When a drive's own trash cannot be
+  used, what is deleted from it goes to the trash in your home folder, and
+  the sweep covers it there; the tooltip on the page's note now says so.
 
 ## [0.11.1] — 2026-09-30
 
@@ -120,7 +127,9 @@ should not be trusted for compatibility yet.
 - **What comes out of a downloaded archive keeps the mark of the web** on
   Windows, as it does from Explorer and 7-Zip, so Office still opens it in
   Protected View and SmartScreen still asks before running it. On both
-  systems each file keeps its modified date from the archive.
+  systems each file keeps its modified date from the archive; a single
+  compressed file such as `report.txt.gz` takes the date of the `.gz` file
+  itself, not one recorded inside it.
 
 - **The Fedora package declares `MIT AND LicenseRef-unRAR`**, and the
   PKGBUILD for building on Arch lists both licences; no Arch package is
@@ -216,7 +225,8 @@ should not be trusted for compatibility yet.
   where the listing they are in would refuse them: nothing copies, moves,
   renames or bins a drive in *This PC*, and *Add to places* is not offered
   there, since every drive is in places already; *Open with*, *Copy* and *Scripts*
-  are not offered in the bin; *Paste*, *New* and *Duplicate* only appear in
+  are not offered in the bin (*Copy as path* still is, and copies where the
+  item was deleted from); *Paste*, *New* and *Duplicate* only appear in
   a real folder; *Select what differs from the other side* and *Copy what
   is newer or missing here to the other side* only when both sides are
   folders; *Scripts* are offered in a folder and not in a search, a recent
@@ -238,9 +248,12 @@ should not be trusted for compatibility yet.
 
 - **A drag out of a zip open in Explorer no longer depends on Explorer
   answering at every move.** Whether the drag carried files from inside the
-  zip was asked again every time the pointer moved, and if Explorer failed
-  to answer just before you let go, Windows could call the drag off instead
-  of dropping it, with nothing said anywhere. Once the drag is known to
+  zip was asked again every time the pointer moved, and a moment when
+  Explorer failed to answer was answered "no drop" — so a failure just
+  before you let go would have Windows call the drag off instead of dropping
+  it, with nothing said anywhere. (That Explorer fails to answer this way is
+  inferred from drags that ended like that; it was not reproduced.) Once the
+  drag is known to
   carry files from the zip, that is kept for as long as it stays over the
   window, even while the pointer crosses the address bar, the status bar or
   the edge between the listing and the sidebar; a busy answer is asked once
@@ -276,7 +289,8 @@ should not be trusted for compatibility yet.
   a failure while a drag was over the window, the reason a drag was
   refused because Explorer did not answer, and what a drop out of an
   archive could not take — the first few refusals by name, and how many in
-  all — are written to the log in the `logs` folder beside your settings.
+  all — are written to the log in the `logs` folder beside your settings;
+  of the failures, only the first in each drag is.
   Until now the first three were written nowhere, and the archive lines
   only to a console the Windows build does not have.
 
@@ -308,8 +322,9 @@ should not be trusted for compatibility yet.
   bar* sat under "Changes to how it opens apply on the next launch." and
   changes as soon as it is applied or saved; the click choice said it
   "Takes effect immediately" and lands on Apply or Save like everything
-  else; the Proton Drive box had no visible label and suggested a `D:\`
-  path on Linux; and on Linux the icon list offered *Vaktari's own icons*
+  else; the Proton Drive box, under a "Proton Drive" heading, said what to
+  type only in placeholder text, which goes as soon as anything is typed and
+  suggested a `D:\` path on Linux; and on Linux the icon list offered *Vaktari's own icons*
   for the row that draws your desktop's icon theme.
 
 - **`Shift+Delete` on a drive in *This PC* deleted what was on it.** The
@@ -422,8 +437,8 @@ should not be trusted for compatibility yet.
   the item's name.
 
 - **On Windows, the bin sweep no longer reaches other drives' Recycle Bins.**
-  The page says files deleted from another drive are not covered, and they
-  were: deleting after a number of days and keeping the bin under a share of
+  The tooltip on the page's note says files deleted from another drive are
+  not covered, and they were: deleting after a number of days and keeping the bin under a share of
   the disk both acted on every drive's bin, and counted every drive's against
   a share of the system drive. Both now cover the system drive's bin only, as
   the Linux sweep covers only the home trash.

@@ -359,7 +359,9 @@ a *Keep both* arrival is picked out under its new name.
 within a drive and copies between drives, `Ctrl` copies, `Shift` moves, `Alt`
 or `Ctrl+Shift` leaves a shortcut; a plain drag from another program, or from
 another Vaktari window, copies. On Windows, a program that allows only copying
-gets a copy whichever key is held. A small label follows the pointer naming what you are
+gets a copy whichever key is held — dropped on a folder, a tab, a breadcrumb or
+a place; on the bin, which only moves, and on the sidebar's empty strip, which
+only pins, such a drag is refused. A small label follows the pointer naming what you are
 carrying, so a drag begun by accident does not look like the drag of twenty
 files you meant. The folder under the pointer takes a ring; files can also be
 dropped on another tab, which pauses and then switches, on a breadcrumb to move
@@ -385,8 +387,11 @@ over it. A single item can be thrown out with *Delete permanently* without
 emptying the lot. Vaktari can also sweep it for you: delete anything older than
 a number of days, and keep it under a share of the disk. The sweep covers the
 trash in your home folder on Linux and the system drive's Recycle Bin on
-Windows; files deleted from another drive go to a bin on that drive and are
-left alone. Because a bin row
+Windows; files deleted from another drive go to a bin on that drive, which the
+sweep leaves alone. On Linux, when a drive's own trash cannot be used — its
+top folder is not yours to write in, for one — what is deleted from it goes
+to the trash in your home folder instead, and the sweep covers it there.
+Because a bin row
 names where a file *used to be*, opening, renaming or dragging one is refused
 rather than acting on whatever sits there now.
 
@@ -413,7 +418,10 @@ selected and the second when nothing is. A row is left off where the listing
 it is in would refuse it — nothing copies, moves, renames or bins a drive in
 *This PC* or offers to add one to places, where every drive already is, and nothing writes into a search, a recent list or the bin — and
 the rows are compact, 24 pixels to the toolkit's 30 at the default text size.
-On Windows only, the menus also end in the *Windows menu*; see
+On Windows only, the menus also end in the *Windows menu*: the item's menu
+everywhere but the bin and the recent lists, and the folder's menu only in an
+ordinary folder — not in the bin, the recent lists, *This PC*, a search, or
+the space and duplicate listings. See
 [Fitting your desktop](#fitting-your-desktop).
 
 **Also on those menus:** *Mount* for a disk image, which attaches it and takes
@@ -562,7 +570,7 @@ Vaktari answers the standard interface those buttons use.
 
 **On Windows the right-click menus host the machine's own** — 7-Zip, VLC, *Send
 to*, *Restore previous versions*, whatever your programs registered. It is the
-last row of each, called *Windows menu*, exactly where Windows 11 puts *Show
+last row of each menu that offers it, called *Windows menu*, exactly where Windows 11 puts *Show
 more options*: the item's own menu on a row, and the folder's on empty space. It is built only when you open it, so an ordinary right-click never
 pays for other people's code.
 
@@ -587,8 +595,13 @@ as you apply it.
 | **Recycle Bin** (*Trash* on Linux) | how the bin is swept |
 
 Most settings' explanations are their tooltips, and what a screen reader reads
-out for them; the bin page's warning and, on Windows, what *Make Vaktari the
-default* cannot change stay on the page as a short paragraph. *Apply* makes what is on screen take effect without closing the
+out for them. A few short lines stay on the page: under *General*, that the
+split, the filter bar and the path bar apply to new windows, and a warning when
+the chosen startup folder is not there; under *Appearance*, the offer to fetch
+an icon set; under *Privacy and system*, that the default-file-manager buttons
+take effect at once and, on Windows, what *Make Vaktari the default* cannot
+change; a line at the top of *Keyboard* and one on *Context menu*; and the bin
+page's warning. *Apply* makes what is on screen take effect without closing the
 dialog; *Cancel* afterwards closes it without undoing what was applied.
 `Ctrl+Tab` and `Ctrl+PageDown` turn to the next page (`Ctrl+Shift+Tab`,
 `Ctrl+PageUp` back), `Alt` and the underlined letter goes straight to one, and
@@ -795,9 +808,13 @@ promise yet. Worth knowing before you decide:
     an old-style `.r00` are not offered *Extract all*, and the last part of a
     split zip, which is named `.zip`, is refused as damaged or not a zip
     rather than as one part of a set.
-  - **The row is offered by name.** *Extract all* appears for the endings
-    listed above; the file's contents decide only how it is read, so a 7z
-    renamed to `.zip` opens but one renamed to `.bin` is not offered it.
+  - **The row is offered by name.** *Extract all* appears, in an ordinary
+    folder, for one file whose name ends — in any case — in `.zip`, `.7z`,
+    `.rar`, `.tar`; `.tar.gz` or `.tgz`; `.tar.bz2`, `.tbz2` or `.tbz`;
+    `.tar.xz` or `.txz`; `.tar.zst` or `.tzst`; `.tar.lz` or `.tlz`; or, for
+    a single compressed file, `.gz`, `.bz2`, `.xz`, `.zst` or `.lz`. The
+    file's contents decide only how it is read, so a 7z renamed to `.zip`
+    opens but one renamed to `.bin` is not offered it.
   - **A plain tar is checked only as far as its structure goes.** A tar
     keeps no checksum of its files, so a damaged byte inside a plain `.tar`
     can arrive without a word. A compressed tar is read to its end and
