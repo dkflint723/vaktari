@@ -3495,7 +3495,11 @@ public sealed partial class PaneViewModel : ObservableObject, IDisposable
                     _all.AddRange(flush);
                     Entries.AddRange(flush);
                     count += flush.Count;
-                    Status = $"{count:N0} items…";
+
+                    // Not over a held line — see HoldStatus. A large folder
+                    // reloaded while the copy-across walk goes wrote its
+                    // running count over "looking inside…" (QA, round 3).
+                    if (!StatusHeld) Status = $"{count:N0} items…";
                 });
             }
 
