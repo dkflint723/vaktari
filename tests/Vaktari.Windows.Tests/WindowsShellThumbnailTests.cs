@@ -239,21 +239,46 @@ public sealed class WindowsShellThumbnailTests : IDisposable
     ///
     /// The outer Wait is what makes this a failing test rather than a hanging
     /// one if the bound is ever removed.
+    ///
+    /// The handler holds a gate rather than sleeping, and the outer Wait is
+    /// long. It was a 10 s sleep inside a 6 s Wait on a Task.Run, which left a
+    /// 2 s bound four seconds to get three pool threads — the outer run, the
+    /// handler and the timeout's timer — and on a busy CI runner it did not
+    /// (main's Windows run 36913279262). With a gate the handler never answers
+    /// on its own, so the only way out inside the Wait is the bound: removing
+    /// it still fails, at the Wait, however long that is.
     /// </summary>
     [WindowsFact]
     public void A_handler_that_does_not_answer_gives_up()
     {
-        var call = Task.Run(async () => await WindowsShellThumbnails.Bounded(
-            () =>
-            {
-                Thread.Sleep(TimeSpan.FromSeconds(10));
-                return new IconPixels(1, 1, new byte[4]);
-            },
-            @"C:\x\slow.mp4",
-            CancellationToken.None));
+        // The long Wait below would let a bound of 20 s through; the old 6 s
+        // one caught anything over about 6. The value is pinned here instead,
+        // with no clock in it.
+        Assert.Equal(TimeSpan.FromSeconds(2), WindowsShellThumbnails.Bound);
 
-        Assert.True(call.Wait(TimeSpan.FromSeconds(6)), "the wait was not bounded");
-        Assert.Null(call.Result);
+        // Not disposed: the abandoned handler may still be returning from its
+        // Wait when this test ends.
+        var never = new ManualResetEventSlim(false);
+
+        try
+        {
+            var call = WindowsShellThumbnails.Bounded(
+                () =>
+                {
+                    never.Wait();
+                    return new IconPixels(1, 1, new byte[4]);
+                },
+                @"C:\x\slow.mp4",
+                CancellationToken.None).AsTask();
+
+            Assert.True(call.Wait(TimeSpan.FromSeconds(30)), "the wait was not bounded");
+            Assert.Null(call.Result);
+        }
+        finally
+        {
+            // Lets the abandoned handler's pool thread go.
+            never.Set();
+        }
     }
 
     /// <summary>An answer inside the bound is not thrown away — the guard on the
