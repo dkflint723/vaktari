@@ -238,4 +238,60 @@ public sealed class TrailingNameHandOffReadTests : IDisposable
         var unmount = await Assert.ThrowsAnyAsync<IOException>(() => images.UnmountAsync(folded, CancellationToken.None));
         Assert.StartsWith(Refusal, unmount.Message, StringComparison.Ordinal);
     }
+
+    // ---- a path with no spelling that reaches it (batch-0.11.2 QA) ----------
+
+    /// <summary>
+    /// **"\\.\" folds like a plain path, and "\\?\" cannot be put in front of
+    /// it**, so ReachablePath.Exact has no spelling to offer and answers null.
+    /// The tag and the shortcut are then not read at all: read by the path as
+    /// handed over, "\\.\…\tagged " opens "tagged" and "\\.\…\links.\x.lnk"
+    /// opens "links\x.lnk" — the neighbour's link and the neighbour's target,
+    /// which is the fault this batch fixed for plain paths. The same "\\.\"
+    /// spelling of a name that folds nothing is read as before, so the null is
+    /// the fold's and not the prefix's.
+    /// </summary>
+    [WindowsFact]
+    public void A_device_spelled_path_that_folds_is_not_read_as_its_neighbour()
+    {
+        var folder = Tagged();
+
+        Assert.Null(ReparseTags.Of(@"\\.\" + Path.Combine(folder, "tagged ")));
+        Assert.NotNull(ReparseTags.Of(@"\\.\" + Path.Combine(folder, "tagged")));
+
+        var theirs = Directory.CreateDirectory(Path.Combine(_root, "their-target")).FullName;
+        var own = Directory.CreateDirectory(Path.Combine(_root, "own-target")).FullName;
+
+        var shortcuts = new WindowsShortcuts();
+        var neighbours = Directory.CreateDirectory(Path.Combine(_root, "links")).FullName;
+        File.Move(shortcuts.CreateShortcut(theirs, neighbours), Path.Combine(neighbours, "x.lnk"));
+
+        var made = Directory.CreateDirectory(Path.Combine(_root, "staging")).FullName;
+        Directory.CreateDirectory(Raw(Path.Combine(_root, "links.")));
+        File.Move(Raw(shortcuts.CreateShortcut(own, made)), Raw(Path.Combine(_root, "links.", "x.lnk")));
+
+        Assert.Null(shortcuts.TargetOf(@"\\.\" + Path.Combine(_root, "links.", "x.lnk")));
+        Assert.Equal(theirs, shortcuts.TargetOf(@"\\.\" + Path.Combine(neighbours, "x.lnk")), ignoreCase: true);
+    }
+
+    /// <summary>
+    /// **Through "\\?\" as well.** A pane opened that way hands over
+    /// "\\?\…\iso.\x.iso", which reaches the image itself — but the Virtual
+    /// Disk Service is another program handed it by name, and the hand-off
+    /// rule asks of the name with the prefix taken off, because what the
+    /// receiver does with the prefix is its own business. So it is not
+    /// offered, and the menu's mounted question answers "no" rather than
+    /// asking. Refuse, which lets a "\\?\" path through, would offer it.
+    /// </summary>
+    [WindowsFact]
+    public void An_image_under_a_folded_folder_reached_through_the_prefix_is_not_offered_either()
+    {
+        var (folded, _) = Images(neighbour: true);
+        var images = new WindowsDiskImages();
+
+        Assert.True(File.Exists(Raw(folded)), "the image is not there by its extended spelling, so this would prove nothing");
+
+        Assert.False(images.CanMount(Raw(folded)));
+        Assert.Null(images.MountOf(Raw(folded)));
+    }
 }
