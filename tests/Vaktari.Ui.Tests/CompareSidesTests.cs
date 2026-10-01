@@ -1106,6 +1106,47 @@ public sealed class CompareSidesTests : OwnedViewModels
     }
 
     /// <summary>
+    /// **A reload while looking inside leaves the line saying so too**
+    /// (batch-0.11.2c QA, round 3). The end of a load writes the same line the
+    /// count does — "" for a folder shown in full — and is held off the same
+    /// way; taking that guard out left every test green. The folder is
+    /// reloaded while the walk goes, as F5 or a watcher's Lost would, and the
+    /// line still says it is looking once the reload is done.
+    /// </summary>
+    [AvaloniaFact(Skip = OnlyOn.Windows, SkipUnless = nameof(OnlyOn.IsWindows), SkipType = typeof(OnlyOn))]
+    public async Task A_reload_while_looking_inside_leaves_the_line_saying_so()
+    {
+        var (shell, plans, _, _) = await Walking(40000);
+        var window = _windows[^1];
+        var pane = shell.Left.ActiveTab!;
+
+        var request = shell.RequestCopyAcrossCommand.ExecuteAsync(null);
+
+        Assert.False(request.IsCompleted, "the marked folder was not walked off the window's thread");
+        Assert.Equal(Looking, pane.Status);
+
+        var reload = pane.RefreshAsync();
+
+        await Until(() => reload.IsCompleted && pane.IsLoaded && !pane.IsLoading);
+
+        Assert.False(request.IsCompleted, "the walk finished before the reload did, so this proves nothing");
+        Assert.Equal(Looking, pane.Status);
+
+        var clock = System.Diagnostics.Stopwatch.StartNew();
+        while (!(request.IsCompleted && Asking(window)) && clock.Elapsed < TimeSpan.FromSeconds(60))
+        {
+            Pump();
+            await Task.Delay(10);
+        }
+
+        Assert.True(request.IsCompletedSuccessfully, "the request failed");
+        Assert.Single(plans);
+
+        window.KeyPress(Key.Escape, RawInputModifiers.None, PhysicalKey.Escape, null);
+        Pump();
+    }
+
+    /// <summary>
     /// **A walk called off stops saying it is looking.** The person turns to
     /// the other side while the first walk goes and asks there, where nothing
     /// needs a walk: that side is prompted at once, and the first side's line,
