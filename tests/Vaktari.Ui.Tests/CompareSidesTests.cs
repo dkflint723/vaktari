@@ -865,7 +865,7 @@ public sealed class CompareSidesTests : OwnedViewModels
     /// a second request, a closed window or a side that moves lands while the
     /// first walk is still going; a tenth of that walks in a few milliseconds.
     /// </summary>
-    private async Task<(ShellViewModel Shell, List<CopyAcrossPlan> Plans, string Left, string Right)> Walking(int folders = 3000)
+    private async Task<(ShellViewModel Shell, List<CopyAcrossPlan> Plans, string Left, string Right)> Walking(int folders = 3000, int rightRows = 0)
     {
         var left = Folder("left");
         var right = Folder("right");
@@ -875,7 +875,7 @@ public sealed class CompareSidesTests : OwnedViewModels
 
         Write(left, "plain.txt", "plain", Noon);
 
-        var shell = await Split(left, right, 2, 0);
+        var shell = await Split(left, right, 2, rightRows);
 
         shell.ToggleCompareCommand.Execute(null);
         Pump();
@@ -889,6 +889,18 @@ public sealed class CompareSidesTests : OwnedViewModels
         {
             pane.SelectedEntries.Clear();
             pane.SelectedEntry = null;
+        }
+
+        // **Settled before anything is asked** (batch-0.11.2c QA). A pane's
+        // count line is written 200 ms after the last change its watcher
+        // heard, and it writes over "looking inside…" — measured on Windows: a
+        // timer started by the setup's own late changes cleared the line 62 ms
+        // into a 1.7 s walk. Let any such timer fire first, so that what a test
+        // reads on the line is what the request wrote there.
+        for (var i = 0; i < 40; i++)
+        {
+            Pump();
+            await Task.Delay(10);
         }
 
         Pump();
@@ -1159,6 +1171,166 @@ public sealed class CompareSidesTests : OwnedViewModels
         Assert.Empty(plans);
         Assert.False(Asking(window), "a prompt opened with comparing off");
         Assert.Equal("", pane.Status);
+    }
+
+    /// <summary>
+    /// **A walk called off by a walk on the other side stops saying it is
+    /// looking** (batch-0.11.2c QA). Both sides hold a marked folder that
+    /// takes a while to walk. The first side asks, then the other: the second
+    /// request walks too, so a walk is under way when the first one's is
+    /// called off — but on the other side, which is no reason to leave the
+    /// first side's line saying it is looking. The first side's line clears
+    /// while the second walk is still going, and the second gets its prompt.
+    /// </summary>
+    [AvaloniaFact(Skip = OnlyOn.Windows, SkipUnless = nameof(OnlyOn.IsWindows), SkipType = typeof(OnlyOn))]
+    public async Task A_walk_called_off_by_a_walk_on_the_other_side_stops_saying_it_is_looking()
+    {
+        // Made before the sides are shown, not after, so that the right
+        // side's watcher has as little as possible to hear: see below.
+        var theirs = Directory.CreateDirectory(Path.Combine(Folder("right"), "theirs")).FullName;
+        for (var i = 0; i < 20000; i++) Directory.CreateDirectory(Path.Combine(theirs, $"t{i:D5}"));
+
+        var (shell, plans, _, _) = await Walking(20000, rightRows: 1);
+        var window = _windows[^1];
+        var here = shell.Left.ActiveTab!;
+        var there = shell.Right!.ActiveTab!;
+
+        await Until(() => there.CompareMarks.ContainsKey(theirs));
+
+        Assert.Equal(CompareMark.OnlyHere, there.CompareMarks[theirs]);
+
+        var first = shell.RequestCopyAcrossCommand.ExecuteAsync(null);
+
+        Assert.False(first.IsCompleted, "the marked folder was not walked off the window's thread");
+        Assert.Equal(Looking, here.Status);
+
+        shell.ActiveGroup = shell.Right;
+        Pump();
+
+        var second = shell.RequestCopyAcrossCommand.ExecuteAsync(null);
+
+        Assert.False(second.IsCompleted, "the other side's request did not walk, so this proves nothing");
+        Assert.Equal(Looking, there.Status);
+
+        await Until(() => first.IsCompleted);
+        Pump();
+
+        Assert.False(second.IsCompleted, "the second walk finished with the first, so this proves nothing");
+        Assert.True(first.IsCompletedSuccessfully, "the first request failed");
+        Assert.Equal("", here.Status);
+
+        // Not asserted here: that the other side's line still says it is
+        // looking. Its own count line, 200 ms after anything its watcher
+        // hears, writes over it (measured on Windows under load: a change to
+        // the marked folder arrived after it was shown), which this test is
+        // not about.
+
+        await Until(() => second.IsCompleted && Asking(window));
+        Pump();
+
+        Assert.True(second.IsCompletedSuccessfully, "the second request failed");
+        Assert.Equal([theirs], Assert.Single(plans).Missing);
+        Assert.Equal("", there.Status);
+
+        window.KeyPress(Key.Escape, RawInputModifiers.None, PhysicalKey.Escape, null);
+        Pump();
+    }
+
+    /// <summary>
+    /// **A walk that finished, called off from the other side before its
+    /// ending ran, stops saying it is looking too** (batch-0.11.2c QA). The
+    /// window's thread is held while the walk completes, so its ending waits
+    /// behind a request on the other side that needs no walk and is prompted
+    /// at once; when the first one's ending runs, its token says it was
+    /// called off, and its side's line is cleared then — nothing else would.
+    /// </summary>
+    [AvaloniaFact(Skip = OnlyOn.Windows, SkipUnless = nameof(OnlyOn.IsWindows), SkipType = typeof(OnlyOn))]
+    public async Task A_finished_walk_called_off_from_the_other_side_stops_saying_it_is_looking()
+    {
+        var (shell, plans, _, right) = await Walking(300);
+        var window = _windows[^1];
+        var pane = shell.Left.ActiveTab!;
+        var there = shell.Right!.ActiveTab!;
+
+        var only = Write(right, "there.txt", "there", Noon);
+        await there.RefreshAsync();
+        await Until(() => there.CompareMarks.ContainsKey(only));
+
+        for (var i = 0; i < 40; i++)
+        {
+            Pump();
+            await Task.Delay(10);
+        }
+
+        shell.ActiveGroup = shell.Left;
+        Pump();
+
+        var first = shell.RequestCopyAcrossCommand.ExecuteAsync(null);
+
+        Assert.False(first.IsCompleted, "the marked folder was not walked off the window's thread");
+        Assert.Equal(Looking, pane.Status);
+
+        // Three hundred folders walk in milliseconds; the thread is held for
+        // far longer, without running anything queued on it.
+        Thread.Sleep(2000);
+
+        Assert.False(first.IsCompleted, "the first request ended without the window's thread");
+
+        shell.ActiveGroup = shell.Right;
+
+        var second = shell.RequestCopyAcrossCommand.ExecuteAsync(null);
+
+        Assert.True(second.IsCompleted, "the second request walked");
+
+        await Until(() => first.IsCompleted);
+        Pump();
+
+        Assert.True(first.IsCompletedSuccessfully && second.IsCompletedSuccessfully, "a request failed");
+        Assert.Equal([only], Assert.Single(plans).Missing);
+        Assert.Equal("", pane.Status);
+
+        window.KeyPress(Key.Escape, RawInputModifiers.None, PhysicalKey.Escape, null);
+        Pump();
+    }
+
+    /// <summary>
+    /// **A walk called off by a walk on the same side leaves the line saying
+    /// it is looking** (batch-0.11.2c QA) — the other half of the rule above:
+    /// the line is the second walk's now, and the first one ending must not
+    /// clear it while the second is still going. (Taking out what remembers
+    /// which side a walk is looking inside for reddened nothing before this.)
+    /// </summary>
+    [AvaloniaFact(Skip = OnlyOn.Windows, SkipUnless = nameof(OnlyOn.IsWindows), SkipType = typeof(OnlyOn))]
+    public async Task A_walk_called_off_by_a_walk_on_the_same_side_leaves_the_line_saying_so()
+    {
+        var (shell, plans, left, _) = await Walking(20000);
+        var window = _windows[^1];
+        var pane = shell.Left.ActiveTab!;
+
+        var first = shell.RequestCopyAcrossCommand.ExecuteAsync(null);
+
+        Assert.False(first.IsCompleted, "the marked folder was not walked off the window's thread");
+
+        var second = shell.RequestCopyAcrossCommand.ExecuteAsync(null);
+
+        Assert.False(second.IsCompleted, "the second request did not walk, so this proves nothing");
+
+        await Until(() => first.IsCompleted);
+        Pump();
+
+        Assert.False(second.IsCompleted, "the second walk finished with the first, so this proves nothing");
+        Assert.True(first.IsCompletedSuccessfully, "the first request failed");
+        Assert.Equal(Looking, pane.Status);
+
+        await Until(() => second.IsCompleted && Asking(window));
+        Pump();
+
+        Assert.True(second.IsCompletedSuccessfully, "the second request failed");
+        Assert.Equal([Path.Combine(left, "docs"), Path.Combine(left, "plain.txt")], Assert.Single(plans).Missing);
+        Assert.Equal("", pane.Status);
+
+        window.KeyPress(Key.Escape, RawInputModifiers.None, PhysicalKey.Escape, null);
+        Pump();
     }
 
 

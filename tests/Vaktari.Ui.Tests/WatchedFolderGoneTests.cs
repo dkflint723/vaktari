@@ -114,8 +114,12 @@ public sealed class WatchedFolderGoneTests : OwnedViewModels
                 // the pane shows it. The pane hears it go and reloads.
                 Directory.Delete(shown, recursive: true);
 
-                await Until(() => pane.LoadError is not null, 3000);
-                if (pane.LoadError is not null) noticed++;
+                // **HasLoadError, not LoadError is not null** (batch-0.11.2c
+                // QA): LoadError is a string that is never null, empty when
+                // the folder loaded, so that wait ended at once and every round
+                // counted as noticed with the Gone taken out.
+                await Until(() => pane.HasLoadError, 3000);
+                if (pane.HasLoadError) noticed++;
 
                 await pane.NavigateAsync(home);
                 await Until(() => pane.IsLoaded && !pane.IsLoading && pane.CurrentPath == home);
