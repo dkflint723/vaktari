@@ -237,8 +237,9 @@ public sealed class FolderReturnWatchRefusedTests : IDisposable
 
     /// <summary>
     /// With the parts above answering again but the folder still missing, the
-    /// timer's look finds something to watch, and stops: a watched wait hears
-    /// its folder come back and needs no timer.
+    /// timer's look finds something to watch. The timer goes on looking
+    /// (batch-0.11.2d QA, round 5: a watch is not proof of hearing), and each
+    /// look lets the watch before it go: one watch open, however many looks.
     /// </summary>
     [Fact]
     public async Task Refused_up_to_the_root_it_watches_again_once_it_can()
@@ -261,13 +262,12 @@ public sealed class FolderReturnWatchRefusedTests : IDisposable
 
         Assert.Equal(phantom, wait.Watching);
 
-        // A tick already on its way when the watch went in may still look
-        // once; after that, nothing.
-        await Task.Delay(200);
         var checks = wait.Checks;
         await Task.Delay(400);
 
-        Assert.Equal(checks, wait.Checks);
-        Assert.Equal(1, fs.Live);
+        Assert.True(wait.Checks > checks, "the timer stopped once something was watched");
+        Assert.Equal(phantom, wait.Watching);
+        // One open, or two for the moment a look swaps them.
+        Assert.InRange(fs.Live, 1, 2);
     }
 }

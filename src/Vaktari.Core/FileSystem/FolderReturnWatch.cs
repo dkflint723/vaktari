@@ -17,11 +17,20 @@ namespace Vaktari.Core.FileSystem;
 /// a name renamed in, events dropped — asks again whether the folder is back.
 /// A nearer folder above it that comes back first moves the wait down to it;
 /// the folder watched going too moves it up. Read on a timer where it cannot
-/// be watched, as a pane's own folder is. Where nothing above can be watched
-/// or read at all — a drive letter or a share that is not there, a server
-/// that does not answer — it asks again every <see cref="RetryInterval"/>.
-/// One callback at most, from whatever thread noticed; disposing stops the
-/// wait.
+/// be watched, as a pane's own folder is. One callback at most, from
+/// whatever thread noticed; disposing stops the wait.
+///
+/// **And every <see cref="RetryInterval"/> it asks again, watching afresh,
+/// whatever it watches** — one pooled timer per wait, no thread. A watch is
+/// not proof of hearing: where nothing above can be watched or read at all
+/// (a drive letter or a share that is not there, a server that does not
+/// answer) there is no watch to hear anything; a watch opened on a folder in
+/// the moment it is deleted can go dead without ever saying Gone (batch-0.11.2d
+/// QA, round 5: Windows, 1 to 7 of 8 waits under a flickering folder); a folder
+/// above that refused and is readable again says nothing; and a tmpfs or FUSE
+/// filesystem mounted again over the folder watched leaves the watch on the
+/// folder the mount now covers. The slow look covers all four, at the cost of
+/// one look and one watch opened again every half minute per waiting pane.
 ///
 /// **Nothing waits behind the disk.** The disk is asked — whether the folder
 /// is back, which folder above is there, a watch opened on it — by one check
@@ -36,7 +45,7 @@ namespace Vaktari.Core.FileSystem;
 /// </summary>
 public sealed class FolderReturnWatch : IDisposable
 {
-    /// <summary>How often a wait with nothing above it to watch asks again.</summary>
+    /// <summary>How often a wait asks again, whatever it watches.</summary>
     public static readonly TimeSpan RetryInterval = TimeSpan.FromSeconds(30);
 
     private readonly IFileSystemProvider _fs;
@@ -70,8 +79,7 @@ public sealed class FolderReturnWatch : IDisposable
 
     /// <param name="exists">Whether a folder is there — the disk's own answer
     /// in the application; a test's, to make the disk slow or absent.</param>
-    /// <param name="retryInterval">How often to ask again with nothing above
-    /// watched.</param>
+    /// <param name="retryInterval">How often to ask again, watching afresh.</param>
     internal FolderReturnWatch(IFileSystemProvider fs, string path, Action returned, TimeSpan? pollInterval,
         Func<string, bool> exists, TimeSpan retryInterval)
     {
@@ -105,9 +113,12 @@ public sealed class FolderReturnWatch : IDisposable
     /// watcher reports the long name the folder is made with, which a string
     /// compare can never match to the short one — and the long name of a
     /// folder that is not there cannot be asked for, since GetLongPathName
-    /// reads it off the folder. So with a short name next, every arrival asks
-    /// the disk, as every arrival did before the filter. Windows only: a tilde
-    /// in a name elsewhere is just a tilde, and matches as itself.
+    /// reads it off the folder. So with a short name next, an arrival's own
+    /// short name is asked for and compared instead — one call per arrival,
+    /// where asking whether the folder is back walked the path (batch-0.11.2d
+    /// QA, round 5: 100 such waits under a busy folder made 20,000 files take
+    /// 73 s, and a plain watcher there lost track). Windows only: a tilde in a
+    /// name elsewhere is just a tilde, and matches as itself.
     /// </summary>
     private volatile bool _nextIsShort;
 
@@ -131,9 +142,16 @@ public sealed class FolderReturnWatch : IDisposable
             // QA, round 3). An arrival brings the folder back only if it is
             // the folder, or the folder above it on the way down; anything
             // else is a string compared and nothing more.
+            //
+            // **Changed too, on the next step only.** Over SMB on Windows a
+            // folder made again where one was deleted a moment before arrives
+            // as Changed, never Added (batch-0.11.2d QA, round 5: rm -rf a;
+            // mkdir -p a/b over UNC, 14 rounds in 20 missed; with Changed heard
+            // as well, 20 in 20 on all six shapes, locally and over UNC).
             case ChangeKind.Added:
             case ChangeKind.Renamed:
-                if (_nextIsShort || PathRules.Same(change.Path, _next)) Check(force: false);
+            case ChangeKind.Changed:
+                if (IsNext(change.Path)) Check(force: false);
                 break;
 
             // Dropped events may have hidden the arrival, and the folder
@@ -145,8 +163,24 @@ public sealed class FolderReturnWatch : IDisposable
                 Check(force: true);
                 break;
 
-            // A change to a file, or one removed, brings nothing back.
+            // A name removed brings nothing back.
         }
+    }
+
+    /// <summary>Whether <paramref name="arrived"/> is the next step down.</summary>
+    private bool IsNext(string arrived)
+    {
+        var next = _next;
+
+        if (PathRules.Same(arrived, next)) return true;
+
+        // The short spelling shortens every part of the path, the folders
+        // above as well, so only the last part is compared — of an arrival
+        // in the same folder as the next step.
+        return _nextIsShort && OperatingSystem.IsWindows() && next is not null
+            && PathRules.Same(Path.GetDirectoryName(arrived), Path.GetDirectoryName(next))
+            && ShortNames.Of(arrived) is { } spelled
+            && string.Equals(Path.GetFileName(spelled), Path.GetFileName(next), StringComparison.OrdinalIgnoreCase);
     }
 
     /// <summary>
@@ -265,8 +299,7 @@ public sealed class FolderReturnWatch : IDisposable
                 _next = next;
                 _nextIsShort = next is not null && OperatingSystem.IsWindows() && Path.GetFileName(next).Contains('~');
 
-                if (watching is null) _retry ??= new Timer(static w => ((FolderReturnWatch)w!).Check(force: true), this, _retryInterval, _retryInterval);
-                else Let(go: Interlocked.Exchange(ref _retry, null));
+                _retry ??= new Timer(static w => ((FolderReturnWatch)w!).Check(force: true), this, _retryInterval, _retryInterval);
             }
         }
 
@@ -282,7 +315,7 @@ public sealed class FolderReturnWatch : IDisposable
         // folder above deleted and made again at once, 16 rounds in 20).
         //
         // Asked only while something is watched: with nothing watched,
-        // asking again at once would only fail again; the retry timer asks
+        // asking again at once would only fail again; the slow timer asks
         // instead. And compared with the folder first found, not the one
         // watched: a folder above that is there but refused leaves the wait
         // watching higher up for good, and comparing with that spun the
@@ -307,7 +340,7 @@ public sealed class FolderReturnWatch : IDisposable
     /// it. Each try is one step nearer the root, so the path's own depth
     /// bounds them; a folder flickering in and out can do no worse than use
     /// them up. Refused all the way to the root (a drive or share that does
-    /// not answer), nothing is watched, and the retry timer, the places list
+    /// not answer), nothing is watched, and the slow timer, the places list
     /// or F5 asks again.
     /// </summary>
     private (string? Folder, IDisposable? Watch) OpenNearest(string? above)

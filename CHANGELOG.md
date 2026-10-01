@@ -29,10 +29,12 @@ should not be trusted for compatibility yet.
   another program — and follows it as before. Until now it went on saying
   the folder was not there until you pressed F5 or went somewhere else.
   This also works when the folders above it are deleted and made again all
-  at once, and for a folder typed with its 8.3 short name (`TARGET~1`). On
-  a network drive or share that stops answering, the pane checks again
-  every 30 seconds. Closing that tab or window, or going somewhere else,
-  no longer waits on the server.
+  at once — on a network share too — and for a folder typed with its 8.3
+  short name (`TARGET~1`). Whatever else happens, the pane also checks
+  again every 30 seconds, so a share that answers again, a folder above it
+  that you can read again, or a drive mounted again over it is picked up
+  within half a minute. Closing that tab or window, or going somewhere
+  else, no longer waits on a server that does not answer.
 
 - **On Linux, the colours and font follow a Plasma theme change again
   after the config folder has been deleted and made again.** Until now no

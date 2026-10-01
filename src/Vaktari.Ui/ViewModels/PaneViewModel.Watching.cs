@@ -148,13 +148,12 @@ public sealed partial class PaneViewModel
     /// - a tmpfs, a loop device, or a FUSE mount with no device behind it is
     ///   mounted again over the folder above.
     ///
-    /// The first is covered by the wait itself, where it matters: a share or a
-    /// drive that does not answer leaves nothing above the folder to watch,
-    /// and a wait with nothing watched asks again every
-    /// FolderReturnWatch.RetryInterval (30 s). The second is not covered — the
-    /// mount point stays watched as the folder under the mount, which hears
-    /// nothing made on the new filesystem — and comes back by F5 or a
-    /// navigation.
+    /// Both are covered by the wait itself, within half a minute rather than at
+    /// once: every FolderReturnWatch.RetryInterval (30 s) it asks again and
+    /// watches afresh, whatever it watches — so a share answering again, and a
+    /// filesystem mounted over the folder above (which the old watch, on the
+    /// folder the mount now covers, never hears from), are both found by the
+    /// next slow look. F5 or a navigation still finds them sooner.
     /// </summary>
     private sealed class ReturnWait : IDisposable
     {
