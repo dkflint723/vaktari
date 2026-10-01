@@ -67,6 +67,8 @@ public sealed class ThemeFanOutTests : OwnedViewModels
         using var woke = new SemaphoreSlim(0);
         EventHandler probe = (_, _) => woke.Release();
         object? provider = null;
+        Thread? watcher = null;
+        var ended = true;
 
         try
         {
@@ -92,8 +94,7 @@ public sealed class ThemeFanOutTests : OwnedViewModels
             Assert.Equal("WindowsThemeProvider", type.Name);
 
             // The static list, as the watcher threads will read it.
-            Delegate[] Subscribed()
-                => (type.GetField("_changed", Any)!.GetValue(null) as Delegate)?.GetInvocationList() ?? [];
+            Delegate[] Subscribed() => SubscribedTo(type);
 
             foreach (var window in windows)
                 Assert.Contains(Field<EventHandler>(window, "_onThemeChanged"), Subscribed());
@@ -118,7 +119,8 @@ public sealed class ThemeFanOutTests : OwnedViewModels
 
             using (Registry.CurrentUser.CreateSubKey(subKey)) { }
 
-            type.GetMethod("Watch", Any)!.Invoke(null, [subKey]);
+            watcher = (Thread?)type.GetMethod("Watch", Any)!.Invoke(null, [subKey]);
+            Assert.NotNull(watcher);
 
             // The watcher arms its wait a moment after it starts, and a write
             // before that is not seen — so write until one is.
@@ -156,11 +158,43 @@ public sealed class ThemeFanOutTests : OwnedViewModels
             foreach (var window in windows) window.Close();
             Dispatcher.UIThread.RunJobs();
 
+            // **Nothing of this test's may hear the key go, and nothing may
+            // hear it after this test returns** (QA on main, 2026-10-01). Deleting a
+            // watched key wakes its wait once or twice before the wait fails,
+            // and each wake raises the process's event. Measured with a probe
+            // here: at the delete the closing windows were still subscribed
+            // (close is async, the handler comes off in OnClosed), and in
+            // another run the watcher was still alive as this test returned.
+            // Either way the raise re-reads the real palette 150 ms later and
+            // rewrites PaneViewModel.SystemSingleClick under the next test —
+            // SingleClickAffordanceTests waits on exactly that. So the windows
+            // are let go of first, the key deleted, and its watcher waited out.
+            if (provider is not null)
+            {
+                var type = provider.GetType();
+                var clock = Stopwatch.StartNew();
+
+                while (clock.Elapsed < Ceiling
+                       && windows.Any(w => SubscribedTo(type).Contains(Field<EventHandler>(w, "_onThemeChanged"))))
+                {
+                    Dispatcher.UIThread.RunJobs();
+                    await Task.Delay(5);
+                }
+            }
+
             Registry.CurrentUser.DeleteSubKeyTree(subKey, throwOnMissingSubKey: false);
 
+            ended = watcher?.Join(Ceiling) ?? true;
             using var parent = Registry.CurrentUser.OpenSubKey(@"Software\Vaktari-tests", writable: true);
             if (parent is { SubKeyCount: 0, ValueCount: 0 })
                 Registry.CurrentUser.DeleteSubKey(@"Software\Vaktari-tests", throwOnMissingSubKey: false);
         }
+
+        Assert.True(ended, "the watcher outlived its deleted key");
     }
+
+    /// <summary>The provider's static handler list, as the watcher threads
+    /// read it.</summary>
+    private static Delegate[] SubscribedTo(Type type)
+        => (type.GetField("_changed", Any)!.GetValue(null) as Delegate)?.GetInvocationList() ?? [];
 }
