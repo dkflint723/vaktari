@@ -2,6 +2,7 @@ using System.Reflection;
 using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Controls.Primitives;
+using Avalonia.Headless;
 using Avalonia.Headless.XUnit;
 using Avalonia.Input;
 using Avalonia.Interactivity;
@@ -628,6 +629,21 @@ public sealed class SidebarPinDropTests : OwnedViewModels
 
     private static Control HitAt(MainWindow window, Point point)
     {
+        // **Hit-tested against what has been drawn, not what has been laid
+        // out.** The toolkit answers InputHitTest from the last frame its
+        // compositor committed, and the rows the sidebar reads from the pool
+        // land after the window's first frame — so on a busy runner the point
+        // below them was asked of a frame drawn before they arrived, and hit
+        // nothing (batch-0.11.2c QA: two to four of these failed in full runs
+        // on four cores with a CI-like HOME, on main as much as on the
+        // branch, and passed alone; measured, they failed the same way with
+        // an empty ~/.config as with one holding a desktop palette, and not
+        // on all cores with either — the load, not the folder, decides it).
+        // A frame is drawn here first.
+        window.UpdateLayout();
+        AvaloniaHeadlessPlatform.ForceRenderTimerTick();
+        Pump();
+
         var hit = window.InputHitTest(point);
 
         Assert.True(hit is Control, "the blank strip is not hit-testable, so no drag reaches it");
