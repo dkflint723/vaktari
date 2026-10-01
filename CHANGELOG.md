@@ -36,11 +36,13 @@ should not be trusted for compatibility yet.
   ends in a space or a dot.
 
 - **On Windows, *Copy what is newer or missing* from a side opened through
-  `\\?\` no longer fails whole over one name.** That side shows a name
-  ending in a space or a dot as itself, and copying it into a side opened by
-  its ordinary name was refused for the entire copy. Such a name is now left
-  out, as it already was from an ordinarily opened side, and the status line
-  says why: the other side, opened by its ordinary name, cannot take it.
+  `\\?\` no longer fails whole over one name in the listing.** That side
+  shows a name ending in a space or a dot as itself, and copying it into a
+  side opened by its ordinary name was refused for the entire copy. Such a
+  name is now left out, as it already was from an ordinarily opened side, and
+  the status line says why: the other side, opened by its ordinary name,
+  cannot take it. A marked folder that holds such a name further down still
+  stops the whole copy, with a line naming it.
 
 - **On Windows, git marks folders in a folder opened through `\\?\`.** Only
   files there were marked: git writes a folder as `sub/`, and in a `\\?\`
