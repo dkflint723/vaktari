@@ -149,8 +149,28 @@ public sealed class ConfirmationCopyTests
 
         Assert.Equal("left out of the copy: 2 items holding names Windows cannot open",
             Confirmations.LeftOut(new CopyAcrossPlan("/x", [], [],
+                [new Withheld("/home/me/docs", WithheldBecause.NameWindowsCannotOpen, "a "),
+                 new Withheld("/home/me/more", WithheldBecause.NameWindowsCannotOpen, "b.")])));
+    }
+
+    /// <summary>
+    /// **A row left out over its own name, counted with a folder left out over
+    /// a name inside it, is not an item "holding" a name** (batch-0.11.2b QA).
+    /// Said so that it is true of both.
+    /// </summary>
+    [Fact]
+    public void A_name_and_a_folder_holding_one_are_counted_as_both()
+    {
+        Assert.Equal("left out of the copy: 2 items whose names, or names inside them, Windows cannot open",
+            Confirmations.LeftOut(new CopyAcrossPlan("/x", [], [],
                 [new Withheld("/home/me/a ", WithheldBecause.NameWindowsCannotOpen),
                  new Withheld("/home/me/docs", WithheldBecause.NameWindowsCannotOpen, "b.")])));
+
+        Assert.Equal("left out of the copy: 3 items whose names, or names inside them, the other side, opened by its ordinary name, cannot take",
+            Confirmations.LeftOut(new CopyAcrossPlan("/x", [], [],
+                [new Withheld("/home/me/docs", WithheldBecause.NameTheOtherSideCannotTake, "x "),
+                 new Withheld("/home/me/report ", WithheldBecause.NameTheOtherSideCannotTake),
+                 new Withheld("/home/me/more", WithheldBecause.NameTheOtherSideCannotTake, "y.")])));
     }
 
     [Fact]

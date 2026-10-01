@@ -119,11 +119,23 @@ internal static class Confirmations
             ? $"{Elide(NameOf(row.Path))}, which holds \"{Elide(inside)}\""
             : $"\"{Elide(NameOf(row.Path))}\"";
 
-    /// <summary>What several rows left out for one reason are counted as:
-    /// names, or items when a folder among them is left out over a name
-    /// inside it.</summary>
+    /// <summary>
+    /// What several rows left out for one reason are counted as: names, when
+    /// each is left out over its own name; items holding names, when each is a
+    /// folder left out over a name inside it.
+    ///
+    /// **And both, said as both** (batch-0.11.2b QA). A row left out over its
+    /// own name counted among folders was "2 items holding names Windows
+    /// cannot open", which that row does not do: its own name is the one.
+    /// </summary>
     private static string Names(List<Withheld> rows)
-        => rows.Any(r => r.Inside is not null) ? "items holding names" : "names";
+    {
+        var inside = rows.Count(r => r.Inside is not null);
+
+        if (inside == 0) return "names";
+
+        return inside == rows.Count ? "items holding names" : "items whose names, or names inside them,";
+    }
 
     /// <summary>What is being acted on: the one thing by name, or how many.</summary>
     internal static string Subject(int count, string? only)
