@@ -545,8 +545,12 @@ public sealed class FolderReturnWatch : IDisposable
     /// longer than the slow look's interval doubles it, up to
     /// <see cref="MostBackedOff"/> times the interval given; a look that took
     /// under a quarter of the interval given, and ended with a folder above
-    /// watched, puts it back. A dead share then costs a look every four
-    /// minutes rather than one every 30 s, each held for most of a minute.
+    /// watched, puts it back. The interval only doubles while a look outlasts
+    /// it, so on a dead share it stops where the looks do: SMB gives up after
+    /// 21 or 42 s, and a 30 s interval settles at 60 s — a look a minute rather
+    /// than one back to back, measured over 14 minutes against an unreachable
+    /// address (batch-0.11.2f QA, round 9). Eight times is the ceiling for a
+    /// path whose looks take longer still, not the usual dead share.
     ///
     /// **Quick is not enough to put it back** (batch-0.11.2e QA, round 8). The
     /// Windows network client remembers for about 30 s that a server did not

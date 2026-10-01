@@ -17,10 +17,14 @@ namespace Vaktari.Core.Tests;
 /// pool has no such ceiling. Everything these tests drive themselves runs on
 /// threads of its own (OwnThread), and they pass with the pool capped at six
 /// workers and the processor count at four.
+///
+/// The line is at six, the cap they were proved under, not at four: with the
+/// pool capped at four the whole of Core failed two runs in three on these
+/// tests, and at five passed three of three (batch-0.11.2f QA, round 9).
 /// </summary>
 public sealed class PoolWorkersFactAttribute : FactAttribute
 {
-    public const int Fewest = 4;
+    public const int Fewest = 6;
 
     public PoolWorkersFactAttribute()
     {

@@ -36,7 +36,7 @@ should not be trusted for compatibility yet.
   within half a minute. Closing that tab or window, or going somewhere
   else, no longer waits on a server that does not answer, and tabs waiting
   on one no longer slow down Vaktari's other background work; they check
-  less often, down to every four minutes, while it does not answer.
+  less often, about once a minute, while it does not answer.
 
 - **On Linux, the colours and font follow a Plasma theme change again
   after the config folder has been deleted and made again.** Until now no
