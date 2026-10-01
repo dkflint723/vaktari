@@ -87,12 +87,14 @@ public sealed partial class PaneViewModel
     ///
     /// **A folder whose watcher could not start stopped following its folder,
     /// and nothing said so.** This caught whatever Watch threw and left the
-    /// listing as it stood. On Linux every watcher is an inotify instance of its
-    /// own, and fs.inotify.max_user_instances is 128 by default — measured on
-    /// .NET 10.0.11 in WSL Fedora 44: five watchers held five instances, and
+    /// listing as it stood. On Linux every watcher was an inotify instance of
+    /// its own, and fs.inotify.max_user_instances is 128 by default — measured
+    /// on .NET 10.0.11 in WSL Fedora 44: five watchers held five instances, and
     /// once the user's instances were used up, starting one threw an
     /// IOException naming that limit. The rows stayed on screen and went
-    /// quietly out of date.
+    /// quietly out of date. (Every watcher shares one instance there now —
+    /// Vaktari.Linux.Inotify — so the ceiling that is left is
+    /// max_user_watches, and another program using up the instances.)
     ///
     /// Read on a timer instead, by the watch a network mount already gets,
     /// which asks nothing of inotify. A real watcher is tried again on the next

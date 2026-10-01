@@ -35,45 +35,26 @@ public sealed class KdeThemeWatcherTests : IDisposable
         catch (IOException) { }
     }
 
-    /// <summary>
-    /// The process's inotify instances, by the kernel's own account: each is
-    /// a descriptor whose link reads "anon_inode:inotify". Nothing in the
-    /// application keeps this count, so nothing it does can satisfy it by
-    /// accident.
-    /// </summary>
-    private static int InotifyInstances()
-    {
-        var count = 0;
-
-        foreach (var fd in Directory.GetFiles("/proc/self/fd"))
-        {
-            try
-            {
-                if (new FileInfo(fd).LinkTarget == "anon_inode:inotify") count++;
-            }
-            catch (IOException)
-            {
-                // The descriptor the listing itself used, closed since.
-            }
-        }
-
-        return count;
-    }
+    private static int InotifyInstances() => InotifyCount.Instances();
 
     [PosixFact]
     public void Making_many_providers_does_not_grow_the_inotify_instances()
     {
-        // The count can see a watcher at all: one made here is one more, and
-        // gone again once disposed. Without this, a count that read zero
-        // whatever happened would pass the assertion below.
+        // The count can see an instance at all: one opened here is one more,
+        // and gone again once its last watch is disposed. Without this, a
+        // count that read zero whatever happened would pass the assertion
+        // below. (The watcher itself shares the process's one instance with
+        // the panes now, so making it need not add one.)
         var before = InotifyInstances();
 
-        using (var probe = KdeThemeProvider.Watch(_root))
+        var own = Inotify.Open();
+
+        using (own.Add(_root, _ => { }))
         {
-            Assert.NotNull(probe);
             Assert.Equal(before + 1, InotifyInstances());
         }
 
+        Assert.True(own.Exited.WaitOne(Ceiling), "the instance's reader did not stop");
         Assert.Equal(before, InotifyInstances());
 
         // Whatever starts once per process has started after this one.
@@ -164,15 +145,15 @@ public sealed class KdeThemeWatcherTests : IDisposable
             field.SetValue(null, null);
         }
 
-        FileSystemWatcher? started = null;
+        ConfigFolderWatch? started = null;
 
         try
         {
             var provider = new KdeThemeProvider(configHome);
 
-            started = (FileSystemWatcher?)field.GetValue(null);
+            started = (ConfigFolderWatch?)field.GetValue(null);
             Assert.NotNull(started);
-            Assert.Equal(configHome, started.Path);
+            Assert.Equal(configHome, started.Folder);
 
             provider.Changed += handler;
 
@@ -270,6 +251,219 @@ public sealed class KdeThemeWatcherTests : IDisposable
         finally
         {
             Environment.SetEnvironmentVariable("XDG_CONFIG_HOME", was);
+        }
+    }
+
+    // ---- the config folder going and coming back (batch-0.11.2b QA, F4) -------
+
+    private static readonly System.Reflection.FieldInfo WatcherField = typeof(KdeThemeProvider).GetField(
+        "_watcher", System.Reflection.BindingFlags.Static | System.Reflection.BindingFlags.NonPublic)!;
+
+    private static readonly Lock WatcherGate = (Lock)typeof(KdeThemeProvider).GetField(
+        "Gate", System.Reflection.BindingFlags.Static | System.Reflection.BindingFlags.NonPublic)!.GetValue(null)!;
+
+    /// <summary>Sets the process's watcher aside, so the next provider made
+    /// is the first; what was there is handed back for <see cref="PutBack"/>.</summary>
+    private static object? SetAside()
+    {
+        lock (WatcherGate)
+        {
+            var kept = WatcherField.GetValue(null);
+            WatcherField.SetValue(null, null);
+            return kept;
+        }
+    }
+
+    /// <summary>Puts the process's watcher back, disposing the one a test
+    /// started in its place.</summary>
+    private static void PutBack(object? kept)
+    {
+        ConfigFolderWatch? made;
+
+        lock (WatcherGate)
+        {
+            made = (ConfigFolderWatch?)WatcherField.GetValue(null);
+            WatcherField.SetValue(null, kept);
+        }
+
+        if (!ReferenceEquals(made, kept)) made?.Dispose();
+    }
+
+    private static ConfigFolderWatch? Current()
+    {
+        lock (WatcherGate) return (ConfigFolderWatch?)WatcherField.GetValue(null);
+    }
+
+    /// <summary>Writes kdeglobals in <paramref name="configHome"/> until the
+    /// subscriber hears, and answers whether it did.</summary>
+    private static bool Hears(string configHome, SemaphoreSlim heard)
+    {
+        while (heard.Wait(0)) { }
+
+        var deadline = DateTime.UtcNow + Ceiling;
+
+        for (var n = 0; DateTime.UtcNow < deadline; n++)
+        {
+            File.WriteAllLines(Path.Combine(configHome, "kdeglobals"), ["[KDE]", "SingleClick=true", "# " + n]);
+
+            if (heard.Wait(TimeSpan.FromMilliseconds(200))) return true;
+        }
+
+        return false;
+    }
+
+    private static bool Until(Func<bool> done)
+    {
+        var deadline = DateTime.UtcNow + Ceiling;
+
+        while (!done())
+        {
+            if (DateTime.UtcNow > deadline) return false;
+            Thread.Sleep(20);
+        }
+
+        return true;
+    }
+
+    /// <summary>
+    /// **A config folder deleted and made again is heard from again**
+    /// (batch-0.11.2b QA, KdeGoneProbe: heard before, never after, by the same
+    /// watcher or a new window's). The watch hears the folder go, waits for it
+    /// in the folder above, and watches it again when it is back — the same
+    /// watcher, on the process's one inotify instance, with no instance left
+    /// behind.
+    /// </summary>
+    [PosixFact]
+    public void A_config_folder_deleted_and_made_again_is_heard_again()
+    {
+        var configHome = Directory.CreateDirectory(Path.Combine(_root, "gone", "config")).FullName;
+
+        using var heard = new SemaphoreSlim(0);
+        EventHandler handler = (_, _) => heard.Release();
+
+        var kept = SetAside();
+
+        try
+        {
+            var provider = new KdeThemeProvider(configHome);
+            var started = Current();
+
+            Assert.NotNull(started);
+            provider.Changed += handler;
+
+            try
+            {
+                Assert.True(Hears(configHome, heard), "not heard before the folder went");
+
+                var instances = InotifyInstances();
+
+                Directory.Delete(configHome, recursive: true);
+                Assert.True(Until(() => !started.OnFolder), "the folder going was not heard");
+
+                Directory.CreateDirectory(configHome);
+                Assert.True(Until(() => started.OnFolder), "the folder coming back was not heard");
+
+                Assert.True(Hears(configHome, heard), "not heard after the folder was made again");
+
+                _ = new KdeThemeProvider(configHome);
+
+                Assert.Same(started, Current());
+                Assert.False(started.Lapsed);
+                Assert.Equal(instances, InotifyInstances());
+            }
+            finally
+            {
+                provider.Changed -= handler;
+            }
+        }
+        finally
+        {
+            PutBack(kept);
+        }
+    }
+
+    /// <summary>
+    /// **One whose folder above went too lapses, and the next provider starts
+    /// a new one** — as a provider did when there was none. Here the folder
+    /// above the config folder is deleted with it, so there is nothing left
+    /// to wait in.
+    /// </summary>
+    [PosixFact]
+    public void A_lapsed_watcher_is_started_again_by_the_next_provider()
+    {
+        var above = Path.Combine(_root, "above");
+        var configHome = Directory.CreateDirectory(Path.Combine(above, "config")).FullName;
+
+        using var heard = new SemaphoreSlim(0);
+        EventHandler handler = (_, _) => heard.Release();
+
+        var kept = SetAside();
+
+        try
+        {
+            var provider = new KdeThemeProvider(configHome);
+            var started = Current();
+
+            Assert.NotNull(started);
+            provider.Changed += handler;
+
+            try
+            {
+                Directory.Delete(above, recursive: true);
+                Assert.True(Until(() => started.Lapsed), "the watcher did not lapse with both folders gone");
+
+                Directory.CreateDirectory(configHome);
+                _ = new KdeThemeProvider(configHome);
+
+                var again = Current();
+
+                Assert.NotNull(again);
+                Assert.NotSame(started, again);
+                Assert.True(Hears(configHome, heard), "the new watcher was not heard");
+            }
+            finally
+            {
+                provider.Changed -= handler;
+            }
+        }
+        finally
+        {
+            PutBack(kept);
+        }
+    }
+
+    /// <summary>
+    /// **A kdeglobals renamed into place is heard** — the way an atomic save
+    /// lands a new copy over the old, and a rename the FileSystemWatcher's
+    /// Changed and Created handlers never answered.
+    /// </summary>
+    [PosixFact]
+    public void A_kdeglobals_renamed_into_place_is_heard()
+    {
+        var configHome = Directory.CreateDirectory(Path.Combine(_root, "renamed")).FullName;
+
+        using var heard = new SemaphoreSlim(0);
+        EventHandler handler = (_, _) => heard.Release();
+
+        var provider = new KdeThemeProvider(configHome);
+        provider.Changed += handler;
+
+        try
+        {
+            using var watcher = KdeThemeProvider.Watch(configHome);
+            Assert.NotNull(watcher);
+
+            var temporary = Path.Combine(configHome, "kdeglobals.Xa1b2c");
+            File.WriteAllLines(temporary, ["[KDE]", "SingleClick=true"]);
+            while (heard.Wait(TimeSpan.FromMilliseconds(300))) { }
+
+            File.Move(temporary, Path.Combine(configHome, "kdeglobals"), overwrite: true);
+
+            Assert.True(heard.Wait(Ceiling), "the rename into place was not heard");
+        }
+        finally
+        {
+            provider.Changed -= handler;
         }
     }
 }

@@ -120,6 +120,12 @@ public sealed class NetworkWatchTests : IDisposable
 
         using var watch = provider.Watch(_root, _ => { });
 
-        Assert.IsType<FileSystemWatcher>(watch);
+        // Through the process's own inotify instance on Linux; through a
+        // FileSystemWatcher on a host without one, which is where this class
+        // also runs (the Windows runner).
+        Assert.IsNotType<PollingWatch>(watch);
+
+        if (Inotify.Available) Assert.IsNotType<FileSystemWatcher>(watch);
+        else Assert.IsType<FileSystemWatcher>(watch);
     }
 }

@@ -39,7 +39,7 @@ public sealed class KdeThemeProvider : IThemeProvider
 
     private static EventHandler? _changed;
 
-    private static FileSystemWatcher? _watcher;
+    private static ConfigFolderWatch? _watcher;
 
     private static int _watchersStarted;
 
@@ -67,8 +67,12 @@ public sealed class KdeThemeProvider : IThemeProvider
 
         lock (Gate)
         {
-            if (_watcher is not null) return;
+            // **Started again once the one there has lapsed** — its folder
+            // deleted, and the folder above it not to be watched either; see
+            // ConfigFolderWatch. Otherwise a watcher is there and this is all.
+            if (_watcher is { Lapsed: false }) return;
 
+            _watcher?.Dispose();
             _watcher = Watch(configHome);
         }
     }
@@ -88,39 +92,18 @@ public sealed class KdeThemeProvider : IThemeProvider
     /// cannot be watched. Internal and static so a test can watch a folder of
     /// its own, and dispose of the watcher after; the process's own is made
     /// once, by the first provider.
+    ///
+    /// Through the process's one inotify instance (Inotify), which the panes
+    /// share: a FileSystemWatcher here was an instance of its own, and one that
+    /// outlived its folder for as long as the process ran.
     /// </summary>
-    internal static FileSystemWatcher? Watch(string directory)
+    internal static ConfigFolderWatch? Watch(string directory)
     {
-        FileSystemWatcher? watcher = null;
+        var watcher = ConfigFolderWatch.Start(directory, Notify);
 
-        try
-        {
-            if (!Directory.Exists(directory)) return null;
+        if (watcher is not null) Interlocked.Increment(ref _watchersStarted);
 
-            watcher = new FileSystemWatcher(directory, "kdeglobals")
-            {
-                NotifyFilter = NotifyFilters.LastWrite | NotifyFilters.FileName,
-            };
-
-            // Plasma rewrites the file on every scheme change, so this is how a
-            // theme switch reaches a running application without polling.
-            watcher.Changed += (_, _) => Notify();
-            watcher.Created += (_, _) => Notify();
-            watcher.EnableRaisingEvents = true;
-
-            Interlocked.Increment(ref _watchersStarted);
-
-            return watcher;
-        }
-        catch (Exception ex)
-        {
-            // No watcher is survivable; the theme just won't follow live
-            // changes. One that could not start — the inotify ceiling — is
-            // let go rather than kept.
-            watcher?.Dispose();
-            Quiet.Swallowed("theme", ex);
-            return null;
-        }
+        return watcher;
     }
 
     /// <summary>Tells every subscriber that kdeglobals changed — what the

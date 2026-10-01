@@ -13,6 +13,22 @@ should not be trusted for compatibility yet.
 
 ### Fixed
 
+- **On Linux, a folder deleted while Vaktari showed it no longer uses up
+  one of your inotify instances until Vaktari is closed.** Each one left
+  behind counted against the per-user limit (128 on most systems), so after
+  enough folders had been deleted from outside — by a terminal, a build, an
+  extraction tidied away — every pane fell back to checking its folder every
+  few seconds, and other programs could not watch folders at all. Vaktari
+  now watches every folder through a single instance of its own. A pane
+  showing a folder that is deleted, moved away or unmounted now notices
+  at once and says the folder is gone.
+
+- **On Linux, the colours and font follow a Plasma theme change again
+  after the config folder has been deleted and made again.** Until now no
+  theme change was noticed after that until Vaktari was restarted. A
+  `kdeglobals` written by renaming a new copy into place is now noticed
+  too.
+
 - **On Windows, the share dialog no longer offers a named pipe as a folder
   to share.** Typing `\\.\pipe\` or `\\.\mailslot\` — or any other device
   path that is not a drive, a network share or a volume — enabled *Share*,
