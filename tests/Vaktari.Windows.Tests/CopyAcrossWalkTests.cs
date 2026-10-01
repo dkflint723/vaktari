@@ -22,6 +22,7 @@ namespace Vaktari.Windows.Tests;
 /// a deny entry for the person running the test, removed again after.
 /// </summary>
 [SupportedOSPlatform("windows")]
+[Collection(ReparseTagSeamCollection.Name)]
 public sealed class CopyAcrossWalkTests : IDisposable
 {
     private readonly TempTree _tree = new();
@@ -280,4 +281,18 @@ public sealed class CopyAcrossWalkTests : IDisposable
             _directory.SetAccessControl(security);
         }
     }
+}
+
+/// <summary>
+/// SafeWalk.ReparseTag is one per process, and several classes adopt the
+/// platform's reader into it as they start (SafeWalkLinkTests,
+/// MeasureLinkTests and others) — which, beside a test that has put a fake
+/// reader there, puts the real one back halfway through it. Measured: the
+/// cloud-folder test's plan read the junction's own tag and left nothing
+/// out, in a full run only. So the class that fakes it runs alone.
+/// </summary>
+[CollectionDefinition(Name, DisableParallelization = true)]
+public sealed class ReparseTagSeamCollection
+{
+    public const string Name = "ReparseTagSeam";
 }
