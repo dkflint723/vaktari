@@ -960,9 +960,9 @@ public sealed class CompareSidesTests : OwnedViewModels
     /// disposes leave neither side with an active tab, so the check for sides
     /// that moved drops the plan too. With either taken out this stays green;
     /// with both, a prompt is raised for a window that has gone. A third guard
-    /// now stands in front of those two — OnClosing calls the walk off at the
-    /// first close — and hides them as well; the test below is the one that
-    /// reddens without it.
+    /// now stands in front of those two — OnClosing calls the walk off once
+    /// the close is decided — and hides them as well; the test below is the
+    /// one that reddens without it.
     /// </summary>
     [AvaloniaFact(Skip = OnlyOn.Windows, SkipUnless = nameof(OnlyOn.IsWindows), SkipType = typeof(OnlyOn))]
     public async Task A_window_closed_while_looking_inside_asks_nothing()
@@ -1014,6 +1014,71 @@ public sealed class CompareSidesTests : OwnedViewModels
 
         Assert.True(request.IsCompletedSuccessfully, "the request failed");
         Assert.Empty(plans);
+    }
+
+    /// <summary>
+    /// **A close refused at its question keeps the walk, and the prompt still
+    /// comes.** OnClosing calls the walk off only once the close is decided;
+    /// called off at the first close, before the question, a person who
+    /// answered Cancel lost the copy across they had asked for — the line
+    /// stopped saying it was looking and nothing came. Driven through the
+    /// tabs question, which a split window with the preference on asks: the
+    /// question is the real dialog, refused with its own Cancel button.
+    /// </summary>
+    [AvaloniaFact(Skip = OnlyOn.Windows, SkipUnless = nameof(OnlyOn.IsWindows), SkipType = typeof(OnlyOn))]
+    public async Task A_close_refused_at_its_question_keeps_the_walk_and_its_prompt()
+    {
+        var (shell, plans, left, _) = await Walking();
+        var window = _windows[^1];
+        var before = AppSettings.Current.General;
+
+        AppSettings.Apply(AppSettings.Current with
+        {
+            General = AppSettings.Current.General with { ConfirmClosingMultipleTabs = true },
+        });
+
+        try
+        {
+            var request = shell.RequestCopyAcrossCommand.ExecuteAsync(null);
+
+            Assert.False(request.IsCompleted, "the marked folder was not walked off the window's thread");
+
+            window.Close();
+
+            static bool IsQuestion(Window w) => w.Title == "Close Vaktari";
+
+            await Until(() => window.OwnedWindows.Any(IsQuestion));
+
+            var question = Assert.Single(window.OwnedWindows, IsQuestion);
+
+            // Nothing planned yet, so whatever arrives below arrives after the
+            // refusal rather than behind the question.
+            Assert.Empty(plans);
+
+            var cancel = question.GetVisualDescendants().OfType<Button>()
+                                 .Single(b => b.Content as string == "Cancel");
+
+            cancel.RaiseEvent(new Avalonia.Interactivity.RoutedEventArgs(Button.ClickEvent));
+
+            await Until(() => !window.OwnedWindows.Any(IsQuestion) && request.IsCompleted && Asking(window));
+
+            Assert.True(window.IsVisible, "the close went ahead though it was refused");
+            Assert.True(request.IsCompletedSuccessfully, "the request failed");
+
+            var plan = Assert.Single(plans);
+
+            Assert.Equal([Path.Combine(left, "docs"), Path.Combine(left, "plain.txt")], plan.Missing);
+            Assert.True(Asking(window), "the copy across was dropped by a close that was refused");
+
+            window.KeyPress(Key.Escape, RawInputModifiers.None, PhysicalKey.Escape, null);
+            Pump();
+        }
+        finally
+        {
+            // Put back before this class's Dispose closes the window, which
+            // would otherwise ask again with nobody to answer.
+            AppSettings.Apply(AppSettings.Current with { General = before });
+        }
     }
 
     /// <summary>
