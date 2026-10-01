@@ -192,4 +192,40 @@ public sealed class FolderReturnWatchLoopTests : IDisposable
         // One timer at 100 ms is about ten checks in a second; twenty timers are about two hundred.
         Assert.InRange(timed, 1, 40);
     }
+
+    /// <summary>
+    /// **The slow look watches afresh, though nothing has changed** (batch-0.11.2e
+    /// QA, round 6: the slow look asking without force left every test green).
+    /// A watch that has died without a word — opened on a folder in the moment
+    /// it was deleted, or on the folder a mount now covers — is on the same
+    /// path as the folder above that is there now. Asking without force finds
+    /// the same path and keeps the dead watch, so the return is found only by
+    /// the next slow look, half a minute late, every time. Here the folder is
+    /// still not back: the slow look must still open a new watch on the same
+    /// folder, and let the old one go.
+    /// </summary>
+    [Fact]
+    public void The_slow_look_watches_the_same_folder_afresh_with_nothing_changed()
+    {
+        var fs = new Provider();
+
+        using var wait = new FolderReturnWatch(fs, Path.Combine(_root, "x"), () => { }, null, Directory.Exists, TimeSpan.FromMilliseconds(100));
+
+        lock (fs.Given) Assert.Equal(_root, Assert.Single(fs.Given).Path);
+
+        var clock = System.Diagnostics.Stopwatch.StartNew();
+        while (clock.Elapsed < Prompt)
+        {
+            lock (fs.Given) if (fs.Given.Count >= 3) break;
+            Thread.Sleep(10);
+        }
+
+        lock (fs.Given)
+        {
+            Assert.True(fs.Given.Count >= 3, $"the slow look opened {fs.Given.Count - 1} new watches in {Prompt.TotalSeconds} s");
+            Assert.All(fs.Given, g => Assert.Equal(_root, g.Path));
+        }
+
+        Assert.Equal(_root, wait.Watching);
+    }
 }
