@@ -1,3 +1,5 @@
+using Vaktari.Core.FileSystem;
+
 namespace Vaktari.Windows;
 
 /// <summary>
@@ -15,12 +17,25 @@ namespace Vaktari.Windows;
 /// </summary>
 internal static class ReparseTags
 {
-    /// <summary>The tag, or null when the entry could not be opened or asked —
-    /// gone, refused, or on a filesystem that does not answer.</summary>
+    /// <summary>
+    /// The tag, or null when the entry could not be opened or asked — gone,
+    /// refused, or on a filesystem that does not answer.
+    ///
+    /// **Asked of the entry itself, through <see cref="ReachablePath.Exact"/>.**
+    /// Every caller hands over a path in the spelling it found it under, and a
+    /// plain "…\x " is opened as "…\x": the listing, the search walk and the
+    /// disk-usage walk all read the neighbour's tag, so a row under a tag that
+    /// is no link wore its neighbour's link emblem and a WSL link beside an
+    /// ordinary file lost its own (0.11.1 path-safety check). An entry with no
+    /// spelling that reaches it — a folded name in a "\\.\" path — is not
+    /// asked, and reads as a tag that could not be read.
+    /// </summary>
     public static uint? Of(string path)
     {
+        if (ReachablePath.Exact(path) is not { } exact) return null;
+
         var handle = Native.CreateFile(
-            path, Native.FILE_READ_ATTRIBUTES, Native.FILE_SHARE_ALL, 0, Native.OPEN_EXISTING,
+            exact, Native.FILE_READ_ATTRIBUTES, Native.FILE_SHARE_ALL, 0, Native.OPEN_EXISTING,
             Native.FILE_FLAG_OPEN_REPARSE_POINT | Native.FILE_FLAG_BACKUP_SEMANTICS, 0);
 
         if (handle == Native.INVALID_HANDLE_VALUE) return null;

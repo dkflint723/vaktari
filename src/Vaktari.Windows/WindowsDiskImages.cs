@@ -2,6 +2,7 @@ using System.Diagnostics.CodeAnalysis;
 using System.Runtime.InteropServices;
 using System.Runtime.Versioning;
 using Vaktari.Core;
+using Vaktari.Core.FileSystem;
 using Vaktari.Core.Places;
 
 namespace Vaktari.Windows;
@@ -50,9 +51,13 @@ internal sealed class WindowsDiskImages : IDiskImages
     /// which is the rule FileCategories already states for exactly this reason.
     /// A folder named holiday.iso would offer a Mount that fails cleanly; a
     /// stat on every menu open is a cost paid always.
+    ///
+    /// **Nor a path Windows would fold**, which is also a question of the name
+    /// alone: see <see cref="Full"/>.
     /// </summary>
     public bool CanMount(string path)
-        => !string.IsNullOrEmpty(path) && Mountable.Contains(Path.GetExtension(path));
+        => !string.IsNullOrEmpty(path) && Mountable.Contains(Path.GetExtension(path))
+           && ReachablePath.RefuseHandedOut(path) is null;
 
     /// <summary>
     /// Where this image is mounted — **asked of Windows, not remembered.**
@@ -69,10 +74,42 @@ internal sealed class WindowsDiskImages : IDiskImages
     /// </summary>
     public MountedImage? MountOf(string imagePath)
     {
+        // Asked by every menu that opens over an image file, so a name that
+        // folds answers "not mounted" here rather than the refusal Full
+        // throws: resolved, "…\iso.\x.iso" is the neighbour's path, and the
+        // neighbour's mount would have offered Unmount on this row.
+        if (ReachablePath.RefuseHandedOut(imagePath) is not null) return null;
+
         var full = Full(imagePath);
         (string Path, string? Name)? volume = null;
         var asked = false;
 
+        foreach (var (drive, backing) in MountedOverride?.Invoke() ?? Mounted())
+        {
+            if (!asked)
+            {
+                volume = VolumeOf(full);
+                asked = true;
+            }
+
+            if (Matches(full, volume?.Path, volume?.Name, backing.Host, backing.Relative))
+                return new MountedImage(full, drive);
+        }
+
+        return null;
+    }
+
+    /// <summary>
+    /// The mounted images to compare against, as (drive, what backs it), in
+    /// place of the machine's own. A seam, so a test can have an image
+    /// "mounted" without attaching anything; null in the application.
+    /// </summary>
+    internal Func<IEnumerable<(string Drive, (string Relative, string? Host) Backing)>>? MountedOverride { get; init; }
+
+    /// <summary>Each drive that is a mounted image, with the file Windows
+    /// says is behind it.</summary>
+    private static IEnumerable<(string Drive, (string Relative, string? Host) Backing)> Mounted()
+    {
         foreach (var drive in DriveInfo.GetDrives())
         {
             // Only optical-presenting volumes can be a mounted image, and never
@@ -83,17 +120,8 @@ internal sealed class WindowsDiskImages : IDiskImages
 
             if (BackingOf($@"\\.\{letter}") is not { } backing) continue;
 
-            if (!asked)
-            {
-                volume = VolumeOf(full);
-                asked = true;
-            }
-
-            if (Matches(full, volume?.Path, volume?.Name, backing.Host, backing.Relative))
-                return new MountedImage(full, drive.Name);
+            yield return (drive.Name, backing);
         }
-
-        return null;
     }
 
     /// <summary>
@@ -420,8 +448,24 @@ internal sealed class WindowsDiskImages : IDiskImages
         return null;
     }
 
+    /// <summary>
+    /// The image's full path, for the Virtual Disk Service to open — or the
+    /// refusal, thrown, when that path would not reach this file.
+    ///
+    /// **A folded name mounted its neighbour.** Only the extension was asked,
+    /// so "x.iso " never matched and looked safe — but "…\iso.\x.iso" did,
+    /// and GetFullPath resolves it to "…\iso\x.iso" (Win32 takes a trailing
+    /// dot off every name, a trailing space off the last only — measured):
+    /// Mount would have attached the neighbour's image and Unmount detached
+    /// it (0.11.1 path-safety check). The service is another program handed
+    /// the image by name, so it is the hand-off rule, asked before anything
+    /// resolves — which refuses a folder ending in a space too, as every
+    /// hand-off does; Mount and Unmount both come through here.
+    /// </summary>
     private static string Full(string path)
     {
+        if (ReachablePath.RefuseHandedOut(path) is { } refused) throw new IOException(refused);
+
         try
         {
             return Path.GetFullPath(path);

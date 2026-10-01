@@ -19,6 +19,21 @@ should not be trusted for compatibility yet.
   is now refused, with a line saying that only a folder on a drive, a
   network share or a volume can be shared.
 
+- **On Windows, an item whose name ends in a space or a dot no longer wears
+  the link arrow of the item beside it.** The listing, search results and
+  *Show space usage* asked whether `x ` is a link by its plain name, which
+  Windows opens as `x`, so the row showed `x`'s answer: an arrow it should
+  not have, or none where it should.
+
+- **On Windows, a shortcut or a disk image in a folder whose name ends in a
+  dot no longer reaches the one in the folder beside it.** Windows opens
+  `links.\x.lnk` as `links\x.lnk`, so double-clicking it went where the
+  other shortcut points, and *Mount* on `iso.\x.iso` handed Windows
+  `iso\x.iso` — as did *Unmount*, and the menu offered *Unmount* there when
+  `iso\x.iso` was the one mounted. A shortcut is now read from itself.
+  *Mount* and *Unmount* are not offered for an image in a folder whose name
+  ends in a space or a dot.
+
 ## [0.11.1] — 2026-09-30
 
 ### Added

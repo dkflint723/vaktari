@@ -1,5 +1,6 @@
 using System.Runtime.InteropServices;
 using System.Text;
+using Vaktari.Core.FileSystem;
 
 namespace Vaktari.Windows;
 
@@ -30,12 +31,25 @@ internal static class ShellLink
 
     private const uint VolumeIdAndLocalBasePath = 0x00000001;
 
-    /// <summary>The path a shortcut points at, or null if it cannot be read.</summary>
+    /// <summary>
+    /// The path a shortcut points at, or null if it cannot be read.
+    ///
+    /// **Read from the .lnk itself, through <see cref="ReachablePath.Exact"/>.**
+    /// Only the extension stood between a folded name and its neighbour:
+    /// "x.lnk " never matched, but "…\links.\x.lnk" did, and was read as
+    /// "…\links\x.lnk" (Win32 takes a trailing dot off every name), so
+    /// double-clicking it went where the neighbour points (0.11.1 path-safety
+    /// check). A read can reach the right file, so it does, for the places
+    /// import as well; a path with no spelling that reaches it reads as
+    /// nothing.
+    /// </summary>
     internal static string? TargetOf(string path)
     {
         try
         {
-            var bytes = File.ReadAllBytes(path);
+            if (ReachablePath.Exact(path) is not { } exact) return null;
+
+            var bytes = File.ReadAllBytes(exact);
             return Parse(bytes);
         }
         catch (Exception e) when (e is IOException or UnauthorizedAccessException or NotSupportedException)
