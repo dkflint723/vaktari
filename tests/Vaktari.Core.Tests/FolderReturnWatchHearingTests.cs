@@ -99,7 +99,7 @@ public sealed class FolderReturnWatchHearingTests : IDisposable
 
         Directory.CreateDirectory(target);
 
-        Assert.True(await back.WaitAsync(TimeSpan.FromSeconds(10)), "nothing asked again while a dead watch was held");
+        Assert.True(await back.WaitAsync(TimeSpan.FromSeconds(30)), "nothing asked again while a dead watch was held");
     }
 
     /// <summary>

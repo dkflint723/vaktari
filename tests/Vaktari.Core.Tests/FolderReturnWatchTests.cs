@@ -325,6 +325,6 @@ public sealed class FolderReturnWatchTests : IDisposable
 
         Directory.CreateDirectory(x);
 
-        Assert.True(await back.WaitAsync(TimeSpan.FromSeconds(10)), "the timer never noticed the folder back");
+        Assert.True(await back.WaitAsync(TimeSpan.FromSeconds(30)), "the timer never noticed the folder back");
     }
 }

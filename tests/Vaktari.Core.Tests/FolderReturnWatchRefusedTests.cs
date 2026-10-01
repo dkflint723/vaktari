@@ -155,7 +155,7 @@ public sealed class FolderReturnWatchRefusedTests : IDisposable
         // on a timer, and phantom cannot.
         var making = Task.Run(() => new FolderReturnWatch(fs, target, () => { }, TimeSpan.FromHours(1), Exists, Timeout.InfiniteTimeSpan));
 
-        Assert.True(await Task.WhenAny(making, Task.Delay(TimeSpan.FromSeconds(10))) == making, "the wait never stopped looking");
+        Assert.True(await Task.WhenAny(making, Task.Delay(TimeSpan.FromSeconds(30))) == making, "the wait never stopped looking");
 
         using var wait = await making;
         var checks = wait.Checks;
@@ -208,7 +208,7 @@ public sealed class FolderReturnWatchRefusedTests : IDisposable
         disk.Real = true;
         fs.Refuse = false;
 
-        Assert.True(await back.WaitAsync(TimeSpan.FromSeconds(10)), "nothing asked again once the share answered");
+        Assert.True(await back.WaitAsync(TimeSpan.FromSeconds(30)), "nothing asked again once the share answered");
     }
 
     /// <summary>
@@ -232,7 +232,7 @@ public sealed class FolderReturnWatchRefusedTests : IDisposable
         Directory.CreateDirectory(target);
         disk.Real = true;
 
-        Assert.True(await back.WaitAsync(TimeSpan.FromSeconds(10)), "nothing asked again once the drive was back");
+        Assert.True(await back.WaitAsync(TimeSpan.FromSeconds(30)), "nothing asked again once the drive was back");
     }
 
     /// <summary>
@@ -257,15 +257,14 @@ public sealed class FolderReturnWatchRefusedTests : IDisposable
         disk.Real = true;
         fs.Refuse = false;
 
-        var until = DateTime.UtcNow + TimeSpan.FromSeconds(10);
+        var until = DateTime.UtcNow + TimeSpan.FromSeconds(30);
         while (wait.Watching is null && DateTime.UtcNow < until) await Task.Delay(20);
 
         Assert.Equal(phantom, wait.Watching);
 
         var checks = wait.Checks;
-        await Task.Delay(400);
 
-        Assert.True(wait.Checks > checks, "the timer stopped once something was watched");
+        Assert.True(SpinWait.SpinUntil(() => wait.Checks > checks, TimeSpan.FromSeconds(30)), "the timer stopped once something was watched");
         Assert.Equal(phantom, wait.Watching);
         // One open, or two for the moment a look swaps them.
         Assert.InRange(fs.Live, 1, 2);

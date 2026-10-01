@@ -14,7 +14,10 @@ namespace Vaktari.Core.Tests;
 /// </summary>
 public sealed class FolderReturnWatchLoopTests : IDisposable
 {
-    private static readonly TimeSpan Prompt = TimeSpan.FromSeconds(5);
+    /// <summary>How long a step that should be at once may take before the
+    /// test calls it stuck. Generous: a pass is at once, and only a step that
+    /// never comes uses it up (CI's pool was busy for seconds; see OwnThread).</summary>
+    private static readonly TimeSpan Prompt = TimeSpan.FromSeconds(30);
 
     private readonly string _root = Directory.CreateTempSubdirectory("vaktari-loop").FullName;
 
@@ -80,7 +83,7 @@ public sealed class FolderReturnWatchLoopTests : IDisposable
     /// forced one kept the watch on the folder that went, which hears nothing.
     /// </summary>
     [Fact]
-    public async Task A_forced_ask_survives_a_plain_one_asked_while_a_check_runs()
+    public void A_forced_ask_survives_a_plain_one_asked_while_a_check_runs()
     {
         var a = Directory.CreateDirectory(Path.Combine(_root, "a")).FullName;
         var target = Path.Combine(a, "b");
@@ -94,7 +97,7 @@ public sealed class FolderReturnWatchLoopTests : IDisposable
 
         // A check that will be held: an arrival of the name on the way down.
         disk.Hold = true;
-        var running = Task.Run(() => heard(new FileSystemChange(ChangeKind.Added, target)));
+        var running = OwnThread.Run(() => heard(new FileSystemChange(ChangeKind.Added, target)));
         Assert.True(disk.Held.Wait(Prompt), "the check never reached the disk");
 
         // While it is held: the folder watched goes (forced), then a name arrives (plain).
@@ -102,7 +105,7 @@ public sealed class FolderReturnWatchLoopTests : IDisposable
         heard(new FileSystemChange(ChangeKind.Added, target));
 
         disk.Gate.Set();
-        Assert.True(await Task.WhenAny(running, Task.Delay(Prompt)) == running, "the held check never finished");
+        Assert.True(running.Finished(Prompt), "the held check never finished");
 
         lock (fs.Given)
         {
@@ -118,7 +121,7 @@ public sealed class FolderReturnWatchLoopTests : IDisposable
     /// check goes on, the return is nobody's to hear.
     /// </summary>
     [Fact]
-    public async Task Disposed_while_a_check_finds_the_folder_back_it_says_nothing()
+    public void Disposed_while_a_check_finds_the_folder_back_it_says_nothing()
     {
         var target = Path.Combine(_root, "x");
         var fs = new Provider();
@@ -129,12 +132,12 @@ public sealed class FolderReturnWatchLoopTests : IDisposable
 
         Directory.CreateDirectory(target);
         disk.Hold = true;
-        var running = Task.Run(wait.Recheck);
+        var running = OwnThread.Run(wait.Recheck);
         Assert.True(disk.Held.Wait(Prompt), "the check never reached the disk");
 
         wait.Dispose();
         disk.Gate.Set();
-        Assert.True(await Task.WhenAny(running, Task.Delay(Prompt)) == running, "the held check never finished");
+        Assert.True(running.Finished(Prompt), "the held check never finished");
 
         Assert.Equal(0, told);
     }
@@ -185,12 +188,26 @@ public sealed class FolderReturnWatchLoopTests : IDisposable
 
         for (var i = 0; i < 20; i++) wait.Recheck();
 
+        // The timer ticks at all: waited for, not given a second — its ticks
+        // come from the pool, and CI's pool was busy for seconds at a time
+        // (run 36887240896: none in a second). See OwnThread.
+        var asked = wait.Checks;
+        Assert.True(SpinWait.SpinUntil(() => wait.Checks >= asked + 3, Prompt), "the retry timer never ticked");
+
+        // How many: one timer at 100 ms is about twenty checks in two seconds,
+        // twenty timers about four hundred. A pool that is late only delays
+        // ticks — a tick that waited runs once, and ticks that pile up run
+        // into the check already running — so a slow pool cannot push one
+        // timer past the bound.
         var before = wait.Checks;
-        Thread.Sleep(1000);
+        Thread.Sleep(2000);
         var timed = wait.Checks - before;
 
-        // One timer at 100 ms is about ten checks in a second; twenty timers are about two hundred.
-        Assert.InRange(timed, 1, 40);
+        Assert.InRange(timed, 0, 60);
+
+        // And the count itself: timers dropped undisposed stop when the
+        // collector finds them, so the looks alone can miss a timer per ask.
+        Assert.Equal(1, wait.TimersMade);
     }
 
     /// <summary>

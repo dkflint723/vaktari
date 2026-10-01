@@ -15,11 +15,12 @@ namespace Vaktari.Core.Tests;
 /// </summary>
 public sealed class FolderReturnWatchOffTheLockTests : IDisposable
 {
-    private static readonly TimeSpan Prompt = TimeSpan.FromSeconds(5);
+    /// <summary>How long a step that should be at once may take before the
+    /// test calls it stuck. Generous: a pass is at once, and only a step that
+    /// never comes uses it up (CI's pool was busy for seconds; see OwnThread).</summary>
+    private static readonly TimeSpan Prompt = TimeSpan.FromSeconds(30);
 
     private readonly string _root = Directory.CreateTempSubdirectory("vaktari-offlock").FullName;
-
-    private static async Task<bool> Within(Task task) => await Task.WhenAny(task, Task.Delay(Prompt)) == task;
 
     public void Dispose()
     {
@@ -96,7 +97,7 @@ public sealed class FolderReturnWatchOffTheLockTests : IDisposable
     }
 
     [Fact]
-    public async Task Disposed_while_a_watch_is_being_opened_it_returns_at_once_and_the_watch_is_let_go()
+    public void Disposed_while_a_watch_is_being_opened_it_returns_at_once_and_the_watch_is_let_go()
     {
         var target = Path.Combine(_root, "x");
         var fs = new Provider();
@@ -106,7 +107,7 @@ public sealed class FolderReturnWatchOffTheLockTests : IDisposable
         Assert.Equal(1, fs.Live);
 
         fs.Hold = true;
-        var recheck = Task.Run(wait.Recheck);
+        var recheck = OwnThread.Run(wait.Recheck);
 
         try
         {
@@ -115,11 +116,11 @@ public sealed class FolderReturnWatchOffTheLockTests : IDisposable
             // An arrival heard on the watcher's own thread meanwhile does not
             // wait for the held check either.
             Directory.CreateDirectory(target);
-            var heard = Task.Run(() => fs.Given[0].Heard(new FileSystemChange(ChangeKind.Added, target)));
-            Assert.True(await Within(heard), "an arrival waited on the held watch");
+            var heard = OwnThread.Run(() => fs.Given[0].Heard(new FileSystemChange(ChangeKind.Added, target)));
+            Assert.True(heard.Finished(Prompt), "an arrival waited on the held watch");
 
-            var disposing = Task.Run(wait.Dispose);
-            Assert.True(await Within(disposing), "Dispose waited on the held watch");
+            var disposing = OwnThread.Run(wait.Dispose);
+            Assert.True(disposing.Finished(Prompt), "Dispose waited on the held watch");
         }
         finally
         {
@@ -127,7 +128,7 @@ public sealed class FolderReturnWatchOffTheLockTests : IDisposable
             fs.Gate.Set();
         }
 
-        Assert.True(await Within(recheck));
+        Assert.True(recheck.Finished(Prompt));
 
         Assert.Equal(0, fs.Live);
         Assert.Null(wait.Watching);
@@ -135,7 +136,7 @@ public sealed class FolderReturnWatchOffTheLockTests : IDisposable
     }
 
     [Fact]
-    public async Task Disposed_while_the_disk_is_slow_it_returns_at_once()
+    public void Disposed_while_the_disk_is_slow_it_returns_at_once()
     {
         var target = Path.Combine(_root, "x");
         var fs = new Provider();
@@ -145,21 +146,21 @@ public sealed class FolderReturnWatchOffTheLockTests : IDisposable
         var wait = new FolderReturnWatch(fs, target, () => Interlocked.Increment(ref told), null, disk.Exists, Timeout.InfiniteTimeSpan);
 
         disk.Hold = true;
-        var recheck = Task.Run(wait.Recheck);
+        var recheck = OwnThread.Run(wait.Recheck);
 
         try
         {
             Assert.True(disk.Held.Wait(Prompt), "the recheck never asked the disk");
 
-            var disposing = Task.Run(wait.Dispose);
-            Assert.True(await Within(disposing), "Dispose waited on the disk");
+            var disposing = OwnThread.Run(wait.Dispose);
+            Assert.True(disposing.Finished(Prompt), "Dispose waited on the disk");
         }
         finally
         {
             disk.Gate.Set();
         }
 
-        Assert.True(await Within(recheck));
+        Assert.True(recheck.Finished(Prompt));
 
         Assert.Equal(0, fs.Live);
         Assert.Equal(0, told);
@@ -174,7 +175,7 @@ public sealed class FolderReturnWatchOffTheLockTests : IDisposable
     /// asked for while it ran, and finds the folder.
     /// </summary>
     [Fact]
-    public async Task An_arrival_heard_while_the_disk_is_slow_is_looked_at_after()
+    public void An_arrival_heard_while_the_disk_is_slow_is_looked_at_after()
     {
         var target = Path.Combine(_root, "x");
         var fs = new Provider();
@@ -185,15 +186,15 @@ public sealed class FolderReturnWatchOffTheLockTests : IDisposable
         var heard = fs.Given[0].Heard;
 
         disk.Hold = true;
-        var first = Task.Run(() => heard(new FileSystemChange(ChangeKind.Added, target)));
+        var first = OwnThread.Run(() => heard(new FileSystemChange(ChangeKind.Added, target)));
 
         try
         {
             Assert.True(disk.Held.Wait(Prompt), "the first arrival never asked the disk");
 
             Directory.CreateDirectory(target);
-            var second = Task.Run(() => heard(new FileSystemChange(ChangeKind.Added, target)));
-            Assert.True(await Within(second), "an arrival waited on the slow disk");
+            var second = OwnThread.Run(() => heard(new FileSystemChange(ChangeKind.Added, target)));
+            Assert.True(second.Finished(Prompt), "an arrival waited on the slow disk");
 
             Assert.Equal(0, told);
         }
@@ -202,7 +203,7 @@ public sealed class FolderReturnWatchOffTheLockTests : IDisposable
             disk.Gate.Set();
         }
 
-        Assert.True(await Within(first));
+        Assert.True(first.Finished(Prompt));
 
         Assert.Equal(1, told);
         Assert.Equal(0, fs.Live);

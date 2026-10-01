@@ -85,9 +85,14 @@ public sealed partial class PaneViewModel
     ///
     /// **In the watch's own slot**, so there is only ever one: the next load
     /// lets it go in its prologue (a navigation, a refresh, the reload this
-    /// asks for), and so does the pane's Dispose. Opened on the pool, as a
-    /// load's watch is, and installed only while the failed load is still
-    /// the latest; otherwise it is let go at once.
+    /// asks for), and so does the pane's Dispose. Installed only while the
+    /// failed load is still the latest; otherwise it is let go at once.
+    ///
+    /// **Its first look runs on a thread of its own, not the pool's**
+    /// (FolderReturnWatch.Start). It was made in a Task.Run, and on a dead
+    /// share that first look held a pool thread for up to 42 s — a few tabs
+    /// waiting on a dead server kept the pool, where folder loads run, short
+    /// of threads (batch-0.11.2e QA, round 7).
     ///
     /// Only for a folder that is not there. A share that does not answer, or a
     /// folder that refuses, comes back by F5 as before — waiting on a server
@@ -102,24 +107,21 @@ public sealed partial class PaneViewModel
     /// </summary>
     private void WaitForReturn(string path, int generation)
     {
-        _ = Task.Run(() =>
+        var wait = FolderReturnWatch.Start(_fs, path, () => Dispatcher.UIThread.Post(() =>
         {
-            var wait = new FolderReturnWatch(_fs, path, () => Dispatcher.UIThread.Post(() =>
-            {
-                if (generation != _generation || CurrentPath != path || !HasLoadError || _disposed) return;
+            if (generation != _generation || CurrentPath != path || !HasLoadError || _disposed) return;
 
-                Console.Error.WriteLine($"[vaktari] watch: the folder is back, reloading · {path}");
+            Console.Error.WriteLine($"[vaktari] watch: the folder is back, reloading · {path}");
 
-                Detached(LoadAsync(path), "reload");
-            }), PollInterval);
+            Detached(LoadAsync(path), "reload");
+        }), PollInterval);
 
-            var waiting = new ReturnWait(wait, Places);
+        var waiting = new ReturnWait(wait, Places);
 
-            Dispatcher.UIThread.Post(() =>
-            {
-                if (generation == _generation && !_disposed) ReplaceWatch(waiting);
-                else waiting.Dispose();
-            });
+        Dispatcher.UIThread.Post(() =>
+        {
+            if (generation == _generation && !_disposed) ReplaceWatch(waiting);
+            else waiting.Dispose();
         });
     }
 
@@ -132,9 +134,9 @@ public sealed partial class PaneViewModel
     /// folder above nothing to hear: the mount point was there throughout.
     /// On Windows a drive letter coming back has nothing above it at all to
     /// watch. Both are what the places provider says changed (batch-0.11.2c
-    /// QA, round 3), so the wait is asked again then — off the provider's
-    /// thread, on the pool; the wait never makes that thread, or any other,
-    /// wait on the disk.
+    /// QA, round 3), so the wait is asked again then — on a thread of the
+    /// wait's own, not the provider's and not the pool's: the look can wait
+    /// on a dead share for most of a minute (batch-0.11.2e QA, round 7).
     ///
     /// **Exactly what the places list hears, and what it does not**
     /// (batch-0.11.2c QA, round 4: this used to claim a server coming back
@@ -165,7 +167,7 @@ public sealed partial class PaneViewModel
         {
             _wait = wait;
             _places = places;
-            _changed = (_, _) => ThreadPool.QueueUserWorkItem(static w => ((FolderReturnWatch)w!).Recheck(), _wait);
+            _changed = (_, _) => _wait.RecheckOnItsOwnThread();
 
             if (_places is not null) _places.PlacesChanged += _changed;
         }

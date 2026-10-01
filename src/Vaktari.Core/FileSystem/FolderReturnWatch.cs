@@ -21,7 +21,7 @@ namespace Vaktari.Core.FileSystem;
 /// whatever thread noticed; disposing stops the wait.
 ///
 /// **And every <see cref="RetryInterval"/> it asks again, watching afresh,
-/// whatever it watches** — one pooled timer per wait, no thread. A watch is
+/// whatever it watches** — one timer per wait, no thread of its own. A watch is
 /// not proof of hearing: where nothing above can be watched or read at all
 /// (a drive letter or a share that is not there, a server that does not
 /// answer) there is no watch to hear anything; a watch opened on a folder in
@@ -42,6 +42,18 @@ namespace Vaktari.Core.FileSystem;
 /// answer (batch-0.11.2c QA, round 4: Directory.Exists on a dead server took
 /// 42 s, under the lock the window's thread took to dispose the wait on a
 /// navigation or a tab closed).
+///
+/// **And the looks that can wait on the disk run on threads of their own, not
+/// the pool's.** The slow look, a look asked for by the places list, and the
+/// first look of a wait made by <see cref="Start"/> each run on a thread made
+/// for that look, at most one per wait at a time. On the pool, a wait on a
+/// dead share held a pool thread for each look, 21 to 42 s, back to back
+/// with its 30 s timer; with the pool's minimum at two, eight such waits cut
+/// a healthy wait to 11 of 30 looks and kept unrelated pool work 2 s late,
+/// and 32 stopped both (batch-0.11.2e QA, round 7) — and the pool is where
+/// the window's folder loads run. A wait whose looks take longer than its
+/// interval also looks less often: the interval doubles, up to eight times,
+/// and comes back once a look is quick again.
 /// </summary>
 public sealed class FolderReturnWatch : IDisposable
 {
@@ -63,6 +75,12 @@ public sealed class FolderReturnWatch : IDisposable
     private Timer? _retry;
     private bool _done;
 
+    /// <summary>How often the slow look runs now: the interval given, or up
+    /// to <see cref="MostBackedOff"/> times it while looks are slow.</summary>
+    private TimeSpan _interval;
+
+    private const int MostBackedOff = 8;
+
     /// <summary>A check asked for and not yet begun: 0 none, 1 a look, 2 a
     /// look that watches the folder above afresh.</summary>
     private int _wanted;
@@ -82,6 +100,12 @@ public sealed class FolderReturnWatch : IDisposable
     /// <param name="retryInterval">How often to ask again, watching afresh.</param>
     internal FolderReturnWatch(IFileSystemProvider fs, string path, Action returned, TimeSpan? pollInterval,
         Func<string, bool> exists, TimeSpan retryInterval)
+        : this(fs, path, returned, pollInterval, exists, retryInterval, firstLookHere: true)
+    {
+    }
+
+    private FolderReturnWatch(IFileSystemProvider fs, string path, Action returned, TimeSpan? pollInterval,
+        Func<string, bool> exists, TimeSpan retryInterval, bool firstLookHere)
     {
         _fs = fs;
         _path = path;
@@ -89,8 +113,29 @@ public sealed class FolderReturnWatch : IDisposable
         _pollInterval = pollInterval;
         _exists = exists;
         _retryInterval = retryInterval;
+        _interval = retryInterval;
 
-        Check(force: false);
+        if (firstLookHere) Check(force: false);
+        else CheckOnItsOwnThread(force: false);
+    }
+
+    /// <summary>
+    /// A wait whose first look runs on a thread of its own: this returns at
+    /// once, without touching the disk, for a caller that must not wait on it
+    /// — or hold a pool thread while it waits (see the class's remarks).
+    /// </summary>
+    public static FolderReturnWatch Start(IFileSystemProvider fs, string path, Action returned, TimeSpan? pollInterval = null)
+        => new(fs, path, returned, pollInterval, Directory.Exists, RetryInterval, firstLookHere: false);
+
+    /// <inheritdoc cref="Start(IFileSystemProvider, string, Action, TimeSpan?)"/>
+    internal static FolderReturnWatch Start(IFileSystemProvider fs, string path, Action returned, TimeSpan? pollInterval,
+        Func<string, bool> exists, TimeSpan retryInterval)
+        => new(fs, path, returned, pollInterval, exists, retryInterval, firstLookHere: false);
+
+    /// <summary>How often the slow look runs now. For the tests.</summary>
+    public TimeSpan Interval
+    {
+        get { lock (_gate) return _interval; }
     }
 
     /// <summary>The folder above being watched now, or null when there is
@@ -222,6 +267,19 @@ public sealed class FolderReturnWatch : IDisposable
 
     private int _shortLookups;
 
+    /// <summary>How many slow-look timers this wait has made: one, however
+    /// often it looks. Counted rather than inferred from how often it looks,
+    /// because a timer dropped without being disposed stops when the
+    /// collector finds it — sooner on one runtime than another (batch-0.11.2e:
+    /// a timer per look reddened the look count on Windows and not on Fedora).
+    /// For the tests.</summary>
+    internal int TimersMade
+    {
+        get { lock (_gate) return _timersMade; }
+    }
+
+    private int _timersMade;
+
     private string? ShortNameOf(string arrived)
     {
         Interlocked.Increment(ref _shortLookups);
@@ -235,10 +293,20 @@ public sealed class FolderReturnWatch : IDisposable
     ///
     /// The stem is what comes before the tilde, cut at the first character
     /// that is not an ASCII letter or digit (the volume writes _ for what it
-    /// cannot keep). **A hashed alias keeps only two**: past a few aliases with
-    /// one stem, NTFS writes the first two characters and four hex digits of a
-    /// hash (TAEAE4~1), so a six-character stem ending in four hex digits is
-    /// trusted for two. Case is ignored, as the alias is upper case.
+    /// cannot keep). **A hashed alias keeps two at most**: past a few aliases
+    /// with one stem, NTFS writes up to two characters of the name and four
+    /// hex digits of a hash (TAEAE4~1; X31AB~1 for a base of one character;
+    /// D26C~1 for a base with none it can keep), so a stem of four to six
+    /// characters ending in four hex digits is trusted for what comes before
+    /// them. Case is ignored, as the alias is upper case.
+    ///
+    /// **A name with anything outside printable ASCII is always let through**
+    /// (batch-0.11.2e QA, round 7: 83 of 178 real aliases were turned away).
+    /// The volume drops such characters from the alias rather than replacing
+    /// them — Ünïcödé folder is NCDFOL~1, 🙂emoji folder EMOJIF~1 — so where
+    /// the stem starts in the name cannot be told without the volume. A name
+    /// let through costs one lookup; a name turned away wrongly is a return
+    /// not heard until the slow look.
     /// </summary>
     internal static bool MayBeAliasOf(ReadOnlySpan<char> name, ReadOnlySpan<char> alias)
     {
@@ -246,12 +314,15 @@ public sealed class FolderReturnWatch : IDisposable
 
         if (tilde <= 0) return true;
 
+        foreach (var c in name)
+            if (c is < ' ' or > '~') return true;
+
         var stem = alias[..tilde];
         var safe = 0;
 
         while (safe < stem.Length && char.IsAsciiLetterOrDigit(stem[safe])) safe++;
 
-        if (stem.Length == 6 && safe == 6 && !stem[2..].ContainsAnyExcept(Hex)) safe = 2;
+        if (stem.Length is >= 4 and <= 6 && !stem[^4..].ContainsAnyExcept(Hex)) safe = Math.Min(safe, stem.Length - 4);
 
         var matched = 0;
 
@@ -280,23 +351,66 @@ public sealed class FolderReturnWatch : IDisposable
     public void Recheck() => Check(force: true);
 
     /// <summary>
+    /// <see cref="Recheck"/>, on a thread of its own: returns at once, for a
+    /// caller on the pool or the window's thread.
+    /// </summary>
+    public void RecheckOnItsOwnThread() => CheckOnItsOwnThread(force: true);
+
+    /// <summary>
     /// Asks for a check, and runs it here unless one is running already — in
     /// which case that one looks again before it stops, and this returns at
     /// once.
     /// </summary>
     private void Check(bool force)
     {
+        if (Ask(force)) Looks();
+    }
+
+    /// <summary>
+    /// Asks for a check, and runs it on a thread made for it unless one is
+    /// running already. Never on the pool: a look can wait on a dead share
+    /// for most of a minute.
+    /// </summary>
+    private void CheckOnItsOwnThread(bool force)
+    {
+        if (!Ask(force)) return;
+
+        try
+        {
+            new Thread(static w => ((FolderReturnWatch)w!).Looks())
+            {
+                IsBackground = true,
+                Name = "folder return look",
+            }.Start(this);
+        }
+        catch (Exception e) when (e is OutOfMemoryException or ThreadStartException)
+        {
+            Quiet.Swallowed("watch", e);
+            lock (_gate) _running = false;
+        }
+    }
+
+    /// <summary>Records a check asked for; true when the caller is to run
+    /// it, false when one is running already or the wait is over.</summary>
+    private bool Ask(bool force)
+    {
         lock (_gate)
         {
-            if (_done) return;
+            if (_done) return false;
 
             _wanted = Math.Max(_wanted, force ? 2 : 1);
 
-            if (_running) return;
+            if (_running) return false;
 
             _running = true;
+            return true;
         }
+    }
 
+    /// <summary>The checks asked for, one after another, until none is
+    /// left. Run by whoever <see cref="Ask"/> chose.</summary>
+    private void Looks()
+    {
         var stopped = false;
 
         try
@@ -318,7 +432,9 @@ public sealed class FolderReturnWatch : IDisposable
                     _wanted = 0;
                 }
 
+                var took = System.Diagnostics.Stopwatch.StartNew();
                 Once(forced);
+                Pace(took.Elapsed);
             }
         }
         finally
@@ -385,7 +501,11 @@ public sealed class FolderReturnWatch : IDisposable
                 _next = next;
                 _nextIsShort = next is not null && OperatingSystem.IsWindows() && Path.GetFileName(next).Contains('~');
 
-                _retry ??= new Timer(static w => ((FolderReturnWatch)w!).Check(force: true), this, _retryInterval, _retryInterval);
+                if (_retry is null)
+                {
+                    _retry = new Timer(static w => ((FolderReturnWatch)w!).CheckOnItsOwnThread(force: true), this, _interval, _interval);
+                    _timersMade++;
+                }
             }
         }
 
@@ -417,6 +537,33 @@ public sealed class FolderReturnWatch : IDisposable
         var now = NearestAbove(_path, _exists);
 
         if (_exists(_path) || now != above || (!refusedThere && now != watching)) Check(force: false);
+    }
+
+    /// <summary>
+    /// **A wait whose looks are slow looks less often.** A look that took
+    /// longer than the slow look's interval doubles it, up to
+    /// <see cref="MostBackedOff"/> times the interval given; a look that took
+    /// under a quarter of the interval given puts it back. A dead share then
+    /// costs a look every four minutes rather than one every 30 s, each held
+    /// for most of a minute.
+    /// </summary>
+    private void Pace(TimeSpan took)
+    {
+        lock (_gate)
+        {
+            // No timer yet, or one that never fires (a test's): nothing to pace.
+            if (_done || _retry is not { } timer || _retryInterval <= TimeSpan.Zero) return;
+
+            var next = _interval;
+
+            if (took > _interval) next = TimeSpan.FromTicks(Math.Min(_interval.Ticks * 2, _retryInterval.Ticks * MostBackedOff));
+            else if (took < _retryInterval / 4) next = _retryInterval;
+
+            if (next == _interval) return;
+
+            _interval = next;
+            timer.Change(next, next);
+        }
     }
 
     /// <summary>
