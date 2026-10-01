@@ -128,13 +128,33 @@ public sealed partial class PaneViewModel
     /// well, let go of together.
     ///
     /// **A drive mounted again is a place that changed, not a name arriving.**
-    /// A stick or a tmpfs unmounted and mounted again under a waiting pane
-    /// gives the folder above nothing to hear: the mount point was there
-    /// throughout. On Windows a drive letter or a server coming back has
-    /// nothing above it at all to watch. Both are what the places provider
-    /// says changed (batch-0.11.2c QA, round 3), so the wait is asked again
-    /// then — off the provider's thread, on the pool, since asking reads the
-    /// disk.
+    /// A stick unmounted and mounted again under a waiting pane gives the
+    /// folder above nothing to hear: the mount point was there throughout.
+    /// On Windows a drive letter coming back has nothing above it at all to
+    /// watch. Both are what the places provider says changed (batch-0.11.2c
+    /// QA, round 3), so the wait is asked again then — off the provider's
+    /// thread, on the pool; the wait never makes that thread, or any other,
+    /// wait on the disk.
+    ///
+    /// **Exactly what the places list hears, and what it does not**
+    /// (batch-0.11.2c QA, round 4: this used to claim a server coming back
+    /// and any remount). It changes when a drive letter comes or goes, a
+    /// local drive becomes ready or not, and — on Linux — a mount backed by a
+    /// /dev device (MountTable.IsRealVolume) comes or goes. It does not change
+    /// when:
+    /// - a server answers again: a network drive's readiness is written into
+    ///   the places signature as a constant, so it is never asked, and a UNC
+    ///   path is not in the signature at all;
+    /// - a tmpfs, a loop device, or a FUSE mount with no device behind it is
+    ///   mounted again over the folder above.
+    ///
+    /// The first is covered by the wait itself, where it matters: a share or a
+    /// drive that does not answer leaves nothing above the folder to watch,
+    /// and a wait with nothing watched asks again every
+    /// FolderReturnWatch.RetryInterval (30 s). The second is not covered — the
+    /// mount point stays watched as the folder under the mount, which hears
+    /// nothing made on the new filesystem — and comes back by F5 or a
+    /// navigation.
     /// </summary>
     private sealed class ReturnWait : IDisposable
     {

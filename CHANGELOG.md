@@ -28,6 +28,11 @@ should not be trusted for compatibility yet.
   when it comes back** — by *Undo*, by a rename back, or made again by
   another program — and follows it as before. Until now it went on saying
   the folder was not there until you pressed F5 or went somewhere else.
+  This also works when the folders above it are deleted and made again all
+  at once, and for a folder typed with its 8.3 short name (`TARGET~1`). On
+  a network drive or share that stops answering, the pane checks again
+  every 30 seconds. Closing that tab or window, or going somewhere else,
+  no longer waits on the server.
 
 - **On Linux, the colours and font follow a Plasma theme change again
   after the config folder has been deleted and made again.** Until now no
