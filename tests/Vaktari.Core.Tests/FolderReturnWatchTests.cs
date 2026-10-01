@@ -32,9 +32,20 @@ public sealed class FolderReturnWatchTests : IDisposable
 
         public bool Refuse { get; set; }
 
+        /// <summary>How many watches have been opened, ever.</summary>
+        public int Opened { get; private set; }
+
+        /// <summary>Run while a watch is being set up, before it is handed
+        /// back — the moment in which a name can arrive unheard.</summary>
+        public Action<string>? WhileWatching { get; set; }
+
         public IDisposable Watch(string path, Action<FileSystemChange> onChange)
         {
             if (Refuse) throw new IOException("no watcher can be started here");
+
+            Opened++;
+
+            WhileWatching?.Invoke(path);
 
             var entry = (path, onChange);
             lock (Live) Live.Add(entry);
@@ -114,6 +125,107 @@ public sealed class FolderReturnWatchTests : IDisposable
         // Once said, never again.
         fs.Say(_root, new FileSystemChange(ChangeKind.Added, x));
         Assert.Equal(1, said);
+    }
+
+    /// <summary>
+    /// **Only the name on the way down is looked into** (batch-0.11.2c QA,
+    /// round 3: a busy folder above, ten or a hundred waits, two disk checks
+    /// each per arrival on the watcher's one thread, and the kernel's queue
+    /// overflowed). The folder is made without a word; an arrival of anything
+    /// else asks nothing, so the wait does not notice — the arrival of the
+    /// folder's own name does.
+    /// </summary>
+    [Fact]
+    public void Only_the_name_on_the_way_down_is_looked_into()
+    {
+        var x = At("x");
+        var fs = new Watches();
+        var said = 0;
+
+        using var wait = new FolderReturnWatch(fs, x, () => said++);
+        var checks = wait.Checks;
+
+        Directory.CreateDirectory(x);
+        fs.Say(_root, new FileSystemChange(ChangeKind.Added, At("download.part")));
+        fs.Say(_root, new FileSystemChange(ChangeKind.Renamed, At("download.zip"), At("download.part")));
+
+        Assert.Equal(0, said);
+        Assert.Equal(checks, wait.Checks);
+
+        fs.Say(_root, new FileSystemChange(ChangeKind.Added, x));
+
+        Assert.Equal(1, said);
+    }
+
+    /// <summary>
+    /// **The folder above going is watched afresh, even at the same path**
+    /// (batch-0.11.2c QA, round 3). Deleted and made again before its going
+    /// is read, it is the same path and a new folder; the old watch is on the
+    /// old one, and hears nothing again.
+    /// </summary>
+    [Fact]
+    public void The_folder_above_gone_and_made_again_is_watched_afresh()
+    {
+        var p = Directory.CreateDirectory(At("p")).FullName;
+        var x = At("p", "x");
+        var fs = new Watches();
+
+        using var wait = new FolderReturnWatch(fs, x, () => { });
+        var first = fs.Live.Single().Heard;
+
+        Directory.Delete(p);
+        Directory.CreateDirectory(p);
+        first(new FileSystemChange(ChangeKind.Gone, p));
+
+        var now = fs.Live.Single();
+
+        Assert.Equal(p, now.Path);
+        Assert.Equal(2, fs.Opened);
+    }
+
+    /// <summary>
+    /// **A folder on the way down made while the watch above is set up is
+    /// looked for once the watch is there.** Its arrival came before anything
+    /// was listening, so without that second look the wait sat above it,
+    /// hearing nothing of what was made inside (measured over inotify: the
+    /// folder above deleted and made again at once, 16 rounds in 20 missed).
+    /// </summary>
+    [Fact]
+    public void A_folder_on_the_way_down_made_while_watching_is_found()
+    {
+        var p = At("p");
+        var x = At("p", "x");
+        var fs = new Watches();
+
+        fs.WhileWatching = path =>
+        {
+            if (path == _root) Directory.CreateDirectory(p);
+        };
+
+        using var wait = new FolderReturnWatch(fs, x, () => { });
+
+        Assert.Equal(p, wait.Watching);
+        Assert.Equal([p], fs.Paths);
+    }
+
+    /// <summary>A caller that knows the disk changed — the places list moved —
+    /// asks again, and a folder back without a word is found.</summary>
+    [Fact]
+    public void Asked_again_it_finds_a_folder_that_came_back_unheard()
+    {
+        var x = At("x");
+        var fs = new Watches();
+        var said = 0;
+
+        using var wait = new FolderReturnWatch(fs, x, () => said++);
+
+        Directory.CreateDirectory(x);
+        Assert.Equal(0, said);
+
+        wait.Recheck();
+
+        Assert.Equal(1, said);
+        Assert.Empty(fs.Paths);
     }
 
     [Fact]

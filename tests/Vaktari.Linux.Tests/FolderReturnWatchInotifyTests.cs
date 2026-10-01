@@ -92,6 +92,96 @@ public sealed class FolderReturnWatchInotifyTests : IDisposable
     }
 
     /// <summary>
+    /// **The folder watched, deleted and made again before its going is read**
+    /// (batch-0.11.2c QA, round 3; their repro, adopted). The wait sits on
+    /// <c>a</c> for <c>a/b</c>; <c>a</c> is deleted and made again at once, so
+    /// by the time the reader delivers Gone the nearest folder above is
+    /// <c>a</c> again — the same path, a new folder, and the old watch dead
+    /// with the old one. Then <c>a/b</c> is made, and must be heard. Missed 20
+    /// rounds in 20 before the wait watched afresh on Gone.
+    /// </summary>
+    [PosixFact]
+    public void The_folder_watched_deleted_and_made_again_at_once_still_hears_the_return()
+    {
+        var fs = new LinuxFileSystemProvider();
+        var missed = new List<int>();
+
+        for (var round = 0; round < 20; round++)
+        {
+            var a = At($"a{round}");
+            var b = Path.Combine(a, "b");
+            Directory.CreateDirectory(a);
+
+            var told = 0;
+            using var wait = new FolderReturnWatch(fs, b, () => Interlocked.Increment(ref told));
+
+            Assert.Equal(a, wait.Watching);
+
+            Directory.Delete(a);
+            Directory.CreateDirectory(a);
+
+            // Let the reader deliver the Gone of the old a.
+            Thread.Sleep(50);
+
+            Directory.CreateDirectory(b);
+
+            if (!Within(() => Volatile.Read(ref told) > 0, TimeSpan.FromSeconds(2))) missed.Add(round);
+        }
+
+        Assert.True(missed.Count == 0, $"{missed.Count} of 20 rounds never heard a/b come back after a was deleted and made again: rounds {string.Join(",", missed)}");
+    }
+
+    /// <summary>
+    /// **Waits under a busy folder cost it nothing.** A hundred panes waiting
+    /// for folders under one parent, and twenty thousand files arriving there
+    /// beside them: an arrival is only looked into when it is the name on the
+    /// way down. Before, each wait asked the disk twice per arrival on the
+    /// watcher's one thread, and twenty thousand arrivals overflowed the
+    /// kernel's queue (16,384), which tells every watch in the process it has
+    /// lost track (batch-0.11.2c QA, round 3). An independent watch on the
+    /// same folder hears every file, nothing overflows, and the waits asked
+    /// the disk no more than their first look did.
+    /// </summary>
+    [PosixFact]
+    public void Waits_under_a_busy_folder_neither_slow_the_reader_nor_overflow_it()
+    {
+        const int Waits = 100;
+        const int Files = 20_000;
+
+        var fs = new LinuxFileSystemProvider();
+        var busy = Directory.CreateDirectory(At("busy")).FullName;
+        var waits = Enumerable.Range(0, Waits)
+            .Select(i => new FolderReturnWatch(fs, Path.Combine(busy, $"missing{i}", "x"), () => { }))
+            .ToList();
+
+        var heard = 0;
+        var lost = 0;
+
+        using var listener = fs.Watch(busy, c =>
+        {
+            if (c.Kind == ChangeKind.Added) Interlocked.Increment(ref heard);
+            if (c.Kind is ChangeKind.Lost or ChangeKind.Gone) Interlocked.Increment(ref lost);
+        });
+
+        try
+        {
+            var before = waits.Sum(w => w.Checks);
+
+            for (var i = 0; i < Files; i++) File.Create(Path.Combine(busy, $"f{i:D5}")).Dispose();
+
+            Assert.True(Within(() => Volatile.Read(ref heard) >= Files, TimeSpan.FromSeconds(60)),
+                $"the independent watch heard {heard} of {Files} files");
+
+            Assert.Equal(0, Volatile.Read(ref lost));
+            Assert.Equal(before, waits.Sum(w => w.Checks));
+        }
+        finally
+        {
+            foreach (var wait in waits) wait.Dispose();
+        }
+    }
+
+    /// <summary>
     /// A provider that hands out real watches, refuses some at random — so the
     /// wait falls back to a PollingWatch on a short timer, whose ticks arrive
     /// from the pool — and counts what is live.

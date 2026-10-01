@@ -217,6 +217,38 @@ public sealed class FolderComesBackTests : OwnedViewModels
     }
 
     /// <summary>
+    /// **The folder above deleted and made again at once** (batch-0.11.2c QA,
+    /// round 3: rm -rf a; mkdir a; mkdir a/b left a pane on a/b on its error
+    /// until F5). The wait at a, or above it, has to follow a new folder at
+    /// the same path.
+    /// </summary>
+    [AvaloniaFact]
+    public async Task With_the_folder_above_deleted_and_made_again_at_once_it_comes_back()
+    {
+        var other = Dir("other");
+        var a = Dir("a");
+        var b = Dir("a", "b");
+
+        var (_, _, right) = await Open(other, b);
+
+        for (var round = 0; round < 3; round++)
+        {
+            // b goes, and the pane waits for it at a.
+            Directory.Delete(b, recursive: true);
+            Assert.True(await Until(() => right.HasLoadError), $"round {round}: the pane did not notice its folder deleted");
+            await Settle(200);
+
+            // Then a is deleted and made again, with b in it, at once.
+            Directory.Delete(a, recursive: true);
+            Directory.CreateDirectory(a);
+            Directory.CreateDirectory(b);
+            File.WriteAllText(Path.Combine(b, $"r{round}.txt"), "r");
+
+            await BackAndLive(right, b, $"r{round}.txt", $"round {round}");
+        }
+    }
+
+    /// <summary>
     /// **A pane that moves on while it waits lets the wait go.** It is in the
     /// watch's slot, so the navigation's own prologue disposes it: the folder
     /// coming back afterwards brings the pane nowhere, and on Linux the kernel
