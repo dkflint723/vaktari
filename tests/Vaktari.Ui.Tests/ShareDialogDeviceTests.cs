@@ -80,4 +80,48 @@ public sealed class ShareDialogDeviceTests : IDisposable
 
         Assert.Equal([typed], shared);
     }
+
+    /// <summary>
+    /// **And a volume named by its GUID** — the third form the rule lets
+    /// through, and the one nothing here exercised: the rule's GUID arm could
+    /// be broken (measured: a length off by one) with every test above still
+    /// green, refusing a folder that really is on a volume. The volume's name
+    /// is asked of mountvol, which only reads; nothing is mounted.
+    /// </summary>
+    [AvaloniaFact(Skip = OnlyOn.Windows, SkipUnless = nameof(OnlyOn.IsWindows), SkipType = typeof(OnlyOn))]
+    public async Task A_folder_on_a_volume_named_by_its_guid_is_still_shared()
+    {
+        Directory.CreateDirectory(Path.Combine(_root, "plain", "inside"));
+
+        var root = Path.GetPathRoot(_root)!;
+        var typed = VolumeOf(root) + Path.Combine(_root, "plain")[root.Length..];
+
+        Assert.True(Directory.Exists(typed), $"{typed} does not name the folder, so this would prove nothing");
+
+        var (model, shared) = Dialog(typed);
+
+        Assert.Equal(["inside"], model.Folders);
+        Assert.True(model.CanShare);
+
+        await model.ShareCommand.ExecuteAsync(null);
+
+        Assert.Equal([typed], shared);
+    }
+
+    /// <summary>"\\?\Volume{…}\" for a drive root, as mountvol lists it.</summary>
+    private static string VolumeOf(string root)
+    {
+        using var mountvol = System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo("mountvol", $"{root} /L")
+        {
+            RedirectStandardOutput = true,
+            UseShellExecute = false,
+            CreateNoWindow = true,
+        })!;
+
+        var name = mountvol.StandardOutput.ReadToEnd().Trim();
+        mountvol.WaitForExit();
+
+        Assert.StartsWith(@"\\?\Volume{", name, StringComparison.Ordinal);
+        return name;
+    }
 }
