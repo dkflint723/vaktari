@@ -20,8 +20,9 @@ should not be trusted for compatibility yet.
   extraction tidied away — every pane fell back to checking its folder every
   few seconds, and other programs could not watch folders at all. Vaktari
   now watches every folder through a single instance of its own. A pane
-  showing a folder that is deleted, moved away or unmounted now notices
-  at once and says the folder is gone.
+  showing a folder that is deleted or moved away, or a folder on a drive
+  that is unmounted, now notices at once and says the folder is gone; a
+  pane on the folder the drive was mounted on shows what is left there.
 
 - **On Linux, the colours and font follow a Plasma theme change again
   after the config folder has been deleted and made again.** Until now no
