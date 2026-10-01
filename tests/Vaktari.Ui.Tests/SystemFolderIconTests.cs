@@ -105,21 +105,43 @@ public sealed class SystemFolderIconTests : IDisposable
     public async Task A_full_folder_shows_the_desktops_icon_and_keeps_it()
     {
         var image = new Image();
+        var painted = new List<object?>();
+
+        image.PropertyChanged += (_, e) =>
+        {
+            if (e.Property == Image.SourceProperty) painted.Add(e.NewValue);
+        };
 
         RowIcon.SetSize(image, 24);
         RowIcon.SetEntry(image, Entry(_folder));
 
         await Settle(image);
 
+        // **And nothing paints after the paint is done.** PaintOf ends when
+        // the handler's own work ends, so a probe started and NOT awaited
+        // after the shell's icon — the easiest way back to this fault — lands
+        // after it, and a test that stopped there passed against it (batch-
+        // 0.11.2 QA, measured with `_ = ShowContentsIfAnyAsync(...)` there).
+        // Every Source written is recorded, for a short tail.
+        var tail = System.Diagnostics.Stopwatch.StartNew();
+
+        while (tail.ElapsedMilliseconds < 300)
+        {
+            Avalonia.Threading.Dispatcher.UIThread.RunJobs();
+            await Task.Delay(10);
+        }
+
+        var papers = FileTypeIcon.For(Path.GetFileName(_folder), isDirectory: true, hasContents: true);
+
         // Both halves matter. The desktop's icon is what should be there...
         Assert.Same(IconLoader.Draw(Shell), image.Source);
 
         // ...and the drawn folder-with-papers is what used to replace it. Same
         // call the probe makes, and FileTypeIcon caches by category, so this is
-        // the very instance it would have painted.
-        Assert.NotSame(
-            FileTypeIcon.For(Path.GetFileName(_folder), isDirectory: true, hasContents: true),
-            image.Source);
+        // the very instance it would have painted — at the end, or at any
+        // moment on the way.
+        Assert.NotSame(papers, image.Source);
+        Assert.DoesNotContain(painted, p => ReferenceEquals(p, papers));
     }
 
     /// <summary>
