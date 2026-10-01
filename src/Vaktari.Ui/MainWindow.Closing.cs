@@ -27,18 +27,6 @@ public partial class MainWindow
     {
         if (_closeApproved) return;
 
-        // **A walk inside marked folders is called off at the first close, not
-        // at the last.** The shell is disposed in OnClosed, after the awaits
-        // below — the session written on the pool, perhaps a question asked —
-        // and a walk that finished in that gap came back on this thread with
-        // its token whole and both sides as they were, and raised the copy
-        // prompt over a window on its way out (measured, main's Windows CI run
-        // 36862490124, and every time with a one-folder walk). Called off here,
-        // the walk stops at its next check, or sees its token cancelled when it
-        // returns. A close then refused leaves nothing pending: copy across is
-        // asked for again.
-        _shell.StopLookingAcross();
-
         // **The transfer question comes first, and it is not behind a
         // preference.** Closing a window used to kill its transfer and the
         // process was ending, so nothing survived to notice. With a second
@@ -76,6 +64,19 @@ public partial class MainWindow
 
             if (!confirmed) return;
         }
+
+        // **A walk inside marked folders is called off once the close is
+        // decided, not at the last.** The shell is disposed in OnClosed, after
+        // the session is written on the pool below, and a walk that finished in
+        // that gap came back on this thread with its token whole and both sides
+        // as they were, and raised the copy prompt over a window on its way out
+        // (measured, main's Windows CI run 36862490124, and every time with a
+        // one-folder walk). Called off here, the walk stops at its next check,
+        // or sees its token cancelled when it returns. After the questions, not
+        // before them: a close the user refuses keeps its walk. A walk that ends
+        // while a question is up asks behind it, and goes with the window if the
+        // close is confirmed.
+        _shell.StopLookingAcross();
 
         // Cancel, flush, then close for real. Awaiting inside an async void
         // handler does not hold the window open — the process can otherwise
