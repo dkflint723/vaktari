@@ -111,6 +111,25 @@ public sealed class ConfirmationCopyTests
                  new Withheld("/home/me/b.", WithheldBecause.NameWindowsCannotOpen)])));
     }
 
+    /// <summary>
+    /// **A name this side opens and the other cannot take is not one "Windows
+    /// cannot open".** From a side opened through "\\?\" the name opens fine;
+    /// it is the plainly opened destination that cannot hold it, and the line
+    /// says so.
+    /// </summary>
+    [Fact]
+    public void A_name_the_other_side_cannot_take_is_said_for_what_it_is()
+    {
+        Assert.Equal("left out of the copy: \"report \", whose name the other side, opened by its ordinary name, cannot take",
+            Confirmations.LeftOut(new CopyAcrossPlan("/x", [], [],
+                [new Withheld("/home/me/report ", WithheldBecause.NameTheOtherSideCannotTake)])));
+
+        Assert.Equal("left out of the copy: 2 names the other side, opened by its ordinary name, cannot take",
+            Confirmations.LeftOut(new CopyAcrossPlan("/x", [], [],
+                [new Withheld("/home/me/a ", WithheldBecause.NameTheOtherSideCannotTake),
+                 new Withheld("/home/me/b.", WithheldBecause.NameTheOtherSideCannotTake)])));
+    }
+
     [Fact]
     public void One_file_is_named_rather_than_counted()
     {

@@ -100,6 +100,40 @@ public sealed class CopyAcrossPlanTests : IDisposable
         Assert.Equal([Listed("report")], plan.Replacing);
     }
 
+    /// <summary>
+    /// **From a side opened through "\\?\", the name opens — and the other
+    /// side may still not hold it.** "report " is listed as itself there, so
+    /// the rule above let it through, and the engine then refused the WHOLE
+    /// copy into a plainly opened side, where the name would land as "report"
+    /// (0.11.1 path-safety check). It is left out, with its own reason, and
+    /// the rest goes; into a side opened through "\\?\" as well, it goes too.
+    /// </summary>
+    [WindowsFact]
+    public void On_windows_a_name_the_other_side_cannot_take_is_left_out()
+    {
+        var marks = new Dictionary<string, CompareMark>(StringComparer.Ordinal)
+        {
+            [@"\\?\" + Listed("report ")] = CompareMark.OnlyHere,
+            [@"\\?\" + Listed("report.")] = CompareMark.NewerHere,
+            [@"\\?\" + Listed("ok.txt")] = CompareMark.OnlyHere,
+        };
+
+        var plain = CopyAcrossPlan.From(marks, Side("right"));
+
+        Assert.Equal(
+            [new Withheld(@"\\?\" + Listed("report "), WithheldBecause.NameTheOtherSideCannotTake),
+             new Withheld(@"\\?\" + Listed("report."), WithheldBecause.NameTheOtherSideCannotTake)],
+            plain.Withheld);
+        Assert.Equal([@"\\?\" + Listed("ok.txt")], plain.Missing);
+        Assert.Empty(plain.Replacing);
+
+        var extended = CopyAcrossPlan.From(marks, @"\\?\" + Side("right"));
+
+        Assert.Empty(extended.Withheld);
+        Assert.Equal([@"\\?\" + Listed("ok.txt"), @"\\?\" + Listed("report ")], extended.Missing);
+        Assert.Equal([@"\\?\" + Listed("report.")], extended.Replacing);
+    }
+
     // ---- a clash, when the copy reaches it -----------------------------------
 
     [Fact]

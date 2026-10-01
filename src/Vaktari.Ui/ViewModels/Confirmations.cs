@@ -89,13 +89,22 @@ internal static class Confirmations
     {
         var holds = plan.Withheld.Where(w => w.Because == WithheldBecause.HoldsTheOtherSide).ToList();
         var unnamed = plan.Withheld.Where(w => w.Because == WithheldBecause.NameWindowsCannotOpen).ToList();
+        var untaken = plan.Withheld.Where(w => w.Because == WithheldBecause.NameTheOtherSideCannotTake).ToList();
 
-        var parts = new List<string>(2);
+        var parts = new List<string>(3);
 
         if (holds.Count > 0) parts.Add($"{Elide(NameOf(holds[0].Path))}, which holds the other side");
 
         if (unnamed.Count == 1) parts.Add($"\"{Elide(NameOf(unnamed[0].Path))}\", whose name Windows cannot open");
         else if (unnamed.Count > 1) parts.Add($"{unnamed.Count:N0} names Windows cannot open");
+
+        // **Said for what it is.** The name opens here — this side came
+        // through "\\?\" — so "Windows cannot open" would be untrue; it is the
+        // other side, opened by its ordinary name, that cannot hold it.
+        if (untaken.Count == 1)
+            parts.Add($"\"{Elide(NameOf(untaken[0].Path))}\", whose name the other side, opened by its ordinary name, cannot take");
+        else if (untaken.Count > 1)
+            parts.Add($"{untaken.Count:N0} names the other side, opened by its ordinary name, cannot take");
 
         return parts.Count == 0 ? null : "left out of the copy: " + string.Join("; ", parts);
     }

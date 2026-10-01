@@ -1,4 +1,5 @@
 using System.Diagnostics;
+using Vaktari.Core.FileSystem;
 
 namespace Vaktari.Core.Vcs;
 
@@ -113,6 +114,16 @@ public sealed class GitVersionControl : IVersionControl
     public async Task<VcsSnapshot?> StatusAsync(string folder, CancellationToken ct)
     {
         if (!IsAvailable) return null;
+
+        // **Never a folder git would read as its neighbour.** Git for Windows
+        // takes "\\?\" off what it is handed and opens the rest as a plain
+        // path — measured with 2.55: "-C \\?\…\r3 " beside a repository "r3"
+        // answered r3's status, and rev-parse named r3 as the top level. The
+        // repository root is the folder or one of its parents, so asking the
+        // folder asks every name on the way up. Git is another program handed
+        // the folder by name: the hand-off rule, and no decorations.
+        if (ReachablePath.RefuseHandedOut(folder) is not null) return null;
+
         if (FindRoot(folder) is not { } root) return null;
 
         // --porcelain=v1  a stable, documented format; the human one is not.
@@ -280,7 +291,13 @@ public sealed class GitVersionControl : IVersionControl
 
             var x = record[0];
             var y = record[1];
-            var relative = record[3..];
+
+            // **Git writes "/" between names on every platform**, and a root
+            // spelled "\\?\" is one GetFullPath leaves exactly as written — so
+            // in a pane opened that way "sub/" stayed "…\sub/", matched no row,
+            // and nothing under a folder was rolled up to it. No Windows name
+            // holds a "/", and on Linux this changes nothing.
+            var relative = record[3..].Replace('/', Path.DirectorySeparatorChar);
 
             // R and C carry their source path in the NEXT field. Consume it
             // here so the loop does not read it as a status record.

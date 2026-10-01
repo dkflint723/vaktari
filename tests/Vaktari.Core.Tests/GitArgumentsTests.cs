@@ -23,7 +23,12 @@ namespace Vaktari.Core.Tests;
 /// The quote case is Posix-only because Windows will not create such a name;
 /// the shape — a list, literal pathspecs first, the folder last and whole — is
 /// pinned on both.
+///
+/// In a collection with <see cref="GitExtendedPathTests"/>: both set the
+/// process-wide executable override, and this assembly runs classes in
+/// parallel.
 /// </summary>
+[Collection("git executable")]
 public sealed class GitArgumentsTests : IDisposable
 {
     private readonly string _root = Path.Combine(

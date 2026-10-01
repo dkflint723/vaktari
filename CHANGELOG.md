@@ -34,6 +34,20 @@ should not be trusted for compatibility yet.
   *Mount* and *Unmount* are not offered for an image in a folder whose name
   ends in a space or a dot.
 
+- **On Windows, *Copy what is newer or missing* from a side opened through
+  `\\?\` no longer fails whole over one name.** That side shows a name
+  ending in a space or a dot as itself, and copying it into a side opened by
+  its ordinary name was refused for the entire copy. Such a name is now left
+  out, as it already was from an ordinarily opened side, and the status line
+  says why: the other side, opened by its ordinary name, cannot take it.
+
+- **On Windows, git decorations work in a folder opened through `\\?\`.**
+  Folders there never showed a git mark, because git names them with a `/`
+  that the `\\?\` spelling kept. And a folder whose path has a name ending in
+  a space or a dot is no longer handed to git, which answered for the folder
+  beside it, so a row could show the state of the file of the same name
+  there; such a folder shows no git marks.
+
 ## [0.11.1] — 2026-09-30
 
 ### Added

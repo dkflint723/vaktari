@@ -12,6 +12,11 @@ public enum WithheldBecause
     /// <summary>Its name ends in a space or a dot, which Windows cannot open
     /// by name. See <see cref="ReachablePath"/>.</summary>
     NameWindowsCannotOpen,
+
+    /// <summary>Its name ends in a space or a dot and this side reaches it
+    /// through "\\?\", but the other side is opened by its ordinary name and
+    /// cannot hold it. See <see cref="ReachablePath.RefuseLanding"/>.</summary>
+    NameTheOtherSideCannotTake,
 }
 
 /// <summary>A marked row copying across leaves out, and why.</summary>
@@ -94,6 +99,15 @@ public sealed class CopyAcrossPlan
             // the whole copy as well. The rest can still go.
             else if (!ReachablePath.IsReachable(path))
                 withheld.Add(new Withheld(path, WithheldBecause.NameWindowsCannotOpen));
+
+            // **Nor one this side reaches and the other cannot hold.** A side
+            // opened through "\\?\" lists "report " as itself, so the rule
+            // above lets it through — and the engine then refuses the whole
+            // copy into a plainly spelled side, where it would land as
+            // "report" (0.11.1 path-safety check). Asked as the engine asks
+            // it: the destination joined with the name.
+            else if (ReachablePath.RefuseLanding(Path.Combine(destination, PathRules.LeafName(path))) is not null)
+                withheld.Add(new Withheld(path, WithheldBecause.NameTheOtherSideCannotTake));
 
             else if (mark == CompareMark.OnlyHere) missing.Add(path);
 
