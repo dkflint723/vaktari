@@ -120,4 +120,41 @@ public sealed class FolderReturnWatchEdgeTests : IDisposable
         Assert.Equal(1, told);
         Assert.Equal(0, fs.Live);
     }
+
+    /// <summary>
+    /// **Asked again, it watches the folder above afresh, though the path is
+    /// the same** (batch-0.11.2c QA, round 4: Recheck asking without force
+    /// left every test green). A drive mounted again over the folder watched
+    /// is a new folder at the same path, and the old watch is on the one the
+    /// mount now covers: it hears nothing made on the drive. The folder is
+    /// still not back, so nothing is said — but the watch is a new one, and
+    /// the old one is let go.
+    /// </summary>
+    [Fact]
+    public void Asked_again_with_nothing_back_it_watches_the_same_folder_afresh()
+    {
+        var target = Path.Combine(_root, "x");
+        var fs = new Provider();
+        var told = 0;
+
+        using var wait = new FolderReturnWatch(fs, target, () => told++);
+
+        var (first, _) = Assert.Single(fs.Given);
+        Assert.Equal(_root, first);
+
+        wait.Recheck();
+
+        Assert.Equal(0, told);
+        Assert.Equal(2, fs.Given.Count);
+        Assert.Equal(_root, fs.Given[1].Path);
+        Assert.Equal(1, fs.Live);
+        Assert.Equal(_root, wait.Watching);
+
+        // And the new watch is the one that hears the folder come back.
+        Directory.CreateDirectory(target);
+        fs.Given[1].Heard(new FileSystemChange(ChangeKind.Added, target));
+
+        Assert.Equal(1, told);
+        Assert.Equal(0, fs.Live);
+    }
 }
