@@ -121,6 +121,38 @@ public sealed class KdeThemeWatcherTests : IDisposable
     }
 
     /// <summary>
+    /// **A subscriber that throws keeps the change from nobody after it.**
+    /// Notify was a plain Invoke, so the throw left it at that handler and the
+    /// windows subscribed later never heard Plasma change. Counted on this
+    /// test's thread only, as the test above counts.
+    /// </summary>
+    [Fact]
+    public void A_subscriber_that_throws_does_not_keep_the_change_from_the_ones_after_it()
+    {
+        var provider = new KdeThemeProvider(_root);
+
+        var me = Environment.CurrentManagedThreadId;
+        var heard = 0;
+        EventHandler throws = (_, _) => throw new InvalidOperationException("a subscriber that throws");
+        EventHandler after = (_, _) => { if (Environment.CurrentManagedThreadId == me) Interlocked.Increment(ref heard); };
+
+        provider.Changed += throws;
+        provider.Changed += after;
+
+        try
+        {
+            KdeThemeProvider.Notify();
+
+            Assert.Equal(1, heard);
+        }
+        finally
+        {
+            provider.Changed -= throws;
+            provider.Changed -= after;
+        }
+    }
+
+    /// <summary>
     /// **The watcher a provider starts is the one that tells its
     /// subscribers** (batch-0.11.2b QA). Every other test here makes a
     /// watcher of its own through Watch, so the provider's constructor could

@@ -109,12 +109,14 @@ public sealed class ThemeWatcherTests
 
         var provider = new WindowsThemeProvider();
         provider.Changed += handler;
+        Thread? watcher = null;
 
         try
         {
             using (Registry.CurrentUser.CreateSubKey(subKey)) { }
 
-            WindowsThemeProvider.Watch(subKey);
+            watcher = WindowsThemeProvider.Watch(subKey);
+            Assert.NotNull(watcher);
 
             // The thread arms its wait a moment after it starts; a write
             // before that is not seen, so write until one is.
@@ -134,10 +136,120 @@ public sealed class ThemeWatcherTests
         finally
         {
             provider.Changed -= handler;
-            Registry.CurrentUser.DeleteSubKeyTree(subKey, throwOnMissingSubKey: false);
+            Forget(subKey, watcher);
+        }
+    }
 
+    /// <summary>
+    /// Deletes a key a test watched, and waits for its watcher to end: the
+    /// delete wakes the wait once or twice before it fails, and each wake
+    /// raises the process's event, which must not land in the next test.
+    /// </summary>
+    private static void Forget(string subKey, Thread? watcher)
+    {
+        Registry.CurrentUser.DeleteSubKeyTree(subKey, throwOnMissingSubKey: false);
+
+        try
+        {
+            Assert.True(watcher?.Join(TimeSpan.FromSeconds(15)) ?? true, "the watcher outlived its deleted key");
+        }
+        finally
+        {
             using var parent = Registry.CurrentUser.OpenSubKey(@"Software\Vaktari-tests", writable: true);
             if (parent is { SubKeyCount: 0, ValueCount: 0 }) Registry.CurrentUser.DeleteSubKey(@"Software\Vaktari-tests", throwOnMissingSubKey: false);
         }
+    }
+
+    /// <summary>
+    /// **A subscriber that throws keeps the change from nobody after it.**
+    /// Notify was a plain Invoke, so the throw left it at that handler: the
+    /// windows subscribed later never heard the change. Counted on this test's
+    /// thread only, as the test above counts.
+    /// </summary>
+    [WindowsFact]
+    public void A_subscriber_that_throws_does_not_keep_the_change_from_the_ones_after_it()
+    {
+        var provider = new WindowsThemeProvider();
+
+        var me = Environment.CurrentManagedThreadId;
+        var heard = 0;
+        EventHandler throws = (_, _) => throw new InvalidOperationException("a subscriber that throws");
+        EventHandler after = (_, _) => { if (Environment.CurrentManagedThreadId == me) Interlocked.Increment(ref heard); };
+
+        provider.Changed += throws;
+        provider.Changed += after;
+
+        try
+        {
+            WindowsThemeProvider.Notify();
+
+            Assert.Equal(1, heard);
+        }
+        finally
+        {
+            provider.Changed -= throws;
+            provider.Changed -= after;
+        }
+    }
+
+    /// <summary>
+    /// **A subscriber that throws does not end the watcher.** The throw used
+    /// to escape Notify into the watcher thread's catch, which swallowed it
+    /// and ended the thread, so the process stopped hearing that key for good.
+    /// Here the subscriber that hears comes first and the one that throws
+    /// after it, so the first change is heard either way; only a watcher still
+    /// running hears the second.
+    /// </summary>
+    [WindowsFact]
+    public void A_subscriber_that_throws_does_not_end_the_watcher()
+    {
+        var subKey = @"Software\Vaktari-tests\theme-" + Guid.NewGuid().ToString("N");
+        using var heard = new SemaphoreSlim(0);
+        EventHandler hears = (_, _) => heard.Release();
+        EventHandler throws = (_, _) => throw new InvalidOperationException("a subscriber that throws");
+
+        var provider = new WindowsThemeProvider();
+        provider.Changed += hears;
+        provider.Changed += throws;
+        Thread? watcher = null;
+
+        try
+        {
+            using (Registry.CurrentUser.CreateSubKey(subKey)) { }
+
+            watcher = WindowsThemeProvider.Watch(subKey);
+            Assert.NotNull(watcher);
+
+            Assert.True(WriteUntilHeard(subKey, heard, "first"), "the first change never reached the subscriber");
+
+            // Drained, so the second wake is the second change's own.
+            while (heard.Wait(TimeSpan.FromMilliseconds(300))) { }
+
+            Assert.True(WriteUntilHeard(subKey, heard, "second"), "the watcher stopped after a subscriber threw");
+            Assert.True(watcher.IsAlive, "the watcher stopped after a subscriber threw");
+        }
+        finally
+        {
+            provider.Changed -= hears;
+            provider.Changed -= throws;
+            Forget(subKey, watcher);
+        }
+    }
+
+    /// <summary>Writes the key until the watcher's raise is heard: it arms its
+    /// wait a moment after it starts, and again after each raise.</summary>
+    private static bool WriteUntilHeard(string subKey, SemaphoreSlim heard, string tag)
+    {
+        var deadline = DateTime.UtcNow + TimeSpan.FromSeconds(15);
+
+        for (var n = 0; DateTime.UtcNow < deadline; n++)
+        {
+            using (var key = Registry.CurrentUser.OpenSubKey(subKey, writable: true)!)
+                key.SetValue("n", $"{tag} {n}");
+
+            if (heard.Wait(TimeSpan.FromMilliseconds(200))) return true;
+        }
+
+        return false;
     }
 }

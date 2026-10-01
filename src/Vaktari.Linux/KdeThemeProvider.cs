@@ -106,9 +106,31 @@ public sealed class KdeThemeProvider : IThemeProvider
         return watcher;
     }
 
-    /// <summary>Tells every subscriber that kdeglobals changed — what the
-    /// watcher does when the file is written.</summary>
-    internal static void Notify() => Volatile.Read(ref _changed)?.Invoke(null, EventArgs.Empty);
+    /// <summary>
+    /// Tells every subscriber that kdeglobals changed — what the watcher does
+    /// when the file is written.
+    ///
+    /// **Each handler on its own, each throw swallowed on its own**, as
+    /// WindowsThemeProvider.Notify: with a plain Invoke, one subscriber's
+    /// exception skipped every handler after it, so a window could stop
+    /// following Plasma because another one had thrown.
+    /// </summary>
+    internal static void Notify()
+    {
+        if (Volatile.Read(ref _changed) is not { } changed) return;
+
+        foreach (var handler in changed.GetInvocationList())
+        {
+            try
+            {
+                ((EventHandler)handler)(null, EventArgs.Empty);
+            }
+            catch (Exception ex)
+            {
+                Quiet.Swallowed("theme", ex);
+            }
+        }
+    }
 
     public ThemePalette? Read()
     {

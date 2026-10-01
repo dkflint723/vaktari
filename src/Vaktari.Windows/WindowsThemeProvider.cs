@@ -103,9 +103,32 @@ public sealed class WindowsThemeProvider : IThemeProvider
         }
     }
 
-    /// <summary>Tells every subscriber that a key changed — what a watcher
-    /// thread does when its wait returns.</summary>
-    internal static void Notify() => Volatile.Read(ref _changed)?.Invoke(null, EventArgs.Empty);
+    /// <summary>
+    /// Tells every subscriber that a key changed — what a watcher thread does
+    /// when its wait returns.
+    ///
+    /// **Each handler on its own, each throw swallowed on its own.** A plain
+    /// Invoke let one subscriber's exception out of the watcher's loop: the
+    /// handlers after it never heard the change, and the watcher's catch
+    /// ended its thread for good, so the process stopped hearing that key
+    /// until it restarted.
+    /// </summary>
+    internal static void Notify()
+    {
+        if (Volatile.Read(ref _changed) is not { } changed) return;
+
+        foreach (var handler in changed.GetInvocationList())
+        {
+            try
+            {
+                ((EventHandler)handler)(null, EventArgs.Empty);
+            }
+            catch (Exception ex)
+            {
+                Quiet.Swallowed("theme", ex);
+            }
+        }
+    }
 
     public ThemePalette? Read()
     {
@@ -304,13 +327,18 @@ public sealed class WindowsThemeProvider : IThemeProvider
     /// Internal so a test can watch a key of its own, which it can change and
     /// delete — the three real ones are the user's settings. A deleted key
     /// ends the wait with an error, and the thread with it.
+    ///
+    /// Returns the thread, or null when the key cannot be opened, so such a
+    /// test can wait for it to end: deleting a watched key wakes the wait once
+    /// or twice before it fails, and each wake raises the process's event — a
+    /// raise that would otherwise land in whatever test runs next.
     /// </summary>
-    internal static void Watch(string subKey)
+    internal static Thread? Watch(string subKey)
     {
         if (Native.RegOpenKeyEx(
                 Native.HKEY_CURRENT_USER, subKey, 0, Native.KEY_READ, out var key)
             != Native.ERROR_SUCCESS)
-            return;
+            return null;
 
         var thread = new Thread(() =>
         {
@@ -343,5 +371,7 @@ public sealed class WindowsThemeProvider : IThemeProvider
 
         thread.Start();
         Interlocked.Increment(ref _watchersStarted);
+
+        return thread;
     }
 }
