@@ -59,8 +59,15 @@ public sealed class FolderWaitTests : OwnedViewModels
         public ValueTask<FileEntry?> GetEntryAsync(string path, CancellationToken ct)
             => ValueTask.FromResult<FileEntry?>(null);
 
+        /// <summary>While set, a watch asked for waits on <see cref="Gate"/> — a disk that does not answer.</summary>
+        public volatile bool Hold;
+
+        public readonly ManualResetEventSlim Gate = new();
+
         public IDisposable Watch(string path, Action<FileSystemChange> onChange)
         {
+            if (Hold) Gate.Wait();
+
             if (!Directory.Exists(path)) throw new DirectoryNotFoundException(path);
 
             var entry = (path, onChange);
@@ -227,5 +234,35 @@ public sealed class FolderWaitTests : OwnedViewModels
         Assert.False(pane.HasLoadError);
 
         lock (fs.Listed) Assert.Equal(listedBefore, fs.Listed.Count(p => p == missing));
+    }
+
+    /// <summary>
+    /// **The places list is never made to wait on the disk** (batch-0.11.2e QA,
+    /// round 8: asking again on the places list's own thread left every test
+    /// green). The places list says it changed from its own thread — the
+    /// device watch's — and the pane asks the wait again; that ask watches the
+    /// folder above afresh, and here the watch is held, as a share that does
+    /// not answer holds it. Saying the places changed must still return at
+    /// once.
+    /// </summary>
+    [AvaloniaFact]
+    public async Task A_change_to_the_places_does_not_wait_on_the_disk()
+    {
+        var (_, fs, places, _) = await Waiting();
+
+        fs.Hold = true;
+        var saying = new Thread(places.Changed) { IsBackground = true };
+
+        try
+        {
+            saying.Start();
+            Assert.True(saying.Join(TimeSpan.FromSeconds(5)), "saying the places changed waited for the held watch");
+        }
+        finally
+        {
+            fs.Gate.Set();
+            fs.Hold = false;
+            saying.Join(Ceiling);
+        }
     }
 }
