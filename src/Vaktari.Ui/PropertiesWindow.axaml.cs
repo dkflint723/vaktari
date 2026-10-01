@@ -8,6 +8,7 @@ public partial class PropertiesWindow : Window
     public PropertiesWindow()
     {
         InitializeComponent();
+        ClosedWindow.LetGo(this);
         AppIcon.Apply(this);
     }
 

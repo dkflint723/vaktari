@@ -8,6 +8,7 @@ public partial class ConnectionWindow : Window
     public ConnectionWindow()
     {
         InitializeComponent();
+        ClosedWindow.LetGo(this);
         AppIcon.Apply(this);
     }
 

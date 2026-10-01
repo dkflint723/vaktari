@@ -16,6 +16,7 @@ public partial class RunFileWindow : Window
     public RunFileWindow()
     {
         InitializeComponent();
+        ClosedWindow.LetGo(this);
         AppIcon.Apply(this);
     }
 

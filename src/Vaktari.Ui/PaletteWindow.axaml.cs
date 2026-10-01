@@ -17,6 +17,7 @@ public partial class PaletteWindow : Window
     public PaletteWindow()
     {
         InitializeComponent();
+        ClosedWindow.LetGo(this);
         AppIcon.Apply(this);
 
         Refresh("");

@@ -8,6 +8,7 @@ public partial class ShareWindow : Window
     public ShareWindow()
     {
         InitializeComponent();
+        ClosedWindow.LetGo(this);
         AppIcon.Apply(this);
     }
 

@@ -8,6 +8,7 @@ public partial class ChooseApplicationWindow : Window
     public ChooseApplicationWindow()
     {
         InitializeComponent();
+        ClosedWindow.LetGo(this);
         AppIcon.Apply(this);
 
         // **The filter is the whole point of this window**, and it opens on a

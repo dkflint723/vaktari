@@ -8,6 +8,7 @@ public partial class ConflictWindow : Window
     public ConflictWindow()
     {
         InitializeComponent();
+        ClosedWindow.LetGo(this);
         AppIcon.Apply(this);
     }
 

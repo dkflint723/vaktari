@@ -17,6 +17,7 @@ public partial class TourWindow : Window
     public TourWindow()
     {
         InitializeComponent();
+        ClosedWindow.LetGo(this);
         AppIcon.Apply(this);
 
         Show(0);

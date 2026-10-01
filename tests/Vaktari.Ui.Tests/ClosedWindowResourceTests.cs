@@ -90,4 +90,58 @@ public sealed class ClosedWindowResourceTests : OwnedViewModels
             GC.KeepAlive(kept);
         }
     }
+
+    /// <summary>Every other window the application opens, by type name: each
+    /// lets go of its tree the same way (ClosedWindow.LetGo).</summary>
+    public static TheoryData<string> Dialogs =>
+    [
+        "BatchRenameWindow", "ChooseApplicationWindow", "ConflictWindow", "ConnectionWindow",
+        "PaletteWindow", "PropertiesWindow", "RunFileWindow", "SettingsWindow", "ShareWindow",
+        "ShortcutsWindow", "TourWindow",
+    ];
+
+    /// <summary>
+    /// The same for every other window, built bare — the markup is the tree,
+    /// whatever its view model would fill in. Kept after closing, as a window
+    /// waiting for the collector is.
+    /// </summary>
+    [AvaloniaTheory]
+    [MemberData(nameof(Dialogs))]
+    public void A_closed_dialog_hears_no_change_to_the_applications_resources(string name)
+    {
+        var type = typeof(MainWindow).Assembly.GetType("Vaktari.Ui." + name)!;
+        var window = (Window)Activator.CreateInstance(type)!;
+        var told = 0;
+
+        try
+        {
+            window.Show();
+            Dispatcher.UIThread.RunJobs();
+
+            // The window's own content: what a closed window would otherwise
+            // keep. Its template's border and presenter are not the cost.
+            var inside = Assert.IsAssignableFrom<StyledElement>(window.Content);
+            inside.ResourcesChanged += (_, _) => told++;
+
+            Application.Current!.Resources["ClosedWindowProbe"] = new SolidColorBrush(Colors.Red);
+            Dispatcher.UIThread.RunJobs();
+            Assert.True(told > 0, "an open window's content did not hear a resource change");
+
+            window.Close();
+            Dispatcher.UIThread.RunJobs();
+
+            told = 0;
+
+            Application.Current!.Resources["ClosedWindowProbe"] = new SolidColorBrush(Colors.Blue);
+            Dispatcher.UIThread.RunJobs();
+
+            Assert.Equal(0, told);
+        }
+        finally
+        {
+            Application.Current!.Resources.Remove("ClosedWindowProbe");
+            if (window.IsVisible) window.Close();
+            GC.KeepAlive(window);
+        }
+    }
 }

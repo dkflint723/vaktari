@@ -8,6 +8,7 @@ public partial class BatchRenameWindow : Window
     public BatchRenameWindow()
     {
         InitializeComponent();
+        ClosedWindow.LetGo(this);
         AppIcon.Apply(this);
     }
 

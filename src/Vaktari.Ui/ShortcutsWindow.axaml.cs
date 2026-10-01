@@ -9,6 +9,7 @@ public partial class ShortcutsWindow : Window
     public ShortcutsWindow()
     {
         InitializeComponent();
+        ClosedWindow.LetGo(this);
         AppIcon.Apply(this);
 
         // The list itself rather than a view model.

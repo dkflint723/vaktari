@@ -13,6 +13,7 @@ public partial class SettingsWindow : Window
     public SettingsWindow()
     {
         InitializeComponent();
+        ClosedWindow.LetGo(this);
         AppIcon.Apply(this);
 
         // **While a row on the Keyboard page listens, every key is the key.**
