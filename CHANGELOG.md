@@ -31,18 +31,19 @@ should not be trusted for compatibility yet.
   This also works when the folders above it are deleted and made again all
   at once — on a network share too — and for a folder typed with its 8.3
   short name (`TARGET~1`). Whatever else happens, the pane also checks
-  again every 30 seconds, so a share that answers again, a folder above it
-  that you can read again, or a drive mounted again over it is picked up
-  within half a minute. Closing that tab or window, or going somewhere
-  else, no longer waits on a server that does not answer, and tabs waiting
-  on one no longer slow down Vaktari's other background work; they check
-  less often, about once a minute, while it does not answer. They also
-  check again as soon as Windows or Linux reports that this computer's
-  network addresses have changed — as they do when a VPN connects or Wi-Fi
-  comes back — and once more a couple of seconds later if the change came
-  as several reports, rather than waiting for their next check. A server
-  that comes back without any change on this computer's side is still
-  picked up by that next check.
+  again every 30 seconds, so a folder above it that you can read again, or
+  a drive mounted again over it, is picked up within half a minute. While a
+  share does not answer, a tab waiting on it checks less often, about once
+  a minute, so a share that answers again is picked up within about a
+  minute. Closing that tab or window, or going somewhere else, never waits
+  on a server that does not answer, and tabs waiting on one do not slow
+  down Vaktari's other background work. A waiting tab also checks again as
+  soon as Windows or Linux reports that this computer's network addresses
+  have changed — as they do when a VPN connects or Wi-Fi comes back — and
+  once more a couple of seconds later if the change came as several
+  reports, rather than waiting for its next check. A server that comes back
+  with nothing changed on this computer's side is still picked up by that
+  next check.
 
 - **Closing the last window while a folder was still being shared no
   longer starts its server afterwards.** Closing the last window stops
@@ -114,8 +115,8 @@ should not be trusted for compatibility yet.
   that spelling, with a line saying to open the folder by its ordinary name —
   not with the sentence about a volume's device name.
 
-- **On Linux, the bin page no longer says that everything deleted from
-  another drive is outside the sweep.** When a drive's own trash cannot be
+- **On Linux, the *Trash* page of Settings no longer says that everything
+  deleted from another drive is outside the sweep.** When a drive's own trash cannot be
   used, what is deleted from it goes to the trash in your home folder, and
   the sweep covers it there; the tooltip on the page's note now says so.
 
