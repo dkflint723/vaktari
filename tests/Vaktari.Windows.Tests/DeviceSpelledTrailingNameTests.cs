@@ -154,9 +154,16 @@ public sealed class DeviceSpelledTrailingNameTests : IDisposable
 
         Assert.Null(ReachablePath.Refuse(path));
 
-        await Settled(_ops.Trash([path]));
+        // **Except the bin**, which is the shell: its parser refuses every
+        // device spelling (measured, 124), and the ordinary spelling of this
+        // name is "report". So it is refused by name and never reaches the
+        // recycler — see TrashExtendedSpellingTests.
+        var trash = await Settled(_ops.Trash([path]));
 
-        Assert.Equal([path], _asked);
+        Assert.Equal(OperationState.Failed, trash.State);
+        Assert.Contains("cannot be handed to another program", trash.Error?.Message, StringComparison.Ordinal);
+        Assert.Empty(_asked);
+        Assert.Equal(Contents, Files(_root));
 
         var copy = await Settled(_ops.Copy([path], Extended(_into), _ => ValueTask.FromResult(ConflictResolution.Skip)));
 

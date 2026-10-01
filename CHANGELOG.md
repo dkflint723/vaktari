@@ -48,6 +48,15 @@ should not be trusted for compatibility yet.
   beside it, so a row could show the state of the file of the same name
   there; such a folder shows no git marks.
 
+- **On Windows, *Delete* to the Recycle Bin works in a folder opened through
+  `\\?\`.** The Windows shell, which does the binning, refuses any path
+  spelled `\\?\` (or `\??\` or `\\.\`), so every such delete failed with the
+  shell's error and nothing moved. It is now handed the ordinary spelling of
+  the same file. A name ending in a space or a dot has no ordinary spelling
+  that reaches it — the bin would take the file beside it — so it is refused
+  with a sentence saying so, as is a file named through a volume's
+  `\\?\Volume{…}` path.
+
 ## [0.11.1] — 2026-09-30
 
 ### Added

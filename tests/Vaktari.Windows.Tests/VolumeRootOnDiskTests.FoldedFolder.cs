@@ -79,7 +79,9 @@ public sealed partial class VolumeRootOnDiskTests
 
             await Settled(ops.Trash([path]));
 
-            Assert.Equal([folded], asked.Select(Path.GetFullPath));
+            // By x's ordinary spelling: the shell's parser refuses every
+            // device spelling, "\\.\" included (TrashExtendedSpellingTests).
+            Assert.Equal([folded[4..]], asked);
             Assert.True(File.Exists(marker));
 
             var delete = await Settled(ops.Delete([path]));

@@ -223,6 +223,57 @@ public sealed class WindowsFileOperations : IFileOperations
     /// folder. See the call in <see cref="Trash(IReadOnlyList{string}, bool)"/>.</summary>
     internal static string? Unrecyclable(IReadOnlyList<string> full) => VolumeRoots.RefuseNotFull(full);
 
+    /// <summary>The sentence for a path the shell can be handed by no
+    /// spelling it parses — see <see cref="ForTheShell"/>.</summary>
+    internal const string NoShellSpelling =
+        "the Recycle Bin cannot be reached through a volume's device name — open the folder by its drive letter or its share";
+
+    /// <summary>
+    /// The spelling of a full path that SHFileOperation will parse, or why
+    /// there is none.
+    ///
+    /// **The shell refuses every device spelling, before it looks at the
+    /// file.** Measured (batch-0.11.2 notes, shfileop-probe), with
+    /// FO_DELETE and no FOF_ALLOWUNDO on the probe's own temporary files, so
+    /// no bin was involved: a plain "C:\…\plain.txt" went, and the same kind
+    /// of file spelled "\\?\C:\…", "\??\C:\…" or "\\.\C:\…" was answered
+    /// 124 (DE_INVALIDFILES) and left where it was. So a delete from a pane
+    /// opened through "\\?\" failed with the shell's number — every time.
+    ///
+    /// **So a drive or a share goes by its ordinary spelling — when that
+    /// reaches the same entry.** "\\?\C:\x\a.txt" is "C:\x\a.txt", and
+    /// "\\?\UNC\server\share\a.txt" is "\\server\share\a.txt"; a "\\.\" path
+    /// has already been folded by GetFullPath the way Win32 folds it. But
+    /// "\\?\…\report " reaches "report " only through the prefix: its plain
+    /// spelling is "report", the file beside it, which is what the bin would
+    /// take — so it is refused, by the hand-off rule, in its sentence. A
+    /// volume named by its GUID has no plain spelling at all, and is refused
+    /// with <see cref="NoShellSpelling"/>. Anything else — a plain path — is
+    /// handed on as it is.
+    /// </summary>
+    internal static (string? Spelling, string? Refusal) ForTheShell(string full)
+    {
+        string? plain =
+            full.StartsWith(@"\\?\UNC\", StringComparison.OrdinalIgnoreCase)
+            || full.StartsWith(@"\??\UNC\", StringComparison.OrdinalIgnoreCase) ? @"\\" + full[8..]
+            : full.StartsWith(@"\\?\", StringComparison.Ordinal)
+              || full.StartsWith(@"\??\", StringComparison.Ordinal)
+              || full.StartsWith(@"\\.\", StringComparison.Ordinal) ? full[4..]
+            : null;
+
+        if (plain is null) return (full, null);
+
+        var drive = plain.Length >= 2 && char.IsAsciiLetter(plain[0]) && plain[1] == ':'
+                    && (plain.Length == 2 || plain[2] == '\\');
+        var share = plain.StartsWith(@"\\", StringComparison.Ordinal) && plain.Length > 2 && plain[2] is not ('.' or '?');
+
+        if (!drive && !share) return (null, NoShellSpelling);
+
+        if (ReachablePath.RefuseHandedOut(full) is { } folded) return (null, folded);
+
+        return (plain, null);
+    }
+
     /// <summary>
     /// The bin, for an undo taking back what it put somewhere: nothing is
     /// recorded, because this is not a delete the person asked for.
@@ -287,7 +338,22 @@ public sealed class WindowsFileOperations : IFileOperations
                         return;
                     }
 
-                var full = paths.Select(Path.GetFullPath).ToList();
+                // **And never a device spelling: the shell's parser refuses
+                // every one.** See ForTheShell.
+                var full = new List<string>(paths.Count);
+
+                foreach (var path in paths)
+                {
+                    var (spelling, refusal) = ForTheShell(Path.GetFullPath(path));
+
+                    if (refusal is not null)
+                    {
+                        handle.Failed(new IOException(refusal));
+                        return;
+                    }
+
+                    full.Add(spelling!);
+                }
 
                 // **Never a NUL, and never a path that is not full, to the
                 // shell.** Its list is NUL-separated and ends in two, so
