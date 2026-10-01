@@ -130,6 +130,29 @@ public sealed class ConfirmationCopyTests
                  new Withheld("/home/me/b.", WithheldBecause.NameTheOtherSideCannotTake)])));
     }
 
+    /// <summary>
+    /// **A folder left out over a name inside it says which name.** Its own
+    /// name looks perfectly ordinary, so the line names the one further down,
+    /// by its path below the folder; and counted with others, they are items
+    /// holding such names rather than names.
+    /// </summary>
+    [Fact]
+    public void A_folder_left_out_over_a_name_inside_it_names_that_name()
+    {
+        Assert.Equal("left out of the copy: docs, which holds \"a/report \", whose name the other side, opened by its ordinary name, cannot take",
+            Confirmations.LeftOut(new CopyAcrossPlan("/x", [], [],
+                [new Withheld("/home/me/docs", WithheldBecause.NameTheOtherSideCannotTake, "a/report ")])));
+
+        Assert.Equal("left out of the copy: docs, which holds \"report.\", whose name Windows cannot open",
+            Confirmations.LeftOut(new CopyAcrossPlan("/x", [], [],
+                [new Withheld("/home/me/docs", WithheldBecause.NameWindowsCannotOpen, "report.")])));
+
+        Assert.Equal("left out of the copy: 2 items holding names Windows cannot open",
+            Confirmations.LeftOut(new CopyAcrossPlan("/x", [], [],
+                [new Withheld("/home/me/a ", WithheldBecause.NameWindowsCannotOpen),
+                 new Withheld("/home/me/docs", WithheldBecause.NameWindowsCannotOpen, "b.")])));
+    }
+
     [Fact]
     public void One_file_is_named_rather_than_counted()
     {

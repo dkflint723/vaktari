@@ -805,6 +805,53 @@ public sealed class CompareSidesTests : OwnedViewModels
         Assert.True(File.Exists(Path.Combine(inner, "a.txt")));
     }
 
+    /// <summary>
+    /// **A marked folder holding a name the copy would refuse is left out
+    /// before the prompt, and the rest goes.** The plan asked only each row's
+    /// own name while the engine asks every item down a folder, so "report "
+    /// inside "docs" stopped the WHOLE copy — the file beside the folder too
+    /// — and the person heard only afterwards (batch-0.11.2 QA). Asked of a
+    /// folder off the window's thread, so the prompt comes a moment later;
+    /// the status line names the folder and the name inside it.
+    /// </summary>
+    [AvaloniaFact(Skip = OnlyOn.Windows, SkipUnless = nameof(OnlyOn.IsWindows), SkipType = typeof(OnlyOn))]
+    public async Task A_folder_holding_a_name_the_copy_would_refuse_is_left_out_and_the_rest_goes()
+    {
+        var left = Folder("left");
+        var right = Folder("right");
+        var nested = @"\\?\" + Path.Combine(left, "docs", "report ");
+
+        Directory.CreateDirectory(Path.Combine(left, "docs"));
+        File.WriteAllText(nested, "nested");
+        Write(left, "plain.txt", "plain", Noon);
+
+        try
+        {
+            var shell = await Split(left, right, 2, 0);
+            var window = _windows[^1];
+
+            shell.ToggleCompareCommand.Execute(null);
+            AskToCopyAcrossFromTheLeft(shell);
+
+            await Until(() => Asking(window));
+
+            Assert.True(Asking(window), "the prompt did not open");
+            Assert.StartsWith("copy plain.txt to ", window.FindControl<TextBlock>("PromptLabel")!.Text);
+            Assert.Equal("left out of the copy: docs, which holds \"report \", whose name Windows cannot open",
+                         shell.Left.ActiveTab!.Status);
+
+            await AnswerYesAndWait(window, shell.Right!.ActiveTab!, "plain.txt");
+
+            Assert.Equal("plain", File.ReadAllText(Path.Combine(right, "plain.txt")));
+            Assert.False(Directory.Exists(Path.Combine(right, "docs")), "the folder left out was copied anyway");
+        }
+        finally
+        {
+            // The plain spelling the class's own clean-up uses cannot reach it.
+            File.Delete(nested);
+        }
+    }
+
     /// <summary>A filter narrows what is copied as it narrows what is seen.</summary>
     [AvaloniaFact]
     public async Task Copying_across_takes_only_the_rows_the_filter_shows()

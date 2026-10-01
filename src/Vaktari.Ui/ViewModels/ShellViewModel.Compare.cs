@@ -207,8 +207,8 @@ public sealed partial class ShellViewModel
     /// "nothing here is newer" about two sides nobody had compared would
     /// answer a question that was never worked out.
     /// </summary>
-    [RelayCommand]
-    private void RequestCopyAcross()
+    [RelayCommand(AllowConcurrentExecutions = true)]
+    private async Task RequestCopyAcrossAsync()
     {
         if (ActiveTab is not { } pane) return;
 
@@ -228,7 +228,59 @@ public sealed partial class ShellViewModel
 
         IsComparing = true;
 
-        var plan = CopyAcrossPlan.From(Shown(pane), other.CurrentPath);
+        var marks = Shown(pane);
+        var from = pane.CurrentPath;
+        var destination = other.CurrentPath;
+
+        // **A marked folder is looked inside before it is offered**, as the
+        // engine will look, and off this thread: the walk reads the folder to
+        // its last item. Only a folder, and only where a name inside could be
+        // refused (CopyAcrossPlan.MustLookInside); anything else is planned
+        // here and now, as before. Asked again, or the window closed, the
+        // walk under way is called off.
+        var looks = pane.Entries.Any(e => e.IsDirectory
+                                          && marks.ContainsKey(e.FullPath)
+                                          && CopyAcrossPlan.MustLookInside(e.FullPath, destination));
+
+        CopyAcrossPlan plan;
+
+        if (!looks)
+        {
+            plan = CopyAcrossPlan.From(marks, destination);
+        }
+        else
+        {
+            _copyAcrossLooking?.Cancel();
+
+            using var looking = new CancellationTokenSource();
+            _copyAcrossLooking = looking;
+
+            pane.Status = "looking inside the folders to copy…";
+
+            try
+            {
+                plan = await Task.Run(() => CopyAcrossPlan.From(marks, destination, looking.Token), looking.Token);
+            }
+            catch (OperationCanceledException)
+            {
+                return;
+            }
+            finally
+            {
+                if (ReferenceEquals(_copyAcrossLooking, looking)) _copyAcrossLooking = null;
+            }
+
+            // **The sides as they were asked about, or nothing.** The walk
+            // took a moment, and a side that has moved since would get a
+            // prompt about folders it no longer shows.
+            if (!ReferenceEquals(ActiveTab, pane) || pane.CurrentPath != from
+                || !ReferenceEquals(OtherGroup?.ActiveTab, other) || other.CurrentPath != destination)
+            {
+                if (pane.Status == "looking inside the folders to copy…") pane.Status = "";
+                return;
+            }
+        }
+
         var leftOut = Confirmations.LeftOut(plan);
 
         if (plan.Count == 0)
@@ -239,9 +291,19 @@ public sealed partial class ShellViewModel
 
         // Said while the prompt is up, beside the question it qualifies.
         if (leftOut is not null) pane.Status = leftOut;
+        else if (looks) pane.Status = "";
 
         CopyAcrossRequested?.Invoke(this, plan);
     }
+
+    /// <summary>The walk inside the marked folders under way, if any: see
+    /// <see cref="RequestCopyAcrossAsync"/>. Called off by the next request
+    /// and by <see cref="Dispose"/>.</summary>
+    private CancellationTokenSource? _copyAcrossLooking;
+
+    /// <summary>Calls off a walk inside marked folders, for a shell that is
+    /// going away.</summary>
+    private void StopLookingAcross() => _copyAcrossLooking?.Cancel();
 
     /// <summary>
     /// The marks on the rows the listing shows. **A filter narrows what is

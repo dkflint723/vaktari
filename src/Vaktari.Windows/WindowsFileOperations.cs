@@ -253,9 +253,17 @@ public sealed class WindowsFileOperations : IFileOperations
     /// </summary>
     internal static (string? Spelling, string? Refusal) ForTheShell(string full)
     {
+        // **Every device spelling of a share is the share**: "\\.\UNC\" as
+        // well as "\\?\UNC\" and "\??\UNC\". Read as any other "\\.\" path it
+        // came out "UNC\server\…", neither a drive nor a share, and the bin
+        // refused it with the sentence about a volume's device name — the
+        // wrong reason, for a path the shell takes as "\\server\…"
+        // (batch-0.11.2 QA, probe-for-the-shell). Whether that plain spelling
+        // reaches the same entry is still asked below, of every one.
         string? plain =
             full.StartsWith(@"\\?\UNC\", StringComparison.OrdinalIgnoreCase)
-            || full.StartsWith(@"\??\UNC\", StringComparison.OrdinalIgnoreCase) ? @"\\" + full[8..]
+            || full.StartsWith(@"\??\UNC\", StringComparison.OrdinalIgnoreCase)
+            || full.StartsWith(@"\\.\UNC\", StringComparison.OrdinalIgnoreCase) ? @"\\" + full[8..]
             : full.StartsWith(@"\\?\", StringComparison.Ordinal)
               || full.StartsWith(@"\??\", StringComparison.Ordinal)
               || full.StartsWith(@"\\.\", StringComparison.Ordinal) ? full[4..]

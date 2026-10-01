@@ -95,19 +95,35 @@ internal static class Confirmations
 
         if (holds.Count > 0) parts.Add($"{Elide(NameOf(holds[0].Path))}, which holds the other side");
 
-        if (unnamed.Count == 1) parts.Add($"\"{Elide(NameOf(unnamed[0].Path))}\", whose name Windows cannot open");
-        else if (unnamed.Count > 1) parts.Add($"{unnamed.Count:N0} names Windows cannot open");
+        // **A folder left out over a name inside it says which name.** Its
+        // own name looks perfectly ordinary, so without the one further down
+        // nobody could tell why it stayed.
+        if (unnamed.Count == 1) parts.Add($"{Which(unnamed[0])}, whose name Windows cannot open");
+        else if (unnamed.Count > 1) parts.Add($"{unnamed.Count:N0} {Names(unnamed)} Windows cannot open");
 
         // **Said for what it is.** The name opens here — this side came
         // through "\\?\" — so "Windows cannot open" would be untrue; it is the
         // other side, opened by its ordinary name, that cannot hold it.
         if (untaken.Count == 1)
-            parts.Add($"\"{Elide(NameOf(untaken[0].Path))}\", whose name the other side, opened by its ordinary name, cannot take");
+            parts.Add($"{Which(untaken[0])}, whose name the other side, opened by its ordinary name, cannot take");
         else if (untaken.Count > 1)
-            parts.Add($"{untaken.Count:N0} names the other side, opened by its ordinary name, cannot take");
+            parts.Add($"{untaken.Count:N0} {Names(untaken)} the other side, opened by its ordinary name, cannot take");
 
         return parts.Count == 0 ? null : "left out of the copy: " + string.Join("; ", parts);
     }
+
+    /// <summary>The row left out, by name — and for a folder left out over
+    /// a name inside it, that name too, by its path below the folder.</summary>
+    private static string Which(Withheld row)
+        => row.Inside is { } inside
+            ? $"{Elide(NameOf(row.Path))}, which holds \"{Elide(inside)}\""
+            : $"\"{Elide(NameOf(row.Path))}\"";
+
+    /// <summary>What several rows left out for one reason are counted as:
+    /// names, or items when a folder among them is left out over a name
+    /// inside it.</summary>
+    private static string Names(List<Withheld> rows)
+        => rows.Any(r => r.Inside is not null) ? "items holding names" : "names";
 
     /// <summary>What is being acted on: the one thing by name, or how many.</summary>
     internal static string Subject(int count, string? only)

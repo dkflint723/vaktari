@@ -10,43 +10,122 @@ namespace Vaktari.Linux;
 /// a plain INI, it is what every KDE application ultimately reads, and it means
 /// no extra dependency and nothing to keep in step with a Plasma version.
 /// </summary>
-public sealed class KdeThemeProvider : IThemeProvider, IDisposable
+public sealed class KdeThemeProvider : IThemeProvider
 {
     private readonly string _path;
-    private readonly FileSystemWatcher? _watcher;
 
-    public KdeThemeProvider()
+    /// <summary>
+    /// **One watcher for the whole process, shared by every window** — the
+    /// shape WindowsThemeProvider took for its registry threads. Each provider
+    /// made a FileSystemWatcher of its own, which on Linux is one inotify
+    /// instance, and nothing disposed it: LinuxPlatform builds a provider per
+    /// window that builds its own services. Measured (batch-0.11.2 QA, item G),
+    /// thirty windows opened and closed with a config folder present took a
+    /// test process from 0 inotify instances to 30, every closed window's
+    /// watcher still raising — against a per-user ceiling of 128 that a full
+    /// Ui run already comes within seven of. The application builds one such
+    /// window, so a user never met it; the test suite builds hundreds.
+    ///
+    /// The file is the user's, not the window's, so one watcher answers for
+    /// every window. Started by the first provider that finds the config
+    /// folder, under the lock — and tried again by the next one while none
+    /// has, as each provider used to — and kept for the life of the process.
+    /// <see cref="Changed"/> is the shared event: subscribing through any
+    /// provider is subscribing to the one watcher, and a window that closes
+    /// takes its handler back off it (MainWindow.OnClosed), so the static
+    /// event holds no window that has gone.
+    /// </summary>
+    private static readonly Lock Gate = new();
+
+    private static EventHandler? _changed;
+
+    private static FileSystemWatcher? _watcher;
+
+    private static int _watchersStarted;
+
+    /// <summary>How many watchers this process has started: one, however many
+    /// providers are made. For the tests.</summary>
+    internal static int WatchersStarted => Volatile.Read(ref _watchersStarted);
+
+    /// <summary>Raised on a watcher thread when kdeglobals is written, for
+    /// every subscriber of every provider.</summary>
+    public event EventHandler? Changed
+    {
+        add { lock (Gate) _changed += value; }
+        remove { lock (Gate) _changed -= value; }
+    }
+
+    public KdeThemeProvider() : this(ConfigHome())
+    {
+    }
+
+    /// <summary>A provider reading kdeglobals in <paramref name="configHome"/>
+    /// rather than the session's own config folder. For the tests.</summary>
+    internal KdeThemeProvider(string configHome)
+    {
+        _path = Path.Combine(configHome, "kdeglobals");
+
+        lock (Gate)
+        {
+            if (_watcher is not null) return;
+
+            _watcher = Watch(configHome);
+        }
+    }
+
+    private static string ConfigHome()
     {
         var configHome = Environment.GetEnvironmentVariable("XDG_CONFIG_HOME");
-        if (string.IsNullOrWhiteSpace(configHome))
-            configHome = Path.Combine(
-                Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), ".config");
 
-        _path = Path.Combine(configHome, "kdeglobals");
+        return string.IsNullOrWhiteSpace(configHome)
+            ? Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), ".config")
+            : configHome;
+    }
+
+    /// <summary>
+    /// A watcher on kdeglobals in <paramref name="directory"/> that tells every
+    /// subscriber when it is written, or null when the folder is not there or
+    /// cannot be watched. Internal and static so a test can watch a folder of
+    /// its own, and dispose of the watcher after; the process's own is made
+    /// once, by the first provider.
+    /// </summary>
+    internal static FileSystemWatcher? Watch(string directory)
+    {
+        FileSystemWatcher? watcher = null;
 
         try
         {
-            var directory = Path.GetDirectoryName(_path);
-            if (directory is null || !Directory.Exists(directory)) return;
+            if (!Directory.Exists(directory)) return null;
 
-            _watcher = new FileSystemWatcher(directory, "kdeglobals")
+            watcher = new FileSystemWatcher(directory, "kdeglobals")
             {
                 NotifyFilter = NotifyFilters.LastWrite | NotifyFilters.FileName,
-                EnableRaisingEvents = true,
             };
 
             // Plasma rewrites the file on every scheme change, so this is how a
             // theme switch reaches a running application without polling.
-            _watcher.Changed += (_, _) => Changed?.Invoke(this, EventArgs.Empty);
-            _watcher.Created += (_, _) => Changed?.Invoke(this, EventArgs.Empty);
+            watcher.Changed += (_, _) => Notify();
+            watcher.Created += (_, _) => Notify();
+            watcher.EnableRaisingEvents = true;
+
+            Interlocked.Increment(ref _watchersStarted);
+
+            return watcher;
         }
-        catch
+        catch (Exception ex)
         {
-            // No watcher is survivable; the theme just won't follow live changes.
+            // No watcher is survivable; the theme just won't follow live
+            // changes. One that could not start — the inotify ceiling — is
+            // let go rather than kept.
+            watcher?.Dispose();
+            Quiet.Swallowed("theme", ex);
+            return null;
         }
     }
 
-    public event EventHandler? Changed;
+    /// <summary>Tells every subscriber that kdeglobals changed — what the
+    /// watcher does when the file is written.</summary>
+    internal static void Notify() => Volatile.Read(ref _changed)?.Invoke(null, EventArgs.Empty);
 
     public ThemePalette? Read()
     {
@@ -187,6 +266,4 @@ public sealed class KdeThemeProvider : IThemeProvider, IDisposable
 
         return result;
     }
-
-    public void Dispose() => _watcher?.Dispose();
 }

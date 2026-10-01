@@ -41,8 +41,12 @@ should not be trusted for compatibility yet.
   side opened by its ordinary name was refused for the entire copy. Such a
   name is now left out, as it already was from an ordinarily opened side, and
   the status line says why: the other side, opened by its ordinary name,
-  cannot take it. A marked folder that holds such a name further down still
-  stops the whole copy, with a line naming it.
+  cannot take it. A marked folder that holds such a name anywhere further
+  down is now left out too, before you are asked, and the status line names
+  the folder and the name inside it; everything else marked is still
+  copied. Until now such a folder stopped the whole copy, the files beside
+  it included, and said so only afterwards. The same goes for a folder in an
+  ordinarily opened side that holds a name Windows cannot open.
 
 - **On Windows, git marks folders in a folder opened through `\\?\`.** Only
   files there were marked: git writes a folder as `sub/`, and in a `\\?\`
@@ -56,10 +60,13 @@ should not be trusted for compatibility yet.
   `\\?\`.** The Windows shell, which does the binning, refuses any path
   spelled `\\?\` (or `\??\` or `\\.\`), so every such move failed with the
   shell's error and nothing went. It is now handed the ordinary spelling of
-  the same file. A name ending in a space or a dot has no ordinary spelling
-  that reaches it — the bin would take the file beside it — so it is refused
-  with a sentence saying so, as is a file named through a volume's
-  `\\?\Volume{…}` path.
+  the same file, and a share spelled `\\?\UNC\…` as `\\server\share\…`. A
+  name ending in a space or a dot has no ordinary spelling that reaches it —
+  the bin would take the file beside it — so it is refused with a sentence
+  saying so, as is a file named through a volume's `\\?\Volume{…}` path. A
+  share spelled `\\.\UNC\…` is refused as before, as every operation refuses
+  that spelling, with a line saying to open the folder by its ordinary name —
+  not with the sentence about a volume's device name.
 
 - **On Linux, the bin page no longer says that everything deleted from
   another drive is outside the sweep.** When a drive's own trash cannot be

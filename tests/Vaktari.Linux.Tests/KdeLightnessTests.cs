@@ -28,7 +28,9 @@ public sealed class KdeLightnessTests : IDisposable
 
     private Vaktari.Core.ThemePalette? Read(string? file)
     {
-        using var provider = new KdeThemeProvider();
+        // Built over this class's own folder, so the process's one watcher,
+        // when this is the first provider, never watches the user's config.
+        var provider = new KdeThemeProvider(_root);
 
         typeof(KdeThemeProvider)
             .GetField("_path", BindingFlags.NonPublic | BindingFlags.Instance)!

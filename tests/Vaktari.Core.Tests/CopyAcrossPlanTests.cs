@@ -19,7 +19,11 @@ public sealed class CopyAcrossPlanTests : IDisposable
 
     public void Dispose()
     {
-        try { Directory.Delete(_root, recursive: true); } catch { /* a temp dir is not worth failing over */ }
+        // Through "\\?\" on Windows, which is the only spelling that reaches
+        // the names ending in a space or a dot that some tests make.
+        var root = OperatingSystem.IsWindows() ? @"\\?\" + _root : _root;
+
+        try { Directory.Delete(root, recursive: true); } catch { /* a temp dir is not worth failing over */ }
     }
 
     private string Side(string side) => Directory.CreateDirectory(Path.Combine(_root, side)).FullName;
@@ -132,6 +136,191 @@ public sealed class CopyAcrossPlanTests : IDisposable
         Assert.Empty(extended.Withheld);
         Assert.Equal([@"\\?\" + Listed("ok.txt"), @"\\?\" + Listed("report ")], extended.Missing);
         Assert.Equal([@"\\?\" + Listed("report.")], extended.Replacing);
+    }
+
+    // ---- a name further down a marked folder ---------------------------------
+
+    /// <summary>Makes <paramref name="names"/> under <paramref name="folder"/>
+    /// through "\\?\", which keeps a trailing space or dot; a folder is a name
+    /// ending in a separator. Answers the folder.</summary>
+    private static string Tree(string folder, params string[] names)
+    {
+        foreach (var name in names)
+        {
+            var path = @"\\?\" + Path.Combine(folder, name);
+
+            if (name.EndsWith('\\')) Directory.CreateDirectory(path);
+            else
+            {
+                Directory.CreateDirectory(Path.GetDirectoryName(path)!);
+                File.WriteAllText(path, name);
+            }
+        }
+
+        return folder;
+    }
+
+    private static Dictionary<string, CompareMark> OnlyHere(params string[] paths)
+        => paths.ToDictionary(p => p, _ => CompareMark.OnlyHere, StringComparer.Ordinal);
+
+    /// <summary>
+    /// **A marked folder holding "report " is left out, and the file beside
+    /// it still goes.** The engine asks every item down a folder whether it
+    /// can be read and written, and refused the WHOLE copy over "report "
+    /// inside "docs": "plain.txt" beside it was not copied either, and the
+    /// person was told only afterwards (batch-0.11.2 QA,
+    /// probe-copy-across-nested). From a side opened through "\\?\" the name
+    /// opens, so the reason is the other side's; the row says which name.
+    /// </summary>
+    [WindowsFact]
+    public void On_windows_a_folder_holding_a_name_the_other_side_cannot_take_is_left_out()
+    {
+        var left = Side("left");
+        Tree(left, @"docs\report ", "plain.txt");
+
+        var docs = @"\\?\" + Path.Combine(left, "docs");
+        var plain = @"\\?\" + Path.Combine(left, "plain.txt");
+
+        var plan = CopyAcrossPlan.From(OnlyHere(docs, plain), Side("right"));
+
+        Assert.Equal([new Withheld(docs, WithheldBecause.NameTheOtherSideCannotTake, "report ")], plan.Withheld);
+        Assert.Equal([plain], plan.Missing);
+    }
+
+    /// <summary>From a side opened by its ordinary name, a name inside a
+    /// folder is read through its plain spelling — "report", the file beside
+    /// it — so the engine refuses to read it, and the folder is left out for
+    /// that reason.</summary>
+    [WindowsFact]
+    public void On_windows_a_plainly_opened_folder_holding_a_name_windows_cannot_open_is_left_out()
+    {
+        var left = Side("left");
+        Tree(left, @"docs\report", @"docs\report ", "plain.txt");
+
+        var docs = Path.Combine(left, "docs");
+        var plain = Path.Combine(left, "plain.txt");
+
+        var plan = CopyAcrossPlan.From(OnlyHere(docs, plain), Side("right"));
+
+        Assert.Equal([new Withheld(docs, WithheldBecause.NameWindowsCannotOpen, "report ")], plan.Withheld);
+        Assert.Equal([plain], plan.Missing);
+    }
+
+    /// <summary>However deep it is: the row names the path below the marked
+    /// folder, so the person can find it.</summary>
+    [WindowsFact]
+    public void On_windows_a_name_deep_down_a_folder_is_found_and_named()
+    {
+        var left = Side("left");
+        Tree(left, @"docs\a\b\c\d\keep.txt", @"docs\a\b\c\d\report.", @"docs\z.txt");
+
+        var docs = @"\\?\" + Path.Combine(left, "docs");
+
+        var plan = CopyAcrossPlan.From(OnlyHere(docs), Side("right"));
+
+        Assert.Equal([new Withheld(docs, WithheldBecause.NameTheOtherSideCannotTake, @"a\b\c\d\report.")], plan.Withheld);
+        Assert.Empty(plan.Sources);
+    }
+
+    /// <summary>
+    /// Each row for its own reason, and the rest goes: a row's own name, a
+    /// folder over a name inside it, a folder with nothing wrong in it (a
+    /// name with a trailing space in the MIDDLE of an ordinary name is
+    /// fine), a newer file, and a folder holding only a folder ending in a
+    /// dot.
+    /// </summary>
+    [WindowsFact]
+    public void On_windows_withheld_and_copied_rows_are_told_apart()
+    {
+        var left = Side("left");
+        Tree(left,
+             "own ",
+             @"bad\fine.txt", @"bad\deeper\x ",
+             @"good\a b.txt", @"good\sub\c.txt",
+             "newer.txt",
+             @"dotted\inner.\");
+
+        string At(string name) => @"\\?\" + Path.Combine(left, name);
+
+        var marks = new Dictionary<string, CompareMark>(StringComparer.Ordinal)
+        {
+            [At("own ")] = CompareMark.OnlyHere,
+            [At("bad")] = CompareMark.OnlyHere,
+            [At("good")] = CompareMark.OnlyHere,
+            [At("newer.txt")] = CompareMark.NewerHere,
+            [At("dotted")] = CompareMark.NewerHere,
+        };
+
+        var plan = CopyAcrossPlan.From(marks, Side("right"));
+
+        Assert.Equal(
+            [new Withheld(At("bad"), WithheldBecause.NameTheOtherSideCannotTake, @"deeper\x "),
+             new Withheld(At("dotted"), WithheldBecause.NameTheOtherSideCannotTake, "inner."),
+             new Withheld(At("own "), WithheldBecause.NameTheOtherSideCannotTake)],
+            plan.Withheld);
+        Assert.Equal([At("good")], plan.Missing);
+        Assert.Equal([At("newer.txt")], plan.Replacing);
+    }
+
+    /// <summary>
+    /// **Into a side opened through "\\?\", the name lands as itself**, so
+    /// nothing is left out — and nothing is walked, since nothing down the
+    /// folder could be refused there.
+    /// </summary>
+    [WindowsFact]
+    public void On_windows_into_a_side_opened_through_the_prefix_the_folder_goes()
+    {
+        var left = Side("left");
+        Tree(left, @"docs\report ", @"docs\a\report.", "plain.txt");
+
+        var docs = @"\\?\" + Path.Combine(left, "docs");
+        var plain = @"\\?\" + Path.Combine(left, "plain.txt");
+        var right = @"\\?\" + Side("right");
+
+        Assert.False(CopyAcrossPlan.MustLookInside(docs, right));
+
+        var plan = CopyAcrossPlan.From(OnlyHere(docs, plain), right);
+
+        Assert.Empty(plan.Withheld);
+        Assert.Equal([docs, plain], plan.Missing);
+
+        // From a plainly opened side into it, the name is still read through
+        // its plain spelling, so that folder is still looked inside.
+        Assert.True(CopyAcrossPlan.MustLookInside(Path.Combine(left, "docs"), right));
+    }
+
+    /// <summary>A walk the asker has given up on stops, rather than reading
+    /// the rest of the tree for a prompt nobody will see.</summary>
+    [WindowsFact]
+    public void On_windows_a_cancelled_walk_stops()
+    {
+        var left = Side("left");
+        Tree(left, @"docs\a.txt");
+
+        using var cancel = new CancellationTokenSource();
+        cancel.Cancel();
+
+        Assert.Throws<OperationCanceledException>(
+            () => CopyAcrossPlan.From(OnlyHere(Path.Combine(left, "docs")), Side("right"), cancel.Token));
+    }
+
+    /// <summary>On Linux a trailing space is an ordinary character, nothing
+    /// is refused, and no folder is walked.</summary>
+    [PosixFact]
+    public void On_linux_a_folder_holding_report_with_a_space_goes()
+    {
+        var left = Side("left");
+        Directory.CreateDirectory(Path.Combine(left, "docs"));
+        File.WriteAllText(Path.Combine(left, "docs", "report "), "x");
+
+        var docs = Path.Combine(left, "docs");
+
+        Assert.False(CopyAcrossPlan.MustLookInside(docs, Side("right")));
+
+        var plan = CopyAcrossPlan.From(OnlyHere(docs), Side("right"));
+
+        Assert.Empty(plan.Withheld);
+        Assert.Equal([docs], plan.Missing);
     }
 
     // ---- a clash, when the copy reaches it -----------------------------------

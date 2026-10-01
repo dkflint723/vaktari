@@ -124,6 +124,8 @@ public sealed class TrashExtendedSpellingTests : IDisposable
     [WindowsTheory]
     [InlineData(@"\\?\UNC\server\share\a.txt", @"\\server\share\a.txt")]
     [InlineData(@"\??\UNC\server\share\a.txt", @"\\server\share\a.txt")]
+    [InlineData(@"\\.\UNC\server\share\a.txt", @"\\server\share\a.txt")]
+    [InlineData(@"\\.\unc\server\share\a.txt", @"\\server\share\a.txt")]
     [InlineData(@"\\?\C:\x\a.txt", @"C:\x\a.txt")]
     [InlineData(@"\\.\C:\x\a.txt", @"C:\x\a.txt")]
     [InlineData(@"C:\x\a.txt", @"C:\x\a.txt")]
@@ -133,6 +135,8 @@ public sealed class TrashExtendedSpellingTests : IDisposable
 
     [WindowsTheory]
     [InlineData(@"\\?\UNC\server\share\report ")]
+    [InlineData(@"\\.\UNC\server\share\report ")]
+    [InlineData(@"\\.\UNC\server\share\x.\a.txt")]
     [InlineData(@"\\?\C:\x.\a.txt")]
     public void A_spelling_that_would_fold_has_none(string full)
     {
@@ -140,6 +144,61 @@ public sealed class TrashExtendedSpellingTests : IDisposable
 
         Assert.Null(spelling);
         Assert.Contains("cannot be handed to another program", refusal, StringComparison.Ordinal);
+    }
+
+    /// <summary>The engine with nothing on disk asked whether a path is a
+    /// root: there is no share server here.</summary>
+    private WindowsFileOperations Unrooted() => new()
+    {
+        RootOnDisk = _ => false,
+        RecycleOverride = paths =>
+        {
+            _asked.AddRange(paths);
+            return new RecycleResult(0, false);
+        },
+    };
+
+    /// <summary>
+    /// Both extended spellings of a share reach the shell as the share.
+    /// Through the recycler seam with the string alone: there is no share
+    /// server, nothing on disk is asked whether it is a root, and the real
+    /// bin is never reached.
+    /// </summary>
+    [WindowsTheory]
+    [InlineData(@"\??\UNC\server\share\x")]
+    [InlineData(@"\\?\UNC\server\share\x")]
+    public async Task An_extended_spelling_of_a_share_reaches_the_shell_as_the_share(string spelled)
+    {
+        var handle = await Settled(Unrooted().Trash([spelled]));
+
+        Assert.Null(handle.Error?.Message);
+        Assert.Equal(OperationState.Completed, handle.State);
+        Assert.Equal([@"\\server\share\x"], _asked);
+    }
+
+    /// <summary>
+    /// **"\\.\UNC\" is refused at the door, by the device-path rule, and not
+    /// with the sentence about a volume's device name.** ForTheShell read it
+    /// as any other "\\.\" path, "UNC\server\…", and answered
+    /// <see cref="WindowsFileOperations.NoShellSpelling"/> — the wrong reason,
+    /// for a path the shell takes as "\\server\…" (batch-0.11.2 QA,
+    /// probe-for-the-shell); it now reads it as the share (the theory above).
+    /// Through Trash that sentence was never reached: every destructive verb
+    /// refuses a "\\.\UNC\" spelling first (VolumeRoots: only "\\?\UNC\" and
+    /// "\??\UNC\" are read as a share there), saying to open the folder by
+    /// its ordinary name. That is what the person sees, and nothing is asked
+    /// of the shell.
+    /// </summary>
+    [WindowsTheory]
+    [InlineData(@"\\.\UNC\server\share\x")]
+    [InlineData(@"//./UNC/server/share/x")]
+    public async Task A_dot_spelling_of_a_share_is_refused_as_a_device_path_not_as_a_volume(string spelled)
+    {
+        var handle = await Settled(Unrooted().Trash([spelled]));
+
+        Assert.Equal(OperationState.Failed, handle.State);
+        Assert.Equal(VolumeRoots.DeviceRefusal, handle.Error?.Message);
+        Assert.Empty(_asked);
     }
 
     /// <summary>

@@ -342,6 +342,10 @@ public sealed partial class ShellViewModel
         if (_onSharingChanged is not null && _sharing is not null)
             _sharing.Changed -= _onSharingChanged;
 
+        // A walk inside marked folders for a prompt this window will never
+        // show. See RequestCopyAcrossAsync.
+        StopLookingAcross();
+
         Sidebar.Dispose();
 
         Left?.DisposeAll();
