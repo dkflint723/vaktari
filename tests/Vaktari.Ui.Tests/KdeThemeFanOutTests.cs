@@ -16,9 +16,11 @@ namespace Vaktari.Ui.Tests;
 /// built its own services left one behind (batch-0.11.2 QA, item G).
 ///
 /// Two things are measured with real windows. Opening and closing windows
-/// does not grow the process's inotify instances, by the kernel's own count —
-/// which also counts every pane's folder watcher, so a pane that kept its
-/// watcher after its window closed would fail this too. And a change reaches
+/// does not grow the process's inotify instances, by the kernel's own count,
+/// nor leave a pane watching, by the one instance's own count of listeners —
+/// every watch shares that instance now, so the instance count alone could
+/// not see a pane that kept its watcher after its window closed (batch-0.11.2c
+/// QA). And a change reaches
 /// every open window and no closed one: four are opened, two closed, and
 /// kdeglobals is written in the folder they read it from. Each window's
 /// handler re-reads the palette and tells every pane to re-ask its click
@@ -148,6 +150,76 @@ public sealed class KdeThemeFanOutTests : OwnedViewModels
         var grown = InotifyInstances() - before;
 
         Assert.True(grown < 3, $"ten windows opened and closed left {grown} more inotify instances than before them");
+    }
+
+    /// <summary>
+    /// The listeners the process's one inotify instance holds — every pane's
+    /// folder watch and repository watch, and the theme watcher — read from
+    /// Vaktari.Linux.Inotify by reflection. Zero when no instance is open.
+    /// </summary>
+    private static int InotifyListeners()
+    {
+        var type = AppDomain.CurrentDomain.GetAssemblies()
+            .Select(a => a.GetType("Vaktari.Linux.Inotify"))
+            .FirstOrDefault(t => t is not null);
+
+        Assert.NotNull(type);
+
+        var gate = (Lock)type.GetField("Gate", Any)!.GetValue(null)!;
+
+        lock (gate)
+        {
+            return type.GetField("_shared", Any)!.GetValue(null) is { } shared
+                ? (int)type.GetField("_listeners", Any)!.GetValue(shared)!
+                : 0;
+        }
+    }
+
+    /// <summary>
+    /// **Ten windows opened and closed leave no pane watching** (batch-0.11.2c
+    /// QA). The count of instances above cannot say so any more: every watch
+    /// in the process shares one instance now, so a pane that kept its watch
+    /// after its window closed adds nothing to it — and its listener, held by
+    /// the instance, keeps the pane, and through it the window, alive. Counted
+    /// here where the watches are: the instance's own listeners.
+    /// </summary>
+    [AvaloniaFact(Skip = OnlyOn.Linux, SkipUnless = nameof(OnlyOn.IsLinux), SkipType = typeof(OnlyOn))]
+    public async Task Opening_and_closing_windows_leaves_no_pane_watching()
+    {
+        UseSearch(PaneViewModel.Search);
+
+        await OpenAndClose(2);
+
+        var before = InotifyListeners();
+
+        // The count can see a window's watches at all: one open is more.
+        var open = new MainWindow();
+        open.Show();
+        Dispatcher.UIThread.RunJobs();
+
+        try
+        {
+            await Until(() => InotifyListeners() > before, "an open window's pane to be watching");
+        }
+        finally
+        {
+            open.Close();
+            await Until(() => !open.IsVisible, "the window to close");
+        }
+
+        await OpenAndClose(10);
+
+        var clock = Stopwatch.StartNew();
+
+        while (InotifyListeners() > before && clock.Elapsed < TimeSpan.FromSeconds(5))
+        {
+            Dispatcher.UIThread.RunJobs();
+            await Task.Delay(20);
+        }
+
+        var grown = InotifyListeners() - before;
+
+        Assert.True(grown < 3, $"eleven windows opened and closed left {grown} more inotify listeners than before them");
     }
 
     [AvaloniaFact(Skip = OnlyOn.Linux, SkipUnless = nameof(OnlyOn.IsLinux), SkipType = typeof(OnlyOn))]
