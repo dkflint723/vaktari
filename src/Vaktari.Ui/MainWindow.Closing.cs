@@ -130,6 +130,19 @@ public partial class MainWindow
         UnwatchKeymap();
 
         _shell.Dispose();
+
+        // **A closed window went on paying for every change to the
+        // application's resources until the collector took it** (measured,
+        // batch-0.11.2c: each closed MainWindow still held its ~390 controls,
+        // and every write to Application.Resources reached each of them —
+        // 1 ms a write with none kept, 17 ms with forty closed windows not yet
+        // collected). ThemeApplier writes dozens of resources for every
+        // window opened, so the cost of opening one grew with every window
+        // closed before it, until a full collection happened to run: on the
+        // Ubuntu runner that was never, and the Ui suite ran out of time.
+        // Emptied here, a closed window keeps nothing for a resource change to
+        // walk.
+        Content = null;
     }
 
     private int CountOpenTabs()
