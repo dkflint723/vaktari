@@ -45,8 +45,9 @@ namespace Vaktari.Core.FileSystem;
 /// navigation or a tab closed).
 ///
 /// **And the looks that can wait on the disk run on threads of their own, not
-/// the pool's.** The slow look, a look asked for by the places list, and the
-/// first look of a wait made by <see cref="Start"/> each run on a thread made
+/// the pool's.** The slow look, a look asked for by the places list or by the
+/// network changing, and the first look of a wait made by <see cref="Start"/>
+/// each run on a thread made
 /// for that look, at most one per wait at a time. On the pool, a wait on a
 /// dead share held a pool thread for each look, 21 to 42 s, back to back
 /// with its 30 s timer; with the pool's minimum at two, eight such waits cut
@@ -344,10 +345,12 @@ public sealed class FolderReturnWatch : IDisposable
     /// <summary>
     /// Asks again whether the folder is back, and watches afresh from the
     /// nearest folder above it: for a caller that knows the disk has changed
-    /// in a way no watch could hear. The places list changing is the one the
-    /// pane passes on; what that does and does not cover is written on the
+    /// in a way no watch could hear. The places list changing and the
+    /// machine's network changing (<see cref="NetworkChanges"/>) are the two
+    /// the pane passes on; what they do and do not cover is written on the
     /// pane's ReturnWait. Never waits on the disk: with a check already
-    /// running, it is left to that one.
+    /// running, it is left to that one — so however often it is asked while
+    /// a look runs, one more look follows, not one per ask.
     /// </summary>
     public void Recheck() => Check(force: true);
 

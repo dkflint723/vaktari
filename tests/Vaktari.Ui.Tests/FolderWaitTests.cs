@@ -22,6 +22,7 @@ public sealed class FolderWaitTests : OwnedViewModels
     private readonly string _root = Directory.CreateTempSubdirectory("vaktari-wait").FullName;
     private readonly IPlacesProvider? _placesBefore = PaneViewModel.Places;
     private readonly TimeSpan? _pollBefore = PaneViewModel.PollInterval;
+    private readonly INetworkChanges? _networkBefore = PaneViewModel.Network;
 
     public override void Dispose()
     {
@@ -29,6 +30,7 @@ public sealed class FolderWaitTests : OwnedViewModels
 
         PaneViewModel.Places = _placesBefore;
         PaneViewModel.PollInterval = _pollBefore;
+        PaneViewModel.Network = _networkBefore;
 
         try { Directory.Delete(_root, recursive: true); }
         catch (IOException) { }
@@ -64,8 +66,19 @@ public sealed class FolderWaitTests : OwnedViewModels
 
         public readonly ManualResetEventSlim Gate = new();
 
+        /// <summary>How many watches have been asked for on a folder: one for
+        /// each look that watches afresh.</summary>
+        public int Opened(string path)
+        {
+            lock (_opened) return _opened.Count(p => p == path);
+        }
+
+        private readonly List<string> _opened = [];
+
         public IDisposable Watch(string path, Action<FileSystemChange> onChange)
         {
+            lock (_opened) _opened.Add(path);
+
             if (Hold) Gate.Wait();
 
             if (!Directory.Exists(path)) throw new DirectoryNotFoundException(path);
@@ -132,6 +145,35 @@ public sealed class FolderWaitTests : OwnedViewModels
         return true;
     }
 
+    /// <summary>Says the network changed when the test raises it.</summary>
+    private sealed class Network
+    {
+        private Action? _raise;
+
+        public int LetGo;
+
+        public IDisposable? Subscribe(Action raise)
+        {
+            _raise = raise;
+            return new Off(() => { _raise = null; LetGo++; });
+        }
+
+        public void Raise() => _raise?.Invoke();
+
+        private sealed class Off(Action off) : IDisposable
+        {
+            public void Dispose() => off();
+        }
+    }
+
+    /// <summary>The network the panes in this class hear, with a spacing long
+    /// enough that only the first of a burst is passed on in any test here.</summary>
+    private readonly Network _network = new();
+
+    private NetworkChanges? _changes;
+
+    private NetworkChanges Changes => _changes ??= new NetworkChanges(_network.Subscribe, TimeSpan.FromMinutes(10));
+
     private (PaneViewModel Pane, Quiet Fs, Places Places) Pane()
     {
         var fs = new Quiet();
@@ -139,6 +181,7 @@ public sealed class FolderWaitTests : OwnedViewModels
 
         PaneViewModel.Places = places;
         PaneViewModel.PollInterval = Timeout.InfiniteTimeSpan;
+        PaneViewModel.Network = Changes;
 
         return (Own(new PaneViewModel(fs, null, null) { ViewportWidth = 1400 }), fs, places);
     }
@@ -257,6 +300,109 @@ public sealed class FolderWaitTests : OwnedViewModels
         {
             saying.Start();
             Assert.True(saying.Join(TimeSpan.FromSeconds(5)), "saying the places changed waited for the held watch");
+        }
+        finally
+        {
+            fs.Gate.Set();
+            fs.Hold = false;
+            saying.Join(Ceiling);
+        }
+    }
+
+    // ---- the network changing ----------------------------------------------
+
+    /// <summary>
+    /// **A share answering again told the pane nothing until its slow look**
+    /// (batch-0.11.2g): the places list does not change for a server, and the
+    /// slow look comes every 30 s — once a minute on a share that does not
+    /// answer. The machine's network changing — a VPN connecting, Wi-Fi back —
+    /// asks again at once. The folder comes back here without a word, and the
+    /// test's ceiling is a third of the slow look's interval, so only the
+    /// network changing can be what brings the pane back.
+    /// </summary>
+    [AvaloniaFact]
+    public async Task A_change_to_the_network_brings_back_a_folder_that_returned_unheard()
+    {
+        var (pane, _, _, missing) = await Waiting();
+
+        Assert.Equal(1, Changes.Listeners);
+        Assert.True(FolderReturnWatch.RetryInterval > Ceiling, "the slow look could bring the pane back inside the test's ceiling");
+
+        Directory.CreateDirectory(missing);
+        File.WriteAllText(Path.Combine(missing, "a.txt"), "a");
+
+        await Task.Delay(200);
+        Dispatcher.UIThread.RunJobs();
+        Assert.True(pane.HasLoadError, "the folder was noticed without being heard of at all");
+
+        _network.Raise();
+
+        Assert.True(await Until(() => !pane.HasLoadError && pane.Entries.Any(e => e.Name == "a.txt")),
+            "the network changing did not bring the pane back to its folder");
+    }
+
+    /// <summary>The network is let go of with the wait: a pane that has moved
+    /// on is held by nothing that hears it, and with no pane waiting the
+    /// system is not listened to at all.</summary>
+    [AvaloniaFact]
+    public async Task A_pane_that_moves_on_stops_listening_to_the_network()
+    {
+        var (pane, _, _, _) = await Waiting();
+
+        Assert.Equal(1, Changes.Listeners);
+        Assert.True(Changes.Subscribed);
+
+        await pane.NavigateAsync(_root);
+        Assert.True(await Until(() => pane.IsLoaded && !pane.HasLoadError && pane.CurrentPath == _root), "the pane did not move on");
+
+        Assert.Equal(0, Changes.Listeners);
+        Assert.False(Changes.Subscribed);
+        Assert.Equal(1, _network.LetGo);
+    }
+
+    /// <summary>
+    /// **A burst of network events is a bounded number of looks.** Twenty
+    /// events, each after the look the one before asked for has had time to
+    /// end — so the wait's own rule, one more look for any number of asks
+    /// while one runs, cannot be what bounds them. Each look watches the
+    /// folder above afresh, which is what is counted.
+    /// </summary>
+    [AvaloniaFact]
+    public async Task A_burst_of_network_changes_makes_a_bounded_number_of_looks()
+    {
+        var (_, fs, _, _) = await Waiting();
+
+        await Task.Delay(200);
+        var before = fs.Opened(_root);
+
+        for (var i = 0; i < 20; i++)
+        {
+            _network.Raise();
+            await Task.Delay(30);
+        }
+
+        await Task.Delay(500);
+
+        var looks = fs.Opened(_root) - before;
+
+        Assert.True(looks is >= 1 and <= 2, $"twenty network events made {looks} looks");
+    }
+
+    /// <summary>The network's own thread is never made to wait on the disk:
+    /// the look it asks for watches afresh, and the watch is held here as a
+    /// share that does not answer holds it.</summary>
+    [AvaloniaFact]
+    public async Task A_change_to_the_network_does_not_wait_on_the_disk()
+    {
+        var (_, fs, _, _) = await Waiting();
+
+        fs.Hold = true;
+        var saying = new Thread(_network.Raise) { IsBackground = true };
+
+        try
+        {
+            saying.Start();
+            Assert.True(saying.Join(TimeSpan.FromSeconds(5)), "saying the network changed waited for the held watch");
         }
         finally
         {

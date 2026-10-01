@@ -77,7 +77,15 @@ public interface IFileSharing
 
     Task StopAsync(ShareSession session);
 
-    /// <summary>Stops everything. Called on shutdown so nothing outlives the app.</summary>
+    /// <summary>
+    /// Stops everything. Called on shutdown so nothing outlives the app.
+    ///
+    /// **Including a share still starting**: a <see cref="StartAsync"/> begun
+    /// before this call and not yet listed must launch nothing and end in an
+    /// <see cref="OperationCanceledException"/>. Closing the last window is a
+    /// click, and a start can be waiting on the platform at that moment. A
+    /// start begun after this call is not affected.
+    /// </summary>
     Task StopAllAsync();
 
     event EventHandler? Changed;

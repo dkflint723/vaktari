@@ -36,7 +36,22 @@ should not be trusted for compatibility yet.
   within half a minute. Closing that tab or window, or going somewhere
   else, no longer waits on a server that does not answer, and tabs waiting
   on one no longer slow down Vaktari's other background work; they check
-  less often, about once a minute, while it does not answer.
+  less often, about once a minute, while it does not answer. They also
+  check again as soon as Windows or Linux reports that this computer's
+  network addresses have changed — as they do when a VPN connects or Wi-Fi
+  comes back — and once more a couple of seconds later if the change came
+  as several reports, rather than waiting for their next check. A server
+  that comes back without any change on this computer's side is still
+  picked up by that next check.
+
+- **Closing the last window while a folder was still being shared no
+  longer starts its server afterwards.** Closing the last window stops
+  every share. A share asked for a moment before — on Windows, while
+  Vaktari was still asking whether the network is a public one — was not
+  stopped, and its server was started after the others had been stopped,
+  serving until Vaktari exited. Such a share is now not started at all.
+  Closing a window that is not the last still leaves every share running,
+  one still starting included; the windows still open list it.
 
 - **On Linux, the colours and font follow a Plasma theme change again
   after the config folder has been deleted and made again.** Until now no

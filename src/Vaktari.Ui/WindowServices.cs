@@ -407,6 +407,11 @@ internal sealed class WindowServices
         ViewModels.PaneViewModel.DiskImages = platform.DiskImages;
         ViewModels.PaneViewModel.Shortcuts = platform.Shortcuts;
         ViewModels.PaneViewModel.Places = platform.Places;
+
+        // Not the platform's: .NET hears the network on both. One for the
+        // process, however many panes wait — see NetworkChanges.
+        ViewModels.PaneViewModel.Network = Vaktari.Core.FileSystem.NetworkChanges.Shared;
+
         ViewModels.PaneViewModel.Search = platform.Search;
 
         // Logged at startup, not when the settings dialog opens. The count only

@@ -434,6 +434,38 @@ public sealed class NewWindowTests : OwnedViewModels
     }
 
     /// <summary>
+    /// A pane waiting on a folder hears the machine's network through the
+    /// process's one subscription (batch-0.11.2g): the application hands every
+    /// pane the shared NetworkChanges, not one of its own per window and not
+    /// none — FolderWaitTests drive the pane's side with a network of their
+    /// own, and only this says the application wires the real one.
+    /// </summary>
+    [AvaloniaFact]
+    public async Task The_application_hands_its_panes_the_processs_own_network()
+    {
+        await SaveAsync();
+        PaneViewModel.Search = null;
+
+        var networkBefore = PaneViewModel.Network;
+        PaneViewModel.Network = null;
+
+        var founder = new MainWindow();
+
+        try
+        {
+            founder.Show();
+            Settle();
+
+            Assert.Same(NetworkChanges.Shared, PaneViewModel.Network);
+        }
+        finally
+        {
+            CloseAll(founder.Services);
+            PaneViewModel.Network = networkBefore;
+        }
+    }
+
+    /// <summary>
     /// What gets WRITTEN is the family, not whichever window happened to change
     /// last. Two windows with two DIFFERENT sidebar widths, so this cannot pass
     /// by listing one window twice.

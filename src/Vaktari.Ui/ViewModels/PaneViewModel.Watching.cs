@@ -116,7 +116,7 @@ public sealed partial class PaneViewModel
             Detached(LoadAsync(path), "reload");
         }), PollInterval);
 
-        var waiting = new ReturnWait(wait, Places);
+        var waiting = new ReturnWait(wait, Places, Network);
 
         Dispatcher.UIThread.Post(() =>
         {
@@ -150,35 +150,61 @@ public sealed partial class PaneViewModel
     /// - a tmpfs, a loop device, or a FUSE mount with no device behind it is
     ///   mounted again over the folder above.
     ///
-    /// Both are covered by the wait itself, within half a minute rather than at
-    /// once: every FolderReturnWatch.RetryInterval (30 s) it asks again and
-    /// watches afresh, whatever it watches — so a share answering again, and a
-    /// filesystem mounted over the folder above (which the old watch, on the
-    /// folder the mount now covers, never hears from), are both found by the
-    /// next slow look. F5 or a navigation still finds them sooner.
+    /// Both are covered by the wait itself: every FolderReturnWatch.RetryInterval
+    /// (30 s) it asks again and watches afresh, whatever it watches — so a share
+    /// answering again, and a filesystem mounted over the folder above (which
+    /// the old watch, on the folder the mount now covers, never hears from),
+    /// are both found by the next slow look. On a share that does not answer
+    /// that look backs off to about once a minute. F5 or a navigation still
+    /// finds them sooner.
+    ///
+    /// **And the network changing asks again at once** (batch-0.11.2g). A
+    /// share or a mapped drive usually comes back because the machine's
+    /// network did — a VPN connected, Wi-Fi back — and that changes its
+    /// addresses, which <see cref="Network"/> hears: one subscription for the
+    /// process, passed on to every waiting pane, a burst of events passed on
+    /// twice at most (NetworkChanges). It says only that the network changed,
+    /// not that the server answers — an address is often there before the
+    /// server can be reached through it, which is what the second pass and
+    /// then the slow look are for — and nothing is heard when the server comes
+    /// back with this machine's network unchanged. Asked on a thread of the
+    /// wait's own, as for the places list.
     /// </summary>
     private sealed class ReturnWait : IDisposable
     {
         private readonly FolderReturnWatch _wait;
         private readonly Vaktari.Core.Places.IPlacesProvider? _places;
         private readonly EventHandler _changed;
+        private readonly IDisposable? _network;
 
-        public ReturnWait(FolderReturnWatch wait, Vaktari.Core.Places.IPlacesProvider? places)
+        public ReturnWait(FolderReturnWatch wait, Vaktari.Core.Places.IPlacesProvider? places, INetworkChanges? network)
         {
             _wait = wait;
             _places = places;
             _changed = (_, _) => _wait.RecheckOnItsOwnThread();
 
             if (_places is not null) _places.PlacesChanged += _changed;
+
+            _network = network?.Listen(_wait.RecheckOnItsOwnThread);
         }
 
         public void Dispose()
         {
             if (_places is not null) _places.PlacesChanged -= _changed;
 
+            _network?.Dispose();
+
             _wait.Dispose();
         }
     }
+
+    /// <summary>
+    /// What says the machine's network changed, for a pane waiting on a folder
+    /// to come back (see <see cref="ReturnWait"/>). The process's own
+    /// NetworkChanges in the application, set where the other providers are;
+    /// null hears nothing, and a test hands in one it can raise.
+    /// </summary>
+    internal static INetworkChanges? Network { get; set; }
 
     /// <summary>
     /// How often a folder that cannot be watched is read instead. Null means

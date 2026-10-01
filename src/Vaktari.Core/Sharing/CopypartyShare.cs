@@ -525,7 +525,7 @@ public sealed class CopypartyShare : IFileSharing
 
     public async Task<ShareSession> StartAsync(string path, ShareOptions options, CancellationToken ct)
     {
-        if (_command is null)
+        if (_command is not { } command)
             throw new InvalidOperationException(UnavailableReason);
 
         // **Not a folder whose name Windows folds.** Resolving "…\photos "
@@ -547,17 +547,55 @@ public sealed class CopypartyShare : IFileSharing
         if (path.Length == 0 || PathRules.IsRoot(path))
             throw new InvalidOperationException("refusing to share the whole filesystem");
 
+        // Which stop this start comes after; see Launch.
+        var stops = Volatile.Read(ref _stops);
+
         // What the platform has to say about the network, first and off the
         // caller's thread: on Windows it runs a command, and the caller is a
         // click.
         var warning = await Task.Run(() => _backend.StartWarning(), ct).ConfigureAwait(false);
 
+        ShareSession session;
+
+        lock (_launching)
+        {
+            // **A share still starting when everything was stopped went on to
+            // serve** (batch-0.11.2g: reproduced, one server launched and
+            // listed after the stop had swept an empty list). Closing the last
+            // window stops every share, and a start waiting on the warning
+            // above was not in the list yet — so it launched once the warning
+            // came back, after the sweep: on Linux a server outliving Vaktari
+            // until the next start swept it up, and in either case one listed
+            // by a provider that had been told to stop everything. The launch
+            // and the listing happen under the lock StopAllAsync sweeps under,
+            // so a start either is listed before the sweep, and stopped by it,
+            // or sees the sweep and launches nothing.
+            if (Volatile.Read(ref _stops) != stops)
+                throw new OperationCanceledException("sharing was stopped while this share was starting");
+
+            session = Launch(command, path, options, warning);
+        }
+
+        Changed?.Invoke(this, EventArgs.Empty);
+        return session;
+    }
+
+    /// <summary>Guards the launch of a server and its listing against
+    /// <see cref="StopAllAsync"/>'s sweep. Never held across a wait.</summary>
+    private readonly Lock _launching = new();
+
+    /// <summary>How many times everything has been stopped; a start that sees
+    /// it move was overtaken by a stop.</summary>
+    private int _stops;
+
+    private ShareSession Launch(string command, string path, ShareOptions options, string? warning)
+    {
         var port = FreePort();
         var address = LocalAddress();
         var password = NewPassword();
         var configPath = WriteConfig(Config(path, port, options, address, password));
 
-        var info = new ProcessStartInfo(_command)
+        var info = new ProcessStartInfo(command)
         {
             RedirectStandardOutput = true,
             RedirectStandardError = true,
@@ -610,7 +648,6 @@ public sealed class CopypartyShare : IFileSharing
             Changed?.Invoke(this, EventArgs.Empty);
         };
 
-        Changed?.Invoke(this, EventArgs.Empty);
         return session;
     }
 
@@ -636,12 +673,26 @@ public sealed class CopypartyShare : IFileSharing
         return Task.CompletedTask;
     }
 
+    /// <summary>
+    /// Stops every share listed, and every share still starting: one that has
+    /// not launched its server yet never will (see StartAsync). A share asked
+    /// for after this starts as usual.
+    /// </summary>
     public Task StopAllAsync()
     {
-        foreach (var id in _running.Keys.ToList())
-        {
-            if (!_running.TryRemove(id, out var running)) continue;
+        List<Running> stopping = [];
 
+        lock (_launching)
+        {
+            Interlocked.Increment(ref _stops);
+
+            foreach (var id in _running.Keys.ToList())
+                if (_running.TryRemove(id, out var running)) stopping.Add(running);
+        }
+
+        // Outside the lock: a kill waits up to three seconds for each server.
+        foreach (var running in stopping)
+        {
             Kill(running.Process);
             Forget(running.ConfigPath);
         }

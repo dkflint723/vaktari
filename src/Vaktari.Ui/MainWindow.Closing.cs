@@ -107,6 +107,14 @@ public partial class MainWindow
         // process is what the interface's own contract asks for; per-window
         // ownership of individual shares is a second stage, and until it exists
         // a share started anywhere outlives every window but the last.
+        //
+        // **A share still starting is covered both ways** (batch-0.11.2g). The
+        // last window's stop also stops a start in flight — it launches
+        // nothing, and its status line goes to this window on its way out —
+        // because StopAllAsync promises that; measured before, the server was
+        // launched and listed after the sweep. Any other window leaves its
+        // start to finish, as it leaves every share: the windows still open
+        // list it (ShareStartingAtCloseTests).
         if (last)
         {
             try

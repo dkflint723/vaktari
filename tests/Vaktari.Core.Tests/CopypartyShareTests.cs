@@ -243,6 +243,118 @@ public sealed class CopypartyShareTests : IDisposable
         Assert.Equal("this machine is on a public network", session.Warning);
     }
 
+    // ---- stopping everything while one is starting -----------------------------
+
+    /// <summary>A backend whose platform warning — the one wait inside a
+    /// start, which runs a command on Windows — holds until the test lets it
+    /// go, so a stop can be made to land in the middle of a start.</summary>
+    private sealed class Held : CopypartyBackend, IDisposable
+    {
+        public readonly ManualResetEventSlim Entered = new();
+        public readonly ManualResetEventSlim Release = new();
+
+        public override (string? Command, string[] Prefix) Locate() => ("copyparty-stub", []);
+        public override IReadOnlyList<InstallAttempt> InstallAttempts() => [];
+        public override string NotInstalledHint => "";
+        public override string NoInstallerHint => "";
+        public override string InstalledButNotFoundHint => "";
+        public override string InstallFailedHint => "";
+
+        public override string? StartWarning()
+        {
+            Entered.Set();
+            Release.Wait(TimeSpan.FromSeconds(30));
+            return null;
+        }
+
+        public void Dispose()
+        {
+            Release.Set();
+            Entered.Dispose();
+        }
+    }
+
+    /// <summary>
+    /// **A share still starting when everything was stopped went on to
+    /// serve** (batch-0.11.2g, reproduced before it was fixed: the server was
+    /// launched and listed after the stop had swept an empty list). Closing the
+    /// last window stops every share, and a start that was waiting on the
+    /// platform's warning at that moment was not in the list yet. Now a start
+    /// that a stop overtook is refused before it launches anything.
+    /// </summary>
+    [Fact]
+    public async Task A_share_still_starting_when_everything_is_stopped_never_serves()
+    {
+        using var backend = new Held();
+        var launched = new List<Process>();
+
+        var share = new CopypartyShare(backend)
+        {
+            LaunchOverride = info =>
+            {
+                var server = Linger();
+                lock (launched) launched.Add(server);
+                return server;
+            },
+        };
+
+        try
+        {
+            var starting = share.StartAsync(_photos, ReadOnly, CancellationToken.None);
+
+            Assert.True(backend.Entered.Wait(TimeSpan.FromSeconds(10)), "the start never reached the platform's warning");
+
+            await share.StopAllAsync();
+
+            backend.Release.Set();
+
+            Exception? refused = null;
+
+            try { await starting; }
+            catch (Exception e) { refused = e; }
+
+            lock (launched) Assert.True(launched.Count == 0, $"{launched.Count} server(s) launched after the stop");
+            Assert.True(share.Active.Count == 0, $"{share.Active.Count} share(s) listed after the stop");
+            Assert.Empty(Directory.EnumerateFiles(_root, "vaktari-share-*"));
+            Assert.IsType<OperationCanceledException>(refused, exactMatch: false);
+        }
+        finally
+        {
+            lock (launched) foreach (var server in launched) Bury(server);
+        }
+    }
+
+    /// <summary>The stop is not a door shut for good: a share asked for after
+    /// it starts as any other does.</summary>
+    [Fact]
+    public async Task A_share_asked_for_after_everything_was_stopped_starts()
+    {
+        Process? server = null;
+
+        var share = new CopypartyShare(new Stub()) { LaunchOverride = _ => server = Linger() };
+
+        try
+        {
+            await share.StopAllAsync();
+
+            var session = await share.StartAsync(_photos, ReadOnly, CancellationToken.None);
+
+            Assert.Equal([session], share.Active);
+
+            // A handle of the test's own: the share disposes the one it holds.
+            using var watched = Process.GetProcessById(server!.Id);
+
+            await share.StopAllAsync();
+
+            Assert.Empty(share.Active);
+            Assert.True(watched.WaitForExit(5_000), "the stop left the server running");
+        }
+        finally
+        {
+            Bury(server);
+        }
+    }
+
     // ---- after a crash ---------------------------------------------------------
 
     /// <summary>Stands in for a copyparty that keeps serving: a process that
