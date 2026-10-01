@@ -85,7 +85,7 @@ public sealed class ShellStateTests
 
         if (live is null) return;
 
-        using var provider = new WindowsThemeProvider();
+        var provider = new WindowsThemeProvider();
 
         Assert.Equal(live, provider.Read()!.SingleClick);
     }

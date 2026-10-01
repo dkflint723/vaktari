@@ -17,7 +17,7 @@ namespace Vaktari.Windows;
 /// The alternative — inventing a full scheme from the accent — would drift away
 /// from the desktop rather than towards it.
 /// </summary>
-public sealed class WindowsThemeProvider : IThemeProvider, IDisposable
+public sealed class WindowsThemeProvider : IThemeProvider
 {
     private const string PersonalizeKey =
         @"Software\Microsoft\Windows\CurrentVersion\Themes\Personalize";
@@ -34,31 +34,78 @@ public sealed class WindowsThemeProvider : IThemeProvider, IDisposable
     /// </summary>
     private const string AccessibilityKey = @"Software\Microsoft\Accessibility";
 
-    private readonly CancellationTokenSource _stopping = new();
+    /// <summary>
+    /// **One set of watchers for the whole process, shared by every window.**
+    /// Each provider started three threads of its own, each blocked in
+    /// RegNotifyChangeKeyValue — and a blocking wait on a registry key cannot
+    /// be called off from outside, so Dispose stopped them raising and never
+    /// stopped them. Every window that built its own services built a
+    /// provider: measured, opening and closing thirty windows took a test
+    /// process from 14 threads to 120, three a window, and a full Ui test
+    /// run ended near 740 (0.11.1 QA). The keys are the user's, not the
+    /// window's, so one wait per key answers for every window there is.
+    ///
+    /// So the threads are started once, by the first provider, and live as
+    /// long as the process — background threads, so they never hold it open.
+    /// <see cref="Changed"/> is the shared event: subscribing through any
+    /// provider is subscribing to every key, and a window that closes takes
+    /// its handler back off it (MainWindow.OnClosed) — the static event holds
+    /// no window that has said goodbye.
+    /// </summary>
+    private static readonly Lock Gate = new();
 
-    public event EventHandler? Changed;
+    private static EventHandler? _changed;
+
+    private static bool _watching;
+
+    /// <summary>How many watcher threads this process has started — three,
+    /// once, however many providers are made. For the tests.</summary>
+    internal static int WatchersStarted => Volatile.Read(ref _watchersStarted);
+
+    private static int _watchersStarted;
+
+    /// <summary>Raised on a watcher thread when any of the three keys
+    /// changes, for every subscriber of every provider.</summary>
+    public event EventHandler? Changed
+    {
+        add { lock (Gate) _changed += value; }
+        remove { lock (Gate) _changed -= value; }
+    }
 
     public WindowsThemeProvider()
     {
-        Watch(PersonalizeKey);
-        Watch(DwmKey);
+        // Started by the first provider, under the lock, so a second one made
+        // at the same moment finds all three running rather than some.
+        lock (Gate)
+        {
+            if (_watching) return;
+            _watching = true;
 
-        // Third watcher, one background thread like the other two. Moving the
-        // text-size slider is a scheme change as far as this window is
-        // concerned — every metric derived from the font size has to be
-        // recomputed — and it fires none of the events the other two keys do.
-        //
-        // **Armed once, here, against the key as it exists at startup**, which
-        // is the measured limit of all three: Watch returns without starting a
-        // thread when RegOpenKeyEx fails, and nothing calls it again. On the
-        // machine this was measured on the key is present with the slider
-        // untouched — HKCU\Software\Microsoft\Accessibility holds
-        // TextScaleFactor 0x64 — so the live wake-up works there. Where the key
-        // is absent this is silent, and the new size arrives at the next
-        // palette read instead: a colour-scheme change, a settings save, or the
-        // next start. It is never missed, only late.
-        Watch(AccessibilityKey);
+            Watch(PersonalizeKey);
+            Watch(DwmKey);
+
+            // Third watcher, one background thread like the other two. Moving
+            // the text-size slider is a scheme change as far as this window is
+            // concerned — every metric derived from the font size has to be
+            // recomputed — and it fires none of the events the other two keys
+            // do.
+            //
+            // **Armed once, here, against the key as it exists at startup**,
+            // which is the measured limit of all three: Watch returns without
+            // starting a thread when RegOpenKeyEx fails, and nothing calls it
+            // again. On the machine this was measured on the key is present
+            // with the slider untouched — HKCU\Software\Microsoft\Accessibility
+            // holds TextScaleFactor 0x64 — so the live wake-up works there.
+            // Where the key is absent this is silent, and the new size arrives
+            // at the next palette read instead: a colour-scheme change, a
+            // settings save, or the next start. It is never missed, only late.
+            Watch(AccessibilityKey);
+        }
     }
+
+    /// <summary>Tells every subscriber that a key changed — what a watcher
+    /// thread does when its wait returns.</summary>
+    internal static void Notify() => Volatile.Read(ref _changed)?.Invoke(null, EventArgs.Empty);
 
     public ThemePalette? Read()
     {
@@ -251,9 +298,14 @@ public sealed class WindowsThemeProvider : IThemeProvider, IDisposable
     ///
     /// **Background threads**, so a wait that never returns cannot keep the
     /// process alive at exit — there is no way to cancel a blocking wait on a
-    /// registry key from outside it.
+    /// registry key from outside it. Which is why there is one per key per
+    /// process, not per window: see <see cref="Gate"/>.
+    ///
+    /// Internal so a test can watch a key of its own, which it can change and
+    /// delete — the three real ones are the user's settings. A deleted key
+    /// ends the wait with an error, and the thread with it.
     /// </summary>
-    private void Watch(string subKey)
+    internal static void Watch(string subKey)
     {
         if (Native.RegOpenKeyEx(
                 Native.HKEY_CURRENT_USER, subKey, 0, Native.KEY_READ, out var key)
@@ -264,16 +316,15 @@ public sealed class WindowsThemeProvider : IThemeProvider, IDisposable
         {
             try
             {
-                while (!_stopping.IsCancellationRequested)
+                while (true)
                 {
                     var status = Native.RegNotifyChangeKeyValue(
                         key, watchSubtree: false, Native.REG_NOTIFY_CHANGE_LAST_SET,
                         eventHandle: 0, asynchronous: false);
 
                     if (status != Native.ERROR_SUCCESS) break;
-                    if (_stopping.IsCancellationRequested) break;
 
-                    Changed?.Invoke(this, EventArgs.Empty);
+                    Notify();
                 }
             }
             catch (Exception ex)
@@ -291,14 +342,6 @@ public sealed class WindowsThemeProvider : IThemeProvider, IDisposable
         };
 
         thread.Start();
-    }
-
-    public void Dispose()
-    {
-        // Stops the loops from raising Changed after disposal. It cannot
-        // interrupt a wait already in progress, which is why those threads are
-        // background threads.
-        _stopping.Cancel();
-        _stopping.Dispose();
+        Interlocked.Increment(ref _watchersStarted);
     }
 }
