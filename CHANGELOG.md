@@ -24,6 +24,11 @@ should not be trusted for compatibility yet.
   that is unmounted, now notices at once and says the folder is gone; a
   pane on the folder the drive was mounted on shows what is left there.
 
+- **A pane that says its folder is not there any more picks it up again
+  when it comes back** — by *Undo*, by a rename back, or made again by
+  another program — and follows it as before. Until now it went on saying
+  the folder was not there until you pressed F5 or went somewhere else.
+
 - **On Linux, the colours and font follow a Plasma theme change again
   after the config folder has been deleted and made again.** Until now no
   theme change was noticed after that until Vaktari was restarted. A

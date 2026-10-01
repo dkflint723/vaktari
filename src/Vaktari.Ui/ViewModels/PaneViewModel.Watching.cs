@@ -71,6 +71,57 @@ public sealed partial class PaneViewModel
     }
 
     /// <summary>
+    /// Waits, from the nearest folder above it that exists, for a folder this
+    /// pane could not open because it is not there, and reads it again when it
+    /// comes back.
+    ///
+    /// **A folder renamed or trashed from the other pane and then put back left
+    /// this one saying it was not there** (batch-0.11.2c QA): the watcher heard
+    /// it go, the reload found nothing, and once Undo — or a rename back, or
+    /// anything outside Vaktari — restored it, the pane went on saying "that
+    /// folder is not there any more", watching nothing, until F5. Before the
+    /// watcher could hear a folder go, the pane went on showing the old rows
+    /// and came back to life with the folder. See FolderReturnWatch.
+    ///
+    /// **In the watch's own slot**, so there is only ever one: the next load
+    /// lets it go in its prologue (a navigation, a refresh, the reload this
+    /// asks for), and so does the pane's Dispose. Opened on the pool, as a
+    /// load's watch is, and installed only while the failed load is still
+    /// the latest; otherwise it is let go at once.
+    ///
+    /// Only for a folder that is not there. A share that does not answer, or a
+    /// folder that refuses, comes back by F5 as before — waiting on a server
+    /// that has gone is exactly the cost the bounded watch open avoids.
+    ///
+    /// Not as well "after any operation, reload a tab whose folder is back":
+    /// this hears the folder come back whoever brings it — Undo, a rename back,
+    /// another program, a stick plugged in again — where that would hear only
+    /// Vaktari's own operations, and not its renames at all, which are not
+    /// operations; and it would ask a dead share whether a folder exists on the
+    /// window's thread every time anything finished.
+    /// </summary>
+    private void WaitForReturn(string path, int generation)
+    {
+        _ = Task.Run(() =>
+        {
+            var wait = new FolderReturnWatch(_fs, path, () => Dispatcher.UIThread.Post(() =>
+            {
+                if (generation != _generation || CurrentPath != path || !HasLoadError || _disposed) return;
+
+                Console.Error.WriteLine($"[vaktari] watch: the folder is back, reloading · {path}");
+
+                Detached(LoadAsync(path), "reload");
+            }), PollInterval);
+
+            Dispatcher.UIThread.Post(() =>
+            {
+                if (generation == _generation && !_disposed) ReplaceWatch(wait);
+                else wait.Dispose();
+            });
+        });
+    }
+
+    /// <summary>
     /// How often a folder that cannot be watched is read instead. Null means
     /// <see cref="PollingWatch.DefaultInterval"/>; internal so a test can see a
     /// poll without waiting five seconds for one.

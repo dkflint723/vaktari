@@ -3695,6 +3695,10 @@ public sealed partial class PaneViewModel : ObservableObject, IDisposable
                 Status = LoadError;
 
                 IsLoading = false;
+
+                // **And waits for it to come back** — see WaitForReturn.
+                if (ex is DirectoryNotFoundException && !VirtualPaths.IsVirtual(path))
+                    WaitForReturn(path, generation);
             });
         }
         finally
