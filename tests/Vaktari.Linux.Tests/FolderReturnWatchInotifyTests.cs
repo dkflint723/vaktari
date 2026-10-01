@@ -174,6 +174,15 @@ public sealed class FolderReturnWatchInotifyTests : IDisposable
 
             Assert.Equal(0, Volatile.Read(ref lost));
             Assert.Equal(before, waits.Sum(w => w.Checks));
+
+            // The cost itself, counted rather than timed. Whether the reader
+            // keeps up is a race between it and the loop above, and it sat on
+            // the edge: on the tree before batch-0.11.2e round 6's fix this
+            // failed alone 11 runs in 12 whatever the JIT was told, failed in
+            // one full Linux suite and passed in another (QA saw it pass in
+            // the suite every time). The count does not race: no file here is
+            // any wait's next step, so none may reach the full path compare.
+            Assert.Equal(0, waits.Sum(w => w.FullCompares));
         }
         finally
         {

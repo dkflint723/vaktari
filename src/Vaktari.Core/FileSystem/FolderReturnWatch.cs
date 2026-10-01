@@ -167,21 +167,107 @@ public sealed class FolderReturnWatch : IDisposable
         }
     }
 
-    /// <summary>Whether <paramref name="arrived"/> is the next step down.</summary>
+    /// <summary>
+    /// Whether <paramref name="arrived"/> is the next step down.
+    ///
+    /// **Its last name first, compared in place, and only then the paths.**
+    /// This runs for every arrival and every change in the folder watched, for
+    /// every wait, on the watcher's one shared thread. PathRules.Same makes a
+    /// normalised copy of both paths; with Changed heard as well as Added, a
+    /// hundred waits under a busy folder did that four million times for
+    /// twenty thousand files, and the reader fell behind the kernel's queue
+    /// again (batch-0.11.2e QA, round 6: an independent watch heard 17,180 to
+    /// 19,008 of 20,000 on Linux). Two paths that are the same place end in
+    /// the same name, under the platform's case rule; a name compared as a
+    /// span costs no copy, and only a match pays for the full compare, which
+    /// <see cref="FullCompares"/> counts.
+    /// </summary>
     private bool IsNext(string arrived)
     {
         var next = _next;
 
-        if (PathRules.Same(arrived, next)) return true;
+        if (next is null) return false;
 
-        // The short spelling shortens every part of the path, the folders
-        // above as well, so only the last part is compared — of an arrival
-        // in the same folder as the next step.
-        return _nextIsShort && OperatingSystem.IsWindows() && next is not null
+        var name = Path.GetFileName(Path.TrimEndingDirectorySeparator(arrived.AsSpan()));
+        var nextName = Path.GetFileName(Path.TrimEndingDirectorySeparator(next.AsSpan()));
+
+        if (name.Equals(nextName, PathRules.Comparison))
+        {
+            Interlocked.Increment(ref _fullCompares);
+            if (PathRules.Same(arrived, next)) return true;
+        }
+
+        // A short next step: the arrival's own short name, asked of the
+        // volume — but only for a name that could have that alias at all
+        // (one API call per arrival per wait, for every file, still flooded a
+        // busy folder: batch-0.11.2e QA, round 6). The short spelling shortens
+        // every part of the path, the folders above as well, so only the last
+        // part is compared — of an arrival in the same folder as the next step.
+        return _nextIsShort && OperatingSystem.IsWindows()
+            && MayBeAliasOf(name, nextName)
             && PathRules.Same(Path.GetDirectoryName(arrived), Path.GetDirectoryName(next))
-            && ShortNames.Of(arrived) is { } spelled
+            && ShortNameOf(arrived) is { } spelled
             && string.Equals(Path.GetFileName(spelled), Path.GetFileName(next), StringComparison.OrdinalIgnoreCase);
     }
+
+    /// <summary>How many arrivals got as far as the full path compare. For
+    /// the tests.</summary>
+    public int FullCompares => Volatile.Read(ref _fullCompares);
+
+    private int _fullCompares;
+
+    /// <summary>How many arrivals had their short name asked of the volume.
+    /// For the tests.</summary>
+    public int ShortLookups => Volatile.Read(ref _shortLookups);
+
+    private int _shortLookups;
+
+    private string? ShortNameOf(string arrived)
+    {
+        Interlocked.Increment(ref _shortLookups);
+        return OperatingSystem.IsWindows() ? ShortNames.Of(arrived) : null;
+    }
+
+    /// <summary>
+    /// Whether <paramref name="name"/> could carry the 8.3 alias
+    /// <paramref name="alias"/>: whether, with spaces and dots dropped as the
+    /// volume drops them, it begins with the alias's safe stem.
+    ///
+    /// The stem is what comes before the tilde, cut at the first character
+    /// that is not an ASCII letter or digit (the volume writes _ for what it
+    /// cannot keep). **A hashed alias keeps only two**: past a few aliases with
+    /// one stem, NTFS writes the first two characters and four hex digits of a
+    /// hash (TAEAE4~1), so a six-character stem ending in four hex digits is
+    /// trusted for two. Case is ignored, as the alias is upper case.
+    /// </summary>
+    internal static bool MayBeAliasOf(ReadOnlySpan<char> name, ReadOnlySpan<char> alias)
+    {
+        var tilde = alias.IndexOf('~');
+
+        if (tilde <= 0) return true;
+
+        var stem = alias[..tilde];
+        var safe = 0;
+
+        while (safe < stem.Length && char.IsAsciiLetterOrDigit(stem[safe])) safe++;
+
+        if (stem.Length == 6 && safe == 6 && !stem[2..].ContainsAnyExcept(Hex)) safe = 2;
+
+        var matched = 0;
+
+        foreach (var c in name)
+        {
+            if (matched == safe) break;
+            if (c is ' ' or '.') continue;
+            if (char.ToUpperInvariant(c) != char.ToUpperInvariant(stem[matched])) return false;
+            matched++;
+        }
+
+        return matched == safe;
+    }
+
+    private static readonly System.Buffers.SearchValues<char> Hex =
+        System.Buffers.SearchValues.Create("0123456789ABCDEFabcdef");
 
     /// <summary>
     /// Asks again whether the folder is back, and watches afresh from the
@@ -280,7 +366,7 @@ public sealed class FolderReturnWatch : IDisposable
 
         if (!force && above is not null && above == Watching) return;
 
-        var (watching, opened) = OpenNearest(above);
+        var (watching, opened, refusedThere) = OpenNearest(above);
         IDisposable? old;
 
         lock (_gate)
@@ -316,11 +402,21 @@ public sealed class FolderReturnWatch : IDisposable
         //
         // Asked only while something is watched: with nothing watched,
         // asking again at once would only fail again; the slow timer asks
-        // instead. And compared with the folder first found, not the one
-        // watched: a folder above that is there but refused leaves the wait
-        // watching higher up for good, and comparing with that spun the
-        // check in a loop, finding the refused folder again each time.
-        if (_exists(_path) || NearestAbove(_path, _exists) != above) Check(force: false);
+        // instead.
+        //
+        // Compared with the folder first found, and — unless that one was
+        // refused while still there — with the folder watched as well. A folder
+        // above that is there but refused leaves the wait watching higher up
+        // for good, and comparing with the folder watched spun the check in a
+        // loop, finding the refused folder again each time. But a folder first
+        // found that was refused because it had gone, and was made again
+        // before the watch higher up was set up, is the same path as the one
+        // first found and was never heard arriving: compared only with that,
+        // the wait sat above it until the slow look (batch-0.11.2e QA, round 6,
+        // Linux: rm -rf a; mkdir -p a/b, 1 to 3 rounds in 100).
+        var now = NearestAbove(_path, _exists);
+
+        if (_exists(_path) || now != above || (!refusedThere && now != watching)) Check(force: false);
     }
 
     /// <summary>
@@ -343,20 +439,26 @@ public sealed class FolderReturnWatch : IDisposable
     /// not answer), nothing is watched, and the slow timer, the places list
     /// or F5 asks again.
     /// </summary>
-    private (string? Folder, IDisposable? Watch) OpenNearest(string? above)
+    /// <returns>The folder watched and its watch, and whether the folder
+    /// first tried was refused while it was still there.</returns>
+    private (string? Folder, IDisposable? Watch, bool RefusedThere) OpenNearest(string? above)
     {
         var tries = Depth(_path);
+        var refusedThere = false;
 
         for (var tried = 0; above is not null && tried < tries; tried++)
         {
-            if (Open(above) is { } watch) return (above, watch);
+            if (Open(above) is { } watch) return (above, watch, refusedThere);
 
             var again = NearestAbove(_path, _exists);
+            var stillThere = PathRules.Same(again, above);
 
-            above = PathRules.Same(again, above) ? NearestAbove(above, _exists) : again;
+            if (tried == 0) refusedThere = stillThere;
+
+            above = stillThere ? NearestAbove(above, _exists) : again;
         }
 
-        return (null, null);
+        return (null, null, refusedThere);
     }
 
     /// <summary>How many folders lie above <paramref name="path"/>, up to and
