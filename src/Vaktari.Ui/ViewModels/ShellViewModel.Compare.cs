@@ -264,7 +264,9 @@ public sealed partial class ShellViewModel
             _copyAcrossLooking = looking;
             _copyAcrossLookingIn = pane;
 
-            pane.Status = LookingInside;
+            // Held, so the pane's count line does not say "" over it while
+            // the walk goes on: see PaneViewModel.HoldStatus.
+            pane.HoldStatus(looking, LookingInside);
 
             try
             {
@@ -278,6 +280,8 @@ public sealed partial class ShellViewModel
             finally
             {
                 if (ReferenceEquals(_copyAcrossLooking, looking)) _copyAcrossLooking = null;
+
+                pane.ReleaseStatus(looking);
             }
 
             // **Called off after it finished is called off too.** A walk that

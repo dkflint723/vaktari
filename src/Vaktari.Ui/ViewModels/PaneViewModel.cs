@@ -3594,7 +3594,7 @@ public sealed partial class PaneViewModel : ObservableObject, IDisposable
                 // give, since it counts only what is on screen. This line used
                 // to wipe it a moment after it was written, leaving the box
                 // full and the listing short with nothing saying by how much.
-                if (Entries.Count == _all.Count) Status = polled ? ReadOnATimer : "";
+                if (Entries.Count == _all.Count && !StatusHeld) Status = polled ? ReadOnATimer : "";
                 IsLoading = false;
                 IsLoaded = true;
 
@@ -3790,9 +3790,53 @@ public sealed partial class PaneViewModel : ObservableObject, IDisposable
     /// unfiltered folder that is polled says so again here.
     /// </summary>
     private void UpdateCountStatus()
-        => Status = Entries.Count == _all.Count
+    {
+        if (StatusHeld) return;
+
+        Status = Entries.Count == _all.Count
             ? (_polled ? ReadOnATimer : "")
             : $"{Entries.Count:N0} of {_all.Count:N0} items";
+    }
+
+    /// <summary>
+    /// A line something else is saying on this pane's status for as long as
+    /// it lasts, and who is saying it.
+    ///
+    /// **"Looking inside the folders to copy…" was wiped by the count line**
+    /// (batch-0.11.2c QA, an older fault): the walk said it, and 200 ms after
+    /// any change the watcher heard in the folder — a download finishing, a
+    /// build writing — the count line put "" over it while the walk went on
+    /// for seconds. The count line, and the line a reload ends with, now leave
+    /// a held line alone while it is still the one on screen; anything else
+    /// that writes the status — a refusal, the prompt's own line — still
+    /// does, and once it has, the hold is over.
+    /// </summary>
+    private object? _statusHolder;
+
+    /// <inheritdoc cref="_statusHolder"/>
+    private string? _heldStatus;
+
+    /// <summary>Says <paramref name="line"/> for <paramref name="holder"/>,
+    /// and keeps the count line off it until <see cref="ReleaseStatus"/>.</summary>
+    internal void HoldStatus(object holder, string line)
+    {
+        _statusHolder = holder;
+        _heldStatus = line;
+        Status = line;
+    }
+
+    /// <summary>Lets go of a held line, if <paramref name="holder"/> is still
+    /// the one holding it. The line itself is left for the holder to clear.</summary>
+    internal void ReleaseStatus(object holder)
+    {
+        if (!ReferenceEquals(_statusHolder, holder)) return;
+
+        _statusHolder = null;
+        _heldStatus = null;
+    }
+
+    /// <summary>Whether the line on screen is a held one.</summary>
+    private bool StatusHeld => _heldStatus is { } held && Status == held;
 
     /// <summary>
     /// Re-sorts the rows already on screen, without going back to the disk.

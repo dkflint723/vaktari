@@ -1055,6 +1055,57 @@ public sealed class CompareSidesTests : OwnedViewModels
     }
 
     /// <summary>
+    /// **The count line does not say "" over the walk** (batch-0.11.2c QA,
+    /// older than this branch). The pane rewrites its status 200 ms after any
+    /// change its watcher hears — a download finishing, a build writing — and
+    /// that wiped "looking inside…" while the walk went on for seconds. A file
+    /// arrives in the folder while the walk goes; the row arrives, the count
+    /// line's moment passes, and the line still says it is looking.
+    /// </summary>
+    [AvaloniaFact(Skip = OnlyOn.Windows, SkipUnless = nameof(OnlyOn.IsWindows), SkipType = typeof(OnlyOn))]
+    public async Task A_change_in_the_folder_while_looking_inside_leaves_the_line_saying_so()
+    {
+        var (shell, plans, left, _) = await Walking(40000);
+        var window = _windows[^1];
+        var pane = shell.Left.ActiveTab!;
+
+        var request = shell.RequestCopyAcrossCommand.ExecuteAsync(null);
+
+        Assert.False(request.IsCompleted, "the marked folder was not walked off the window's thread");
+        Assert.Equal(Looking, pane.Status);
+
+        File.WriteAllText(Path.Combine(left, "arrived.txt"), "arrived");
+
+        await Until(() => pane.Entries.Any(e => e.Name == "arrived.txt"));
+        Assert.Contains(pane.Entries, e => e.Name == "arrived.txt");
+
+        // Past the 200 ms the count line waits after the last change.
+        var clock = System.Diagnostics.Stopwatch.StartNew();
+        while (clock.ElapsedMilliseconds < 500)
+        {
+            Pump();
+            await Task.Delay(10);
+        }
+
+        Assert.False(request.IsCompleted, "the walk finished before the count line's moment, so this proves nothing");
+        Assert.Equal(Looking, pane.Status);
+
+        clock.Restart();
+        while (!(request.IsCompleted && Asking(window)) && clock.Elapsed < TimeSpan.FromSeconds(60))
+        {
+            Pump();
+            await Task.Delay(10);
+        }
+
+        Assert.True(request.IsCompletedSuccessfully, "the request failed");
+        Assert.Single(plans);
+        Assert.Equal("", pane.Status);
+
+        window.KeyPress(Key.Escape, RawInputModifiers.None, PhysicalKey.Escape, null);
+        Pump();
+    }
+
+    /// <summary>
     /// **A walk called off stops saying it is looking.** The person turns to
     /// the other side while the first walk goes and asks there, where nothing
     /// needs a walk: that side is prompted at once, and the first side's line,
