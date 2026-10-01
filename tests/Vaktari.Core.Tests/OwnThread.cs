@@ -45,6 +45,9 @@ internal sealed class OwnThread
 
     public static OwnThread Run(Action action) => new(action);
 
+    /// <summary>Whether the action has finished, without waiting.</summary>
+    public bool IsFinished => _done.IsSet;
+
     /// <summary>Whether the action finished within <paramref name="within"/>;
     /// what it threw is thrown here.</summary>
     public bool Finished(TimeSpan within)

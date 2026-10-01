@@ -18,7 +18,8 @@ namespace Vaktari.Core.FileSystem;
 /// A nearer folder above it that comes back first moves the wait down to it;
 /// the folder watched going too moves it up. Read on a timer where it cannot
 /// be watched, as a pane's own folder is. One callback at most, from
-/// whatever thread noticed; disposing stops the wait.
+/// whatever thread noticed; disposing stops the wait (though a return
+/// decided just before may still be announced: see <see cref="Dispose"/>).
 ///
 /// **And every <see cref="RetryInterval"/> it asks again, watching afresh,
 /// whatever it watches** — one timer per wait, no thread of its own. A watch is
@@ -543,9 +544,17 @@ public sealed class FolderReturnWatch : IDisposable
     /// **A wait whose looks are slow looks less often.** A look that took
     /// longer than the slow look's interval doubles it, up to
     /// <see cref="MostBackedOff"/> times the interval given; a look that took
-    /// under a quarter of the interval given puts it back. A dead share then
-    /// costs a look every four minutes rather than one every 30 s, each held
-    /// for most of a minute.
+    /// under a quarter of the interval given, and ended with a folder above
+    /// watched, puts it back. A dead share then costs a look every four
+    /// minutes rather than one every 30 s, each held for most of a minute.
+    ///
+    /// **Quick is not enough to put it back** (batch-0.11.2e QA, round 8). The
+    /// Windows network client remembers for about 30 s that a server did not
+    /// answer, so the look after a 42 s one answered in no time — and, counted
+    /// as quick, put the interval back every other look: on a real dead share
+    /// it never went past twice the interval given. A look that found nothing
+    /// to watch has not shown the share is back; one that watches a folder
+    /// above has. (A look that finds the folder itself ends the wait.)
     /// </summary>
     private void Pace(TimeSpan took)
     {
@@ -557,7 +566,7 @@ public sealed class FolderReturnWatch : IDisposable
             var next = _interval;
 
             if (took > _interval) next = TimeSpan.FromTicks(Math.Min(_interval.Ticks * 2, _retryInterval.Ticks * MostBackedOff));
-            else if (took < _retryInterval / 4) next = _retryInterval;
+            else if (took < _retryInterval / 4 && _watching is not null) next = _retryInterval;
 
             if (next == _interval) return;
 
@@ -702,8 +711,21 @@ public sealed class FolderReturnWatch : IDisposable
         return null;
     }
 
-    /// <summary>Ends the wait. Never waits on the disk: a check still running
-    /// lets go of whatever it opens once it is done.</summary>
+    /// <summary>
+    /// Ends the wait. Never waits on the disk: a check still running lets go
+    /// of whatever it opens once it is done.
+    ///
+    /// **A return already decided may still be announced after this
+    /// returns** (batch-0.11.2e QA, round 8: once in 2,000 hammer rounds on
+    /// Linux). The return is decided under the lock and announced outside
+    /// it, so that the callback never runs under the lock that this takes;
+    /// a check that decided just before this call announces just after it.
+    /// Closing that gap would mean waiting here for the callback to finish,
+    /// and this never waits. So the callback must guard against a wait it no
+    /// longer wants — the pane's checks its load generation, its path and
+    /// whether it is disposed. A return decided after this call is never
+    /// announced.
+    /// </summary>
     public void Dispose()
     {
         IDisposable? old;

@@ -312,7 +312,7 @@ public sealed class FolderReturnWatchTests : IDisposable
         Assert.Equal(0, said);
     }
 
-    [Fact]
+    [PoolWorkersFact]
     public async Task A_folder_above_that_cannot_be_watched_is_read_on_a_timer()
     {
         var x = At("x");

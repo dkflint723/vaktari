@@ -179,7 +179,7 @@ public sealed class FolderReturnWatchLoopTests : IDisposable
     /// check finds nothing to watch; asked again twenty times, the wait must
     /// still ask on one timer, not on one more for every ask.
     /// </summary>
-    [Fact]
+    [PoolWorkersFact]
     public void Asked_again_and_again_with_nothing_above_it_keeps_one_timer()
     {
         var looks = 0;
@@ -221,7 +221,7 @@ public sealed class FolderReturnWatchLoopTests : IDisposable
     /// still not back: the slow look must still open a new watch on the same
     /// folder, and let the old one go.
     /// </summary>
-    [Fact]
+    [PoolWorkersFact]
     public void The_slow_look_watches_the_same_folder_afresh_with_nothing_changed()
     {
         var fs = new Provider();

@@ -60,7 +60,7 @@ public sealed class FolderReturnWatchPaceTests : IDisposable
     /// timer left at 100 ms, made a look every 100 ms instead (both were green
     /// before this test).
     /// </summary>
-    [Fact]
+    [PoolWorkersFact]
     public void A_stretched_interval_is_what_the_timer_keeps_and_it_stops_at_eight_times()
     {
         var target = Path.Combine(_root, "slow", "x");

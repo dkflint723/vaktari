@@ -432,12 +432,23 @@ public sealed class ArchiveExtractionTests : IDisposable
         Assert.Empty(Directory.EnumerateFileSystemEntries(At("out")));
     }
 
+    /// <summary>
+    /// **The run is on a thread of its own, not the pool's** (batch-0.11.2e
+    /// QA, round 8). It was a Task.Run given 10 s to reach the pause, and with
+    /// the pool held by Core's other classes it had not begun: 2 runs in 5
+    /// failed under a pool capped at six workers, 5 in 5 at three. What this
+    /// proves is that a paused run holds, which has nothing to do with when
+    /// the pool gets round to starting it. The deadlines are generous — a
+    /// pass is at once; only a run that never pauses, or never resumes,
+    /// waits them out.
+    /// </summary>
     [Fact]
-    public async Task Pausing_holds_the_run_until_it_is_resumed()
+    public void Pausing_holds_the_run_until_it_is_resumed()
     {
         var archive = ArchiveTestData.Zip(At("a.zip"), ("a.txt", "a"), ("b.txt", "b"));
         var handle = new OperationHandle();
-        var paused = new ManualResetEventSlim();
+        using var paused = new ManualResetEventSlim();
+        var generous = TimeSpan.FromSeconds(30);
 
         handle.Progressed += (_, p) =>
         {
@@ -448,18 +459,18 @@ public sealed class ArchiveExtractionTests : IDisposable
             }
         };
 
-        var run = Task.Run(() => Extract(archive, Dir("out"), handle: handle));
+        Archives.Extraction done = default;
+        var run = OwnThread.Run(() => done = Extract(archive, Dir("out"), handle: handle));
 
-        Assert.True(paused.Wait(TimeSpan.FromSeconds(10)));
+        Assert.True(paused.Wait(generous), "the run never reached the pause");
 
-        await Task.Delay(200);
+        Thread.Sleep(200);
 
-        Assert.False(run.IsCompleted, "the run carried on while paused");
+        Assert.False(run.IsFinished, "the run carried on while paused");
 
         handle.Resume();
 
-        var done = await run.WaitAsync(TimeSpan.FromSeconds(10));
-
+        Assert.True(run.Finished(generous), "the run never finished once resumed");
         Assert.Equal(2, done.Files);
     }
 

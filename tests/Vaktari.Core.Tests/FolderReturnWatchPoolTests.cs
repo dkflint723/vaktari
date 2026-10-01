@@ -63,7 +63,7 @@ public sealed class FolderReturnWatchPoolTests : IDisposable
     /// looks, unrelated pool work runs at once, and no dead look ever ran on a
     /// pool thread.
     /// </summary>
-    [Fact]
+    [PoolWorkersFact]
     public void Waits_on_a_dead_share_leave_the_pool_and_a_healthy_wait_alone()
     {
         const int Dead = 32;
@@ -178,7 +178,7 @@ public sealed class FolderReturnWatchPoolTests : IDisposable
     /// thread of its own.** The provider raises PlacesChanged on its own
     /// thread; the look behind it can wait on a dead share.
     /// </summary>
-    [Fact]
+    [PoolWorkersFact]
     public void A_recheck_on_its_own_thread_returns_at_once_and_looks_off_the_pool()
     {
         var target = Path.Combine(_root, "x");
@@ -226,20 +226,26 @@ public sealed class FolderReturnWatchPoolTests : IDisposable
 
     /// <summary>
     /// **A wait whose looks are slow looks less often, and back to its pace
-    /// once they are quick.** Each look here takes 300 ms against an interval
+    /// once the share is.** Each look here takes 300 ms against an interval
     /// of 100 ms; the interval grows, and returns to 100 ms when the disk
-    /// answers at once again.
+    /// answers at once again with the folder above there to watch.
     /// </summary>
-    [Fact]
+    [PoolWorkersFact]
     public void Slow_looks_stretch_the_interval_and_quick_ones_restore_it()
     {
-        var target = Path.Combine(_root, "slow", "x");
+        var above = Path.Combine(_root, "slow");
+        var target = Path.Combine(above, "x");
         var slow = 1;
 
         bool Exists(string path)
         {
-            if (Volatile.Read(ref slow) == 1 && path == target) Thread.Sleep(300);
-            return false;
+            if (Volatile.Read(ref slow) == 1)
+            {
+                if (path == target) Thread.Sleep(300);
+                return false;
+            }
+
+            return path == above;
         }
 
         var interval = TimeSpan.FromMilliseconds(100);
@@ -251,5 +257,50 @@ public sealed class FolderReturnWatchPoolTests : IDisposable
         Volatile.Write(ref slow, 0);
 
         Assert.True(SpinWait.SpinUntil(() => wait.Interval == interval, Prompt), $"quick looks never brought it back: {wait.Interval}");
+    }
+
+    /// <summary>
+    /// **A quick look that finds nothing to watch does not undo the back-off**
+    /// (batch-0.11.2e QA, round 8). On a real dead share the Windows network
+    /// client remembers for about 30 s that the server did not answer, so the
+    /// look after a 42 s one answers in no time; counted as quick, it put the
+    /// interval back every other look, and it never passed twice the interval
+    /// given. Here looks alternate, slow and then instant with nothing there,
+    /// as they did on the share: the interval still climbs to eight times. And
+    /// once a quick look watches a folder above — the share is back — it
+    /// returns to the interval given.
+    /// </summary>
+    [PoolWorkersFact]
+    public void Quick_looks_that_find_nothing_do_not_undo_the_back_off()
+    {
+        var above = Path.Combine(_root, "share");
+        var target = Path.Combine(above, "x");
+        var asked = 0;
+        var back = 0;
+
+        bool Exists(string path)
+        {
+            if (Volatile.Read(ref back) == 1) return path == above;
+
+            // Every other look is slow, as the network client's memory of
+            // the dead server lapses and is renewed.
+            if (path == target && Interlocked.Increment(ref asked) % 2 == 1) Thread.Sleep(300);
+            return false;
+        }
+
+        var interval = TimeSpan.FromMilliseconds(50);
+        using var wait = new FolderReturnWatch(new Provider(), target, () => { }, null, Exists, interval);
+
+        Assert.True(SpinWait.SpinUntil(() => wait.Interval == interval * 8, Prompt), $"the quick looks between kept undoing it: {wait.Interval}");
+
+        // It stays there while the share stays dead.
+        var at = Volatile.Read(ref asked);
+        Assert.True(SpinWait.SpinUntil(() => Volatile.Read(ref asked) >= at + 4, Prompt), "the looks stopped");
+        Assert.Equal(interval * 8, wait.Interval);
+
+        Volatile.Write(ref back, 1);
+
+        Assert.True(SpinWait.SpinUntil(() => wait.Interval == interval, Prompt), $"a quick look with a watch open never brought it back: {wait.Interval}");
+        Assert.Equal(above, wait.Watching);
     }
 }

@@ -86,7 +86,7 @@ public sealed class FolderReturnWatchHearingTests : IDisposable
     /// waits under a flickering folder never heard it come back). Every watch
     /// here is dead; the slow look finds the folder all the same.
     /// </summary>
-    [Fact]
+    [PoolWorkersFact]
     public async Task With_a_watch_that_never_says_anything_the_slow_look_finds_it()
     {
         var target = Path.Combine(_root, "x");

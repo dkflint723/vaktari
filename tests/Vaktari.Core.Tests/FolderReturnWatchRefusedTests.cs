@@ -191,7 +191,7 @@ public sealed class FolderReturnWatchRefusedTests : IDisposable
         Assert.Equal(0, fs.Live);
     }
 
-    [Fact]
+    [PoolWorkersFact]
     public async Task Refused_up_to_the_root_it_asks_again_on_a_timer()
     {
         var phantom = Path.Combine(_root, "phantom");
@@ -216,7 +216,7 @@ public sealed class FolderReturnWatchRefusedTests : IDisposable
     /// does not answer — there is nothing to watch from the very first look,
     /// and the wait asks again on the same timer.
     /// </summary>
-    [Fact]
+    [PoolWorkersFact]
     public async Task With_nothing_above_at_all_it_asks_again_on_a_timer()
     {
         var target = Path.Combine(_root, "phantom", "x");
@@ -241,7 +241,7 @@ public sealed class FolderReturnWatchRefusedTests : IDisposable
     /// (batch-0.11.2d QA, round 5: a watch is not proof of hearing), and each
     /// look lets the watch before it go: one watch open, however many looks.
     /// </summary>
-    [Fact]
+    [PoolWorkersFact]
     public async Task Refused_up_to_the_root_it_watches_again_once_it_can()
     {
         var phantom = Path.Combine(_root, "phantom");
