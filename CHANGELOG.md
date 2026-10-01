@@ -11,7 +11,13 @@ should not be trusted for compatibility yet.
 
 ## [Unreleased]
 
-Nothing yet.
+### Fixed
+
+- **On Windows, the share dialog no longer offers a named pipe as a folder
+  to share.** Typing `\\.\pipe\` or `\\.\mailslot\` — or any other device
+  path that is not a drive, a network share or a volume — enabled *Share*, because Windows answers that such a path is a folder. It
+  is now refused, with a line saying that only a folder on a drive, a
+  network share or a volume can be shared.
 
 ## [0.11.1] — 2026-09-30
 

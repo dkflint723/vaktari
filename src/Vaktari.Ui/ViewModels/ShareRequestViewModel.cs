@@ -139,8 +139,48 @@ public sealed partial class ShareRequestViewModel : ObservableObject
     /// would be served as its neighbour — the server is another program, handed
     /// the folder by name — so it is the hand-off rule, in its own words. On
     /// Linux it is null: the name is ordinary and the folder is served exactly.
+    ///
+    /// **And not a device that only looks like a folder.** "\\.\pipe\" answers
+    /// Directory.Exists true — so does "\\.\mailslot\" — and the dialog listed
+    /// the machine's named pipes as folders and offered to share them (0.11.1
+    /// QA). See <see cref="NotOnAVolume"/>.
     /// </summary>
-    private string? Refused => ReachablePath.RefuseHandedOut(Folder);
+    private string? Refused => NotOnAVolume(Folder) ?? ReachablePath.RefuseHandedOut(Folder);
+
+    /// <summary>
+    /// Why this text names something in the Win32 device namespace other than
+    /// a folder on a drive ("\\.\C:\…", "\\?\C:\…"), on a share
+    /// ("\\?\UNC\server\share\…") or on a volume ("\\?\Volume{…}\…") — the
+    /// three forms VolumeRoots reads — or null. On Linux, null.
+    ///
+    /// **Read as Win32 reads the names**, through <see cref="AsWritten"/>, so
+    /// "//./pipe/" and "\\.\C:\..\pipe\" are the pipe namespace as surely as
+    /// "\\.\pipe\" is. Everything else under the device prefix — pipes,
+    /// mailslots, GLOBALROOT and the object manager's other names — is
+    /// refused rather than chased: nothing in Vaktari hands one out, and a
+    /// folder that is really on a volume can be typed by its ordinary name.
+    /// </summary>
+    private static string? NotOnAVolume(string folder)
+    {
+        if (!OperatingSystem.IsWindows()) return null;
+
+        var written = AsWritten(folder);
+
+        if (!written.StartsWith(@"\\?\", StringComparison.Ordinal) && !written.StartsWith(@"\??\", StringComparison.Ordinal))
+            return null;
+
+        var first = written[4..].Split('\\')[0];
+
+        var drive = first.Length == 2 && char.IsAsciiLetter(first[0]) && first[1] == ':';
+        var share = first.Equals("UNC", StringComparison.OrdinalIgnoreCase);
+        var volume = first.Length == 44
+                     && first.StartsWith("Volume{", StringComparison.OrdinalIgnoreCase) && first.EndsWith('}')
+                     && Guid.TryParse(first.AsSpan(6), out _);
+
+        return drive || share || volume
+            ? null
+            : $"\"{folder}\" is not a folder on a drive, a network share or a volume — only those can be shared";
+    }
 
     private void Refresh()
     {
