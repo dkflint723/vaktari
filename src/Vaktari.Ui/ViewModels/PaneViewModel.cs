@@ -2044,7 +2044,7 @@ public sealed partial class PaneViewModel : ObservableObject, IDisposable
 
         // Enumeration shells out to xdg-mime, so keep it off the UI thread.
         var path = entry.FullPath;
-        _ = Task.Run(() =>
+        _openWithLookup = Task.Run(() =>
         {
             var options = _launcher.GetOpenWithOptions(path);
 
@@ -2101,6 +2101,18 @@ public sealed partial class PaneViewModel : ObservableObject, IDisposable
             });
         });
     }
+
+    private Task _openWithLookup = Task.CompletedTask;
+
+    /// <summary>
+    /// The latest "Open with" lookup, done once its answer has been posted to
+    /// the dispatcher — so a test that waits on it and then runs the queue has
+    /// seen the list filled, or seen it left empty. **Without it, "nothing was
+    /// offered" could only be waited out by the clock**: a test pumped two
+    /// hundred times with a sleep between, three seconds of a 15.6 ms timer
+    /// tick, to be sure an answer it expected never to come had not come.
+    /// </summary>
+    internal Task OpenWithLookup => _openWithLookup;
 
     [RelayCommand]
     public void OpenWithApp(LaunchOption? option)

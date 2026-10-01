@@ -31,10 +31,17 @@ public static class RowIcon
     private static readonly AttachedProperty<CancellationTokenSource?> TokenProperty =
         AvaloniaProperty.RegisterAttached<Image, CancellationTokenSource?>("Token", typeof(RowIcon));
 
+    /// <summary>
+    /// The latest paint started on an image, finished once every repaint it
+    /// will make has been made — see <see cref="PaintOf"/>.
+    /// </summary>
+    private static readonly AttachedProperty<Task?> PaintProperty =
+        AvaloniaProperty.RegisterAttached<Image, Task?>("Paint", typeof(RowIcon));
+
     static RowIcon()
     {
         EntryProperty.Changed.AddClassHandler<Image>((image, e) =>
-            OnEntryChanged(image, e.NewValue as FileEntry?));
+            image.SetValue(PaintProperty, OnEntryChangedAsync(image, e.NewValue as FileEntry?)));
     }
 
     public static void SetEntry(Image image, FileEntry? value) => image.SetValue(EntryProperty, value);
@@ -43,7 +50,16 @@ public static class RowIcon
     public static void SetSize(Image image, int value) => image.SetValue(SizeProperty, value);
     public static int GetSize(Image image) => image.GetValue(SizeProperty);
 
-    private static async void OnEntryChanged(Image image, FileEntry? entry)
+    /// <summary>
+    /// The paint the last entry started on this image, or null before any.
+    /// Done when the work is — the off-thread lookups AND the folder-contents
+    /// probe, whose late repaint is the fault SystemFolderIconTests pins — so a
+    /// test waits on this rather than sleeping two seconds in case one more
+    /// paint is coming. Never faults: the work catches its own failures.
+    /// </summary>
+    internal static Task? PaintOf(Image image) => image.GetValue(PaintProperty);
+
+    private static async Task OnEntryChangedAsync(Image image, FileEntry? entry)
     {
         if (image.GetValue(TokenProperty) is { } previous)
         {

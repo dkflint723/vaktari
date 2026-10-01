@@ -136,7 +136,7 @@ public sealed class ChooseApplicationTests : OwnedViewModels
     {
         var pane = Pane(new FakeLauncher(ownDialog: false, Writer), Path.GetTempPath());
 
-        Settle(() => pane.OpenWithOptions.Count > 0);
+        Settle(pane);
 
         Assert.Contains(pane.OpenWithOptions, o => o.IsChooser);
 
@@ -156,7 +156,7 @@ public sealed class ChooseApplicationTests : OwnedViewModels
     {
         var pane = Pane(new FakeLauncher(ownDialog: false), Path.GetTempPath());
 
-        Settle(() => false);
+        Settle(pane);
 
         Assert.Empty(pane.OpenWithOptions);
     }
@@ -173,7 +173,7 @@ public sealed class ChooseApplicationTests : OwnedViewModels
         var launcher = new FakeLauncher(ownDialog: false, Writer);
         var pane = Pane(launcher, Path.GetTempPath());
 
-        Settle(() => launcher.AskedOnTheUiThread is not null);
+        Settle(pane);
 
         Assert.False(launcher.AskedOnTheUiThread,
                      "the chooser capability was read on the UI thread");
@@ -692,16 +692,17 @@ public sealed class ChooseApplicationTests : OwnedViewModels
     /// <summary>
     /// The "Open with" list is filled from a background task that posts back,
     /// so a test that reads it straight after the selection reads it empty.
-    /// Pumped rather than slept on: the Post cannot run without a dispatcher
-    /// turn.
+    ///
+    /// **Waited on the lookup itself, then the queue run once**: the task is
+    /// done only after its answer has been posted, so one turn of the
+    /// dispatcher after it has drawn the list — or, for a launcher with
+    /// nothing to offer, left it empty. That second case is why this is not a
+    /// condition: "nothing arrived" was waited out with two hundred 5 ms
+    /// sleeps, three seconds of 15.6 ms timer ticks, every time.
     /// </summary>
-    private static void Settle(Func<bool> done)
+    private static void Settle(PaneViewModel pane)
     {
-        for (var i = 0; i < 200 && !done(); i++)
-        {
-            Dispatcher.UIThread.RunJobs();
-            Thread.Sleep(5);
-        }
+        Assert.True(pane.OpenWithLookup.Wait(TimeSpan.FromSeconds(10)), "the Open with lookup never finished");
 
         Dispatcher.UIThread.RunJobs();
     }

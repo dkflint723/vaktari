@@ -79,20 +79,26 @@ public sealed class SystemFolderIconTests : IDisposable
         new(Path.GetFileName(path), path, 0, DateTimeOffset.UtcNow, EntryFlags.Directory);
 
     /// <summary>
-    /// Waits for the icon to settle rather than for a fixed time.
+    /// Waits for the icon's paint to finish — all of it.
     ///
-    /// The work is an async void property handler with two hops through the
-    /// thread pool, so there is nothing to await. It keeps pumping after the
-    /// shell's icon lands, deliberately: the defect was a SECOND paint arriving
-    /// afterwards, and a check that stopped at the first would pass against it.
+    /// **This slept two hundred times for 10 ms**, two seconds a test, because
+    /// the work was an async void property handler with two hops through the
+    /// thread pool and nothing to await. It waited the whole time on purpose:
+    /// the defect was a SECOND paint arriving after the shell's icon, and a
+    /// check that stopped at the first would pass against it. The handler now
+    /// hands back its task (RowIcon.PaintOf), which is done only once the
+    /// contents probe — the second painter — has had its say, so waiting on it
+    /// sees that paint if there is one, and stops as soon as there is not.
     /// </summary>
     private static async Task Settle(Image image)
     {
-        for (var i = 0; i < 200; i++)
-        {
-            await Task.Delay(10);
-            Avalonia.Threading.Dispatcher.UIThread.RunJobs();
-        }
+        var paint = RowIcon.PaintOf(image);
+
+        Assert.NotNull(paint);
+
+        await paint.WaitAsync(TimeSpan.FromSeconds(10));
+
+        Avalonia.Threading.Dispatcher.UIThread.RunJobs();
     }
 
     [AvaloniaFact]

@@ -735,19 +735,26 @@ public sealed class AddressBarMenuTests : OwnedViewModels
     /// <summary>
     /// Runs the queue, then measures and arranges. A realized popup has to be
     /// laid out before anything in it exists to be read.
+    ///
+    /// **It also slept forty times for a millisecond**, which on Windows is
+    /// forty 15.6 ms timer ticks — 0.6 s a call and most of this class's 20 s.
+    /// Nothing these tests do between two calls waits on the clock: a menu
+    /// opening, a row's command, the editor's focus are all dispatcher work,
+    /// and what has to ARRIVE — the rows, the editor, the clipboard's text —
+    /// is waited for as itself by <see cref="Rows"/>, <see cref="Editor"/> and
+    /// <see cref="Copied"/>, each under a ceiling. The yield hands the
+    /// dispatcher back to anything those loops are waiting for.
     /// </summary>
     private static async Task Settled(Window window)
     {
-        for (var i = 0; i < 40; i++)
-        {
-            Dispatcher.UIThread.RunJobs();
-            await Task.Delay(1);
-        }
+        Dispatcher.UIThread.RunJobs();
 
         window.Measure(new Size(1400, 900));
         window.Arrange(new Rect(0, 0, 1400, 900));
 
         Dispatcher.UIThread.RunJobs();
+
+        await Task.Yield();
     }
 
     /// <summary>
@@ -857,7 +864,7 @@ public sealed class AddressBarMenuTests : OwnedViewModels
 
             if (await window.Clipboard!.TryGetTextAsync() is { Length: > 0 } text) return text;
 
-            await Task.Delay(1);
+            await Task.Yield();
         }
 
         return await window.Clipboard!.TryGetTextAsync();

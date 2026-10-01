@@ -57,6 +57,15 @@ public sealed partial class PaneViewModel
     private readonly HashSet<ObservableCollection<PathSegment>> _crumbMenusFilling = [];
 
     /// <summary>
+    /// Whether any crumb menu's read is still in flight. The tests wait on
+    /// this rather than on the clock: the fill is started by a command and
+    /// finished by a continuation, and this goes false in the same dispatcher
+    /// turn that writes the rows — the finally that lets go of the menu and
+    /// the lines that fill it run together.
+    /// </summary>
+    internal bool CrumbMenuFilling => _crumbMenusFilling.Count > 0;
+
+    /// <summary>
     /// One crumb, with the command that navigates to it and the command that
     /// lists what is inside it.
     ///

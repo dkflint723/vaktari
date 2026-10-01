@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using System.Runtime.CompilerServices;
 using System.Xml.Linq;
 using Avalonia;
@@ -47,18 +48,45 @@ public sealed class CrumbMenuTests : OwnedViewModels
         GC.SuppressFinalize(this);
     }
 
-    /// <summary>Pumps the dispatcher and gives a continuation that answered off
-    /// the pane's own await real time to arrive — the menu fill is started by a
-    /// command and finished by a continuation, the way the button drives
-    /// it.</summary>
-    private static async Task Drain()
+    private static readonly TimeSpan Ceiling = TimeSpan.FromSeconds(10);
+
+    /// <summary>
+    /// Pumps the dispatcher until <paramref name="done"/> holds, under a
+    /// wall-clock ceiling.
+    ///
+    /// **This was forty turns with a millisecond's sleep between them**, and a
+    /// millisecond's sleep on Windows is a 15.6 ms timer tick: 0.6 s a call,
+    /// two or three calls a test, 34 s for the class. Every wait now names
+    /// what the next assertion reads — the pane's listing, the menu's read,
+    /// the folder chosen — so a slow machine takes longer and a broken one
+    /// still fails.
+    /// </summary>
+    private static async Task Until(Func<bool> done, string what)
     {
-        for (var i = 0; i < 40; i++)
+        var clock = Stopwatch.StartNew();
+
+        while (true)
         {
             Dispatcher.UIThread.RunJobs();
-            await Task.Delay(1);
+
+            if (done()) return;
+
+            Assert.True(clock.Elapsed < Ceiling, $"waited {Ceiling.TotalSeconds:N0} s for {what}");
+
+            await Task.Yield();
         }
     }
+
+    /// <summary>Until every crumb menu's read has landed, by the pane's own
+    /// account of it — the menu fill is started by a command and finished by
+    /// a continuation, the way the button drives it.</summary>
+    private static Task Filled(PaneViewModel pane)
+        => Until(() => !pane.CrumbMenuFilling, "the crumb menu's read to land");
+
+    /// <summary>Until the pane's listing is in, which is when its crumbs are
+    /// the folder's.</summary>
+    private static Task Listed(PaneViewModel pane)
+        => Until(() => pane.IsLoaded && !pane.IsLoading, $"the listing of {pane.CurrentPath}");
 
     /// <summary>
     ///   vaktari-crumb-menu/  docs/    inner/   deep/
@@ -82,7 +110,7 @@ public sealed class CrumbMenuTests : OwnedViewModels
         var pane = Own(new PaneViewModel(tree ?? Sample(), null, null) { ViewportWidth = 1400 });
 
         await pane.NavigateAsync(at ?? In("docs", "inner"));
-        await Drain();
+        await Listed(pane);
 
         return pane;
     }
@@ -92,13 +120,13 @@ public sealed class CrumbMenuTests : OwnedViewModels
 
     /// <summary>Presses the crumb's separator, the way the button does: run the
     /// command it is bound to, then let the read land.</summary>
-    private static async Task Press(PathSegment crumb)
+    private static async Task Press(PaneViewModel pane, PathSegment crumb)
     {
         Assert.True(crumb.HasMenu, "this crumb carries no menu command at all");
 
         crumb.Menu!.Execute(null);
 
-        await Drain();
+        await Filled(pane);
     }
 
     private static List<string> Rows(PathSegment crumb)
@@ -117,7 +145,7 @@ public sealed class CrumbMenuTests : OwnedViewModels
 
         var crumb = CrumbFor(pane, Root);
 
-        await Press(crumb);
+        await Press(pane, crumb);
 
         Assert.Equal(["docs", "pics"], Rows(crumb));
     }
@@ -134,7 +162,7 @@ public sealed class CrumbMenuTests : OwnedViewModels
 
         var crumb = CrumbFor(pane, Root);
 
-        await Press(crumb);
+        await Press(pane, crumb);
 
         Assert.DoesNotContain("top.txt", Rows(crumb));
     }
@@ -150,13 +178,13 @@ public sealed class CrumbMenuTests : OwnedViewModels
 
         var crumb = CrumbFor(pane, Root);
 
-        await Press(crumb);
+        await Press(pane, crumb);
 
         var pics = Assert.Single(crumb.Children, c => c.Name == "pics");
 
         pics.Open.Execute(null);
 
-        await Drain();
+        await Until(() => pane.CurrentPath == In("pics") && !pane.IsLoading, "the folder chosen from the menu");
 
         Assert.Equal(In("pics"), pane.CurrentPath);
     }
@@ -180,7 +208,7 @@ public sealed class CrumbMenuTests : OwnedViewModels
 
         var crumb = CrumbFor(pane, Root);
 
-        await Press(crumb);
+        await Press(pane, crumb);
 
         Assert.Equal(["alpha", "mid", "zeta"], Rows(crumb));
     }
@@ -205,11 +233,11 @@ public sealed class CrumbMenuTests : OwnedViewModels
 
         pane.ShowHidden = shown;
 
-        await Drain();
+        await Listed(pane);
 
         var crumb = CrumbFor(pane, Root);
 
-        await Press(crumb);
+        await Press(pane, crumb);
 
         Assert.Equal(shown, Rows(crumb).Contains("secret"));
     }
@@ -246,7 +274,7 @@ public sealed class CrumbMenuTests : OwnedViewModels
 
         var crumb = CrumbFor(pane, Root);
 
-        await Press(crumb);
+        await Press(pane, crumb);
 
         Assert.Equal(101, crumb.Children.Count);
         Assert.Equal("f000", crumb.Children[0].Name);
@@ -275,7 +303,7 @@ public sealed class CrumbMenuTests : OwnedViewModels
 
         var crumb = CrumbFor(pane, Root);
 
-        await Press(crumb);
+        await Press(pane, crumb);
 
         Assert.Equal(100, crumb.Children.Count);
         Assert.Equal("f099", crumb.Children[^1].Name);
@@ -293,8 +321,8 @@ public sealed class CrumbMenuTests : OwnedViewModels
 
         var crumb = CrumbFor(pane, Root);
 
-        await Press(crumb);
-        await Press(crumb);
+        await Press(pane, crumb);
+        await Press(pane, crumb);
 
         Assert.Equal(["docs", "pics"], Rows(crumb));
     }
@@ -316,13 +344,13 @@ public sealed class CrumbMenuTests : OwnedViewModels
 
         var crumb = CrumbFor(pane, Root);
 
-        await Press(crumb);
+        await Press(pane, crumb);
 
         Assert.Equal(["docs", "pics"], Rows(crumb));
 
         tree.Put(Root, Tree.Dir("docs"), Tree.Dir("later"), Tree.Dir("pics"));
 
-        await Press(crumb);
+        await Press(pane, crumb);
 
         Assert.Equal(["docs", "later", "pics"], Rows(crumb));
     }
@@ -349,15 +377,15 @@ public sealed class CrumbMenuTests : OwnedViewModels
 
         crumb.Menu!.Execute(null);
 
-        await Drain();
+        // The first read has started and is parked on the gate: the menu is
+        // still filling when the second press arrives.
+        await Until(() => tree.Reads(Root) == 1 && pane.CrumbMenuFilling, "the first read to start");
 
         crumb.Menu!.Execute(null);
 
-        await Drain();
-
         gate.SetResult();
 
-        await Drain();
+        await Filled(pane);
 
         Assert.Equal(1, tree.Reads(Root));
         Assert.Equal(["docs", "pics"], Rows(crumb));
@@ -390,13 +418,13 @@ public sealed class CrumbMenuTests : OwnedViewModels
 
         stale.Menu!.Execute(null);
 
-        await Drain();
+        await Until(() => tree.Reads(Root) == 1 && pane.CrumbMenuFilling, "the stale crumb's read to start");
 
         // Away and back: CurrentPath changes twice, and each change rebuilds
         // Breadcrumbs from nothing.
         await pane.NavigateAsync(In("docs"));
         await pane.NavigateAsync(In("docs", "inner"));
-        await Drain();
+        await Listed(pane);
 
         var fresh = CrumbFor(pane, Root);
 
@@ -404,11 +432,9 @@ public sealed class CrumbMenuTests : OwnedViewModels
 
         fresh.Menu!.Execute(null);
 
-        await Drain();
-
         gate.SetResult();
 
-        await Drain();
+        await Filled(pane);
 
         Assert.Equal(["docs", "pics"], Rows(fresh));
     }
@@ -432,14 +458,14 @@ public sealed class CrumbMenuTests : OwnedViewModels
 
         stale.Menu!.Execute(null);
 
-        await Drain();
+        await Until(() => tree.Reads(Root) == 1 && pane.CrumbMenuFilling, "the stale crumb's read to start");
 
         await pane.NavigateAsync(In("docs"));
-        await Drain();
+        await Listed(pane);
 
         gate.SetResult();
 
-        await Drain();
+        await Filled(pane);
 
         // It ran to the end and filled the collection it was given.
         Assert.Equal(["docs", "pics"], Rows(stale));
@@ -474,7 +500,7 @@ public sealed class CrumbMenuTests : OwnedViewModels
 
         Assert.NotEmpty(crumb.Children);
 
-        await Press(crumb);
+        await Press(pane, crumb);
 
         var row = Assert.Single(crumb.Children);
 
@@ -499,7 +525,7 @@ public sealed class CrumbMenuTests : OwnedViewModels
 
         var crumb = CrumbFor(pane, Root);
 
-        await Press(crumb);
+        await Press(pane, crumb);
 
         var row = Assert.Single(crumb.Children);
 
@@ -579,7 +605,7 @@ public sealed class CrumbMenuTests : OwnedViewModels
 
         var crumb = CrumbFor(pane, VirtualPaths.Computer);
 
-        await Press(crumb);
+        await Press(pane, crumb);
 
         Assert.Contains("Windows (C:)", Rows(crumb));
     }
@@ -866,14 +892,15 @@ public sealed class CrumbMenuTests : OwnedViewModels
 
         flyout.ShowAt(chevron);
 
-        await Layout(window);
+        Layout(window);
 
         var popup = (Control)flyout.Popup.Child!;
         var empty = popup.Bounds;
 
         chevron.Command!.Execute(null);
 
-        await Layout(window);
+        await Filled(window.Shell.ActiveTab!);
+        Layout(window);
 
         Assert.Equal(2, crumb.Children.Count);
         Assert.True(popup.Bounds.Width > empty.Width * 4,
@@ -922,20 +949,19 @@ public sealed class CrumbMenuTests : OwnedViewModels
         var shell = Assert.IsType<ShellViewModel>(window.DataContext);
 
         await shell.ActiveTab!.NavigateAsync(Path.Combine(root, "here"));
-        await Layout(window);
+        await Listed(shell.ActiveTab!);
+        Layout(window);
 
         return (window, root);
     }
 
     /// <summary>Runs the queue, then measures and arranges — a realized flyout
-    /// has to be laid out before anything in it has a size.</summary>
-    private static async Task Layout(Window window)
+    /// has to be laid out before anything in it has a size. Nothing here waits
+    /// on the clock: what has to ARRIVE first — the listing, the menu's read —
+    /// is waited for as itself before this is called.</summary>
+    private static void Layout(Window window)
     {
-        for (var i = 0; i < 40; i++)
-        {
-            Dispatcher.UIThread.RunJobs();
-            await Task.Delay(1);
-        }
+        Dispatcher.UIThread.RunJobs();
 
         window.Measure(new Size(1400, 900));
         window.Arrange(new Rect(0, 0, 1400, 900));
@@ -984,13 +1010,14 @@ public sealed class CrumbMenuTests : OwnedViewModels
 
         chevron.Command!.Execute(null);
 
-        await Layout(window);
+        await Filled(((MainWindow)window).Shell.ActiveTab!);
+        Layout(window);
 
         var flyout = (MenuFlyout)chevron.Flyout!;
 
         flyout.ShowAt(chevron);
 
-        await Layout(window);
+        Layout(window);
 
         return [.. ((Visual)flyout.Popup.Child!).GetVisualDescendants().OfType<MenuItem>()];
     }
