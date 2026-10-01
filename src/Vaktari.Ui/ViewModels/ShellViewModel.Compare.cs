@@ -210,6 +210,16 @@ public sealed partial class ShellViewModel
     [RelayCommand(AllowConcurrentExecutions = true)]
     private async Task RequestCopyAcrossAsync()
     {
+        // **Every request calls off the walk before it, not only one that
+        // walks** (batch-0.11.2b QA). A second request that needed no walk —
+        // the listing filtered down to a file meanwhile — was planned and
+        // prompted at once, and then the first walk finished and put its own
+        // prompt over it. A walk that had finished but whose continuation was
+        // still queued behind the second request did the same. Called off
+        // here, the first one sees its token cancelled when it resumes, and
+        // stops; see the check after the await.
+        _copyAcrossLooking?.Cancel();
+
         if (ActiveTab is not { } pane) return;
 
         if (OtherGroup?.ActiveTab is not { } other)
@@ -250,12 +260,11 @@ public sealed partial class ShellViewModel
         }
         else
         {
-            _copyAcrossLooking?.Cancel();
-
             using var looking = new CancellationTokenSource();
             _copyAcrossLooking = looking;
+            _copyAcrossLookingIn = pane;
 
-            pane.Status = "looking inside the folders to copy…";
+            pane.Status = LookingInside;
 
             try
             {
@@ -263,11 +272,30 @@ public sealed partial class ShellViewModel
             }
             catch (OperationCanceledException)
             {
+                CalledOff(pane, looking);
                 return;
             }
             finally
             {
                 if (ReferenceEquals(_copyAcrossLooking, looking)) _copyAcrossLooking = null;
+            }
+
+            // **Called off after it finished is called off too.** A walk that
+            // completed is not cancelled by the token, and its continuation
+            // can wait behind a later request on this thread — which has
+            // planned, and maybe prompted, by the time this runs.
+            if (looking.IsCancellationRequested)
+            {
+                CalledOff(pane, looking);
+                return;
+            }
+
+            // **Nor for a comparison switched off meanwhile.** The prompt
+            // copies what the marks say, and there are none on screen.
+            if (!IsComparing)
+            {
+                if (pane.Status == LookingInside) pane.Status = "";
+                return;
             }
 
             // **The sides as they were asked about, or nothing.** The walk
@@ -276,7 +304,7 @@ public sealed partial class ShellViewModel
             if (!ReferenceEquals(ActiveTab, pane) || pane.CurrentPath != from
                 || !ReferenceEquals(OtherGroup?.ActiveTab, other) || other.CurrentPath != destination)
             {
-                if (pane.Status == "looking inside the folders to copy…") pane.Status = "";
+                if (pane.Status == LookingInside) pane.Status = "";
                 return;
             }
         }
@@ -300,6 +328,28 @@ public sealed partial class ShellViewModel
     /// <see cref="RequestCopyAcrossAsync"/>. Called off by the next request
     /// and by <see cref="Dispose"/>.</summary>
     private CancellationTokenSource? _copyAcrossLooking;
+
+    /// <summary>The side <see cref="_copyAcrossLooking"/> is looking inside
+    /// for, whose status line says so.</summary>
+    private PaneViewModel? _copyAcrossLookingIn;
+
+    /// <summary>What the status line says while the marked folders are
+    /// looked inside.</summary>
+    private const string LookingInside = "looking inside the folders to copy…";
+
+    /// <summary>
+    /// A walk called off stops saying it is looking — unless a later walk on
+    /// the same side is saying so now. A request that needed no walk does not
+    /// touch the line while it prompts, so without this the line went on
+    /// saying "looking" under that request's prompt.
+    /// </summary>
+    private void CalledOff(PaneViewModel pane, CancellationTokenSource looking)
+    {
+        var another = _copyAcrossLooking is { } now && !ReferenceEquals(now, looking)
+                      && ReferenceEquals(_copyAcrossLookingIn, pane);
+
+        if (!another && pane.Status == LookingInside) pane.Status = "";
+    }
 
     /// <summary>Calls off a walk inside marked folders, for a shell that is
     /// going away.</summary>
