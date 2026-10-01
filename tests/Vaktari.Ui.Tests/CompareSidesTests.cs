@@ -796,6 +796,15 @@ public sealed class CompareSidesTests : OwnedViewModels
         shell.ToggleCompareCommand.Execute(null);
         AskToCopyAcrossFromTheLeft(shell);
 
+        // **Waited for, not read at once.** "inner" is a marked folder, and on
+        // Windows a marked folder is looked inside off the window's thread
+        // (CopyAcrossPlan.MustLookInside), so the prompt comes when that walk
+        // returns. Read straight after one pump, it was there only when the
+        // pool had already finished the walk: a loaded runner failed this with
+        // "the prompt did not open" (batch-0.11.2d QA, r5), and a 200 ms
+        // delay on the walk fails it every time.
+        await Until(() => Asking(window));
+
         Assert.True(Asking(window), "the prompt did not open");
         Assert.StartsWith("copy a.txt to ", window.FindControl<TextBlock>("PromptLabel")!.Text);
         Assert.Equal("left out of the copy: inner, which holds the other side", shell.Left.ActiveTab!.Status);
