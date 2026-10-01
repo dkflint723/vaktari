@@ -516,6 +516,47 @@ public sealed class InotifyWatchTests : IDisposable
         Assert.True(instance.Exited.WaitOne(Ceiling), "the instance's reader did not stop");
     }
 
+    /// <summary>
+    /// **Nor the event already being told.** Two watches on one folder: the
+    /// reader is held in the first one's callback for an event it is telling
+    /// both, and the second is disposed meanwhile — once the reader is let
+    /// go, the second is not told that event. Whom to tell was settled before
+    /// the dispose, so only the disposed flag can stop it.
+    /// </summary>
+    [PosixFact]
+    public void A_watch_disposed_while_its_folder_is_being_told_hears_nothing_more()
+    {
+        var dir = Dir("w");
+        var later = new Heard();
+        using var entered = new ManualResetEventSlim();
+        using var release = new ManualResetEventSlim();
+
+        var instance = Inotify.Open();
+
+        var first = instance.Add(dir, _ =>
+        {
+            if (!entered.IsSet)
+            {
+                entered.Set();
+                release.Wait(Ceiling);
+            }
+        });
+
+        var second = instance.Add(dir, later.Add);
+
+        File.WriteAllText(Path.Combine(dir, "x"), "");
+        Assert.True(entered.Wait(Ceiling), "the reader never called back");
+
+        second.Dispose();
+        release.Set();
+
+        Thread.Sleep(Settle);
+        Assert.Empty(later.All);
+
+        first.Dispose();
+        Assert.True(instance.Exited.WaitOne(Ceiling), "the instance's reader did not stop");
+    }
+
     /// <summary>A watch that disposes itself from its own callback — the
     /// last one — closes the instance without waiting on itself.</summary>
     [PosixFact]

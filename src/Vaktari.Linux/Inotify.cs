@@ -493,6 +493,12 @@ internal sealed partial class Inotify
             return;
         }
 
+        // **Two ways to hear a folder go, each hiding the other** (measured:
+        // either taken out alone, the tests stay green; both, they redden).
+        // A deletion and an unmount come with IN_IGNORED after them; this
+        // says Gone first, and IN_IGNORED says it for a drop that came with
+        // neither. A move has no IN_IGNORED — the watch follows the folder —
+        // so it is heard here or not at all.
         if ((mask & (DeleteSelf | MoveSelf | Unmount)) != 0)
         {
             Deliver(watch, ChangeKind.Gone, "", null);
