@@ -600,8 +600,9 @@ split, the filter bar and the path bar apply to new windows, and a warning when
 the chosen startup folder is not there; under *Appearance*, the offer to fetch
 an icon set; under *Privacy and system*, that the default-file-manager buttons
 take effect at once and, on Windows, what *Make Vaktari the default* cannot
-change; a line at the top of *Keyboard* and one on *Context menu*; and the bin
-page's warning. *Apply* makes what is on screen take effect without closing the
+change; a line at the top of *Keyboard* and one on *Context menu*; and on the
+bin page, its warning and a line saying the bin is shared, so a sweep also
+removes what other applications put there. *Apply* makes what is on screen take effect without closing the
 dialog; *Cancel* afterwards closes it without undoing what was applied.
 `Ctrl+Tab` and `Ctrl+PageDown` turn to the next page (`Ctrl+Shift+Tab`,
 `Ctrl+PageUp` back), `Alt` and the underlined letter goes straight to one, and
