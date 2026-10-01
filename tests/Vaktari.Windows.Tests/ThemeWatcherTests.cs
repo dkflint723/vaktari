@@ -55,6 +55,12 @@ public sealed class ThemeWatcherTests
     /// Two windows, each subscribed through a provider of its own — the shape
     /// two windows with services of their own have — both hear one change,
     /// and a window that has closed and taken its handler back hears nothing.
+    ///
+    /// Only the calls made on this test's thread are counted. The event is the
+    /// process's, so a watcher thread raises it too: the previous test's key,
+    /// deleted as that test ends, wakes its watcher once more before the wait
+    /// fails, and that late raise landed here on CI as [2, 2]. Notify raises on
+    /// the thread that calls it, so the count is exactly this test's.
     /// </summary>
     [WindowsFact]
     public void A_change_reaches_every_subscriber_of_every_provider_and_no_departed_one()
@@ -62,9 +68,10 @@ public sealed class ThemeWatcherTests
         var first = new WindowsThemeProvider();
         var second = new WindowsThemeProvider();
 
+        var me = Environment.CurrentManagedThreadId;
         var heard = new int[2];
-        EventHandler one = (_, _) => Interlocked.Increment(ref heard[0]);
-        EventHandler two = (_, _) => Interlocked.Increment(ref heard[1]);
+        EventHandler one = (_, _) => { if (Environment.CurrentManagedThreadId == me) Interlocked.Increment(ref heard[0]); };
+        EventHandler two = (_, _) => { if (Environment.CurrentManagedThreadId == me) Interlocked.Increment(ref heard[1]); };
 
         first.Changed += one;
         second.Changed += two;
