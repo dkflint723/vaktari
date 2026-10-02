@@ -259,31 +259,45 @@
       <Setter Property="FontSize" Value="{DynamicResource FontSizeBase}"/>
     </Style>
 
-    <!-- **The grip on a details heading's right edge.** The four metadata
-         columns were fixed widths; every table a person has used lets a
-         heading's edge be dragged. The same shape as the sidebar's handle and
-         the details panel's, for the same reason: a Thumb reports how far it
-         was dragged and changes nothing itself, and the width is moved in the
-         handler. Transparent because the edge of the column is the line
-         somebody reaches for and a drawn bar would be a fifth column; six
-         pixels wide so it can be found with a pointer, and the cursor
-         announces it. Right-aligned in the SAME grid cell as its heading,
-         drawn after it so it is on top of the heading's last six pixels.
+    <!-- **The grip on a details heading's right edge.** Every table a person
+         has used lets a heading's edge be dragged. A Thumb, like the sidebar's
+         handle and the details panel's: it reports the drag and changes
+         nothing itself, and the width is moved in the handler.
 
-         A Style rather than four copies of the template, so that the one
-         template, width and cursor cannot drift between the four; what
-         differs per column — which column, its heading's visibility and its
-         name to a screen reader — stays on each Thumb. -->
+         **Ten pixels STRADDLING the edge**, five each side, rather than six
+         inside the column. The edge is a line, and a pointer aimed at a line
+         lands either side of it about equally; six pixels inside meant half
+         the aims fell on the next heading and sorted the listing instead.
+         Right-aligned in its column's cell with a negative right margin, and
+         declared after every heading, so it lies on top of the first five
+         pixels of the next one. The cell is Auto, and the margin takes the
+         grip's claim on it to five pixels, under any heading's width.
+
+         Transparent, with a one-pixel line drawn under the pointer: a bar
+         drawn all the time would be another column, and the line is what
+         says the edge has been found before the button is pressed.
+
+         A Style rather than five copies of the template, so the one template,
+         width and cursor cannot drift between them; what differs per column —
+         which column, its heading's visibility and its name to a screen
+         reader — stays on each Thumb. -->
     <Style Selector="Thumb.columnGrip">
-      <Setter Property="Width" Value="6"/>
+      <Setter Property="Width" Value="10"/>
+      <Setter Property="Margin" Value="0,0,-5,0"/>
       <Setter Property="HorizontalAlignment" Value="Right"/>
       <Setter Property="Background" Value="Transparent"/>
       <Setter Property="Cursor" Value="SizeWestEast"/>
       <Setter Property="Template">
         <ControlTemplate>
-          <Border Background="{TemplateBinding Background}"/>
+          <Panel Background="{TemplateBinding Background}">
+            <Border Classes="edge" Width="1" HorizontalAlignment="Center"
+                    Background="{DynamicResource ViewDimText}" Opacity="0"/>
+          </Panel>
         </ControlTemplate>
       </Setter>
+    </Style>
+    <Style Selector="Thumb.columnGrip:pointerover /template/ Border.edge">
+      <Setter Property="Opacity" Value="1"/>
     </Style>
 
     <!-- **Menu rows at 24 pixels, down from Fluent's 30.** Every menu in
@@ -2045,9 +2059,10 @@
                             Command="{Binding ActiveTab.ToggleCreatedColumnCommand}"/>
                   <Separator/>
                   <!-- The grips are a pointer's; this row is how
-                       a keyboard undoes what one did. -->
+                       a keyboard undoes what one did. On the active tab, like
+                       the ticks above it: the widths are the tab's own. -->
                   <MenuItem Header="Reset column _widths"
-                            Command="{Binding $parent[Window].((vm:ShellViewModel)DataContext).ResetColumnWidthsCommand}"/>
+                            Command="{Binding ActiveTab.ResetColumnWidthsCommand}"/>
                   <Separator/>
                   <MenuItem Header="A narrow pane drops columns to keep the name readable."
                             IsEnabled="False"/>
@@ -3173,8 +3188,13 @@
               <!-- The header is a raised band: highlight above, shadow below.
                    Without it the column labels float on the same plane as the
                    rows they describe. -->
+              <!-- ClipToBounds: once the name has a width of its own, columns
+                   dragged wider than the pane carry on past its right edge,
+                   and the headings are cut off there the way the rows are
+                   rather than drawn over the pane beside. -->
               <Border DockPanel.Dock="Top" Padding="0,4" Background="{DynamicResource ChromeBrush}"
                       BorderThickness="0,1,0,1" BorderBrush="{DynamicResource SeparatorColour}"
+                      ClipToBounds="True"
                       IsVisible="{Binding IsDetailsView}">
                 <!-- **Which columns to show, where both Explorer and Dolphin
                      put it: right-click the headings.** On the header rather
@@ -3214,13 +3234,12 @@
                               IsChecked="{Binding IsCreatedColumnShown, Mode=OneWay}"
                               Command="{Binding ToggleCreatedColumnCommand}"/>
                     <Separator/>
-                    <!-- The way back from a drag that went too far, short of
-                         restoring every setting in the dialog. Through the
-                         window, unlike the four toggles above: the widths are
-                         one preference for every pane, which is what the
-                         toggles must not be — see the note on them. -->
+                    <!-- The way back from a drag that went too far. Bound to
+                         the pane under it like the four toggles above, and for
+                         their reason: the widths are this tab's own, and a
+                         reset on the left must not move the right. -->
                     <MenuItem Header="Reset column _widths"
-                              Command="{Binding $parent[Window].((vm:ShellViewModel)DataContext).ResetColumnWidthsCommand}"/>
+                              Command="{Binding ResetColumnWidthsCommand}"/>
                     <Separator/>
                     <!-- Says the other half out loud. A ticked column that is
                          not on screen looks like a bug, and this is the one
@@ -3244,7 +3263,11 @@
                      label in the application, and LabelCasingTests holds
                      it — both the casing and the words themselves, Created
                      included. -->
-                <Grid Margin="12,0,18,0">
+                <!-- DetailsColumns.NameWidth turns column 1 from "fills" into
+                     a width of its own once the name's edge has been dragged;
+                     the rows' grid carries the same, from the same resource. -->
+                <Grid Margin="12,0,18,0"
+                      local:DetailsColumns.NameWidth="{DynamicResource ColName}">
                       <Grid.ColumnDefinitions>
                         <ColumnDefinition Width="Auto"/>
                         <ColumnDefinition Width="*"/>
@@ -3256,6 +3279,10 @@
                              other date, which renumbers nothing: inserting is
                              the edit the row template below warns goes wrong
                              quietly. -->
+                        <ColumnDefinition Width="Auto"/>
+                        <!-- Empty: the room after the last column once the name
+                             has a width of its own. Appended for the same
+                             reason; see DetailsColumns for why it has to be. -->
                         <ColumnDefinition Width="Auto"/>
                       </Grid.ColumnDefinitions>
                   <!-- The icon slot, with the select-all box docked ahead of it
@@ -3361,19 +3388,6 @@
                       <Run Text="Type"/><Run Text="{Binding KindSortGlyph}"/>
                     </TextBlock>
                   </Button>
-                  <!-- Each grip hides WITH its heading, and that is not
-                       tidiness: the cell is Auto, so a grip left visible in a
-                       column that is off keeps the cell six pixels wide with
-                       nothing in it, and the rows — whose cell really is
-                       empty — draw six pixels left of the headings from there
-                       on. Measured in a headless window at 1800px with the
-                       created column off: 0 wide with the binding, 6 without.
-                       See Thumb.columnGrip for the rest of the shape. -->
-                  <Thumb Grid.Column="3" Classes="columnGrip" Tag="Type"
-                         IsVisible="{Binding ShowType}"
-                         AutomationProperties.Name="Resize the type column"
-                         DragDelta="OnColumnGripDragDelta"
-                         DragCompleted="OnColumnGripDragCompleted"/>
                   <Button Grid.Column="4" Width="{DynamicResource ColSize}" Command="{Binding SortByCommand}" CommandParameter="size"
                           AutomationProperties.Name="Sort by size"
                           IsVisible="{Binding ShowSize}"
@@ -3384,11 +3398,6 @@
                       <Run Text="Size"/><Run Text="{Binding SizeSortGlyph}"/>
                     </TextBlock>
                   </Button>
-                  <Thumb Grid.Column="4" Classes="columnGrip" Tag="Size"
-                         IsVisible="{Binding ShowSize}"
-                         AutomationProperties.Name="Resize the size column"
-                         DragDelta="OnColumnGripDragDelta"
-                         DragCompleted="OnColumnGripDragCompleted"/>
                   <Button Grid.Column="5" Width="{DynamicResource ColModified}" Command="{Binding SortByCommand}" CommandParameter="modified"
                           AutomationProperties.Name="Sort by date modified"
                           IsVisible="{Binding ShowModified}"
@@ -3399,11 +3408,6 @@
                       <Run Text="Modified"/><Run Text="{Binding ModifiedSortGlyph}"/>
                     </TextBlock>
                   </Button>
-                  <Thumb Grid.Column="5" Classes="columnGrip" Tag="Modified"
-                         IsVisible="{Binding ShowModified}"
-                         AutomationProperties.Name="Resize the date modified column"
-                         DragDelta="OnColumnGripDragDelta"
-                         DragCompleted="OnColumnGripDragCompleted"/>
                   <!-- **When the file was made, which nothing in the window
                        could say.** A heading rather than a label, because every
                        other heading in this band sorts and one that did not
@@ -3419,9 +3423,53 @@
                       <Run Text="Created"/><Run Text="{Binding CreatedSortGlyph}"/>
                     </TextBlock>
                   </Button>
+
+                  <!-- **The grips, one on the right edge of every column,
+                       the name's included**, and dragging one widens or
+                       narrows THAT column and nothing else: the columns after
+                       it move along with the edge, the way Explorer's do.
+                       Before, the name had no grip at all, and the other four
+                       sat on edges that never moved — the name took up every
+                       pixel a column gained, so the column grew leftwards,
+                       the name was what visibly changed, and the edge stayed
+                       where it was while the pointer went on. See
+                       MainWindow.ColumnWidths.cs for the drag.
+
+                       After every heading, so each lies on top of the five
+                       pixels of the next heading it straddles. Each hides WITH
+                       its heading, and that is not tidiness: the cell is
+                       Auto, so a grip left visible in a column that is off
+                       keeps the cell five pixels wide with nothing in it, and
+                       the rows — whose cell really is empty — draw five pixels
+                       left of the headings from there on. The name's is
+                       always there, because the name is. -->
+                  <Thumb Grid.Column="1" Classes="columnGrip" Tag="Name"
+                         AutomationProperties.Name="Resize the name column"
+                         DragStarted="OnColumnGripDragStarted"
+                         DragDelta="OnColumnGripDragDelta"
+                         DragCompleted="OnColumnGripDragCompleted"/>
+                  <Thumb Grid.Column="3" Classes="columnGrip" Tag="Type"
+                         IsVisible="{Binding ShowType}"
+                         AutomationProperties.Name="Resize the type column"
+                         DragStarted="OnColumnGripDragStarted"
+                         DragDelta="OnColumnGripDragDelta"
+                         DragCompleted="OnColumnGripDragCompleted"/>
+                  <Thumb Grid.Column="4" Classes="columnGrip" Tag="Size"
+                         IsVisible="{Binding ShowSize}"
+                         AutomationProperties.Name="Resize the size column"
+                         DragStarted="OnColumnGripDragStarted"
+                         DragDelta="OnColumnGripDragDelta"
+                         DragCompleted="OnColumnGripDragCompleted"/>
+                  <Thumb Grid.Column="5" Classes="columnGrip" Tag="Modified"
+                         IsVisible="{Binding ShowModified}"
+                         AutomationProperties.Name="Resize the date modified column"
+                         DragStarted="OnColumnGripDragStarted"
+                         DragDelta="OnColumnGripDragDelta"
+                         DragCompleted="OnColumnGripDragCompleted"/>
                   <Thumb Grid.Column="6" Classes="columnGrip" Tag="Created"
                          IsVisible="{Binding ShowCreated}"
                          AutomationProperties.Name="Resize the date created column"
+                         DragStarted="OnColumnGripDragStarted"
                          DragDelta="OnColumnGripDragDelta"
                          DragCompleted="OnColumnGripDragCompleted"/>
                 </Grid>
@@ -3584,18 +3632,34 @@
                       <Border Width="3" HorizontalAlignment="Left"
                               Background="{DynamicResource AccentColour}"
                               IsVisible="{Binding $parent[ListBoxItem].IsSelected}" IsHitTestVisible="False"/>
-                      <Grid Height="{DynamicResource RowHeight}" Margin="12,0,18,0" ClipToBounds="True">
+                      <!-- The same name width as the heading's grid, from the
+                           same resource, less this row's indent: see
+                           DetailsColumns for why the indent comes off. -->
+                      <Grid Height="{DynamicResource RowHeight}" Margin="12,0,18,0" ClipToBounds="True"
+                            local:DetailsColumns.NameWidth="{DynamicResource ColName}">
+                      <local:DetailsColumns.Indent>
+                        <MultiBinding Converter="{x:Static vm:FileConverters.Indent}">
+                          <Binding Path="FullPath"/>
+                          <Binding Path="$parent[ListBox].((vm:PaneViewModel)DataContext).Indents"/>
+                        </MultiBinding>
+                      </local:DetailsColumns.Indent>
                       <Grid.ColumnDefinitions>
                         <ColumnDefinition Width="Auto"/>
                         <!-- The name takes all slack so the metadata block sits
                              flush against the pane's right edge, the way every
-                             file manager does it. Truncation is handled in the
-                             cell itself, not by capping the column. -->
+                             file manager does it — until somebody drags the
+                             name's edge, when DetailsColumns gives it a width
+                             of its own and the slack is left after the last
+                             column instead. Truncation is handled in the cell
+                             itself, not by capping the column. -->
                         <ColumnDefinition Width="*"/>
                         <ColumnDefinition Width="Auto"/>
                         <ColumnDefinition Width="Auto"/>
                         <ColumnDefinition Width="Auto"/>
                         <ColumnDefinition Width="Auto"/>
+                        <ColumnDefinition Width="Auto"/>
+                        <!-- The empty room after the last column, as on the
+                             heading. -->
                         <ColumnDefinition Width="Auto"/>
                       </Grid.ColumnDefinitions>
                     <DockPanel Grid.Column="0">

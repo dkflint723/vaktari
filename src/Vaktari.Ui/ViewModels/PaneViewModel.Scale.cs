@@ -327,6 +327,7 @@ public sealed partial class PaneViewModel
             HideModifiedColumn = other.HideModifiedColumn;
             ShowTypeColumn = other.ShowTypeColumn;
             ShowCreatedColumn = other.ShowCreatedColumn;
+            ColumnWidths = other.ColumnWidths;
         }
         finally
         {

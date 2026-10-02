@@ -187,30 +187,62 @@ public static class PaneScale
     /// The narrowest and widest a column can be dragged or written, in pixels
     /// at 100%. 40 still shows a size and the first characters of a date, so
     /// the heading stays a thing to grab; 600 is wider than any of the four
-    /// has content for, and past it the drag is only taking room from the
-    /// name.
+    /// has content for.
     /// </summary>
     public const double ColumnMin = 40;
     public const double ColumnMax = 600;
 
-    /// <summary>The width a column was designed at, before anybody dragged it.</summary>
-    public static double DesignedWidth(DetailsColumn column)
-        => Columns.Single(c => c.Column == column).Designed;
+    /// <summary>
+    /// The same for the name, once it has a width of its own. 80 still shows
+    /// an icon and the start of a name beside it; 4000 is wider than any
+    /// screen a pane is drawn on, so the top end is only there to stop a
+    /// hand-edited session from asking for a column nothing can draw.
+    /// </summary>
+    public const double NameMin = 80;
+    public const double NameMax = 4000;
 
     /// <summary>
-    /// The width a column is drawn at, at 100%: what the file says, held to
-    /// the range, or the designed width when the file says nothing. **Zero and
-    /// below are "nothing", not a width** — see
-    /// <see cref="DetailsViewSettings.TypeColumn"/> for why zero has to mean
-    /// that.
+    /// The width a column was designed at, before anybody dragged it. Zero
+    /// for the name, whose designed width is "whatever the others leave".
     /// </summary>
-    public static double ColumnWidth(DetailsViewSettings details, DetailsColumn column)
-    {
-        var chosen = details.Width(column);
+    public static double DesignedWidth(DetailsColumn column)
+        => column == DetailsColumn.Name ? 0 : Columns.Single(c => c.Column == column).Designed;
 
-        return chosen <= 0
-            ? DesignedWidth(column)
-            : Math.Clamp(chosen, ColumnMin, ColumnMax);
+    /// <summary>A width at 100% held to its column's range.</summary>
+    public static double Clamp(DetailsColumn column, double width)
+        => column == DetailsColumn.Name
+            ? Math.Clamp(width, NameMin, NameMax)
+            : Math.Clamp(width, ColumnMin, ColumnMax);
+
+    /// <summary>
+    /// The width a column is drawn at, at 100%: what the tab says, held to
+    /// the range, or the designed width when it says nothing. **Zero and
+    /// below are "nothing", not a width** — see <see cref="ColumnWidths"/>
+    /// for why zero has to mean that. For the name, nothing is zero, and
+    /// zero is "fills".
+    /// </summary>
+    public static double ColumnWidth(ColumnWidths widths, DetailsColumn column)
+    {
+        var chosen = widths.Width(column);
+
+        return chosen <= 0 ? DesignedWidth(column) : Clamp(column, chosen);
+    }
+
+    /// <summary>
+    /// The five column metrics alone, for a change to a tab's widths: a drag
+    /// moves these and nothing else, and rewriting all forty metrics on every
+    /// step of one would announce forty resource changes to every row in the
+    /// pane for each pixel the pointer moved.
+    /// </summary>
+    public static IEnumerable<(string Key, double Value)> ColumnMetrics(double fontScale, ColumnWidths widths)
+    {
+        fontScale *= InterfaceText.Scale;
+
+        foreach (var (column, key, _) in Columns)
+            yield return (key, Math.Round(ColumnWidth(widths, column) * fontScale, 1));
+
+        // Zero while the name fills, which DetailsColumns reads as "star".
+        yield return ("ColName", Math.Round(ColumnWidth(widths, DetailsColumn.Name) * fontScale, 1));
     }
 
     private static readonly (string Key, double Value)[] IconMetrics =
@@ -254,8 +286,13 @@ public static class PaneScale
     /// so it cannot be set independently of either.
     /// </summary>
     public static IEnumerable<(string Key, double Value)> Compute(
-        double fontScale, double iconScale)
+        double fontScale, double iconScale, ColumnWidths? widths = null)
     {
+        // Before fontScale picks up the interface size below: ColumnMetrics
+        // applies that itself, so it can also be called on its own.
+        var columns = ColumnMetrics(
+            fontScale, widths ?? Settings.AppSettings.Current.Views.Details.StartingWidths).ToList();
+
         // ---- the one global type size, applied where nothing can miss it ----
         //
         // **Every route to a larger interface stopped inside a pane.** The
@@ -382,14 +419,14 @@ public static class PaneScale
         yield return ("ColPathWide", Math.Round(200 * fontScale, 1));
         yield return ("ColPermissions", Math.Round(100 * fontScale, 1));
 
-        // The four a heading's grip can drag. The designed width unless the
-        // file says otherwise, and the file's number held to the range —
-        // settings.json can be edited by hand, and a column 2 pixels wide is
-        // a column that has vanished with its heading still ticked.
-        var details = Settings.AppSettings.Current.Views.Details;
-
-        foreach (var (column, key, _) in Columns)
-            yield return (key, Math.Round(ColumnWidth(details, column) * fontScale, 1));
+        // The five a heading's grip can drag, from the tab's own widths — or,
+        // for the application-level defaults, which belong to no tab, from
+        // the widths a tab starts at. The designed width unless they say
+        // otherwise, and their number held to the range: a session can be
+        // edited by hand, and a column 2 pixels wide is a column that has
+        // vanished with its heading still ticked.
+        foreach (var metric in columns)
+            yield return metric;
 
         yield return ("CompactIconSize", compactIcon);
         yield return ("CompactRowHeight", compactRow);
@@ -468,6 +505,16 @@ public static class PaneScale
                 if (e.PropertyName is nameof(PaneViewModel.FontScale)
                     or nameof(PaneViewModel.IconScale))
                     Apply(control, pane);
+
+                // **The widths are THIS tab's**, written into this tab's own
+                // dictionary like every other metric here — which is what
+                // keeps a drag in one half of a split out of the other. Only
+                // the column keys, and only the ones that moved: see
+                // ColumnMetrics.
+                else if (e.PropertyName is nameof(PaneViewModel.ColumnWidths))
+                    foreach (var (key, value) in ColumnMetrics(pane.FontScale, pane.ColumnWidths))
+                        if (!control.Resources.TryGetValue(key, out var was) || !Equals(was, value))
+                            control.Resources[key] = value;
             };
 
             pane.PropertyChanged += subscription.Handler;
@@ -490,7 +537,7 @@ public static class PaneScale
     /// </summary>
     private static void Apply(Control control, PaneViewModel pane)
     {
-        foreach (var (key, value) in Compute(pane.FontScale, pane.IconScale))
+        foreach (var (key, value) in Compute(pane.FontScale, pane.IconScale, pane.ColumnWidths))
             control.Resources[key] = value;
 
         foreach (var (key, value) in Tails(pane.FontScale, pane.IconScale))

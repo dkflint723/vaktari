@@ -335,9 +335,68 @@ public sealed record CompactViewSettings
     public int Spacing { get; init; }
 }
 
-/// <summary>The four details columns whose width a heading's grip can drag.
-/// The name column has no width of its own — it takes what the others leave.</summary>
-public enum DetailsColumn { Type, Size, Modified, Created }
+/// <summary>
+/// The details columns whose width a heading's grip can drag. Name is
+/// APPENDED rather than put first, so nothing that was ever numbered moves;
+/// it is the one column whose width can also be "fills what is left" — see
+/// <see cref="ColumnWidths.Name"/>.
+/// </summary>
+public enum DetailsColumn { Type, Size, Modified, Created, Name }
+
+/// <summary>
+/// The widths one tab's details columns are drawn at, in pixels at 100%,
+/// before the interface size and the tab's own zoom multiply them.
+///
+/// **Per tab, because the widths were one preference and that was the bug.**
+/// A drag in the left half of a split moved the right half's columns too:
+/// both drew from the same four numbers in the settings. Here, beside the
+/// column ticks on the tab, a choice about room made on one side stays on
+/// that side, comes back with the tab when the session is restored, and goes
+/// with it when a tab is reopened.
+///
+/// **Zero means "as designed"**, for the reason
+/// <see cref="ViewSettings.InterfaceTextScale"/> gives: an absent key
+/// deserialises as zero, so zero has to be a width nobody chose. For
+/// <see cref="Name"/> "as designed" is the width the others leave, which is
+/// what the name column always was; any other number is a width of its own.
+/// </summary>
+public sealed record ColumnWidths
+{
+    /// <summary>Zero: the name fills whatever the other columns leave. Any
+    /// other number: the name is that wide, and the space after the last
+    /// column is left empty.</summary>
+    public double Name { get; init; }
+
+    public double Type { get; init; }
+    public double Size { get; init; }
+    public double Modified { get; init; }
+    public double Created { get; init; }
+
+    /// <summary>Every column as designed, the name filling.</summary>
+    public static ColumnWidths Designed { get; } = new();
+
+    /// <summary>The chosen width of a column, or zero when none has been.</summary>
+    public double Width(DetailsColumn column) => column switch
+    {
+        DetailsColumn.Name => Name,
+        DetailsColumn.Type => Type,
+        DetailsColumn.Size => Size,
+        DetailsColumn.Modified => Modified,
+        DetailsColumn.Created => Created,
+        _ => throw new ArgumentOutOfRangeException(nameof(column), column, "not a details column"),
+    };
+
+    /// <summary>The same widths with one column's replaced.</summary>
+    public ColumnWidths WithWidth(DetailsColumn column, double width) => column switch
+    {
+        DetailsColumn.Name => this with { Name = width },
+        DetailsColumn.Type => this with { Type = width },
+        DetailsColumn.Size => this with { Size = width },
+        DetailsColumn.Modified => this with { Modified = width },
+        DetailsColumn.Created => this with { Created = width },
+        _ => throw new ArgumentOutOfRangeException(nameof(column), column, "not a details column"),
+    };
+}
 
 public sealed record DetailsViewSettings
 {
@@ -351,45 +410,34 @@ public sealed record DetailsViewSettings
     // side of a split must not move the other.
 
     /// <summary>
-    /// The widths somebody has dragged the four columns to, in pixels at 100%,
-    /// before the interface size and the pane's own zoom multiply them.
+    /// The widths a tab starts from when it has no tab to copy them from, in
+    /// pixels at 100%. Zero means "as designed".
     ///
-    /// **Zero means "as designed", and is named for it like
-    /// <see cref="ViewSettings.InterfaceTextScale"/>**: a settings.json written
-    /// before these existed has no key for them, deserialization does not run
-    /// initializers, and the columns of every upgrading install therefore
-    /// arrive as zero — which has to be the width they always had. The
-    /// designed widths live where they are drawn from, in the Ui's metric
-    /// pipeline, rather than being restated here.
-    ///
-    /// Here rather than on TabState, unlike which columns to SHOW: a width is
-    /// a fact about how much room a date or a size needs to be read, and that
-    /// is the same in a reference listing as in a working one. A choice about
-    /// room made on one side of a split is a choice about the other side too.
+    /// **Written by 0.11.1 and earlier, read and never written since.** The
+    /// widths used to be one preference for every pane, dragged here — which
+    /// is why a drag in one half of a split moved the other. They live on the
+    /// tab now (<see cref="ColumnWidths"/>), and these four are what an
+    /// upgrading install had dragged to: a session saved before that has no
+    /// widths on its tabs, and those tabs come back at these rather than
+    /// losing them. Nothing in the application writes them any more, so a drag
+    /// in one tab cannot quietly change what another starts from.
     /// </summary>
     public double TypeColumn { get; init; }
     public double SizeColumn { get; init; }
     public double ModifiedColumn { get; init; }
     public double CreatedColumn { get; init; }
 
-    /// <summary>The chosen width of a column, or zero when none has been.</summary>
-    public double Width(DetailsColumn column) => column switch
+    /// <summary>
+    /// What a tab with nothing to copy starts from: the four widths above,
+    /// and the name filling, since no version before this one could give the
+    /// name a width of its own.
+    /// </summary>
+    public ColumnWidths StartingWidths => new()
     {
-        DetailsColumn.Type => TypeColumn,
-        DetailsColumn.Size => SizeColumn,
-        DetailsColumn.Modified => ModifiedColumn,
-        DetailsColumn.Created => CreatedColumn,
-        _ => throw new ArgumentOutOfRangeException(nameof(column), column, "not a details column"),
-    };
-
-    /// <summary>The same settings with one column's width replaced.</summary>
-    public DetailsViewSettings WithWidth(DetailsColumn column, double width) => column switch
-    {
-        DetailsColumn.Type => this with { TypeColumn = width },
-        DetailsColumn.Size => this with { SizeColumn = width },
-        DetailsColumn.Modified => this with { ModifiedColumn = width },
-        DetailsColumn.Created => this with { CreatedColumn = width },
-        _ => throw new ArgumentOutOfRangeException(nameof(column), column, "not a details column"),
+        Type = TypeColumn,
+        Size = SizeColumn,
+        Modified = ModifiedColumn,
+        Created = CreatedColumn,
     };
 }
 

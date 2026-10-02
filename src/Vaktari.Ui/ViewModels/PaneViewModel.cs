@@ -2547,6 +2547,11 @@ public sealed partial class PaneViewModel : ObservableObject, IDisposable
             ShowTypeColumn = tab.ShowType;
             ShowCreatedColumn = tab.ShowCreated;
 
+            // Null is a session from before tabs had widths: it comes back at
+            // the widths that were then one preference for every pane, not at
+            // the designed ones, so an upgrade keeps what was dragged.
+            ColumnWidths = tab.Widths ?? Settings.AppSettings.Current.Views.Details.StartingWidths;
+
             // Guarded: a session written before these existed deserialises as
             // 0, which would restore an invisible pane.
             FontScale = tab.FontScale > 0 ? tab.FontScale : 1.0;
@@ -2800,6 +2805,7 @@ public sealed partial class PaneViewModel : ObservableObject, IDisposable
         HideModified = HideModifiedColumn,
         ShowType = ShowTypeColumn,
         ShowCreated = ShowCreatedColumn,
+        Widths = ColumnWidths,
         // **All three read from `_scales`, including details.** The live
         // `FontScale`/`IconScale` hold whichever layout is ON SCREEN, so writing
         // them into the details slot would have saved the grid's size as the

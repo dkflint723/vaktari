@@ -113,4 +113,46 @@ public sealed partial class PaneViewModel
     public bool ShowPermissions => ViewportWidth >= 680 * TextScale;
     public bool ShowMetadata =>
         ViewportWidth >= 840 * TextScale && !IsRecentListing && !IsTrashListing;
+
+    // ---- how wide this tab's columns are -------------------------------------
+    //
+    // **Per tab, beside the ticks, and for their reason.** The widths were one
+    // preference for every pane, so a drag in the left half of a split moved the
+    // right half's columns too. They are the tab's now: saved with it, restored
+    // with it, reopened with it, and carried to a tab opened from it the way the
+    // ticks are (AdoptViewOf).
+
+    /// <summary>
+    /// This tab's column widths at 100%. A tab with nothing to copy starts at
+    /// what the settings carried when the widths were one preference — see
+    /// <see cref="Core.Settings.DetailsViewSettings.StartingWidths"/> — which
+    /// is the designed widths on any install that never dragged one.
+    /// </summary>
+    [ObservableProperty]
+    private Core.Settings.ColumnWidths _columnWidths =
+        Settings.AppSettings.Current.Views.Details.StartingWidths;
+
+    partial void OnColumnWidthsChanged(Core.Settings.ColumnWidths value)
+        => OnPropertyChanged(nameof(NameFills));
+
+    /// <summary>True while the name column takes whatever the others leave,
+    /// which is how every tab starts and what a reset goes back to.</summary>
+    public bool NameFills => ColumnWidths.Name <= 0;
+
+    /// <summary>
+    /// Sets one column to a width at 100%, held to that column's range. The
+    /// window's grip works out the width from where the pointer is; this is
+    /// only where it is kept.
+    /// </summary>
+    public void SetColumnWidth(Core.Settings.DetailsColumn column, double width)
+        => ColumnWidths = ColumnWidths.WithWidth(column, PaneScale.Clamp(column, Math.Round(width, 1)));
+
+    /// <summary>
+    /// Every column of THIS tab back to its designed width, and the name back
+    /// to filling what they leave. The other tabs, the other half of a split
+    /// and the starting widths in the settings are not touched: the way back
+    /// from a drag is as local as the drag was.
+    /// </summary>
+    [RelayCommand]
+    private void ResetColumnWidths() => ColumnWidths = Core.Settings.ColumnWidths.Designed;
 }

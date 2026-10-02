@@ -248,6 +248,11 @@ public sealed partial class ShellViewModel
             case nameof(PaneViewModel.ShowTypeColumn):
             case nameof(PaneViewModel.ShowCreatedColumn):
 
+            // And how wide they are, for the same reason. Every step of a drag
+            // marks it, which is safe: the store writes a second after the
+            // last change, not once per change.
+            case nameof(PaneViewModel.ColumnWidths):
+
             // **Switching a tab to tiles, or grouping it, was saved only by
             // luck.** Both are written by ToTabState and neither was listed, so
             // the change reached the store only when something else marked the

@@ -137,7 +137,8 @@ public partial class MainWindow
 
         model.Page = page ?? LastSettingsPage;
 
-        // What the dialog does not show — column widths, the default layout —
+        // What the dialog does not show — the default layout, the column
+        // widths a tab with nothing to copy starts from —
         // is taken from the live settings at Apply or Save, not from the
         // moment it opened, so a change made in another window meanwhile is
         // not written back over.

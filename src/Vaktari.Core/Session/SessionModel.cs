@@ -25,8 +25,8 @@ public enum RailState { Full, RailOnly, Hidden }
 /// <summary>
 /// State for one tab. Deliberately only fields that are actually read and
 /// written — a schema that claims to store scroll position and doesn't is worse
-/// than one that never promised. Scroll offset, selection, view mode and column
-/// widths come back here when the features that own them exist.
+/// than one that never promised. Scroll offset and selection come back here
+/// when the features that own them exist.
 /// </summary>
 public sealed record TabState
 {
@@ -84,6 +84,19 @@ public sealed record TabState
     public bool HideModified { get; init; }
     public bool ShowType { get; init; }
     public bool ShowCreated { get; init; }
+
+    /// <summary>
+    /// How wide this tab's details columns are. Per tab, with the column
+    /// ticks above and for their reason: a drag in one half of a split must
+    /// not move the other.
+    ///
+    /// **Null is a session written before tabs had widths**, and is not the
+    /// same as the designed widths: those tabs restore at the widths the
+    /// settings carried when the widths were one preference for every pane
+    /// (<see cref="Settings.DetailsViewSettings.StartingWidths"/>), so an
+    /// upgrade keeps what somebody had dragged.
+    /// </summary>
+    public Settings.ColumnWidths? Widths { get; init; }
 
     /// <summary>
     /// Back/forward stacks, oldest first. Nobody restores navigation history —

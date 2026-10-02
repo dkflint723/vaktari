@@ -98,8 +98,9 @@ public sealed partial class SettingsViewModel : ObservableObject
 
     /// <summary>
     /// The state the rest of the application holds now, for what this dialog
-    /// does not show — column widths, the default layout and sort, and the
-    /// like. Handed in by the window; null in a dialog built on its own.
+    /// does not show — the default layout and sort, the column widths a tab
+    /// with nothing to copy starts from, and the like. Handed in by the
+    /// window; null in a dialog built on its own.
     ///
     /// **Apply and Save wrote back the state the dialog OPENED with** for
     /// everything it does not own, so a column dragged or "Use this view for

@@ -304,10 +304,6 @@ public partial class MainWindow : Window
         // write. Through the same store the settings dialog saves with, so the
         // two routes cannot disagree about where preferences live.
         _shell.DefaultViewChanged += (_, settings) => _ = _services.SettingsStore.SaveAsync(settings);
-
-        // A dragged column width, once the drag has ended: the same route for
-        // the same reason.
-        _shell.ColumnWidthsChanged += (_, settings) => _ = _services.SettingsStore.SaveAsync(settings);
         _shell.EmptyTrashRequested += (_, _) => AskConfirmEmptyTrash();
         _shell.CopyAcrossRequested += (_, plan) => AskConfirmCopyAcross(plan);
 
