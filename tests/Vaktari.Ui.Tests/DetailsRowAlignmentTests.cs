@@ -21,7 +21,8 @@ namespace Vaktari.Ui.Tests;
 /// Recent files and the bin — and search results draw their rows from the same
 /// template, so each is measured here as well as a folder with a row opened in
 /// place: the right edge of every column, name to created, on every row, with
-/// the name filling and with it pinned, at 100% and at 125%.
+/// the name filling, pinned, and giving way to a row narrower than the one it
+/// was chosen in, at 100% and at 125%, with enough rows for the list to scroll.
 /// </summary>
 public sealed class DetailsRowAlignmentTests : OwnedViewModels
 {
@@ -141,11 +142,15 @@ public sealed class DetailsRowAlignmentTests : OwnedViewModels
     }
 
     [AvaloniaFact]
-    public async Task Every_details_listing_lines_up_filling_and_pinned()
+    public async Task Every_details_listing_lines_up_filling_pinned_and_giving_way()
     {
         Directory.CreateDirectory(Path.Combine(_root, "sub"));
         File.WriteAllText(Path.Combine(_root, "sub", "child.txt"), "c");
         File.WriteAllText(Path.Combine(_root, "notes.txt"), "n");
+
+        // Enough rows for the listing to scroll, so a scroll bar that took
+        // room from the rows and not the heading would show here.
+        for (var i = 0; i < 120; i++) File.WriteAllText(Path.Combine(_root, $"row{i:000}.txt"), "r");
 
         var (w, pane) = await Open();
         var bad = new List<string>();
@@ -154,15 +159,23 @@ public sealed class DetailsRowAlignmentTests : OwnedViewModels
         {
             pane.FontScale = zoom;
 
-            foreach (var pinned in new[] { false, true })
+            foreach (var state in new[] { "filling", "pinned", "giving way" })
             {
                 pane.ResetColumnWidthsCommand.Execute(null);
-                if (pinned)
+                if (state == "pinned")
                 {
                     pane.SetColumnWidth(DetailsColumn.Name, 320);
                     pane.SetColumnWidth(DetailsColumn.Size, 150);
                 }
-                var tag = $"zoom {zoom} {(pinned ? "pinned" : "filling")}";
+                else if (state == "giving way")
+                {
+                    // A name chosen in a row much wider than this one: the
+                    // heading and every row each work out how far it gives way
+                    // from their own width, so a row narrower than the heading
+                    // would draw its name narrower.
+                    pane.ColumnWidths = pane.ColumnWidths with { Name = 700, Span = 1500, Size = 150 };
+                }
+                var tag = $"zoom {zoom} {state}";
 
                 await pane.NavigateAsync(_root);
                 await pane.RefreshAsync();

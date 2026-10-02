@@ -868,8 +868,8 @@ promise yet. Worth knowing before you decide:
 - Columns can be dragged wider or narrower, but not reordered, and a listing
   has no horizontal scroll bar: columns past the pane's right edge — because
   a column before them was dragged wider than the room left, or because the
-  pane is too narrow even with the name at 80 pixels — are cut off until they
-  are dragged back or *Reset column widths* is used.
+  pane is too narrow even with the name at 80 pixels — are cut off until the
+  name is dragged narrower or *Reset column widths* is used.
 - The Small grid draws no thumbnails, and on Linux Vaktari does not *generate*
   video or PDF thumbnails — it only reads ones your desktop's thumbnailers
   already made.
