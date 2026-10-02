@@ -562,6 +562,26 @@ public sealed class ColumnDragPointerTests : OwnedViewModels
     }
 
     /// <summary>
+    /// The name gives way no further than its floor, 80 pixels at 100%: in a
+    /// pane too narrow even for that, the columns after it are what is cut
+    /// off, not the name.
+    /// </summary>
+    [AvaloniaFact]
+    public async Task A_name_gives_way_no_further_than_its_floor()
+    {
+        var (window, shell) = await Open(1.0, split: false);
+        var pane = shell.ActiveTab!;
+
+        Drag(window, pane, "Name", -20);
+
+        window.Width = 700;
+        await Settle(window, shell);
+
+        Assert.Equal(PaneScale.NameMin, Width(Edges(Heading(window, pane), window), 1), 0.5);
+        Assert.Equal(Edges(Heading(window, pane), window), Edges(Row(window, pane), window), Close);
+    }
+
+    /// <summary>
     /// **The name's edge, dragged while the name is giving way, stays under
     /// the pointer** — narrower by as much as the pointer went, then wider by
     /// as much, the rows with it — and what is kept is the width chosen less
