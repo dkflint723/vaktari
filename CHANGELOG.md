@@ -31,30 +31,32 @@ should not be trusted for compatibility yet.
   This also works when the folders above it are deleted and made again all
   at once — on a network share too — for a folder typed with its 8.3
   short name (`TARGET~1`), and for a tab put back by *Reopen closed tab* or
-  when Vaktari starts, which says the folder could not be reached and then
-  waits for it in the same way. Whatever else happens, the pane also checks
-  again every 30 seconds, so a folder above it that you can read again, or
-  a drive mounted again over it, is picked up within half a minute. While a
-  share does not answer, a tab waiting on it checks less often, about once
-  a minute, so a share that answers again is picked up within about a
-  minute. Closing that tab or window, or going somewhere else, never waits
-  on a server that does not answer, and tabs waiting on one do not slow
-  down Vaktari's other background work. A waiting tab also checks again as
-  soon as Windows or Linux reports that this computer's network addresses
-  have changed — as they do when a VPN connects or Wi-Fi comes back — and
-  once more a couple of seconds later if the change came as several
-  reports, rather than waiting for its next check. A server that comes back
-  with nothing changed on this computer's side is still picked up by that
-  next check.
+  restored when Vaktari starts, which says the folder could not be reached
+  when it is first shown and then waits for it in the same way. Whatever
+  else happens, the pane also checks again every 30 seconds, so a folder
+  above it that you can read again, or a drive mounted again over it, is
+  picked up within half a minute. A share that does not answer is checked
+  no more often than that — about once a minute when each check has to
+  wait for the server to give up — so a share that answers again is picked
+  up within about a minute. Closing that tab or window, or going somewhere
+  else, never waits on a server that does not answer, and tabs waiting on
+  one do not slow down Vaktari's other background work. A waiting tab also
+  checks again as soon as Windows or Linux reports that this computer's
+  network has changed — as it does when a VPN connects or Wi-Fi comes back
+  — and again every couple of seconds while such reports keep coming,
+  rather than waiting for its next check. A server that comes back with
+  nothing changed on this computer's side is still picked up by that next
+  check.
 
 - **Closing the last window while a folder was still being shared no
   longer starts its server afterwards.** Closing the last window stops
   every share. A share asked for a moment before — on Windows, while
   Vaktari was still asking whether the network is a public one — was not
   stopped, and its server was started after the others had been stopped,
-  serving until Vaktari exited. Such a share is now not started at all.
-  Closing a window that is not the last still leaves every share running,
-  one still starting included; the windows still open list it.
+  serving until Vaktari exited — on Linux, until Vaktari was next
+  started. Such a share is now not started at all. Closing a window that
+  is not the last still leaves every share running, one still starting
+  included; the windows still open list it.
 
 - **On Linux, the colours and font follow a Plasma theme change again
   after the config folder has been deleted and made again.** Until now no
