@@ -46,17 +46,16 @@ namespace Vaktari.Ui;
 public partial class MainWindow
 {
     /// <summary>
-    /// The drag in progress: which tab and column, where the pointer was
-    /// pressed in the window's coordinates and where it was pressed in the
-    /// grip's, the scale the columns were drawn at, the width the column had
-    /// then at 100%, and what the name and its span are to be from the first
-    /// move on. <see cref="NameFrom"/> and <see cref="NameTo"/> bound a drag
-    /// of the name's own edge.
+    /// The drag in progress: which tab and column, the heading it is in, where
+    /// the pointer was pressed in the window's coordinates and where it was
+    /// pressed in the grip's, the scale the columns were drawn at, the width
+    /// the column had then at 100% and the most and least it may be given,
+    /// and what the name and its span are to be from the first move on.
     /// </summary>
     private sealed record ColumnDrag(
-        PaneViewModel Pane, DetailsColumn Column, Visual Frame,
+        PaneViewModel Pane, DetailsColumn Column, Grid Heading, Visual Frame,
         double PressedAt, Point PressedOnGrip, double Scale, double StartWidth,
-        double Name, double Span, double NameFrom, double NameTo);
+        double Least, double Most, double Name, double Span);
 
     private ColumnDrag? _columnDrag;
 
@@ -76,38 +75,47 @@ public partial class MainWindow
             return;
 
         var column = Enum.Parse<DetailsColumn>(tag);
+        var cell = column == DetailsColumn.Name ? 1 : 3 + (int)column;
 
         // The product PaneScale multiplies a width by on the way out.
         var scale = pane.TextScale > 0 ? pane.TextScale : 1.0;
 
         // All read off the heading's own grid, which every grip is in, as it
-        // is drawn now: the name, the empty room after the last column, and
-        // the row.
+        // is drawn now: the name, the room after the last column, the row,
+        // and where this column's edge is in it.
         var drawn = heading.ColumnDefinitions[1].ActualWidth / scale;
         var room = heading.ColumnDefinitions[7].ActualWidth / scale;
         var row = heading.Bounds.Width / scale;
+        var edge = heading.ColumnDefinitions.Take(cell + 1).Sum(c => c.ActualWidth) / scale;
 
-        // **The name keeps exactly the width it is drawn at.** A name that
-        // was filling takes it as its own; a name that is giving way to a
-        // narrower row keeps its own width and gets a span that gives way by
-        // exactly as much as it does now — so nothing moves when the drag
-        // begins, the width somebody chose is not lost to a drag of some
-        // other column, and from here on only the dragged column changes.
-        var name = pane.NameFills ? drawn : pane.ColumnWidths.Name;
-        var span = row + (name - drawn);
+        // **The name keeps exactly the width it is drawn at when the drag
+        // begins**, so nothing moves. A name that was filling, or whose own
+        // edge is taken, is given that width as its own, chosen in this row;
+        // a name giving way to a narrower pane while some OTHER column is
+        // dragged keeps the width somebody chose, and the give is held where
+        // it is (IsResizingColumns) until the drag ends.
+        var rebase = pane.NameFills || column == DetailsColumn.Name;
+        var name = rebase ? drawn : pane.ColumnWidths.Name;
+        var span = rebase ? row : pane.ColumnWidths.Span;
 
         var start = column == DetailsColumn.Name ? name : PaneScale.ColumnWidth(pane.ColumnWidths, column);
 
-        // **The name's edge stops at the pane's edge.** Past it the columns
-        // after the name would go off the side, which is what a name given
-        // its width in a wider pane used to do to them. Narrower, it stops
-        // where the name would be drawn at its floor.
-        var from = name - Math.Max(0, drawn - PaneScale.NameMin);
-        var to = name + room;
+        // **No edge goes past the pane's.** A size column dragged 330 pixels
+        // wider put its own edge, and so its grip, 190 pixels off the side,
+        // with nothing on screen to drag it back by. The name's stops at the
+        // room after the last column, because every other column is after
+        // it; any other column's at the pane's edge itself, so a column can
+        // still be widened in a full row, and what it pushes past the edge is
+        // the columns after it, which it gives back when it is narrowed.
+        var (least, most) = column == DetailsColumn.Name
+            ? (Math.Min(name, PaneScale.NameMin), name + room)
+            : (PaneScale.ColumnMin, start + Math.Max(0, row - edge));
+
+        pane.IsResizingColumns = true;
 
         _columnDrag = new ColumnDrag(
-            pane, column, frame, pressed.X, new Point(e.Vector.X, e.Vector.Y), scale, start,
-            name, span, from, to);
+            pane, column, heading, frame, pressed.X, new Point(e.Vector.X, e.Vector.Y), scale, start,
+            least, Math.Max(least, most), name, span);
     }
 
     /// <summary>
@@ -141,13 +149,23 @@ public partial class MainWindow
             pane.ColumnWidths = pane.ColumnWidths with { Name = drag.Name, Span = drag.Span };
         }
 
-        var width = drag.StartWidth + moved / drag.Scale;
-
-        if (drag.Column == DetailsColumn.Name)
-            width = Math.Clamp(width, drag.NameFrom, Math.Max(drag.NameFrom, drag.NameTo));
-
-        pane.SetColumnWidth(drag.Column, width);
+        pane.SetColumnWidth(drag.Column,
+            Math.Clamp(drag.StartWidth + moved / drag.Scale, drag.Least, drag.Most));
     }
 
-    private void OnColumnGripDragCompleted(object? sender, VectorEventArgs e) => _columnDrag = null;
+    /// <summary>
+    /// The drag is over: the name may give way again, and a layout is asked
+    /// for so that it is worked out at once — a column narrowed while the
+    /// name was giving way gives its room back to the name here.
+    /// </summary>
+    private void OnColumnGripDragCompleted(object? sender, VectorEventArgs e)
+    {
+        if (_columnDrag is { } drag)
+        {
+            drag.Pane.IsResizingColumns = false;
+            drag.Heading.InvalidateMeasure();
+        }
+
+        _columnDrag = null;
+    }
 }

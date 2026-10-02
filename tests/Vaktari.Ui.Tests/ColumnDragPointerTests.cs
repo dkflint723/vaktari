@@ -293,10 +293,10 @@ public sealed class ColumnDragPointerTests : OwnedViewModels
         var pane = shell.ActiveTab!;
         var cell = Cell(column);
 
-        // The name's edge stops at the pane's (Name_cannot_be_dragged_past_
-        // the_pane's_edge), and a name that fills leaves no room to widen
-        // into — so for the name, make some first.
-        if (column == "Name") Drag(window, pane, "Name", -60);
+        // No edge goes past the pane's (Name_cannot_be_dragged_past_the_
+        // panes_edge, An_edge_dragged_far_stops_at_the_panes_edge), and a
+        // name that fills leaves no room to widen into — so make some first.
+        Drag(window, pane, "Name", -60);
 
         var before = Edges(Heading(window, pane), window);
 
@@ -449,8 +449,9 @@ public sealed class ColumnDragPointerTests : OwnedViewModels
 
         Assert.True(Grip(window, right, column).IsVisible, $"the right half is not showing {column}");
 
-        // Narrower for the name, which stops at the pane's edge.
-        var dx = column == "Name" ? -40 : 40;
+        // Narrower for the name and the last column, whose edges have no room
+        // to widen into in a full row.
+        var dx = column is "Name" or "Created" ? -40 : 40;
 
         Drag(window, left, column, dx);
 
@@ -520,12 +521,14 @@ public sealed class ColumnDragPointerTests : OwnedViewModels
     /// zoom in.
     /// </summary>
     [AvaloniaTheory]
-    [InlineData("split")]
-    [InlineData("narrower")]
-    [InlineData("zoom")]
-    public async Task A_named_width_gives_way_to_a_narrower_pane_and_comes_back(string how)
+    [InlineData("split", 1.0)]
+    [InlineData("split", 1.25)]
+    [InlineData("narrower", 1.0)]
+    [InlineData("narrower", 1.25)]
+    [InlineData("zoom", 1.0)]
+    public async Task A_named_width_gives_way_to_a_narrower_pane_and_comes_back(string how, double zoom)
     {
-        var (window, shell) = await Open(1.0, split: false);
+        var (window, shell) = await Open(zoom, split: false);
         var pane = shell.ActiveTab!;
 
         Drag(window, pane, "Name", -20);
@@ -545,6 +548,7 @@ public sealed class ColumnDragPointerTests : OwnedViewModels
         await Settle(window, shell);
 
         Assert.True(Width(Edges(Heading(window, pane), window), 1) < wide - 100, "the name did not give way");
+        NameGivesOnlyWhatIsNeeded(window, pane, how);
         EveryGripOnScreen(window, pane, how);
         Assert.Equal(chosen, pane.ColumnWidths.Name);
 
@@ -552,7 +556,7 @@ public sealed class ColumnDragPointerTests : OwnedViewModels
         {
             case "split": shell.ToggleSplit(); break;
             case "narrower": window.Width = 3000; break;
-            default: pane.FontScale = 1.0; break;
+            default: pane.FontScale = zoom; break;
         }
 
         await Settle(window, shell);
@@ -572,11 +576,16 @@ public sealed class ColumnDragPointerTests : OwnedViewModels
         var (window, shell) = await Open(1.0, split: false);
         var pane = shell.ActiveTab!;
 
-        Drag(window, pane, "Name", -20);
+        // The narrow-pane rule drops columns before the name runs out of room
+        // at their designed widths, so a column is widened first: this is a
+        // pane narrower than the columns after the name.
+        Drag(window, pane, "Name", -400);
+        Drag(window, pane, "Size", 350);
 
-        window.Width = 700;
+        window.Width = 1100;
         await Settle(window, shell);
 
+        NameGivesOnlyWhatIsNeeded(window, pane, "a 1100-pixel window");
         Assert.Equal(PaneScale.NameMin, Width(Edges(Heading(window, pane), window), 1), 0.5);
         Assert.Equal(Edges(Heading(window, pane), window), Edges(Row(window, pane), window), Close);
     }
@@ -584,9 +593,11 @@ public sealed class ColumnDragPointerTests : OwnedViewModels
     /// <summary>
     /// **The name's edge, dragged while the name is giving way, stays under
     /// the pointer** — narrower by as much as the pointer went, then wider by
-    /// as much, the rows with it — and what is kept is the width chosen less
-    /// what the drag took, so a wider pane later draws it that much narrower
-    /// than before rather than forgetting it.
+    /// as much, the rows with it — and what is kept is the width it was let
+    /// go at: taking the name's own edge chooses its width again, in this
+    /// pane. (QA measured the round-2 build keeping the old width less the
+    /// drag, which came back 579 pixels wide after a drag that had left it at
+    /// 425.)
     /// </summary>
     [AvaloniaFact]
     public async Task Dragging_a_name_that_is_giving_way_follows_the_pointer()
@@ -595,8 +606,6 @@ public sealed class ColumnDragPointerTests : OwnedViewModels
         var pane = shell.ActiveTab!;
 
         Drag(window, pane, "Name", -20);
-
-        var chosen = pane.ColumnWidths.Name;
 
         shell.ToggleSplit();
         shell.ActivateGroup(shell.Left);
@@ -608,8 +617,10 @@ public sealed class ColumnDragPointerTests : OwnedViewModels
 
         var narrower = Edges(Heading(window, pane), window);
 
+        // What is kept is the width the edge was let go at: dragging the
+        // name's own edge chooses its width again, here.
         Assert.Equal(before[2] - 50, narrower[2], 0.5);
-        Assert.Equal(chosen - 50, pane.ColumnWidths.Name, 0.5);
+        Assert.Equal(Width(before, 1) - 50, pane.ColumnWidths.Name, 0.5);
 
         Drag(window, pane, "Name", 30);
 
@@ -677,6 +688,101 @@ public sealed class ColumnDragPointerTests : OwnedViewModels
         Assert.Equal(Width(before, Cell("Size")), Width(Edges(Heading(window, pane), window), Cell("Size")), 0.5);
     }
 
+    /// <summary>
+    /// The name is drawn at exactly what the row leaves it — the row less the
+    /// other columns — held between its floor and the width chosen for it:
+    /// no narrower, so there is no empty room after the last column while it
+    /// is below its width, and no wider, so nothing runs past the edge that
+    /// an 80-pixel name could have made room for. QA's round-2 split left 170
+    /// pixels empty after Size with the name at its floor.
+    /// </summary>
+    private static void NameGivesOnlyWhatIsNeeded(Window window, PaneViewModel pane, string when)
+    {
+        var heading = Heading(window, pane);
+        var edges = Edges(heading, window);
+        var others = Enumerable.Range(0, Trailing).Where(c => c != 1).Sum(c => Width(edges, c));
+        var scale = pane.TextScale;
+        var expected = Math.Clamp(heading.Bounds.Width - others, PaneScale.NameMin * scale, pane.ColumnWidths.Name * scale);
+
+        Assert.True(Math.Abs(Width(edges, 1) - expected) < 0.75,
+            $"{when}: the name is {Width(edges, 1)} where the row leaves it {heading.Bounds.Width - others} (chosen {pane.ColumnWidths.Name * scale})");
+
+        if (Width(edges, 1) < pane.ColumnWidths.Name * scale - 0.75)
+            Assert.True(Width(edges, Trailing) < 0.75 || Width(edges, 1) <= PaneScale.NameMin * scale + 0.75,
+                $"{when}: {Width(edges, Trailing)} pixels left empty after the last column while the name is below its width");
+    }
+
+    /// <summary>
+    /// **A narrower window first uses up the room after the last column, and
+    /// only then the name.** QA measured the round-2 build squeezing the name
+    /// from the first pixel the window lost, with room still empty after
+    /// Modified. With 200 pixels of room after the last column: a window 120
+    /// narrower leaves the name alone, and one 400 narrower takes 200 from it
+    /// — the rows with it, at 100% and 125%.
+    /// </summary>
+    [AvaloniaTheory]
+    [InlineData(1.0)]
+    [InlineData(1.25)]
+    public async Task A_narrower_window_uses_the_empty_room_before_the_name(double zoom)
+    {
+        var (window, shell) = await Open(zoom, split: false);
+        var pane = shell.ActiveTab!;
+
+        Drag(window, pane, "Name", -200);
+
+        var name = Width(Edges(Heading(window, pane), window), 1);
+        var room = Width(Edges(Heading(window, pane), window), Trailing);
+
+        Assert.Equal(200, room, 1.0);
+
+        window.Width = 3000 - 120;
+        await Settle(window, shell);
+
+        Assert.Equal(name, Width(Edges(Heading(window, pane), window), 1), 0.75);
+        NameGivesOnlyWhatIsNeeded(window, pane, "120 narrower");
+        Assert.Equal(Edges(Heading(window, pane), window), Edges(Row(window, pane), window), Close);
+
+        window.Width = 3000 - 400;
+        await Settle(window, shell);
+
+        Assert.Equal(name - 200, Width(Edges(Heading(window, pane), window), 1), 0.75);
+        NameGivesOnlyWhatIsNeeded(window, pane, "400 narrower");
+        EveryGripOnScreen(window, pane, "400 narrower");
+    }
+
+    /// <summary>
+    /// **No column's edge goes past the pane's.** QA dragged Size 330 pixels
+    /// wider in a full row and its edge, and its grip, landed 190 pixels off
+    /// the side — easiest to do by dragging on into the other half of a
+    /// split. Every column's edge now stops at the pane's right edge, and its
+    /// grip stays where a pointer can take it back.
+    /// </summary>
+    [AvaloniaTheory]
+    [InlineData("Type")]
+    [InlineData("Size")]
+    [InlineData("Modified")]
+    [InlineData("Created")]
+    public async Task An_edge_dragged_far_stops_at_the_panes_edge(string column)
+    {
+        var (window, shell) = await Open(1.0, split: true);
+        var pane = shell.Left.ActiveTab!;
+
+        shell.ActivateGroup(shell.Left);
+
+        var heading = Heading(window, pane);
+        var right = heading.TranslatePoint(new Point(heading.Bounds.Width, 0), window)!.Value.X;
+
+        Drag(window, pane, column, 700);
+
+        var after = Edges(Heading(window, pane), window);
+
+        Assert.Equal(right, after[Cell(column) + 1], 1.0);
+
+        var grip = Grip(window, pane, column);
+        var at = grip.TranslatePoint(new Point(grip.Bounds.Width / 2, 0), window)!.Value.X;
+
+        Assert.True(at < BandRight(window, pane), $"the {column} grip is at {at}, off the band");
+    }
     private static readonly IEqualityComparer<double> Close = new Within(0.5);
 
     private sealed class Within(double tolerance) : IEqualityComparer<double>

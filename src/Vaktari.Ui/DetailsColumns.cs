@@ -1,5 +1,6 @@
 using Avalonia;
 using Avalonia.Controls;
+using Vaktari.Ui.ViewModels;
 
 namespace Vaktari.Ui;
 
@@ -22,17 +23,45 @@ namespace Vaktari.Ui;
 /// it, so the row's name column is drawn the indent narrower: the edge the
 /// heading's grip sits on is then the same edge on every row. The heading has
 /// no indent and leaves this at zero.
+///
+/// **How far the name gives way is worked out once, on the heading, and every
+/// row takes the same number** (<see cref="NameGiveProperty"/>, from
+/// <see cref="PaneViewModel.NameGive"/>). Worked out per grid it went stale:
+/// a row and the heading read the other columns at different moments and
+/// disagreed by 39 pixels at 125%.
 /// </summary>
 public static class DetailsColumns
 {
-    /// <summary>The name column's width in pixels as drawn, or zero (or
-    /// less) for "fills what the other columns leave".</summary>
+    /// <summary>The name column's chosen width in pixels as drawn, or zero
+    /// (or less) for "fills what the other columns leave".</summary>
     public static readonly AttachedProperty<double> NameWidthProperty =
         AvaloniaProperty.RegisterAttached<Grid, double>("NameWidth", typeof(DetailsColumns));
 
     /// <summary>How far this row is indented inside the first column.</summary>
     public static readonly AttachedProperty<double> IndentProperty =
         AvaloniaProperty.RegisterAttached<Grid, double>("Indent", typeof(DetailsColumns));
+
+    /// <summary>How many pixels narrower than its chosen width the name is
+    /// drawn, the same for the heading and every row of one tab.</summary>
+    public static readonly AttachedProperty<double> NameGiveProperty =
+        AvaloniaProperty.RegisterAttached<Grid, double>("NameGive", typeof(DetailsColumns));
+
+    /// <summary>
+    /// The width of the row the name's width was chosen in, in pixels as
+    /// drawn, or zero when nobody has said. Read on the heading only.
+    /// </summary>
+    public static readonly AttachedProperty<double> NameSpanProperty =
+        AvaloniaProperty.RegisterAttached<Grid, double>("NameSpan", typeof(DetailsColumns));
+
+    /// <summary>The narrowest the name is drawn when it gives way, in pixels
+    /// as drawn. Read on the heading only.</summary>
+    public static readonly AttachedProperty<double> NameMinProperty =
+        AvaloniaProperty.RegisterAttached<Grid, double>("NameMin", typeof(DetailsColumns));
+
+    /// <summary>True on the heading's grid: the one that works out
+    /// <see cref="PaneViewModel.NameGive"/> for its tab.</summary>
+    public static readonly AttachedProperty<bool> MeasuresProperty =
+        AvaloniaProperty.RegisterAttached<Grid, bool>("Measures", typeof(DetailsColumns));
 
     /// <summary>The column the name sits in, in both grids.</summary>
     private const int NameColumn = 1;
@@ -56,18 +85,13 @@ public static class DetailsColumns
     {
         NameWidthProperty.Changed.AddClassHandler<Grid>((grid, _) => Update(grid));
         IndentProperty.Changed.AddClassHandler<Grid>((grid, _) => Update(grid));
-        NameSpanProperty.Changed.AddClassHandler<Grid>((grid, _) => Update(grid));
-        NameMinProperty.Changed.AddClassHandler<Grid>((grid, _) => Update(grid));
+        NameGiveProperty.Changed.AddClassHandler<Grid>((grid, _) => Update(grid));
 
-        // The row's own width is half of how wide the name is drawn once it
-        // gives way, so a grid that changes width works it out again. Only
-        // the grids that carry a name width of their own: every other Grid
-        // in the window passes through here and is left alone.
-        Visual.BoundsProperty.Changed.AddClassHandler<Grid>((grid, e) =>
+        MeasuresProperty.Changed.AddClassHandler<Grid>((grid, e) =>
         {
-            if (GetNameWidth(grid) > 0
-                && e.GetOldValue<Rect>().Width != e.GetNewValue<Rect>().Width)
-                Update(grid);
+            grid.LayoutUpdated -= OnHeadingLaidOut;
+
+            if (e.GetNewValue<bool>()) grid.LayoutUpdated += OnHeadingLaidOut;
         });
     }
 
@@ -77,17 +101,8 @@ public static class DetailsColumns
     public static void SetIndent(Grid grid, double value) => grid.SetValue(IndentProperty, value);
     public static double GetIndent(Grid grid) => grid.GetValue(IndentProperty);
 
-    /// <summary>
-    /// The width of the row the name's width was chosen in, in pixels as
-    /// drawn, or zero when nobody has said. See <see cref="NameAsDrawn"/>.
-    /// </summary>
-    public static readonly AttachedProperty<double> NameSpanProperty =
-        AvaloniaProperty.RegisterAttached<Grid, double>("NameSpan", typeof(DetailsColumns));
-
-    /// <summary>The narrowest the name is drawn when it gives way, in pixels
-    /// as drawn.</summary>
-    public static readonly AttachedProperty<double> NameMinProperty =
-        AvaloniaProperty.RegisterAttached<Grid, double>("NameMin", typeof(DetailsColumns));
+    public static void SetNameGive(Grid grid, double value) => grid.SetValue(NameGiveProperty, value);
+    public static double GetNameGive(Grid grid) => grid.GetValue(NameGiveProperty);
 
     public static void SetNameSpan(Grid grid, double value) => grid.SetValue(NameSpanProperty, value);
     public static double GetNameSpan(Grid grid) => grid.GetValue(NameSpanProperty);
@@ -95,42 +110,44 @@ public static class DetailsColumns
     public static void SetNameMin(Grid grid, double value) => grid.SetValue(NameMinProperty, value);
     public static double GetNameMin(Grid grid) => grid.GetValue(NameMinProperty);
 
+    public static void SetMeasures(Grid grid, bool value) => grid.SetValue(MeasuresProperty, value);
+    public static bool GetMeasures(Grid grid) => grid.GetValue(MeasuresProperty);
+
     /// <summary>
-    /// How wide the name is drawn in a row <paramref name="width"/> wide, as
-    /// the heading would draw it (before any indent comes off).
+    /// How many pixels narrower than its chosen width the name is drawn, in
+    /// a row <paramref name="width"/> wide whose other columns take
+    /// <paramref name="others"/>.
     ///
     /// **A name given its width in a wide pane pushed every later column, and
     /// every grip, off the edge of a narrower one** — F3 on a pane whose name
     /// had been dragged, a narrower window, a zoom in — and only Reset
-    /// brought them back. So the name gives way: it is drawn as much narrower
-    /// than its width as the row is narrower than the one the width was
-    /// chosen in (<paramref name="span"/>), down to <paramref name="min"/>,
-    /// and comes back to its width when the row does. Its width itself is
-    /// left alone, being what somebody chose.
+    /// brought them back. So the name gives way, but only as far as both of
+    /// these say it must:
     ///
-    /// **Measured against the row it was chosen in, not against the room the
-    /// other columns leave**, because a column widened by a drag would
-    /// otherwise take its room from the name the moment the button came up —
-    /// the "resizing Size resizes Name" report again, a step later. Room a
-    /// drag used up past the edge stays the drag's; room the PANE lost comes
-    /// out of the name. Where the span is not known (zero) the name is drawn
-    /// at its width: only a drag sets one, and every drag does.
+    /// - **the room the pane has lost** since the widths were last dragged
+    ///   (<paramref name="span"/> less <paramref name="width"/>). Never more,
+    ///   so a column widened by a drag never takes its room from the name —
+    ///   right after a drag the span IS the row, and this is nothing.
+    /// - **the room the columns would run past the edge** with the name at
+    ///   its chosen width. Never more, so a narrower pane first uses up the
+    ///   empty room after the last column, and a name that gives way leaves
+    ///   no gap after it: in QA's split the name went to its floor with 170
+    ///   pixels empty after Size.
     ///
-    /// **And not against the room the others leave for a second reason: that
-    /// goes stale.** It was tried as the fallback and measured: the room is
-    /// read off the columns as last laid out, a column changing width does
-    /// not change the row's, and a heading and its rows worked it out at
-    /// different moments and disagreed by 39 pixels at 125%. The span and the
-    /// row's own width are the same for the heading and for every row.
+    /// And never past <paramref name="min"/>: a pane too narrow even for that
+    /// cuts the last columns off rather than the name.
     /// </summary>
-    public static double NameAsDrawn(double pinned, double span, double min, double width)
+    public static double Give(double pinned, double span, double min, double width, double others)
     {
-        // Half a pixel either way is rounding in the span, not a narrower row.
-        var drawn = span > 0
-            ? (span - width > 0.5 ? pinned - (span - width) : pinned)
-            : pinned;
+        if (pinned <= 0 || span <= 0 || width <= 0) return 0;
 
-        return Math.Min(pinned, Math.Max(min, drawn));
+        // Half a pixel either way is rounding, not a narrower row.
+        var lost = span - width;
+        var overflow = pinned + others - width;
+
+        if (lost <= 0.5 || overflow <= 0.5) return 0;
+
+        return Math.Clamp(Math.Min(lost, overflow), 0, Math.Max(0, pinned - min));
     }
 
     /// <summary>
@@ -149,14 +166,40 @@ public static class DetailsColumns
         if (grid.ColumnDefinitions.Count <= TrailingColumn) return;
 
         var width = GetNameWidth(grid);
-        var indent = GetIndent(grid);
 
-        if (width > 0 && grid.Bounds.Width > 0)
-            width = NameAsDrawn(width, GetNameSpan(grid), GetNameMin(grid), grid.Bounds.Width);
+        if (width > 0) width -= GetNameGive(grid);
 
-        grid.ColumnDefinitions[NameColumn].Width = NameColumnWidth(width, indent);
+        grid.ColumnDefinitions[NameColumn].Width = NameColumnWidth(width, GetIndent(grid));
         grid.ColumnDefinitions[TrailingColumn].Width = width > 0
             ? new GridLength(1, GridUnitType.Star)
             : GridLength.Auto;
+    }
+
+    /// <summary>
+    /// The heading, laid out: works out how far its tab's name gives way from
+    /// its own row and columns, and hands it to the tab, from where the
+    /// heading and every row take it.
+    ///
+    /// **Not while a column is being dragged.** The edge under the pointer
+    /// has to follow it, and a name giving more or less as the columns change
+    /// width would move it; the drag ends by asking for a layout, which lands
+    /// here again with the drag over.
+    /// </summary>
+    private static void OnHeadingLaidOut(object? sender, EventArgs e)
+    {
+        if (sender is not Grid { DataContext: PaneViewModel pane } grid
+            || pane.IsResizingColumns
+            || grid.ColumnDefinitions.Count <= TrailingColumn)
+            return;
+
+        var others = 0.0;
+
+        for (var i = 0; i < grid.ColumnDefinitions.Count; i++)
+            if (i != NameColumn && i != TrailingColumn)
+                others += grid.ColumnDefinitions[i].ActualWidth;
+
+        var give = Give(GetNameWidth(grid), GetNameSpan(grid), GetNameMin(grid), grid.Bounds.Width, others);
+
+        if (Math.Abs(give - pane.NameGive) > 0.25) pane.NameGive = give;
     }
 }

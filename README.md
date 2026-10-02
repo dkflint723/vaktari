@@ -149,8 +149,9 @@ headings or use *View ▸ Columns*. Drag the right edge of any heading, Name's
 included, to make that column wider or narrower; the columns after it move
 along. Name fills what the others leave until an edge is first dragged in that
 tab, and keeps its width from then on; in a pane made narrower since — split,
-a narrower window, zoomed in — it gives up the difference, down to 80 pixels,
-so the other columns stay on screen. The widths belong to the tab — the other
+a narrower window, zoomed in — the room after the last column goes first, and
+then the name gives up just what the other columns need, down to 80 pixels.
+No edge can be dragged past the pane's. The widths belong to the tab — the other
 half of a split is left alone, and a tab or window opened from this one starts
 with them — and *Reset column widths*, in the same two menus, puts that tab's
 back.
@@ -867,9 +868,9 @@ promise yet. Worth knowing before you decide:
   split, to another window, or off into a new one.
 - Columns can be dragged wider or narrower, but not reordered, and a listing
   has no horizontal scroll bar: columns past the pane's right edge — because
-  a column before them was dragged wider than the room left, or because the
-  pane is too narrow even with the name at 80 pixels — are cut off until the
-  name is dragged narrower or *Reset column widths* is used.
+  a column before them was dragged to that edge, or because the pane is too
+  narrow even with the name at 80 pixels — are cut off until that column is
+  narrowed again or *Reset column widths* is used.
 - The Small grid draws no thumbnails, and on Linux Vaktari does not *generate*
   video or PDF thumbnails — it only reads ones your desktop's thumbnailers
   already made.

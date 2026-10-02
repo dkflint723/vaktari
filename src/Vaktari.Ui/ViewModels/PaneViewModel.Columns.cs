@@ -135,6 +135,20 @@ public sealed partial class PaneViewModel
     partial void OnColumnWidthsChanged(Core.Settings.ColumnWidths value)
         => OnPropertyChanged(nameof(NameFills));
 
+    /// <summary>
+    /// How many pixels narrower than its chosen width the name is drawn right
+    /// now, because the pane is narrower than the one its width was chosen
+    /// in. Worked out by the heading (DetailsColumns.Give) and read by the
+    /// heading and every row, so they cannot disagree. Not saved: it belongs
+    /// to the pane's width at this moment.
+    /// </summary>
+    [ObservableProperty] private double _nameGive;
+
+    /// <summary>True while a column's edge is being dragged in this tab, when
+    /// <see cref="NameGive"/> is held where it was so the edge follows the
+    /// pointer.</summary>
+    [ObservableProperty] private bool _isResizingColumns;
+
     /// <summary>True while the name column takes whatever the others leave,
     /// which is how every tab starts and what a reset goes back to.</summary>
     public bool NameFills => ColumnWidths.Name <= 0;

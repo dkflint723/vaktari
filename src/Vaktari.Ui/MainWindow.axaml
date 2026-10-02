@@ -3269,7 +3269,9 @@
                 <Grid Margin="12,0,18,0"
                       local:DetailsColumns.NameWidth="{DynamicResource ColName}"
                       local:DetailsColumns.NameSpan="{DynamicResource ColNameSpan}"
-                      local:DetailsColumns.NameMin="{DynamicResource ColNameMin}">
+                      local:DetailsColumns.NameMin="{DynamicResource ColNameMin}"
+                      local:DetailsColumns.NameGive="{Binding NameGive}"
+                      local:DetailsColumns.Measures="True">
                       <Grid.ColumnDefinitions>
                         <ColumnDefinition Width="Auto"/>
                         <ColumnDefinition Width="*"/>
@@ -3639,8 +3641,7 @@
                            DetailsColumns for why the indent comes off. -->
                       <Grid Height="{DynamicResource RowHeight}" Margin="12,0,18,0" ClipToBounds="True"
                             local:DetailsColumns.NameWidth="{DynamicResource ColName}"
-                            local:DetailsColumns.NameSpan="{DynamicResource ColNameSpan}"
-                            local:DetailsColumns.NameMin="{DynamicResource ColNameMin}">
+                            local:DetailsColumns.NameGive="{Binding $parent[ListBox].((vm:PaneViewModel)DataContext).NameGive}">
                       <local:DetailsColumns.Indent>
                         <MultiBinding Converter="{x:Static vm:FileConverters.Indent}">
                           <Binding Path="FullPath"/>
