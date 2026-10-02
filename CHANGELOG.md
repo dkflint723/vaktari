@@ -13,6 +13,44 @@ should not be trusted for compatibility yet.
 
 ### Fixed
 
+- **The details columns can be resized with the mouse, the name column
+  included, and each tab keeps its own widths.** In 0.11.1 the name column
+  could not be resized at all, and dragging the edge of the type, size,
+  modified or created heading took the room from the name instead: the
+  column grew to the left while the edge you were holding stayed where it
+  was, and it grew much further than the pointer moved. A drag in one half
+  of a split also resized the other half's columns. Now:
+  - Every heading has a grip on its right edge, the name's too. The pointer
+    turns into the resize arrows within 5 pixels either side of the line,
+    and a thin line shows there while it does.
+  - Dragging moves that edge with the pointer: that column gets wider or
+    narrower and the columns to its right move along with it. No other
+    column changes size. Pressing on the line never sorts by the heading
+    next to it.
+  - The name column fills the width the other columns leave until you
+    first drag an edge in that tab. From then on it keeps the width it had,
+    and the space after the last column is left empty. If you drag the
+    columns wider than the pane, the ones past its right edge are cut off;
+    there is no horizontal scroll bar.
+  - A column can be made no narrower than 40 pixels and no wider than 600,
+    and the name no narrower than 80, at 100% zoom.
+  - The widths belong to the tab. Dragging in one half of a split, or in
+    one tab, leaves every other tab and window as it was. They are saved
+    with the session, come back when Vaktari starts, and come back with a
+    tab put back by *Reopen closed tab*. A tab or window that takes on the
+    view of the tab it was opened from — *New tab* (Ctrl+T),
+    *Open in new tab*, *New window* (Ctrl+N) — takes on its widths too.
+    The other half of a split, when you open one, does not take this
+    half's widths, as it takes nothing else of this half's view either; it
+    starts like a tab with nothing to copy from (see the last point).
+  - *Reset column widths*, on the headings' right-click menu or under
+    *Columns* in the listing menu, puts the columns of that one tab back to
+    their usual widths, with the name filling again.
+  - Widths dragged in 0.11.1, which were kept for every pane together, are
+    not lost: a tab from a session saved before this version starts at
+    them, and so does a tab with no other tab to copy its widths from. On
+    an install that never dragged one, those are the usual widths.
+
 - **On Linux, a folder deleted while Vaktari showed it no longer uses up
   one of your inotify instances until Vaktari is closed.** Each one left
   behind counted against the per-user limit (128 on most systems), so after
