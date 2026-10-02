@@ -48,22 +48,29 @@ public partial class MainWindow
     /// <summary>
     /// The drag in progress: which tab and column, where the pointer was
     /// pressed in the window's coordinates and where it was pressed in the
-    /// grip's, the width the column had then at 100%, the scale it was drawn
-    /// at, and — while the name still fills — the width the name was drawn at,
-    /// to give it once the pointer moves.
+    /// grip's, the scale the columns were drawn at, the width the column had
+    /// then at 100%, and what the name and its span are to be from the first
+    /// move on. <see cref="NameFrom"/> and <see cref="NameTo"/> bound a drag
+    /// of the name's own edge.
     /// </summary>
     private sealed record ColumnDrag(
         PaneViewModel Pane, DetailsColumn Column, Visual Frame,
-        double PressedAt, Point PressedOnGrip, double StartWidth, double Scale,
-        double? NameAsDrawn);
+        double PressedAt, Point PressedOnGrip, double Scale, double StartWidth,
+        double Name, double Span, double NameFrom, double NameTo);
 
     private ColumnDrag? _columnDrag;
+
+    /// <summary>Whether the pointer has left the press point since the
+    /// press: until it has, nothing is changed.</summary>
+    private bool _columnDragMoved;
 
     private void OnColumnGripDragStarted(object? sender, VectorEventArgs e)
     {
         _columnDrag = null;
+        _columnDragMoved = false;
 
         if (sender is not Thumb { DataContext: PaneViewModel pane, Tag: string tag } grip
+            || grip.Parent is not Grid { ColumnDefinitions.Count: > 7 } heading
             || TopLevel.GetTopLevel(grip) is not { } frame
             || grip.TranslatePoint(new Point(e.Vector.X, e.Vector.Y), frame) is not { } pressed)
             return;
@@ -73,18 +80,34 @@ public partial class MainWindow
         // The product PaneScale multiplies a width by on the way out.
         var scale = pane.TextScale > 0 ? pane.TextScale : 1.0;
 
-        // Read off the heading's own grid, which every grip is in, while the
-        // name is still filling it.
-        double? name = pane.NameFills && grip.Parent is Grid { ColumnDefinitions.Count: > 1 } heading
-            ? heading.ColumnDefinitions[1].ActualWidth / scale
-            : null;
+        // All read off the heading's own grid, which every grip is in, as it
+        // is drawn now: the name, the empty room after the last column, and
+        // the row.
+        var drawn = heading.ColumnDefinitions[1].ActualWidth / scale;
+        var room = heading.ColumnDefinitions[7].ActualWidth / scale;
+        var row = heading.Bounds.Width / scale;
 
-        var start = column == DetailsColumn.Name && name is { } drawn
-            ? drawn
-            : PaneScale.ColumnWidth(pane.ColumnWidths, column);
+        // **The name keeps exactly the width it is drawn at.** A name that
+        // was filling takes it as its own; a name that is giving way to a
+        // narrower row keeps its own width and gets a span that gives way by
+        // exactly as much as it does now — so nothing moves when the drag
+        // begins, the width somebody chose is not lost to a drag of some
+        // other column, and from here on only the dragged column changes.
+        var name = pane.NameFills ? drawn : pane.ColumnWidths.Name;
+        var span = row + (name - drawn);
+
+        var start = column == DetailsColumn.Name ? name : PaneScale.ColumnWidth(pane.ColumnWidths, column);
+
+        // **The name's edge stops at the pane's edge.** Past it the columns
+        // after the name would go off the side, which is what a name given
+        // its width in a wider pane used to do to them. Narrower, it stops
+        // where the name would be drawn at its floor.
+        var from = name - Math.Max(0, drawn - PaneScale.NameMin);
+        var to = name + room;
 
         _columnDrag = new ColumnDrag(
-            pane, column, frame, pressed.X, new Point(e.Vector.X, e.Vector.Y), start, scale, name);
+            pane, column, frame, pressed.X, new Point(e.Vector.X, e.Vector.Y), scale, start,
+            name, span, from, to);
     }
 
     /// <summary>
@@ -100,19 +123,30 @@ public partial class MainWindow
         if (_columnDrag is not { } drag
             || sender is not Thumb { DataContext: PaneViewModel pane } grip
             || !ReferenceEquals(pane, drag.Pane)
-            || grip.TranslatePoint(drag.PressedOnGrip + e.Vector, drag.Frame) is not { } now
-            || now.X == drag.PressedAt)
+            || grip.TranslatePoint(drag.PressedOnGrip + e.Vector, drag.Frame) is not { } now)
             return;
 
-        // **The name stops filling the moment an edge is MOVED**, at exactly
-        // the width it is drawn at, so it does not jump — and from then on it
-        // is the dragged column alone that changes. On the first move rather
-        // than the press: a click on an edge that goes nowhere changes nothing,
-        // including whether the name follows the window when it is resized.
-        if (drag.NameAsDrawn is { } name && pane.NameFills)
-            pane.SetColumnWidth(DetailsColumn.Name, name);
+        var moved = now.X - drag.PressedAt;
 
-        pane.SetColumnWidth(drag.Column, drag.StartWidth + (now.X - drag.PressedAt) / drag.Scale);
+        // **Nothing until the pointer first leaves the press point**, so a
+        // click on an edge that goes nowhere changes nothing — the name's
+        // filling included. After that every move counts, a move back to
+        // exactly the press point too: skipping that one left the column at
+        // the width of the move before.
+        if (!_columnDragMoved)
+        {
+            if (moved == 0) return;
+
+            _columnDragMoved = true;
+            pane.ColumnWidths = pane.ColumnWidths with { Name = drag.Name, Span = drag.Span };
+        }
+
+        var width = drag.StartWidth + moved / drag.Scale;
+
+        if (drag.Column == DetailsColumn.Name)
+            width = Math.Clamp(width, drag.NameFrom, Math.Max(drag.NameFrom, drag.NameTo));
+
+        pane.SetColumnWidth(drag.Column, width);
     }
 
     private void OnColumnGripDragCompleted(object? sender, VectorEventArgs e) => _columnDrag = null;

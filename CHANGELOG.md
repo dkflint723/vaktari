@@ -29,11 +29,17 @@ should not be trusted for compatibility yet.
     next to it.
   - The name column fills the width the other columns leave until you
     first drag an edge in that tab. From then on it keeps the width it had,
-    and the space after the last column is left empty. Columns that end up
-    past the pane's right edge — dragged there, or left there when the pane
-    gets narrower, as it does when the window is split — are cut off, their
-    grips with them, and there is no horizontal scroll bar; *Reset column
-    widths* brings them back.
+    and the space after the last column is left empty. The name's edge
+    can't be dragged past the pane's right edge.
+  - When the pane gets narrower than it was when you last dragged an edge
+    in it — the window is split, made narrower, or zoomed in — the name
+    gives up the difference, down to 80 pixels, so the columns after it and
+    their grips stay on screen. The name's own width is kept, and it is
+    drawn at it again when the pane is wide enough. Columns are cut off at
+    the pane's right edge only when even an 80-pixel name can't make room,
+    or when you drag a column after the name wider than the room left;
+    there is no horizontal scroll bar. Drag it back, or use *Reset column
+    widths*.
   - A column can be made no narrower than 40 pixels and no wider than 600,
     and the name no narrower than 80, at 100% zoom.
   - The widths belong to the tab. Dragging in one half of a split, or in

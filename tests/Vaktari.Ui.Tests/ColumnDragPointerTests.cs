@@ -293,6 +293,11 @@ public sealed class ColumnDragPointerTests : OwnedViewModels
         var pane = shell.ActiveTab!;
         var cell = Cell(column);
 
+        // The name's edge stops at the pane's (Name_cannot_be_dragged_past_
+        // the_pane's_edge), and a name that fills leaves no room to widen
+        // into — so for the name, make some first.
+        if (column == "Name") Drag(window, pane, "Name", -60);
+
         var before = Edges(Heading(window, pane), window);
 
         Assert.Equal(before, Edges(Row(window, pane), window), Close);
@@ -444,13 +449,212 @@ public sealed class ColumnDragPointerTests : OwnedViewModels
 
         Assert.True(Grip(window, right, column).IsVisible, $"the right half is not showing {column}");
 
-        Drag(window, left, column, 40);
+        // Narrower for the name, which stops at the pane's edge.
+        var dx = column == "Name" ? -40 : 40;
 
-        Assert.Equal(Width(leftBefore, Cell(column)) + 40,
+        Drag(window, left, column, dx);
+
+        Assert.Equal(Width(leftBefore, Cell(column)) + dx,
                      Width(Edges(Heading(window, left), window), Cell(column)), 0.5);
 
         Assert.Equal(rightBefore, Edges(Heading(window, right), window), Close);
         Assert.Equal(rightRowBefore, Edges(Row(window, right), window), Close);
+    }
+
+    // ---- a name with a width of its own, in a narrower pane --------------------
+
+    /// <summary>
+    /// The right edge of the heading band as drawn, in the window's pixels:
+    /// what is right of it is cut off.
+    /// </summary>
+    private static double BandRight(Window window, PaneViewModel pane)
+    {
+        var band = Assert.IsType<Border>(Heading(window, pane).Parent);
+
+        return band.TranslatePoint(new Point(band.Bounds.Width, 0), window)!.Value.X;
+    }
+
+    /// <summary>Every visible grip of the pane lies inside its heading band,
+    /// where a pointer can reach it, and a row lines up with the headings.</summary>
+    private static void EveryGripOnScreen(Window window, PaneViewModel pane, string when)
+    {
+        var right = BandRight(window, pane);
+
+        foreach (var column in new[] { "Name", "Type", "Size", "Modified", "Created" })
+        {
+            var grip = Grip(window, pane, column);
+
+            if (!grip.IsVisible) continue;
+
+            var at = grip.TranslatePoint(new Point(grip.Bounds.Width / 2, 0), window)!.Value.X;
+
+            Assert.True(at < right, $"{when}: the {column} grip is at {at}, past the band's edge at {right}");
+        }
+
+        Assert.Equal(Edges(Heading(window, pane), window), Edges(Row(window, pane), window), Close);
+    }
+
+    /// <summary>Only the pane under test: the other half of a split may come
+    /// back from the session in another layout.</summary>
+    private static async Task Settle(MainWindow window, ShellViewModel shell)
+    {
+        await RowsOnScreen(window, shell.Left.ActiveTab!);
+
+        for (var i = 0; i < 5; i++)
+        {
+            Pump();
+            window.UpdateLayout();
+        }
+    }
+
+    /// <summary>
+    /// **A name given its width in a wide pane gives way in a narrower one,
+    /// and gets it back when the pane is wide again.** The maintainer's own
+    /// order: drag the name's edge in one pane, then F3. Before, the left half
+    /// showed the name and nothing else — every later column and every grip
+    /// past the edge, with no way back but Reset (measured by QA with a real
+    /// mouse, and headless: a 900-pixel name in a 1000-pixel window, no grip on
+    /// screen). Now each column's grip is on screen in the half, the rows line
+    /// up, the width somebody chose is untouched, and closing the split draws
+    /// the name at it again. The same for a window made narrower, and for a
+    /// zoom in.
+    /// </summary>
+    [AvaloniaTheory]
+    [InlineData("split")]
+    [InlineData("narrower")]
+    [InlineData("zoom")]
+    public async Task A_named_width_gives_way_to_a_narrower_pane_and_comes_back(string how)
+    {
+        var (window, shell) = await Open(1.0, split: false);
+        var pane = shell.ActiveTab!;
+
+        Drag(window, pane, "Name", -20);
+
+        var chosen = pane.ColumnWidths.Name;
+        var wide = Width(Edges(Heading(window, pane), window), 1);
+
+        Assert.True(chosen > 1500, $"the name was given only {chosen}");
+
+        switch (how)
+        {
+            case "split": shell.ToggleSplit(); shell.ActivateGroup(shell.Left); break;
+            case "narrower": window.Width = 1200; break;
+            default: pane.FontScale = 2.0; break;
+        }
+
+        await Settle(window, shell);
+
+        Assert.True(Width(Edges(Heading(window, pane), window), 1) < wide - 100, "the name did not give way");
+        EveryGripOnScreen(window, pane, how);
+        Assert.Equal(chosen, pane.ColumnWidths.Name);
+
+        switch (how)
+        {
+            case "split": shell.ToggleSplit(); break;
+            case "narrower": window.Width = 3000; break;
+            default: pane.FontScale = 1.0; break;
+        }
+
+        await Settle(window, shell);
+
+        Assert.Equal(wide, Width(Edges(Heading(window, pane), window), 1), 0.5);
+        Assert.Equal(Edges(Heading(window, pane), window), Edges(Row(window, pane), window), Close);
+    }
+
+    /// <summary>
+    /// **The name's edge, dragged while the name is giving way, stays under
+    /// the pointer** — narrower by as much as the pointer went, then wider by
+    /// as much, the rows with it — and what is kept is the width chosen less
+    /// what the drag took, so a wider pane later draws it that much narrower
+    /// than before rather than forgetting it.
+    /// </summary>
+    [AvaloniaFact]
+    public async Task Dragging_a_name_that_is_giving_way_follows_the_pointer()
+    {
+        var (window, shell) = await Open(1.0, split: false);
+        var pane = shell.ActiveTab!;
+
+        Drag(window, pane, "Name", -20);
+
+        var chosen = pane.ColumnWidths.Name;
+
+        shell.ToggleSplit();
+        shell.ActivateGroup(shell.Left);
+        await Settle(window, shell);
+
+        var before = Edges(Heading(window, pane), window);
+
+        Drag(window, pane, "Name", -50);
+
+        var narrower = Edges(Heading(window, pane), window);
+
+        Assert.Equal(before[2] - 50, narrower[2], 0.5);
+        Assert.Equal(chosen - 50, pane.ColumnWidths.Name, 0.5);
+
+        Drag(window, pane, "Name", 30);
+
+        var back = Edges(Heading(window, pane), window);
+
+        Assert.Equal(narrower[2] + 30, back[2], 0.5);
+        Assert.Equal(back, Edges(Row(window, pane), window), Close);
+        EveryGripOnScreen(window, pane, "after the drags");
+    }
+
+    /// <summary>
+    /// **The name's edge stops at the pane's.** Dragged past it, the columns
+    /// after the name went off the side, which is how a name came to hide
+    /// every grip; now the edge goes no further than the room after the last
+    /// column, and the last grip stays on screen.
+    /// </summary>
+    [AvaloniaFact]
+    public async Task Name_cannot_be_dragged_past_the_panes_edge()
+    {
+        var (window, shell) = await Open(1.0, split: false);
+        var pane = shell.ActiveTab!;
+
+        Drag(window, pane, "Name", -30);
+
+        var before = Edges(Heading(window, pane), window);
+
+        Drag(window, pane, "Name", 200);
+
+        var after = Edges(Heading(window, pane), window);
+
+        Assert.Equal(before[2] + 30, after[2], 1.0);
+        EveryGripOnScreen(window, pane, "after dragging past the edge");
+    }
+
+    /// <summary>
+    /// **A drag that comes back to exactly where it was pressed puts the
+    /// column back.** The handler skipped any move at the press point so that
+    /// a click would change nothing, and that skipped this one too: QA dragged
+    /// Size 20 narrower and back, released, and Size stayed 20 narrower.
+    /// </summary>
+    [AvaloniaFact]
+    public async Task Coming_back_to_the_press_point_puts_the_width_back()
+    {
+        var (window, shell) = await Open(1.0, split: false);
+        var pane = shell.ActiveTab!;
+        var heading = Heading(window, pane);
+        var before = Edges(heading, window);
+        var press = new Point(before[Cell("Size") + 1], Centre(heading, window).Y);
+
+        window.MouseMove(press);
+        window.MouseDown(press, MouseButton.Left);
+        Pump();
+
+        foreach (var dx in new[] { -10.0, -20, 0 })
+        {
+            window.MouseMove(press + new Point(dx, 0));
+            Pump();
+            window.UpdateLayout();
+        }
+
+        window.MouseUp(press, MouseButton.Left);
+        Pump();
+        window.UpdateLayout();
+
+        Assert.Equal(Width(before, Cell("Size")), Width(Edges(Heading(window, pane), window), Cell("Size")), 0.5);
     }
 
     private static readonly IEqualityComparer<double> Close = new Within(0.5);

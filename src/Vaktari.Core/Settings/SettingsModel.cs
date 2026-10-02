@@ -372,6 +372,16 @@ public sealed record ColumnWidths
     public double Modified { get; init; }
     public double Created { get; init; }
 
+    /// <summary>
+    /// How wide the row was, in pixels at 100%, when these widths were last
+    /// dragged — or zero when that is not known. Once the name has a width
+    /// of its own, a row narrower than this draws the name that much
+    /// narrower (down to a floor), so a split, a narrower window or a zoom
+    /// cannot push the later columns off the edge; a row as wide again draws
+    /// it at its width. <see cref="Name"/> is never changed by that.
+    /// </summary>
+    public double Span { get; init; }
+
     /// <summary>Every column as designed, the name filling.</summary>
     public static ColumnWidths Designed { get; } = new();
 

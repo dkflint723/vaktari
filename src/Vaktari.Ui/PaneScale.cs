@@ -243,6 +243,11 @@ public static class PaneScale
 
         // Zero while the name fills, which DetailsColumns reads as "star".
         yield return ("ColName", Math.Round(ColumnWidth(widths, DetailsColumn.Name) * fontScale, 1));
+
+        // What DetailsColumns needs to make a named width give way to a
+        // narrower row: the row it was chosen in, and how far it may give.
+        yield return ("ColNameSpan", Math.Max(0, widths.Span) * fontScale);
+        yield return ("ColNameMin", Math.Round(NameMin * fontScale, 1));
     }
 
     private static readonly (string Key, double Value)[] IconMetrics =
