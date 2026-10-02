@@ -135,12 +135,18 @@ public sealed class NetworkChangesTests
         for (var i = 0; i < 50; i++) source.Raise();
 
         var clock = Stopwatch.StartNew();
-        while (Volatile.Read(ref heard) < 2 && clock.Elapsed < TimeSpan.FromSeconds(10)) await Task.Delay(20);
+        while (Volatile.Read(ref heard) < 2 && clock.Elapsed < TimeSpan.FromSeconds(30)) await Task.Delay(20);
 
         Assert.Equal(2, Volatile.Read(ref heard));
 
-        await Task.Delay(1_500);
+        // Until the spacing lets go, not for a fixed time: it lets go on a
+        // timer's tick, a pool worker that a busy runner handed out after the
+        // 1.5 s this used to sleep (CI run 36945219931), and a change raised
+        // before then is rightly held back.
+        clock.Restart();
+        while (changes.SpacingRunning && clock.Elapsed < TimeSpan.FromSeconds(30)) await Task.Delay(20);
 
+        Assert.False(changes.SpacingRunning, "the spacing never let go");
         Assert.Equal(2, Volatile.Read(ref heard));
 
         // The burst is over: the next change is passed on at once again.

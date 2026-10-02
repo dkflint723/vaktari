@@ -87,6 +87,13 @@ public sealed class NetworkChanges : INetworkChanges
         get { lock (_gate) return _listeners.Count; }
     }
 
+    /// <summary>Whether a burst's spacing is still running, so the next change
+    /// would be held back rather than passed on at once. For the tests.</summary>
+    internal bool SpacingRunning
+    {
+        get { lock (_gate) return _held is not null; }
+    }
+
     /// <summary>Whether the source is subscribed to now. For the tests.</summary>
     public bool Subscribed
     {
