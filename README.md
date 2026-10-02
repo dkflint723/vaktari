@@ -145,9 +145,13 @@ Ctrl+Z takes the copies back, though not the older files they replaced.
 
 **The List layout chooses its columns.** Name, Type, Size, Modified and
 Created, with Type and Created off until you ask for them; right-click the
-headings or use *View ▸ Columns*. Drag the right edge of any heading but Name
-to make its column wider or narrower — Name takes whatever is left — and every
-pane follows; *Reset column widths*, in the same two menus, puts them all back.
+headings or use *View ▸ Columns*. Drag the right edge of any heading, Name's
+included, to make that column wider or narrower; the columns after it move
+along. Name fills what the others leave until an edge is first dragged in that
+tab, and keeps its width from then on. The widths belong to the tab — the other
+half of a split is left alone, and a tab or window opened from this one starts
+with them — and *Reset column widths*, in the same two menus, puts that tab's
+back.
 All five sort. Clicking Size, Modified or Created starts descending, so the
 download that just finished is at the top. `file2` sorts before `file10`, and
 *Écoles* sorts beside *Ecoles* rather than after *Zebra*. Sorting folders before
@@ -859,7 +863,10 @@ promise yet. Worth knowing before you decide:
   and closing always keeps the left.
 - A tab can be dragged within its own strip, but not to the other half of a
   split, to another window, or off into a new one.
-- Columns can be dragged wider or narrower, but not reordered.
+- Columns can be dragged wider or narrower, but not reordered, and a listing
+  has no horizontal scroll bar: columns that end up past the pane's right edge
+  — dragged there, or left there when the pane gets narrower — are cut off
+  until they are dragged back or *Reset column widths* is used.
 - The Small grid draws no thumbnails, and on Linux Vaktari does not *generate*
   video or PDF thumbnails — it only reads ones your desktop's thumbnailers
   already made.
