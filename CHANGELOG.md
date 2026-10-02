@@ -43,6 +43,9 @@ should not be trusted for compatibility yet.
     space after them. The name's own width is kept, and it is drawn at it
     again when the pane is wide enough. Dragging the name's edge while it
     is narrower than its width makes the width wherever you let go.
+    Narrowing another column while the name is narrower than its width
+    gives the room to the name when you let go, so the columns after it
+    move back right.
   - So columns are cut off at the pane's right edge only when a column
     before them has been dragged to the edge, or when the pane is too
     narrow even with the name at 80 pixels. There is no horizontal scroll
