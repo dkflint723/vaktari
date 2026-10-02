@@ -3,6 +3,7 @@ using Avalonia.Headless.XUnit;
 using Avalonia.Threading;
 using Vaktari.Core.FileSystem;
 using Vaktari.Core.Places;
+using Vaktari.Core.Session;
 using Vaktari.Ui.ViewModels;
 using Xunit;
 
@@ -105,7 +106,9 @@ public sealed class FolderWaitTests : OwnedViewModels
             public void Dispose() => off();
         }
 
-        public ValueTask<bool> IsReachableAsync(string path, TimeSpan timeout, CancellationToken ct) => ValueTask.FromResult(true);
+        /// <summary>A restored tab's probe: whether the folder is there.</summary>
+        public ValueTask<bool> IsReachableAsync(string path, TimeSpan timeout, CancellationToken ct)
+            => ValueTask.FromResult(Directory.Exists(path));
         public string Combine(string basePath, string name) => Path.Combine(basePath, name);
         public string? GetParent(string path) => Path.GetDirectoryName(path);
         public bool IsCaseSensitive => !OperatingSystem.IsWindows();
@@ -409,6 +412,157 @@ public sealed class FolderWaitTests : OwnedViewModels
             fs.Gate.Set();
             fs.Hold = false;
             saying.Join(Ceiling);
+        }
+    }
+
+    // ---- a restored tab -----------------------------------------------------
+
+    /// <summary>A shell over this class's provider, places and network, whose
+    /// first tab is on a folder of its own — so that nothing it watches is the
+    /// folder above the one a test makes go missing.</summary>
+    private (ShellViewModel Shell, Quiet Fs, Places Places, string Missing) Shell(SessionState? session = null)
+    {
+        var fs = new Quiet();
+        var places = new Places();
+
+        PaneViewModel.Places = places;
+        PaneViewModel.PollInterval = Timeout.InfiniteTimeSpan;
+        PaneViewModel.Network = Changes;
+
+        var other = Directory.CreateDirectory(Path.Combine(_root, "other")).FullName;
+        var shell = Own(new ShellViewModel(fs));
+
+        shell.Start(session, other);
+
+        return (shell, fs, places, Path.Combine(_root, "x"));
+    }
+
+    private const string Unreachable = "that folder could not be reached";
+
+    /// <summary>A tab closed while it waited on a missing folder, put back.</summary>
+    private async Task<(ShellViewModel Shell, Quiet Fs, Places Places, string Missing, PaneViewModel Reopened)> Reopened()
+    {
+        var (shell, fs, places, missing) = Shell();
+        var waiting = shell.Left.AddTab(missing);
+
+        Assert.True(await Until(() => waiting.HasLoadError && places.Listening == 1), "the tab did not start waiting");
+
+        shell.Left.CloseTab(waiting);
+        Assert.True(await Until(() => places.Listening == 0), "the closed tab went on waiting");
+
+        var reopened = shell.Left.ReopenClosedTab()!;
+
+        Assert.True(await Until(() => reopened.LoadError == Unreachable && fs.Watching(_root) && places.Listening == 1),
+            $"the reopened tab did not wait for its folder: '{reopened.LoadError}', listening {places.Listening}");
+
+        return (shell, fs, places, missing, reopened);
+    }
+
+    /// <summary>
+    /// **A tab put back on a missing folder never came back to it** (release
+    /// 0.11.2 QA, F1, Windows and Fedora). Reopen closed tab goes through the
+    /// restored tab's probe, and a probe that failed said "could not be
+    /// reached" and returned before the load that installs the wait — so the
+    /// folder made again was never noticed, 40 s on, until F5. It waits now,
+    /// and the folder arriving in the folder above brings it back.
+    /// </summary>
+    [AvaloniaFact]
+    public async Task A_tab_put_back_on_a_missing_folder_comes_back_when_the_folder_does()
+    {
+        var (_, fs, _, missing, reopened) = await Reopened();
+
+        Directory.CreateDirectory(missing);
+        File.WriteAllText(Path.Combine(missing, "back.txt"), "b");
+        fs.Say(_root, new FileSystemChange(ChangeKind.Added, missing));
+
+        Assert.True(await Until(() => !reopened.HasLoadError && reopened.Entries.Any(e => e.Name == "back.txt")),
+            "the folder came back and the reopened tab did not");
+    }
+
+    /// <summary>The same for a tab the session put back at startup, first
+    /// listed when its side is shown: the stick it was on is plugged in again
+    /// a while later, and the drives changing brings it back.</summary>
+    [AvaloniaFact]
+    public async Task A_tab_restored_with_the_session_on_a_missing_folder_comes_back_when_the_folder_does()
+    {
+        var missing = Path.Combine(_root, "x");
+
+        var (shell, _, places, _) = Shell(new SessionState
+        {
+            Windows =
+            [
+                new WindowSession
+                {
+                    Panes = [new PaneState { Tabs = [new TabState { Path = missing }] }],
+                },
+            ],
+        });
+
+        var restored = shell.Left.ActiveTab!;
+
+        Assert.Equal(missing, restored.CurrentPath);
+        Assert.True(await Until(() => restored.LoadError == Unreachable && places.Listening == 1),
+            $"the restored tab did not wait for its folder: '{restored.LoadError}', listening {places.Listening}");
+
+        Directory.CreateDirectory(missing);
+        File.WriteAllText(Path.Combine(missing, "back.txt"), "b");
+        places.Changed();
+
+        Assert.True(await Until(() => !restored.HasLoadError && restored.Entries.Any(e => e.Name == "back.txt")),
+            "the folder came back and the restored tab did not");
+    }
+
+    /// <summary>A tab put back and waiting, then closed again, leaves
+    /// nothing behind: no wait, nothing listening to the places or the
+    /// network, no watch on the folder above.</summary>
+    [AvaloniaFact]
+    public async Task A_tab_put_back_waiting_and_closed_again_leaves_nothing_listening()
+    {
+        var (shell, fs, places, _, reopened) = await Reopened();
+
+        Assert.Equal(1, Changes.Listeners);
+
+        shell.Left.CloseTab(reopened);
+
+        Assert.True(await Until(() => places.Listening == 0 && Changes.Listeners == 0 && !fs.Watching(_root)),
+            $"the closed tab left listening: places {places.Listening}, network {Changes.Listeners}, watching {fs.Watching(_root)}");
+        Assert.False(Changes.Subscribed);
+    }
+
+    /// <summary>
+    /// **Starting the wait holds up nothing.** A tab put back on a share that
+    /// does not answer starts a wait whose first look asks the share; that
+    /// look runs on a thread of its own, so putting the tab back returns at
+    /// once while the look is held — here the watch it opens is held, as a
+    /// dead share holds it. Released after five seconds whatever happens, so
+    /// a look on this thread fails the test rather than hanging it.
+    /// </summary>
+    [AvaloniaFact]
+    public async Task Putting_back_a_tab_whose_wait_is_held_does_not_wait_for_it()
+    {
+        var (shell, fs, places, missing) = Shell();
+        var waiting = shell.Left.AddTab(missing);
+
+        Assert.True(await Until(() => waiting.HasLoadError && places.Listening == 1), "the tab did not start waiting");
+
+        shell.Left.CloseTab(waiting);
+        Assert.True(await Until(() => places.Listening == 0), "the closed tab went on waiting");
+
+        fs.Hold = true;
+        _ = Task.Delay(TimeSpan.FromSeconds(5)).ContinueWith(_ => fs.Gate.Set(), TaskScheduler.Default);
+
+        try
+        {
+            var clock = Stopwatch.StartNew();
+            var reopened = shell.Left.ReopenClosedTab()!;
+
+            Assert.True(await Until(() => reopened.LoadError == Unreachable), "the reopened tab said nothing");
+            Assert.True(clock.Elapsed < TimeSpan.FromSeconds(3), $"putting the tab back took {clock.Elapsed.TotalSeconds:F1} s");
+        }
+        finally
+        {
+            fs.Gate.Set();
+            fs.Hold = false;
         }
     }
 }

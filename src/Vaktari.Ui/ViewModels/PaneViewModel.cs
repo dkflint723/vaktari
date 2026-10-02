@@ -2761,6 +2761,26 @@ public sealed partial class PaneViewModel : ObservableObject, IDisposable
                 // IsLoaded stays false, so switching away and back probes
                 // again — which is the retry, and costs the same two seconds.
                 IsLoading = false;
+
+                // **And waits for it to come back, as a pane that found its
+                // folder gone does** (release 0.11.2 QA, F1). This returned
+                // before LoadAsync, so the wait LoadListingAsync installs on a
+                // missing folder was never installed here: a tab put back by
+                // Reopen closed tab, or restored with the session, on a stick
+                // unplugged or a folder made again later stayed on this
+                // sentence until F5 — on Windows and on Fedora, where a live
+                // pane in the same place came back by itself.
+                //
+                // For either cause the probe cannot tell apart. A folder that
+                // is not there is the case a wait exists for; a share that
+                // did not answer in time is waited on as well, by the slow
+                // look and the network changing, as a live pane's share is.
+                // The sentence stays "could not be reached" for the same
+                // reason — see Unreachable. Starting the wait touches no disk
+                // here: its first look runs on a thread of its own
+                // (FolderReturnWatch.Start), so a restored tab on a dead share
+                // holds up neither this thread nor the session's restore.
+                WaitForReturn(path, generation);
                 return;
             }
         }

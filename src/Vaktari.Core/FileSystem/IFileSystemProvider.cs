@@ -90,7 +90,8 @@ public interface IFileSystemProvider
     ///
     /// Called by <c>PaneViewModel.LoadRestoredAsync</c> — the first load of a
     /// tab session restore left standing — to mark that tab dead instead of
-    /// leaving it in a listing that never finishes. Nothing else calls it, and
+    /// leaving it in a listing that never finishes, and to wait for its folder
+    /// from there (FolderReturnWatch). Nothing else calls it, and
     /// nothing else should: every other navigation is somebody asking for a
     /// folder right now, and the error from the listing itself says more than a
     /// bool can.

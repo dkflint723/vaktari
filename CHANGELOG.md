@@ -29,8 +29,10 @@ should not be trusted for compatibility yet.
   another program — and follows it as before. Until now it went on saying
   the folder was not there until you pressed F5 or went somewhere else.
   This also works when the folders above it are deleted and made again all
-  at once — on a network share too — and for a folder typed with its 8.3
-  short name (`TARGET~1`). Whatever else happens, the pane also checks
+  at once — on a network share too — for a folder typed with its 8.3
+  short name (`TARGET~1`), and for a tab put back by *Reopen closed tab* or
+  when Vaktari starts, which says the folder could not be reached and then
+  waits for it in the same way. Whatever else happens, the pane also checks
   again every 30 seconds, so a folder above it that you can read again, or
   a drive mounted again over it, is picked up within half a minute. While a
   share does not answer, a tab waiting on it checks less often, about once

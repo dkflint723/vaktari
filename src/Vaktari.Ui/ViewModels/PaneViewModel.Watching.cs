@@ -96,7 +96,10 @@ public sealed partial class PaneViewModel
     ///
     /// Only for a folder that is not there. A share that does not answer, or a
     /// folder that refuses, comes back by F5 as before — waiting on a server
-    /// that has gone is exactly the cost the bounded watch open avoids.
+    /// that has gone is exactly the cost the bounded watch open avoids. The
+    /// one exception is a restored tab whose reachability probe failed
+    /// (LoadRestoredAsync): the probe cannot tell a folder that is not there
+    /// from a share that did not answer in time, and it waits on both.
     ///
     /// Not as well "after any operation, reload a tab whose folder is back":
     /// this hears the folder come back whoever brings it — Undo, a rename back,
