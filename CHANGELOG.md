@@ -11,6 +11,10 @@ should not be trusted for compatibility yet.
 
 ## [Unreleased]
 
+Nothing yet.
+
+## [0.11.2] — 2026-10-01
+
 ### Fixed
 
 - **The details columns can be resized with the mouse, the name column
@@ -4525,7 +4529,8 @@ should not be trusted for compatibility yet.
 
 First tagged releases. Linux tarball and RPM.
 
-[Unreleased]: https://github.com/dkflint723/vaktari/compare/v0.11.1...HEAD
+[Unreleased]: https://github.com/dkflint723/vaktari/compare/v0.11.2...HEAD
+[0.11.2]: https://github.com/dkflint723/vaktari/compare/v0.11.1...v0.11.2
 [0.11.1]: https://github.com/dkflint723/vaktari/compare/v0.11.0...v0.11.1
 [0.11.0]: https://github.com/dkflint723/vaktari/compare/v0.10.2...v0.11.0
 [0.10.2]: https://github.com/dkflint723/vaktari/compare/v0.10.1...v0.10.2
