@@ -783,6 +783,54 @@ public sealed class ColumnDragPointerTests : OwnedViewModels
 
         Assert.True(at < BandRight(window, pane), $"the {column} grip is at {at}, off the band");
     }
+    /// <summary>
+    /// **A column dragged while the name is giving way follows the pointer**,
+    /// because how far the name gives is held where it was until the drag
+    /// ends — narrowing Size would otherwise hand its room to the name as it
+    /// went, and Size's edge would stay put. Once the button is up the name
+    /// takes the room back, so nothing is left empty after the last column.
+    /// </summary>
+    [AvaloniaFact]
+    public async Task A_column_dragged_while_the_name_gives_way_follows_the_pointer()
+    {
+        var (window, shell) = await Open(1.0, split: false);
+        var pane = shell.ActiveTab!;
+
+        Drag(window, pane, "Name", -20);
+
+        shell.ToggleSplit();
+        shell.ActivateGroup(shell.Left);
+        await Settle(window, shell);
+
+        var heading = Heading(window, pane);
+        var before = Edges(heading, window);
+        var press = new Point(before[Cell("Size") + 1], Centre(heading, window).Y);
+
+        Assert.True(Width(before, 1) < pane.ColumnWidths.Name - 100, "the name is not giving way, so this measures nothing");
+
+        window.MouseMove(press);
+        window.MouseDown(press, MouseButton.Left);
+        Pump();
+
+        for (var step = 1; step <= 4; step++)
+        {
+            window.MouseMove(press + new Point(-10 * step, 0));
+            Pump();
+            window.UpdateLayout();
+        }
+
+        var during = Edges(Heading(window, pane), window);
+
+        Assert.Equal(before[Cell("Size") + 1] - 40, during[Cell("Size") + 1], 0.5);
+        Assert.Equal(Width(before, 1), Width(during, 1), 0.5);
+
+        window.MouseUp(press + new Point(-40, 0), MouseButton.Left);
+        await Settle(window, shell);
+
+        NameGivesOnlyWhatIsNeeded(window, pane, "after the release");
+        Assert.Equal(Width(before, 1) + 40, Width(Edges(Heading(window, pane), window), 1), 0.75);
+        Assert.Equal(Edges(Heading(window, pane), window), Edges(Row(window, pane), window), Close);
+    }
     private static readonly IEqualityComparer<double> Close = new Within(0.5);
 
     private sealed class Within(double tolerance) : IEqualityComparer<double>
