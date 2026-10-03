@@ -1,0 +1,25 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- **Another program, for the tests that need one.** Whether Vaktari can
+       rename a folder that something ELSE has open is a question about two
+       processes, and a test holding the handle itself answers a different one:
+       the engine's own process is what the folder hand-over lets go of. This
+       sits in a file or a folder and waits, and nothing more.
+
+       Plain net10.0 and a console program, like every other project here
+       (review finding 14): no window, no WinForms, no -windows target, so the
+       solution still builds on Linux, where CI builds it. -->
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <IsPackable>false</IsPackable>
+
+    <!-- A helper, not a shipped binary: the published-binary analysers the
+         Directory.Build.props switches on have nothing to say about it. -->
+    <IsAotCompatible>false</IsAotCompatible>
+    <EnableTrimAnalyzer>false</EnableTrimAnalyzer>
+    <EnableAotAnalyzer>false</EnableAotAnalyzer>
+    <EnableSingleFileAnalyzer>false</EnableSingleFileAnalyzer>
+    <PublishTrimmed>false</PublishTrimmed>
+  </PropertyGroup>
+
+</Project>

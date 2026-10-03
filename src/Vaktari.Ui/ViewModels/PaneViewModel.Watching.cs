@@ -38,6 +38,15 @@ public sealed partial class PaneViewModel
 
         if (root is null) return;
 
+        // **Not inside a folder being moved** — a watch on its .git is exactly
+        // what refused the rename (rename-notes, plan §1e). The version-control
+        // read that wanted it is asked again when the hold ends, and starts it.
+        if (Hold is { } hold && hold.IsHeldOff(Path.Combine(root, ".git")))
+        {
+            hold.Declined(this, reload: false);
+            return;
+        }
+
         // `.git` is a FILE in a submodule or a linked worktree, holding a gitdir
         // pointer rather than the metadata itself. Watching it would then be
         // watching the wrong thing, so those are left to F5 rather than followed
@@ -110,6 +119,15 @@ public sealed partial class PaneViewModel
     /// </summary>
     private void WaitForReturn(string path, int generation)
     {
+        // A wait watches the nearest folder above that exists, which for a
+        // path inside a folder being moved is inside it too. Put back by the
+        // reload the hold ends with, which waits again if it must.
+        if (Hold is { } hold && hold.IsHeldOff(path))
+        {
+            hold.Declined(this, reload: true);
+            return;
+        }
+
         var wait = FolderReturnWatch.Start(_fs, path, () => Dispatcher.UIThread.Post(() =>
         {
             if (generation != _generation || CurrentPath != path || !HasLoadError || _disposed) return;
@@ -199,6 +217,9 @@ public sealed partial class PaneViewModel
 
             _wait.Dispose();
         }
+
+        /// <summary>See FolderReturnWatch.WhenIdleAsync.</summary>
+        public Task<bool> WhenIdleAsync(TimeSpan deadline) => _wait.WhenIdleAsync(deadline);
     }
 
     /// <summary>
@@ -247,6 +268,17 @@ public sealed partial class PaneViewModel
     /// </summary>
     private (IDisposable? Watch, bool Polled) OpenWatch(string path, int generation)
     {
+        // **Not while the folder, or one it is inside, is being moved.** A
+        // watch opened now is the self-block the hold exists to prevent; the
+        // pane is read again, and watched, when the hold ends. Asked on the
+        // pool, and that race is closed from the other side: a watch opened
+        // just before the hold began belongs to a load the hold waits for.
+        if (Hold is { } hold && hold.IsHeldOff(path))
+        {
+            hold.Declined(this, reload: true);
+            return (null, false);
+        }
+
         void Changed(FileSystemChange change) => Queue(path, generation, change);
 
         try
@@ -501,11 +533,7 @@ public sealed partial class PaneViewModel
                 // Off the dispatcher for the same reason as the load path: the
                 // synchronous head of this call starts a process, and a tick
                 // handler runs on the UI thread.
-                var path = CurrentPath;
-                var generation = _generation;
-                var token = _cts?.Token ?? default;
-
-                _ = Task.Run(() => RefreshVcsAsync(path, generation, token));
+                StartVcsRead(CurrentPath, _generation);
             };
         }
 
@@ -568,6 +596,14 @@ public sealed partial class PaneViewModel
     /// </summary>
     private void LostTrack(ChangeKind kind)
     {
+        // A folder being renamed under its own watch, or a watch let go of
+        // mid-event. The hold ends with a reload either way.
+        if (Hold is { } hold && hold.IsHeldOff(CurrentPath))
+        {
+            hold.Declined(this, reload: true);
+            return;
+        }
+
         Console.Error.WriteLine(
             kind == ChangeKind.Gone
                 ? $"[vaktari] watch: the folder is gone, reloading · {CurrentPath}"

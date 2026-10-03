@@ -486,6 +486,10 @@ internal sealed class Program
 
         StartupPaths = paths;
 
+        // After the arguments have been read against it, and not before: it
+        // is what "vaktari ." means.
+        LeaveStartingFolder();
+
         try
         {
             BuildAvaloniaApp().StartWithClassicDesktopLifetime(args);
@@ -493,6 +497,45 @@ internal sealed class Program
         finally
         {
             instance.Dispose();
+        }
+    }
+
+    /// <summary>
+    /// The folder this process works in once startup has read its arguments,
+    /// or null to stay where it was started: the install folder on Windows,
+    /// and nothing on Linux.
+    ///
+    /// **"vaktari ." from a terminal pinned that folder for the whole
+    /// session.** A process's current folder is a handle on it, and Windows
+    /// will not rename or bin a folder that is somebody's current folder — or
+    /// anything above one (rename-notes, plan §2: 0x80070020 on the folder
+    /// itself, 0x80070005 on every folder above it). Nothing Vaktari lets go of
+    /// before a rename could reach it, because it is the process's own. The
+    /// arguments are made absolute against it first (ResolveArguments), and
+    /// every program Vaktari starts on purpose in a folder is given that
+    /// folder by name, so nothing else reads it.
+    ///
+    /// Not Linux: renaming a folder there is not refused for being somebody's
+    /// current folder, and a child that does inherit it is better off in the
+    /// folder it was started from.
+    /// </summary>
+    internal static string? WorkingFolderAfterStartup()
+        => OperatingSystem.IsWindows() ? AppContext.BaseDirectory : null;
+
+    /// <summary>Moves this process out of the folder it was started in — see
+    /// <see cref="WorkingFolderAfterStartup"/>. A folder it cannot move to
+    /// leaves it where it was, as before.</summary>
+    private static void LeaveStartingFolder()
+    {
+        if (WorkingFolderAfterStartup() is not { } folder) return;
+
+        try
+        {
+            Environment.CurrentDirectory = folder;
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            Console.Error.WriteLine($"[vaktari] could not leave the folder it was started in: {ex.Message}");
         }
     }
 

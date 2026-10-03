@@ -556,6 +556,18 @@ public sealed partial class PaneGroupViewModel : ObservableObject
     public bool CanReopenTab => _closed.Count > 0;
 
     /// <summary>
+    /// The tabs closed here, carried from <paramref name="from"/> to
+    /// <paramref name="to"/> — so Ctrl+Shift+T after a folder was renamed
+    /// reopens it under the name it has now. See
+    /// <see cref="ShellViewModel.FollowRemembered"/>.
+    /// </summary>
+    internal void FollowClosed(string from, string to)
+    {
+        for (var node = _closed.First; node is not null; node = node.Next)
+            node.Value = ShellViewModel.Followed(node.Value, from, to);
+    }
+
+    /// <summary>
     /// Puts back the last tab closed on this side, where it was and with its
     /// history — Ctrl+Shift+T, which every browser and both references answer
     /// and this did not.

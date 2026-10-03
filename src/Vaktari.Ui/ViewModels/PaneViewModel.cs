@@ -3484,6 +3484,11 @@ public sealed partial class PaneViewModel : ObservableObject, IDisposable
             ? Task.Run(() => OpenWatch(path, generation))
             : Task.FromResult<(IDisposable? Watch, bool Polled)>((null, false));
 
+        // What a folder hand-over waits on before it moves a folder this load
+        // may have opened — see LetGoUnder. Completed in the finally below,
+        // once the watch is installed or let go.
+        var settled = BeginSettling();
+
         // Whether the completion block took the watch. Any other ending — a
         // load superseded, cancelled or failed — lets it go once it has opened.
         var installed = false;
@@ -3670,8 +3675,7 @@ public sealed partial class PaneViewModel : ObservableObject, IDisposable
                 // on the thread that has just finished drawing the listing.
                 // "After the listing is on screen" was already the intent; this
                 // is what makes it true rather than nearly true.
-                var vcsToken = _cts?.Token ?? default;
-                _ = Task.Run(() => RefreshVcsAsync(path, generation, vcsToken));
+                StartVcsRead(path, generation);
 
                 // Says what the listing actually produced. "No files showing"
                 // has two very different causes — nothing enumerated, or
@@ -3738,13 +3742,17 @@ public sealed partial class PaneViewModel : ObservableObject, IDisposable
             // load has nothing left to wait for it about.
             if (!installed)
                 _ = watching.ContinueWith(
-                    static opened =>
+                    (opened, state) =>
                     {
                         if (opened.IsCompletedSuccessfully) opened.Result.Watch?.Dispose();
+
+                        Settled((TaskCompletionSource)state!);
                     },
+                    settled,
                     CancellationToken.None,
                     TaskContinuationOptions.None,
                     TaskScheduler.Default);
+            else Settled(settled);
         }
     }
 

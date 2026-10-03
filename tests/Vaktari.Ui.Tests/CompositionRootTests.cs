@@ -166,6 +166,14 @@ public sealed class CompositionRootTests : IDisposable
             // Not by reference: Create() news this one up and keeps no handle on
             // it, so its own identity is all there is to check.
             Assert.IsType<GitVersionControl>(PaneViewModel.Vcs);
+
+            // **The folder hand-over, on the one engine every window shares.**
+            // Every pane finds it through that engine, and an engine without
+            // one renames exactly as before — which on Windows means refused
+            // by the application's own tabs. Read back through the engine, so
+            // a Create() that built one and never handed it over fails here.
+            Assert.NotNull(services.Handover);
+            Assert.Same(services.Handover, platform.Operations.Handover);
         }
         finally
         {

@@ -49,6 +49,30 @@ public sealed partial class ShellViewModel
     public bool HasAnySharing => HasShares || HasDriveLinks;
 
     /// <summary>
+    /// The links shared from inside <paramref name="from"/>, re-pointed at
+    /// where that folder now is, and saved if any moved.
+    ///
+    /// **A link is found again by its local path** (LinkFor), so a folder
+    /// renamed after it was shared lost its row's Copy link and Stop sharing:
+    /// the menu asked about the new name and the store only knew the old one.
+    /// The link itself is Proton's and does not change.
+    /// </summary>
+    private void FollowDriveLinks(string from, string to)
+    {
+        var moved = false;
+
+        for (var i = 0; i < DriveLinks.Count; i++)
+        {
+            if (PathRules.Rebase(DriveLinks[i].LocalPath, from, to) is not { } now) continue;
+
+            DriveLinks[i] = DriveLinks[i] with { LocalPath = now };
+            moved = true;
+        }
+
+        if (moved) _saveLinks?.Invoke(DriveLinks.ToList());
+    }
+
+    /// <summary>
     /// Wires the link provider and what it remembers. The saver is handed in
     /// rather than the store, so the shell stays ignorant of files — the same
     /// arrangement the session has.

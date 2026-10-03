@@ -263,7 +263,7 @@ public sealed partial class ShellViewModel
                 // under the next operation's message. A failed operation that
                 // also recorded item problems still gets its list — the two are
                 // not exclusive, and "failed: …" says nothing about which files.
-                OperationProblems = ListProblems(handle.Problems);
+                OperationProblems = ListProblems(handle.Problems, handle.Kind);
 
                 // Taken whatever the branch below, so no afterword outlives the
                 // operation it was written for.
@@ -282,7 +282,7 @@ public sealed partial class ShellViewModel
                     // not a failure — but clearing the line would report a clean
                     // run, and the whole point of carrying on past a locked file
                     // is that the person learns which ones were skipped.
-                    OperationStatus = DescribeProblems(handle.Problems);
+                    OperationStatus = DescribeProblems(handle.Problems, handle.Kind);
                 }
                 else if (afterword is not null)
                 {

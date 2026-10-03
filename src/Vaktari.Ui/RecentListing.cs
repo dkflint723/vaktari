@@ -357,6 +357,49 @@ public static class VirtualPaths
         return index == 2 ? parts[2] : Uri.UnescapeDataString(parts[index]);
     }
 
+    /// <summary>
+    /// <paramref name="path"/> as it reads once the folder
+    /// <paramref name="from"/> has become <paramref name="to"/>, or null when
+    /// nothing in it lies at or under <paramref name="from"/>.
+    ///
+    /// **A listing that names a folder follows that folder.** A usage or
+    /// duplicates listing is one folder looked at another way, and a search
+    /// carries the folder it was started from — so a tab on any of them, or a
+    /// back stack holding one, would otherwise name a folder that is no longer
+    /// called that after a rename (rename-notes, plan §3.1). Every other field
+    /// of a search is the question, and is kept exactly.
+    /// </summary>
+    public static string? Rebase(string? path, string from, string to)
+    {
+        if (string.IsNullOrEmpty(path)) return null;
+
+        if (IsUsage(path))
+            return PathRules.Rebase(FolderOf(path), from, to) is { } usage ? Usage(usage) : null;
+
+        if (IsDuplicates(path))
+            return PathRules.Rebase(FolderOf(path), from, to) is { } dupes ? Duplicates(dupes) : null;
+
+        if (IsSearch(path))
+            return OriginOf(path) is { } origin && PathRules.Rebase(origin, from, to) is { } moved
+                ? Search(QueryOf(path), moved, Part(path, 2) == Here, MatchesCase(path), MatchesContent(path))
+                : null;
+
+        if (IsVirtual(path)) return null;
+
+        return PathRules.Rebase(path, from, to);
+    }
+
+    /// <summary>
+    /// The folder a listing walks the disk under, for a listing that walks:
+    /// the measured folder of a usage or duplicates listing, a search's scope —
+    /// and "" for a search over everywhere, which walks under everything when
+    /// no index answers it. Null for anything that does not walk.
+    /// </summary>
+    public static string? WalkRootOf(string? path)
+        => IsUsage(path) || IsDuplicates(path) ? FolderOf(path!)
+            : IsSearch(path) ? ScopeOf(path!) ?? ""
+            : null;
+
     /// <summary>Any listing that is not a directory.</summary>
     public static bool IsVirtual(string? path)
         => IsRecent(path) || path == Trash || path == Computer || IsSearch(path)

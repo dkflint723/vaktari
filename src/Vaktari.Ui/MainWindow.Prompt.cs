@@ -1,8 +1,10 @@
 using System.ComponentModel;
 using System.IO;
+using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Input;
 using Avalonia.Interactivity;
+using Avalonia.VisualTree;
 using Vaktari.Core;
 using Vaktari.Core.FileSystem;
 using Vaktari.Ui.Settings;
@@ -27,7 +29,7 @@ namespace Vaktari.Ui;
 /// </summary>
 public partial class MainWindow
 {
-    private enum PromptMode { None, Rename, RenamePlace, ConfirmDelete, ConfirmTrash, ConfirmEmptyTrash, ConfirmCopyAcross, Connect }
+    private enum PromptMode { None, Rename, RenamePlace, ConfirmDelete, ConfirmTrash, ConfirmEmptyTrash, ConfirmCopyAcross, Connect, InUse }
 
     private PromptMode _prompt = PromptMode.None;
 
@@ -96,6 +98,59 @@ public partial class MainWindow
     /// <summary>The pinned row being renamed, for the same reason
     /// _renameTarget exists: the prompt bar is one bar for every prompt.</summary>
     private PlaceItemViewModel? _renamePlace;
+
+    /// <summary>The rename the in-use bar offers to try again, while it is
+    /// open.</summary>
+    private InUseOffer? _inUse;
+
+    /// <summary>
+    /// A rename refused because something has the item, or something inside
+    /// it, open — shown in the bar with Try again and Cancel.
+    ///
+    /// **"Access to the path … is denied", and nothing to do about it.** A
+    /// folder something else had a file open in was refused with .NET's own
+    /// sentence on the status line, which reads as a permission problem, and
+    /// the only way to try again once the other program was closed was F2 and
+    /// the whole name typed out again. The bar says what is true — something
+    /// has it open — where to look on Windows, and keeps the rename one press
+    /// away.
+    ///
+    /// **Enter belongs to the bar's buttons and nowhere else** (review finding
+    /// 13). The confirmations take Enter from anywhere in the window, which is
+    /// right for "yes, delete these" asked a moment ago and wrong here: a bar
+    /// that sits under a live listing must not act on an Enter meant to open a
+    /// row. So Try again has the keyboard when the bar opens, Tab goes round
+    /// its two buttons, Escape closes it from anywhere, and Enter with the
+    /// keyboard elsewhere does nothing.
+    ///
+    /// One tenant, like every prompt: with another question open, the status
+    /// line — which already says it — is all this gets.
+    /// </summary>
+    private void OnInUseRequested(object? sender, InUseOffer offer)
+    {
+        if (PromptBar is null || _prompt is not PromptMode.None) return;
+
+        _prompt = PromptMode.InUse;
+        _inUse = offer;
+
+        PromptLabel.Text = offer.Sentence;
+        PromptInput.IsVisible = false;
+        PromptConfirm.Content = "Try again";
+        PromptConfirm.IsVisible = true;
+        PromptCancel.IsVisible = true;
+        PromptHint.Text = InUseOffer.Hint is { } where ? $"{where} · esc to cancel" : "esc to cancel";
+        PromptBar.IsVisible = true;
+
+        KeyboardNavigation.SetTabNavigation(PromptBar, KeyboardNavigationMode.Cycle);
+
+        PromptConfirm.Focus();
+    }
+
+    /// <summary>Whether the keyboard is on something inside the prompt bar.</summary>
+    private bool PromptHasTheKeyboard()
+        => FocusManager?.GetFocusedElement() is Visual focused
+           && PromptBar is not null
+           && (ReferenceEquals(focused, PromptBar) || PromptBar.IsVisualAncestorOf(focused));
 
     /// <summary>
     /// Naming a pinned place.
@@ -181,6 +236,7 @@ public partial class MainWindow
 
         var entry = _renameTarget;
         var copyAcross = _copyAcross;
+        var inUse = _inUse;
 
         // Taken before the bar closes, which forgets them.
         var asked = _confirmPane;
@@ -278,6 +334,12 @@ public partial class MainWindow
 
             case PromptMode.ConfirmCopyAcross when copyAcross is not null:
                 _shell.RunCopyAcross(copyAcross);
+                break;
+
+            // The same rename again. Refused again, it raises a fresh offer,
+            // and the bar — closed above — opens on it.
+            case PromptMode.InUse when inUse is not null:
+                _ = inUse.TryAgain();
                 break;
 
             // Rename is answered above, before the bar closes, so that a
@@ -492,6 +554,12 @@ public partial class MainWindow
         _confirmPane = null;
         _confirmChosen = [];
         _confirmInBin = false;
+
+        _inUse = null;
+
+        // Only the in-use bar keeps Tab inside itself; the rest leave Tab as
+        // the window has it.
+        PromptBar?.ClearValue(KeyboardNavigation.TabNavigationProperty);
 
         // The row's editor, which has no field here to hide: it is drawn by the
         // listing's item template, so putting it away is done through the pane

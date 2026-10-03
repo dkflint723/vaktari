@@ -428,10 +428,17 @@ public static class RowMetadata
         // one of many rows, not a folder anybody asked about.
         if (Core.FileSystem.SafeWalk.DoNotEnter?.Invoke(path) == true) return null;
 
+        // Its own source, linked to the row's, so a folder being renamed can
+        // stop this walk without reaching for the row — see CancelUnder.
+        using var walk = CancellationTokenSource.CreateLinkedTokenSource(ct);
+        var measuring = new Measuring(path, walk);
+
+        lock (Walks) Walks.Add(measuring);
+
         try
         {
             var usage = await Task.Run(
-                () => Core.FileSystem.SpaceUsage.Measure(path, progress: null, ct), ct)
+                () => Core.FileSystem.SpaceUsage.Measure(path, progress: null, walk.Token), walk.Token)
                 .ConfigureAwait(true);
 
             // **Nothing read is not zero bytes.** Measure answers a folder it
@@ -446,6 +453,54 @@ public static class RowMetadata
         {
             return null;
         }
+        finally
+        {
+            lock (Walks) Walks.Remove(measuring);
+
+            // After the walk's own thread has left the tree: Task.Run's task
+            // does not complete until the delegate has returned or thrown.
+            measuring.Done.TrySetResult();
+        }
+    }
+
+    /// <summary>One folder being measured for the Size column.</summary>
+    private sealed record Measuring(string Path, CancellationTokenSource Walk)
+    {
+        public TaskCompletionSource Done { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
+    }
+
+    /// <summary>Every walk under way, under its own lock.</summary>
+    private static readonly List<Measuring> Walks = [];
+
+    /// <summary>
+    /// Stops every Size-column walk that is inside one of
+    /// <paramref name="folders"/>, or that walks through one — a total
+    /// measured from above it — and answers what to wait on for each to have
+    /// let go of the tree.
+    ///
+    /// **A walk holds the folder it is in open**, and on Windows a folder with
+    /// anything open beneath it cannot be renamed or binned whole: a total
+    /// still being measured in the Size column was one more way Vaktari
+    /// refused its own rename (rename-notes, plan §2). The cell keeps what it
+    /// showed; the listing's next refresh measures again.
+    /// </summary>
+    internal static IReadOnlyList<Task> CancelUnder(IReadOnlyList<string> folders)
+    {
+        List<Measuring> stopping;
+
+        lock (Walks)
+        {
+            stopping = [.. Walks.Where(w => folders.Any(f =>
+                PathRules.Contains(f, w.Path) || PathRules.Contains(w.Path, f)))];
+        }
+
+        foreach (var walk in stopping)
+        {
+            try { walk.Walk.Cancel(); }
+            catch (ObjectDisposedException) { /* finished between the two */ }
+        }
+
+        return [.. stopping.Select(w => w.Done.Task)];
     }
 
     private static async void OnEntryChanged(TextBlock target, FileEntry? entry, bool access)

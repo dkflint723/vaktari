@@ -25,7 +25,7 @@ public sealed partial class FolderNode : ObservableObject
         Depth = depth;
     }
 
-    public string Path { get; }
+    public string Path { get; private set; }
 
     /// <summary>
     /// False for a root whose place the sidebar holds as not there — a drive
@@ -39,7 +39,33 @@ public sealed partial class FolderNode : ObservableObject
     /// — "Home", a drive's label — and everything below carries its own leaf,
     /// because a tree that renamed folders as it went would be describing
     /// somewhere else.</summary>
-    public string Label { get; }
+    public string Label { get; private set; }
+
+    /// <summary>
+    /// Carries this node, and everything opened under it, from
+    /// <paramref name="from"/> to <paramref name="to"/> — what was open stays
+    /// open. A node that IS the renamed folder takes its new name; a root
+    /// keeps the label the sidebar gave it, which the sidebar's own rebuild
+    /// decides.
+    /// </summary>
+    internal void Follow(string from, string to)
+    {
+        if (PathRules.Rebase(Path, from, to) is { } now && now != Path)
+        {
+            var renamedHere = PathRules.Same(Path, from);
+
+            Path = now;
+            OnPropertyChanged(nameof(Path));
+
+            if (renamedHere && Depth > 0)
+            {
+                Label = PathRules.LeafName(now);
+                OnPropertyChanged(nameof(Label));
+            }
+        }
+
+        foreach (var child in Children) child.Follow(from, to);
+    }
 
     /// <summary>How far to indent. Carried rather than computed by walking up,
     /// because the row is drawn thousands of times and the answer never
@@ -394,6 +420,24 @@ public sealed partial class FolderTreeViewModel : ObservableObject
         await Walk(Roots).ConfigureAwait(true);
 
         await RevealAsync(where()).ConfigureAwait(true);
+    }
+
+    /// <summary>
+    /// Carries every node at or under <paramref name="from"/> to
+    /// <paramref name="to"/>, keeping what is open open, and the mark with it.
+    ///
+    /// **The tree went on naming a folder that had been renamed** (review
+    /// finding 19): its nodes carry the path they were read under, so a
+    /// branch open across a rename offered the old name, and choosing it
+    /// navigated to a folder that was not there.
+    /// </summary>
+    internal void Follow(string from, string to)
+    {
+        foreach (var root in Roots) root.Follow(from, to);
+
+        if (PathRules.Rebase(CurrentPath, from, to) is { } now) CurrentPath = now;
+
+        Reflow();
     }
 
     /// <summary>

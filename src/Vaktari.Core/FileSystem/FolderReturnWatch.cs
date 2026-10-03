@@ -745,4 +745,33 @@ public sealed class FolderReturnWatch : IDisposable
 
         Let(go: old);
     }
+
+    /// <summary>
+    /// Completes once no look is running, or at <paramref name="deadline"/>,
+    /// whichever is first; true when none is.
+    ///
+    /// **Disposing does not stop a look already under way** (see Dispose), and
+    /// a look opens a watch on a folder above the one it waits for — which,
+    /// for a pane waiting inside a folder about to be renamed, is a folder
+    /// inside it. The look lets go of what it opened once it sees it was
+    /// disposed; this is how somebody who needs that folder free waits for it
+    /// (rename-notes, review finding 3). Waited on a timer, never by holding a
+    /// thread.
+    /// </summary>
+    public async Task<bool> WhenIdleAsync(TimeSpan deadline)
+    {
+        var until = DateTime.UtcNow + deadline;
+
+        while (true)
+        {
+            lock (_gate)
+            {
+                if (!_running) return true;
+            }
+
+            if (DateTime.UtcNow >= until) return false;
+
+            await Task.Delay(10).ConfigureAwait(false);
+        }
+    }
 }

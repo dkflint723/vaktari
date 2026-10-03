@@ -52,6 +52,14 @@
     <ProjectReference Include="../../src/Vaktari.Core/Vaktari.Core.csproj" />
   </ItemGroup>
 
+  <!-- Another program that holds a file or a folder open, for the tests about
+       renaming something somebody else has open. Built beside the tests and
+       started by them; see AnotherProgram. -->
+  <ItemGroup>
+    <ProjectReference Include="../Vaktari.LockHolder/Vaktari.LockHolder.csproj" />
+    <Compile Include="../AnotherProgram.cs" Link="AnotherProgram.cs" />
+  </ItemGroup>
+
   <!-- The window's markup, embedded so MarkupRulesTests reads the real file
        rather than hunting for it relative to a test host's working directory.
        Re-embedded on every build, so it cannot drift from what ships. -->

@@ -132,7 +132,7 @@ public sealed class RetryOfferTests
 
         var taken = source.IndexOf("Retryable = handle.Retry;", StringComparison.Ordinal);
         var described = source.IndexOf(
-            "OperationStatus = DescribeProblems(handle.Problems);", StringComparison.Ordinal);
+            "OperationStatus = DescribeProblems(handle.Problems, handle.Kind);", StringComparison.Ordinal);
 
         Assert.True(taken > 0, "nothing reads the offer off a finished operation");
         Assert.True(taken < described,

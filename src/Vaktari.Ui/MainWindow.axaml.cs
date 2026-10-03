@@ -1123,10 +1123,15 @@ public partial class MainWindow : Window
         // The group is what makes the whole dialog one press of Ctrl+Z: without
         // it the engine recorded a step per file, and a swap recorded more
         // steps than there were files.
+        //
+        // And the folder is read again from the disk after a stop, because
+        // the plan that finishes the job has to start from the names the files
+        // have now (review finding 9).
         var model = new BatchRenameViewModel(entries,
             (entry, name) => pane.RenameOrThrowAsync(entry, name),
             pane.Entries,
-            pane.BeginRenameGroup);
+            pane.BeginRenameGroup,
+            () => BatchRenameViewModel.OnDisk(entries));
 
         new BatchRenameWindow(model).ShowDialog(this);
     }
@@ -1287,11 +1292,11 @@ public partial class MainWindow : Window
     /// which matters because a pane can be re-wired after a session restore
     /// hands it back.
     ///
-    /// **The five handlers do not all live here, and that is worth saying
+    /// **The six handlers do not all live here, and that is worth saying
     /// because a heading here used to imply they did.** ChooseApplication, RunFile
-    /// and the pane-editor watcher are declared below; RenameRequested and
-    /// RenameTyped belong to the inline rename and live in MainWindow.Prompt.cs
-    /// with the rest of it. Two of these are the same PropertyChanged event
+    /// and the pane-editor watcher are declared below; RenameRequested,
+    /// RenameTyped and InUseRequested belong to the inline rename and live in
+    /// MainWindow.Prompt.cs with the rest of it. Two of these are the same PropertyChanged event
     /// subscribed twice for two unrelated reasons, which is why the pairs read
     /// oddly.
     /// </summary>
@@ -1311,6 +1316,9 @@ public partial class MainWindow : Window
 
         pane.PropertyChanged -= OnRenameTyped;
         pane.PropertyChanged += OnRenameTyped;
+
+        pane.InUseRequested -= OnInUseRequested;
+        pane.InUseRequested += OnInUseRequested;
     }
 
     /// <summary>

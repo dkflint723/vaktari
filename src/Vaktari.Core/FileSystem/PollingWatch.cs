@@ -54,7 +54,7 @@ public sealed class PollingWatch : IDisposable
 
         try
         {
-            if (_disposed) return;
+            if (Volatile.Read(ref _disposed)) return;
 
             var now = Snapshot(_path);
 
@@ -108,7 +108,10 @@ public sealed class PollingWatch : IDisposable
 
     public void Dispose()
     {
-        _disposed = true;
+        // Volatile, beside the read in Tick: WhenIdleAsync's promise is that a
+        // tick which has not yet enumerated by the time it reports idle never
+        // will, and that needs the flag seen across threads at once.
+        Volatile.Write(ref _disposed, true);
         _timer.Dispose();
     }
 

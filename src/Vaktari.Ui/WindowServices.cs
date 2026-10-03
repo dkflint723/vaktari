@@ -114,7 +114,20 @@ internal sealed class WindowServices
         DriveLinks = driveLinks;
         DriveLinkStore = driveLinkStore;
         Updates = updates;
+
+        // **Every window's tabs, not the one that asked.** The engine is one
+        // for the whole application, so a rename in one window is blocked by a
+        // tab in another as readily as by one beside it. See FolderHandover.
+        Handover = new ViewModels.FolderHandover(() => _windows.Select(w => w.Shell));
+        platform.Operations.Handover = Handover;
     }
+
+    /// <summary>
+    /// What lets go of every tab's hold on a folder before the file operations
+    /// move it whole, and carries the tabs after it — handed to the one engine
+    /// every window shares, which is how each pane finds it.
+    /// </summary>
+    internal ViewModels.FolderHandover Handover { get; }
 
     internal IPlatform Platform { get; }
     internal JsonSettingsStore SettingsStore { get; }

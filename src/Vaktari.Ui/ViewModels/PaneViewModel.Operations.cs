@@ -704,10 +704,40 @@ public sealed partial class PaneViewModel
         }
         catch (Exception ex)
         {
-            await Dispatcher.UIThread.InvokeAsync(() => Status = Failures.Describe(ex));
+            await Dispatcher.UIThread.InvokeAsync(() =>
+            {
+                // "rename that" rather than the default "do that": a folder
+                // this person may not rename said "you do not have permission
+                // to do that".
+                Status = Failures.Describe(ex, "rename that");
+
+                // **Something has it open: say so, and offer to try again.**
+                // A status line is gone by the next refresh, and closing the
+                // other program is the one thing the person can do about it —
+                // after which they need a way back that is not F2 and the
+                // whole name typed again.
+                if (ex is InUseException)
+                    InUseRequested?.Invoke(this, new InUseOffer(
+                        InUseOffer.For(entry.Name, ex),
+                        () =>
+                        {
+                            if (PathRules.Parent(entry.FullPath) is { } folder)
+                                SelectAfterLoad(Path.Combine(folder, newName));
+
+                            return TryRenameAsync(entry, newName);
+                        }));
+            });
+
             return false;
         }
     }
+
+    /// <summary>
+    /// Raised on the dispatcher when a rename was refused because something
+    /// has the item, or something inside it, open. The window shows it in
+    /// its prompt bar with Try again; see <see cref="InUseOffer"/>.
+    /// </summary>
+    public event EventHandler<InUseOffer>? InUseRequested;
 
     /// <summary>
     /// Whether there is anything to take back, and what it is.

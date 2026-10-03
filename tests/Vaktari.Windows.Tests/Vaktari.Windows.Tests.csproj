@@ -42,4 +42,12 @@
     <Compile Include="../Vaktari.Core.Tests/LargeFixture.cs" Link="LargeFixture.cs" />
   </ItemGroup>
 
+  <!-- Another program that holds a file or a folder open, for the tests about
+       renaming something somebody else has open. Built beside the tests and
+       started by them; see AnotherProgram. -->
+  <ItemGroup>
+    <ProjectReference Include="../Vaktari.LockHolder/Vaktari.LockHolder.csproj" />
+    <Compile Include="../AnotherProgram.cs" Link="AnotherProgram.cs" />
+  </ItemGroup>
+
 </Project>

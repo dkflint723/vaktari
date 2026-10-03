@@ -513,14 +513,16 @@ public sealed partial class ShellViewModel
     /// failure in this window uses, so "the file is open in another program"
     /// rather than an exception type.
     /// </summary>
-    internal static string DescribeProblems(IReadOnlyList<Core.FileSystem.ItemProblem> problems)
+    internal static string DescribeProblems(
+        IReadOnlyList<Core.FileSystem.ItemProblem> problems,
+        Core.FileSystem.OperationKind kind = Core.FileSystem.OperationKind.Copy)
     {
         // Through the same row the details list is built from, so the sentence
         // and the list can never disagree about a name or a reason. Read one
         // row rather than the whole list: a folder that could not be created
         // reports every one of its planned descendants, and building thousands
         // of rows to print one of them is work nobody asked for.
-        var first = Row(problems[0]);
+        var first = Row(problems[0], kind);
 
         return problems.Count == 1
             ? $"{first.Name} was left behind — {first.Reason}"
@@ -531,14 +533,32 @@ public sealed partial class ShellViewModel
     /// One problem as a row: the leaf name, the whole path, and why in the same
     /// words the rest of this window uses.
     ///
-    /// "copy that" completes "could not …" for the handful of errors whose own
-    /// message says nothing useful. It is the verb the sentence on the bar has
-    /// always used, and the two sit next to each other now, so they use one.
+    /// The verb completes "could not …" for the handful of errors whose own
+    /// message says nothing useful — and for a refusal of permission, which
+    /// reads "you do not have permission to …".
+    ///
+    /// **Every operation was worded as a copy.** "copy that" was the one verb
+    /// for every kind, so a folder the bin refused read "you do not have
+    /// permission to copy that" — a copy nobody asked for (rename-notes, plan
+    /// §0.1). Each kind says its own now, and the sentence on the bar and the
+    /// list under it still share one.
     /// </summary>
-    private static ProblemRow Row(Core.FileSystem.ItemProblem problem)
+    private static ProblemRow Row(Core.FileSystem.ItemProblem problem, Core.FileSystem.OperationKind kind)
         => new(Path.GetFileName(problem.Path.TrimEnd(Path.DirectorySeparatorChar)),
                problem.Path,
-               Core.FileSystem.Failures.Describe(problem.Error, "copy that"));
+               Core.FileSystem.Failures.Describe(problem.Error, Verb(kind)));
+
+    /// <summary>What an operation of <paramref name="kind"/> was doing, to
+    /// complete "could not …" and "you do not have permission to …".</summary>
+    internal static string Verb(Core.FileSystem.OperationKind kind) => kind switch
+    {
+        Core.FileSystem.OperationKind.Copy => "copy that",
+        Core.FileSystem.OperationKind.Move => "move that",
+        Core.FileSystem.OperationKind.Trash => $"move that to {Core.Naming.TheBin}",
+        Core.FileSystem.OperationKind.Delete => "delete that",
+        Core.FileSystem.OperationKind.Extract => "extract that",
+        _ => "do that",
+    };
 
     /// <summary>
     /// Everything a batch left behind, one row each — the list the "details"
@@ -563,12 +583,13 @@ public sealed partial class ShellViewModel
     /// another failure underneath it.
     /// </summary>
     internal static IReadOnlyList<ProblemRow> ListProblems(
-        IReadOnlyList<Core.FileSystem.ItemProblem> problems)
+        IReadOnlyList<Core.FileSystem.ItemProblem> problems,
+        Core.FileSystem.OperationKind kind = Core.FileSystem.OperationKind.Copy)
         => [.. problems
             .Where(p => !problems.Any(other =>
                 !Core.FileSystem.PathRules.Same(other.Path, p.Path)
                 && Core.FileSystem.PathRules.Contains(other.Path, p.Path)))
-            .Select(Row)];
+            .Select(p => Row(p, kind))];
 
     /// <summary>
     /// The folder currently selected in a pane, when one is — which is what a

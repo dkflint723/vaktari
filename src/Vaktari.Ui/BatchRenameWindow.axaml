@@ -92,6 +92,26 @@
       </DockPanel>
     </Border>
 
+    <!-- **A run stopped by something holding a file open had no way on but
+         Rename again.** The summary above says what stopped it; this row says
+         where to look on Windows (Vaktari does not look inside other programs
+         itself) and keeps the rest of the run one press away once whatever had
+         it open lets go. Try again runs the same command as Rename: after a
+         stop the preview is what is LEFT, read from the disk, so either one
+         finishes the job rather than redoing it. -->
+    <Border x:Name="InUseRow" DockPanel.Dock="Bottom" Margin="0,8,0,0"
+            IsVisible="{Binding IsInUse}">
+      <DockPanel>
+        <Button x:Name="TryAgainButton" DockPanel.Dock="Right" Content="Try again" Padding="14,4"
+                Margin="10,0,0,0" VerticalAlignment="Center"
+                Command="{Binding ApplyCommand}"/>
+        <TextBlock Text="{Binding InUseHint}" VerticalAlignment="Center"
+                   TextWrapping="Wrap"
+                   FontSize="{DynamicResource FontSizeTiny}"
+                   Foreground="{DynamicResource ViewDimText}"/>
+      </DockPanel>
+    </Border>
+
     <!-- The preview IS the plan: this list is exactly what Rename applies. -->
     <Border Margin="0,12,0,0" BorderThickness="1"
             BorderBrush="{DynamicResource SeparatorColour}"

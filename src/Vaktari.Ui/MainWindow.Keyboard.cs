@@ -294,6 +294,27 @@ public partial class MainWindow : ICommandHost
 
         if (ReferenceEquals(e, _answeredOnTheTunnel)) return;
 
+        // **The in-use bar takes Escape from anywhere, and Enter from nowhere
+        // but itself** (review finding 13). Its buttons answer Enter on their
+        // own, as focused buttons do; an Enter that reaches here came from the
+        // listing or elsewhere, and trying the rename again on it would be an
+        // action nobody pointed at. Everything else goes on as it would.
+        if (_prompt is PromptMode.InUse)
+        {
+            if (e.Key == Key.Escape)
+            {
+                e.Handled = true;
+                ClosePrompt();
+                return;
+            }
+
+            if (e.Key == Key.Enter && !PromptHasTheKeyboard())
+            {
+                e.Handled = true;
+                return;
+            }
+        }
+
         // The prompt owns the keyboard while it is open.
         if (IsConfirming)
         {
