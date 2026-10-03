@@ -890,8 +890,8 @@ promise yet. Worth knowing before you decide:
   and closing it is up to you. Vaktari never looks inside, or closes, another
   program. Tabs follow a folder that Vaktari renames or moves, not one renamed
   by another program: those say the folder is not there and wait for it to
-  come back. On Linux nothing holds a folder against a rename, so none of this
-  comes up there.
+  come back. On Linux nothing holds a folder against a rename, so a rename
+  there is never refused for being open; tabs still follow.
 - Places are re-imported from your desktop at every startup, so a place you
   remove in Vaktari that still exists in Dolphin's or Explorer's own list will
   come back.

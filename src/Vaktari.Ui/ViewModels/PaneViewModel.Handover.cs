@@ -204,6 +204,12 @@ public sealed partial class PaneViewModel
 
             waits.AddRange(_vcsReads.Where(t => !t.IsCompleted));
 
+            // **Asked again even though the rename itself usually asks.** The
+            // folder's direct parent hears the rename through its watcher, and
+            // that queues a read of its own (rename QA, round 2, Q6). A pane
+            // further up the repository hears nothing — its watcher sees only
+            // its own folder — and its marks for the moved folder would stay
+            // as they were. So it is kept; asking twice costs one git status.
             return reading || IsRepository ? new LetGo(this, Reload: false) : null;
         }
 

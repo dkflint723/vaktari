@@ -120,6 +120,17 @@ public interface IPlacesProvider
     ValueTask<bool> RepointAsync(string from, string to, CancellationToken ct) => ValueTask.FromResult(false);
 
     /// <summary>
+    /// The same, with the arithmetic handed in: <paramref name="rebase"/>
+    /// answers where a pin's path now is, or null for a pin it does not touch.
+    ///
+    /// **A pinned search started in the folder did not follow it** (rename QA,
+    /// round 2). A search pin's path carries its folder escaped inside a
+    /// vaktari:search: string, which only the window's VirtualPaths can read
+    /// and write, so the window hands over the rule that the tabs follow by.
+    /// </summary>
+    ValueTask<bool> RepointAsync(Func<string, string?> rebase, CancellationToken ct) => ValueTask.FromResult(false);
+
+    /// <summary>
     /// Completes once every change to the pins asked for so far is on the
     /// disk.
     ///

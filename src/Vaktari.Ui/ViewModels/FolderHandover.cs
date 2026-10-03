@@ -188,7 +188,10 @@ internal sealed class FolderHandover : IFolderHandover
     {
         try
         {
-            if (!await places.RepointAsync(from, to, CancellationToken.None).ConfigureAwait(true)) return;
+            // By the tabs' own rule, so a pinned search started in the folder
+            // follows it as a tab on that search does.
+            if (!await places.RepointAsync(path => VirtualPaths.Rebase(path, from, to), CancellationToken.None)
+                    .ConfigureAwait(true)) return;
 
             foreach (var shell in shells) await shell.Sidebar.ReloadAsync().ConfigureAwait(true);
         }

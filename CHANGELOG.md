@@ -36,8 +36,9 @@ should not be trusted for compatibility yet.
   that side (`Ctrl+Shift+T`), the right half of a split that was closed, the
   sidebar's folder tree (what was open stays open), the view the folder
   remembers, Recent locations and Recent files, pinned places (a pin with the
-  folder's own name takes the new name; a name you gave it is kept), Proton
-  Drive links shared from inside it, and files cut and not yet pasted, as long
+  folder's own name takes the new name; a name you gave it is kept; a pinned
+  search started inside it follows too), Proton Drive links shared from inside
+  it, and files cut and not yet pasted, as long
   as the clipboard still holds that cut. The same happens when an undo or redo
   renames or moves a folder back. The undo history itself is not rewritten:
   undoing the rename puts the old name back first.
@@ -64,6 +65,13 @@ should not be trusted for compatibility yet.
   put back is put back, and whatever something had open stays to be undone.
   A refusal that will not pass — the old name has been taken since — still
   drops the step, so `Ctrl+Z` can reach the ones beneath it.
+- **Undoing or redoing a batch rename that swapped names could leave a file
+  under a temporary name** (`.vaktari-rename-…`) when something had one of
+  the files open. The step that was refused was skipped and the undo went on,
+  so the next step met a name that was still taken. Older releases did this
+  too. The undo or redo now stops at the refused step and keeps it and
+  everything after it, so pressing `Ctrl+Z` or `Ctrl+Y` again once the file is
+  let go of puts both names back.
 - **Every failure on the transfer bar was worded as a copy.** A folder the
   Recycle Bin refused read "you do not have permission to copy that". Each
   operation now says its own verb: move, move to the Recycle Bin, delete or

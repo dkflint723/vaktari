@@ -510,7 +510,11 @@ public sealed class LinuxPlacesProvider : IPlacesProvider, IDisposable
     }
 
     /// <inheritdoc/>
-    public async ValueTask<bool> RepointAsync(string from, string to, CancellationToken ct)
+    public ValueTask<bool> RepointAsync(string from, string to, CancellationToken ct)
+        => RepointAsync(path => Vaktari.Core.FileSystem.PathRules.Rebase(path, from, to), ct);
+
+    /// <inheritdoc/>
+    public async ValueTask<bool> RepointAsync(Func<string, string?> rebase, CancellationToken ct)
     {
         var changed = false;
 
@@ -518,7 +522,7 @@ public sealed class LinuxPlacesProvider : IPlacesProvider, IDisposable
         // this side, matching Pin and Unpin.
         var next = _pins.Select(p =>
         {
-            if (Vaktari.Core.FileSystem.PathRules.Rebase(p.Path, from, to) is not { } now || now == p.Path) return p;
+            if (rebase(p.Path) is not { } now || now == p.Path) return p;
 
             changed = true;
 

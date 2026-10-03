@@ -72,22 +72,48 @@ public sealed class UndoRefusalTests
         using var tree = new TempTree();
         var ops = await TwoRenamedInOneStep(tree);
 
-        using (AnotherProgram.HoldingFile(tree.At("b2", "held.txt")))
+        // The undo runs backwards, so the folder renamed FIRST is the last to
+        // go back: held, everything after it in the walk has already gone.
+        using (AnotherProgram.HoldingFile(tree.At("a2", "held.txt")))
         {
             var refused = await Assert.ThrowsAnyAsync<IOException>(async () => await ops.UndoAsync(CancellationToken.None));
 
-            Assert.Contains("b2", refused.Message);
+            Assert.Contains("a2", refused.Message);
             Assert.Contains("something inside that folder is open", refused.Message);
         }
 
-        Assert.True(Directory.Exists(tree.At("a")), "the folder nothing had open did not go back");
-        Assert.True(Directory.Exists(tree.At("b2")));
+        Assert.True(Directory.Exists(tree.At("b")), "the folder nothing had open did not go back");
+        Assert.True(Directory.Exists(tree.At("a2")));
         Assert.True(ops.CanUndo, "the refused folder was lost from the history");
         Assert.True(ops.CanRedo, "what did go back cannot be redone");
 
         await ops.UndoAsync(CancellationToken.None);
 
-        Assert.True(Directory.Exists(tree.At("b")), "pressing again once it was let go did not put it back");
+        Assert.True(Directory.Exists(tree.At("a")), "pressing again once it was let go did not put it back");
+    }
+
+    /// <summary>
+    /// **The walk stops at the first refusal** (rename QA, round 2). Every
+    /// step before it in the batch is carried untried: tried anyway, one that
+    /// went through would be both undone and still waiting to be undone, and
+    /// one that depended on the refused step — a swap's — would meet a name
+    /// still taken and strand its file.
+    /// </summary>
+    [WindowsFact]
+    public async Task A_batch_undo_stops_at_the_first_refusal()
+    {
+        using var tree = new TempTree();
+        var ops = await TwoRenamedInOneStep(tree);
+        var described = ops.UndoDescription;
+
+        // Undone backwards, so b2 is the first the walk reaches.
+        using (AnotherProgram.HoldingFile(tree.At("b2", "held.txt")))
+        {
+            await Assert.ThrowsAsync<InUseException>(async () => await ops.UndoAsync(CancellationToken.None));
+        }
+
+        Assert.True(Directory.Exists(tree.At("a2")), "the walk went on past the refused folder");
+        Assert.Equal(described, ops.UndoDescription);
     }
 
     /// <summary>A batch whose every folder was held changed nothing, and goes

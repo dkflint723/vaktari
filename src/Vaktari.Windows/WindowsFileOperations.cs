@@ -2931,9 +2931,10 @@ public sealed class WindowsFileOperations : IFileOperations
         {
             var back = new List<IUndoable>(steps.Count);
 
-            // The steps something had open, in their own order: what is left
-            // to undo.
-            var refused = new List<(IUndoable Step, InUseException Why)>();
+            // What something had open stopped the walk here: this step and
+            // every one before it in the batch are what is left to undo.
+            List<IUndoable>? left = null;
+            InUseException? why = null;
 
             for (var i = steps.Count - 1; i >= 0; i--)
             {
@@ -2953,24 +2954,35 @@ public sealed class WindowsFileOperations : IFileOperations
                 // changed nothing and can be pressed again once whatever had it
                 // open lets go; dropped here, it was gone from the history with
                 // its name never put back.
-                catch (InUseException inUse) { refused.Insert(0, (steps[i], inUse)); }
+                //
+                // **And the walk stops there** (rename QA, round 2). The steps
+                // before it in the batch were written assuming it had been
+                // undone: in a swap, the next one moves the parked file back to
+                // the name the refused step still holds, meets "already
+                // exists", is swallowed below, and leaves the file under its
+                // staging name for good. Every earlier step is carried with the
+                // refused one, untried, to be undone in order once it is let go.
+                catch (InUseException inUse)
+                {
+                    why = inUse;
+                    left = [.. steps.Take(i + 1)];
+                    break;
+                }
                 catch (IOException) { /* this one name, and only this one */ }
             }
 
-            if (refused.Count > 0)
+            if (left is not null && why is not null)
             {
                 // Nothing went at all: the batch goes back on its stack whole,
                 // exactly as it was (see Refused in the engine).
-                if (back.Count == 0) throw refused[0].Why;
+                if (back.Count == 0) throw why;
 
                 // Some went: what went is the redo, what did not is still an
                 // undo — the same two halves a partly undone move hands back.
                 throw new PartlyUndone(
-                    $"“{Path.GetFileName(refused[0].Why.Path)}”"
-                    + (refused.Count > 1 ? $" and {refused.Count - 1} more" : "")
-                    + $" could not be put back — {refused[0].Why.Message}",
+                    $"“{Path.GetFileName(why.Path)}” could not be put back — {why.Message}",
                     back.Count == 1 ? back[0] : new UndoBatch(describe, back),
-                    refused.Count == 1 ? refused[0].Step : new UndoBatch(describe, [.. refused.Select(r => r.Step)]));
+                    left.Count == 1 ? left[0] : new UndoBatch(describe, left));
             }
 
             if (back.Count == 0) return null;

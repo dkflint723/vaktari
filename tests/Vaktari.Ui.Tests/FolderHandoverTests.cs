@@ -490,6 +490,63 @@ public sealed class FolderHandoverTests : OwnedViewModels
         Assert.True(PathRules.Same(At("uno", "sub"), Assert.Single(rig.Shell.DriveLinks).LocalPath));
     }
 
+    /// <summary>Pins, re-pointed by whatever rule it is handed.</summary>
+    private sealed class Pins(params string[] paths) : IPlacesProvider
+    {
+        public List<string> Paths { get; } = [.. paths];
+
+        public ValueTask<bool> RepointAsync(Func<string, string?> rebase, CancellationToken ct)
+        {
+            var changed = false;
+
+            for (var i = 0; i < Paths.Count; i++)
+            {
+                if (rebase(Paths[i]) is not { } now || now == Paths[i]) continue;
+
+                Paths[i] = now;
+                changed = true;
+            }
+
+            return ValueTask.FromResult(changed);
+        }
+
+        public ValueTask<IReadOnlyList<PlaceGroup>> GetPlacesAsync(CancellationToken ct) => ValueTask.FromResult<IReadOnlyList<PlaceGroup>>([]);
+        public event EventHandler? PlacesChanged { add { } remove { } }
+        public ValueTask PinAsync(string path, string? label, CancellationToken ct) => ValueTask.CompletedTask;
+        public ValueTask UnpinAsync(string id, CancellationToken ct) => ValueTask.CompletedTask;
+        public ValueTask RenameAsync(string id, string label, CancellationToken ct) => ValueTask.CompletedTask;
+        public ValueTask ReorderAsync(IReadOnlyList<string> orderedIds, CancellationToken ct) => ValueTask.CompletedTask;
+        public ValueTask MountAsync(string id, CancellationToken ct) => ValueTask.CompletedTask;
+        public ValueTask<EjectResult> EjectAsync(string id, CancellationToken ct) => throw new NotSupportedException();
+        public ValueTask<int> ImportExistingAsync(CancellationToken ct) => ValueTask.FromResult(0);
+    }
+
+    /// <summary>
+    /// **A pinned search started in the folder did not follow it** (rename
+    /// QA, round 2): the pins were moved by plain path arithmetic, which reads
+    /// a search pin as no path at all. They follow by the tabs' own rule now,
+    /// the folder pin and the search pin alike — and a sibling's does not.
+    /// </summary>
+    [AvaloniaFact]
+    public async Task Pins_follow_including_a_search_started_in_the_folder()
+    {
+        var search = VirtualPaths.Search("report", At("one", "sub"), scoped: true);
+        var sibling = VirtualPaths.Search("report", At("onetwo"), scoped: true);
+        var pins = new Pins(At("one"), search, sibling);
+        PaneViewModel.Places = pins;
+
+        var rig = Build();
+        var from = rig.Shell.ActiveTab!;
+        await Until(() => from.IsLoaded, "the first tab never loaded");
+
+        Assert.True(await from.TryRenameAsync(Folder("one"), "uno"));
+        await Until(() => PathRules.Same(pins.Paths[0], At("uno")), "the folder pin stayed on the old name");
+
+        Assert.True(PathRules.Same(At("uno", "sub"), VirtualPaths.OriginOf(pins.Paths[1])),
+                    $"the pinned search still starts in {VirtualPaths.OriginOf(pins.Paths[1])}");
+        Assert.Equal(sibling, pins.Paths[2]);
+    }
+
     /// <summary>A clipboard that hands back what it was last given.</summary>
     private sealed class Clipboard : IClipboardService
     {

@@ -28,10 +28,11 @@ namespace Vaktari.Windows.Tests;
 [SupportedOSPlatform("windows")]
 public sealed class UndoSwapRefusalTests
 {
-    // **Red at bd74aa2, measured:** the folder ends holding the staging file and
-    // b.txt, and a.txt is gone; its contents sit under ".vaktari-rename-<guid>".
-    // Skipped so the QA branch stays green. Remove the Skip with the fix.
-    [WindowsFact(Skip = "rename QA round 2: a swap whose undo is refused in the middle strands a file under its staging name")]
+    // **Red at bd74aa2, measured:** the folder ended holding the staging file
+    // and b.txt, and a.txt was gone; its contents sat under
+    // ".vaktari-rename-<guid>". The batch undo now stops at the refused step
+    // and carries every step before it, untried.
+    [WindowsFact]
     public async Task Qa_a_swap_whose_undo_is_refused_in_the_middle_can_still_be_put_back_whole()
     {
         using var tree = new TempTree();

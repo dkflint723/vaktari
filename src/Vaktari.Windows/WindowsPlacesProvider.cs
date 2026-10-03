@@ -322,14 +322,18 @@ public sealed class WindowsPlacesProvider : IPlacesProvider, IDisposable
     }
 
     /// <inheritdoc/>
-    public async ValueTask<bool> RepointAsync(string from, string to, CancellationToken ct)
+    public ValueTask<bool> RepointAsync(string from, string to, CancellationToken ct)
+        => RepointAsync(path => PathRules.Rebase(path, from, to), ct);
+
+    /// <inheritdoc/>
+    public async ValueTask<bool> RepointAsync(Func<string, string?> rebase, CancellationToken ct)
     {
         var changed = false;
 
         // Copy-on-write, as every edit here is: _pins is read on other threads.
         var next = _pins.Select(p =>
         {
-            if (PathRules.Rebase(p.Path, from, to) is not { } now || now == p.Path) return p;
+            if (rebase(p.Path) is not { } now || now == p.Path) return p;
 
             changed = true;
 
