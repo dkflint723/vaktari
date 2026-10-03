@@ -11,6 +11,10 @@ should not be trusted for compatibility yet.
 
 ## [Unreleased]
 
+Nothing yet.
+
+## [0.11.3] — 2026-10-03
+
 ### Added
 
 - **When something has a file or folder open, renaming it says so and
@@ -4611,7 +4615,8 @@ should not be trusted for compatibility yet.
 
 First tagged releases. Linux tarball and RPM.
 
-[Unreleased]: https://github.com/dkflint723/vaktari/compare/v0.11.2...HEAD
+[Unreleased]: https://github.com/dkflint723/vaktari/compare/v0.11.3...HEAD
+[0.11.3]: https://github.com/dkflint723/vaktari/compare/v0.11.2...v0.11.3
 [0.11.2]: https://github.com/dkflint723/vaktari/compare/v0.11.1...v0.11.2
 [0.11.1]: https://github.com/dkflint723/vaktari/compare/v0.11.0...v0.11.1
 [0.11.0]: https://github.com/dkflint723/vaktari/compare/v0.10.2...v0.11.0
