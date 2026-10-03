@@ -72,8 +72,9 @@ should not be trusted for compatibility yet.
 - **`vaktari .` from a terminal kept that folder from being renamed** on
   Windows for as long as Vaktari ran. Once it has read its arguments, Vaktari
   now works in its own install folder rather than the one it was started in.
-- File Explorer and Quick Access are told when Vaktari renames something, so
-  an Explorer window showing it follows.
+- Windows is now told when Vaktari renames something, with the same change
+  notification File Explorer sends, so an Explorer window showing it can
+  follow without waiting to notice by itself.
 
 ## [0.11.2] — 2026-10-01
 
