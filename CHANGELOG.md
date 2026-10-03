@@ -11,7 +11,69 @@ should not be trusted for compatibility yet.
 
 ## [Unreleased]
 
-Nothing yet.
+### Added
+
+- **When something has a file or folder open, renaming it says so and
+  offers Try again.** The bar at the bottom of the window says which of three
+  things is true — "something else has that file open", "something has a file
+  inside that folder open" or "something has that folder open" — with
+  *Try again* and *Cancel*. On Windows it also says where to look:
+  Resource Monitor (CPU tab ▸ Associated Handles, search the name) or
+  PowerToys File Locksmith. Vaktari does not look inside other programs, so it
+  cannot say which one it is.
+  - *Try again* has the keyboard when the bar opens, and `Tab` moves between
+    its two buttons without leaving the bar. `Escape` closes it from anywhere.
+    `Enter` in the listing does nothing while the bar is open, so it cannot
+    try again by accident.
+  - A run of renames with `Tab` stops at the file that was refused.
+  - Batch rename (`Shift+F2`) shows a *Try again* row under its summary when
+    a file in use stopped it.
+- **Tabs follow a folder Vaktari renames or moves.** A tab anywhere inside it
+  — in any window, in either half of a split, in the background — goes to the
+  new name and keeps its Back and Forward history. So do the tabs closed on
+  that side (`Ctrl+Shift+T`), the right half of a split that was closed, the
+  sidebar's folder tree (what was open stays open), the view the folder
+  remembers, Recent locations and Recent files, pinned places (a pin with the
+  folder's own name takes the new name; a name you gave it is kept), Proton
+  Drive links shared from inside it, and files cut and not yet pasted, as long
+  as the clipboard still holds that cut. The same happens when an undo or redo
+  renames or moves a folder back. The undo history itself is not rewritten:
+  undoing the rename puts the old name back first.
+
+### Fixed
+
+- **On Windows, Vaktari no longer stops itself renaming a folder.** A tab open
+  in a subfolder, a tab in another window, the watch it keeps on a
+  repository's `.git`, a folder still loading or read on a timer, a search
+  walking through it, a total being measured in the Size column, or the git
+  status of the folder above all held the folder open, and the rename failed
+  with "Access to the path … is denied". Vaktari now lets go of everything of
+  its own at or under the folder, renames it, and opens them again — at the
+  new name, or exactly where they were if the rename failed. It does the same
+  before sending a folder to the Recycle Bin, and before undoing or redoing a
+  folder rename.
+- **"Access to the path … is denied" for a folder something else had open.** It
+  now says one of the three sentences above. A folder you are not allowed to
+  rename still says "you do not have permission to rename that".
+- **An undo of a folder rename that something blocked was lost.** `Ctrl+Z`
+  left the folder as it was and took the step out of the history; it now stays
+  there, to be pressed again once whatever had the folder open lets go.
+- **Every failure on the transfer bar was worded as a copy.** A folder the
+  Recycle Bin refused read "you do not have permission to copy that". Each
+  operation now says its own verb: move, move to the Recycle Bin, delete or
+  extract.
+- **Batch rename after a stop renamed from where the files had been.**
+  Pressing Rename again after a run stopped part-way planned it over from the
+  names the files had before, so it could rename the wrong file, or apply a
+  find-and-replace twice. Now the preview shows what is left to do, read from
+  where the files are now, and Rename (or *Try again*) finishes the run. What
+  landed before the stop and what lands after it are two separate `Ctrl+Z`
+  steps.
+- **`vaktari .` from a terminal kept that folder from being renamed** on
+  Windows for as long as Vaktari ran. Once it has read its arguments, Vaktari
+  now works in its own install folder rather than the one it was started in.
+- File Explorer and Quick Access are told when Vaktari renames something, so
+  an Explorer window showing it follows.
 
 ## [0.11.2] — 2026-10-01
 

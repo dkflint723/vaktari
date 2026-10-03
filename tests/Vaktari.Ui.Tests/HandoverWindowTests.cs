@@ -326,6 +326,12 @@ public sealed class HandoverWindowTests : OwnedViewModels
             window.UpdateLayout();
             Settle();
 
+            // Selected as well as focused: Enter in the listing OPENS the
+            // selection, so with the bar's guard gone this Enter would go into
+            // the folder — which is what the test has to be able to see.
+            pane.SelectedEntry = Row(pane, "photos");
+            Settle();
+
             var row = window.GetVisualDescendants().OfType<ListBoxItem>()
                             .First(i => i.IsVisible && i.DataContext is FileEntry { Name: "photos" });
 

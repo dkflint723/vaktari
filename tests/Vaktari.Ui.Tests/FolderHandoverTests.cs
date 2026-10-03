@@ -854,6 +854,15 @@ public sealed class FolderHandoverTests : OwnedViewModels
 
         Assert.Equal(1, vcs.Cancelled);
 
+        // Held: a refresh of the marks asked for now (a watcher event, a
+        // settings save) is put off rather than walking the folder. Its timer
+        // fires 600 ms on, so a second and a half says it did not run.
+        above.RefreshDecorations();
+
+        for (var i = 0; i < 150; i++) { Dispatcher.UIThread.RunJobs(); await Task.Delay(10); }
+
+        Assert.Equal(1, vcs.Asked);
+
         await lease.DisposeAsync();
 
         await Until(() => vcs.Asked == 2, "the status was never asked for again after the hold");

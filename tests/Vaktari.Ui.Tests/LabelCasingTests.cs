@@ -277,15 +277,16 @@ public sealed class LabelCasingTests
             .Select(m => m.Groups[1].Value)
             .ToList();
 
-        // Two captions and six confirm buttons; a regex that stopped matching
+        // Two captions and seven confirm buttons; a regex that stopped matching
         // would otherwise report nothing and pass.
         //
-        // Eight since copying across got a prompt of its own, with a Copy
-        // button. Seven before that rather than nine: a file rename is typed
-        // on its own row now, so the bar no longer writes "Rename to" over a
-        // 320px box at the bottom of the window. A pinned place's caption
-        // still comes through here.
-        Assert.Equal(8, written.Count);
+        // Nine since a rename refused because something has the item open
+        // got a Try again button. Eight since copying across got a prompt of
+        // its own, with a Copy button. Seven before that rather than nine: a
+        // file rename is typed on its own row now, so the bar no longer writes
+        // "Rename to" over a 320px box at the bottom of the window. A pinned
+        // place's caption still comes through here.
+        Assert.Equal(9, written.Count);
 
         foreach (var label in written)
             Assert.True(char.IsUpper(label[0]), $"the prompt bar writes \"{label}\"");

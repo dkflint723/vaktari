@@ -385,7 +385,11 @@ offer. `Enter` commits, `Escape` cancels, and `Tab` commits and opens the
 name the filesystem will not accept is explained as you type it, and what you
 typed is kept. `Shift+F2` renames in bulk, with a live preview of every old
 name and what it will become: numbered (each run of `#` becomes a zero-padded
-counter) or find-and-replace, optionally a regular expression.
+counter) or find-and-replace, optionally a regular expression. Renaming or
+moving a folder takes every tab inside it, in every window, along to the new
+name. If something else has the file or folder open, the bar at the bottom says
+so in plain words and offers *Try again*; on Windows it also says where to look
+for what has it open.
 
 **The bin can restore.** Deleted files go to your desktop's own bin and appear
 in Vaktari's bin view, each row showing where it came from — so *Restore* puts
@@ -879,6 +883,15 @@ promise yet. Worth knowing before you decide:
   `Ctrl+1`…`Ctrl+9`. A key is one press — no two-key sequences, and no
   mouse buttons.
 - Nothing queues: every transfer you start runs at once.
+- **Vaktari cannot tell you which program has a file or folder open.** When
+  something else holds one you are renaming, the bar says so and offers
+  *Try again*, and on Windows points to Resource Monitor (CPU tab ▸ Associated
+  Handles, search the name) or PowerToys File Locksmith; finding that program
+  and closing it is up to you. Vaktari never looks inside, or closes, another
+  program. Tabs follow a folder that Vaktari renames or moves, not one renamed
+  by another program: those say the folder is not there and wait for it to
+  come back. On Linux nothing holds a folder against a rename, so none of this
+  comes up there.
 - Places are re-imported from your desktop at every startup, so a place you
   remove in Vaktari that still exists in Dolphin's or Explorer's own list will
   come back.
