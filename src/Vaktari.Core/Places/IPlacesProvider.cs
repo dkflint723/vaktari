@@ -109,6 +109,17 @@ public interface IPlacesProvider
     ValueTask ReorderAsync(IReadOnlyList<string> orderedIds, CancellationToken ct);
 
     /// <summary>
+    /// Points every pin at or under <paramref name="from"/> at where that
+    /// folder now is, after Vaktari renamed or moved it — Explorer's Quick
+    /// Access follows a renamed folder, and a pin that went grey the moment
+    /// its folder was renamed in this very window would be worse. A label the
+    /// person chose is kept; one that was only ever the folder's name follows
+    /// the new name. Answers whether anything changed. Defaulted to nothing for
+    /// a provider with no pins.
+    /// </summary>
+    ValueTask<bool> RepointAsync(string from, string to, CancellationToken ct) => ValueTask.FromResult(false);
+
+    /// <summary>
     /// Completes once every change to the pins asked for so far is on the
     /// disk.
     ///

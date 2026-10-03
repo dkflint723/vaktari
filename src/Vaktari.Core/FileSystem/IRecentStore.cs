@@ -57,4 +57,11 @@ public interface IRecentStore
 
     /// <summary>Raised when the lists change, so the sidebar can re-rank.</summary>
     event EventHandler? Changed;
+
+    /// <summary>
+    /// Re-points every entry at or under <paramref name="from"/> at where that
+    /// folder now is, after a rename or a move: a renamed folder is the same
+    /// place somebody has been, not a dead one. Defaulted to nothing.
+    /// </summary>
+    void Rebase(string from, string to) { }
 }

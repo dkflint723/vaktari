@@ -111,4 +111,29 @@ public sealed class PollingWatch : IDisposable
         _disposed = true;
         _timer.Dispose();
     }
+
+    /// <summary>
+    /// Completes once no read of the folder is in flight, or at
+    /// <paramref name="deadline"/>, whichever is first; true when it is idle.
+    ///
+    /// **Disposing does not stop a read already under way.** The timer's tick
+    /// runs on the pool and enumerates the folder, and Dispose returns while
+    /// it is still going — so a folder being renamed straight after its watch
+    /// was let go could still meet that enumeration's handle (rename-notes,
+    /// review finding 3). Waited on without holding a thread: a timer, not a
+    /// sleep.
+    /// </summary>
+    public async Task<bool> WhenIdleAsync(TimeSpan deadline)
+    {
+        var until = DateTime.UtcNow + deadline;
+
+        while (Volatile.Read(ref _busy) == 1)
+        {
+            if (DateTime.UtcNow >= until) return false;
+
+            await Task.Delay(10).ConfigureAwait(false);
+        }
+
+        return true;
+    }
 }

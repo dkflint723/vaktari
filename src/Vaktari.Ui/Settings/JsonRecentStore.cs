@@ -137,6 +137,37 @@ public sealed class JsonRecentStore : IRecentStore
         return had;
     }
 
+    /// <summary>
+    /// A renamed or moved folder, and everything recorded under it, carried
+    /// to where it now is. Keeps each entry's time, and where an entry already
+    /// stands at the new spelling keeps the newer of the two.
+    /// </summary>
+    public void Rebase(string from, string to)
+    {
+        var moved = false;
+
+        lock (_gate)
+        {
+            foreach (var map in new[] { _files, _folders })
+            {
+                foreach (var key in map.Keys.ToList())
+                {
+                    if (PathRules.Rebase(key, from, to) is not { } now || now == key) continue;
+
+                    var when = map[key];
+                    map.Remove(key);
+
+                    map[now] = map.TryGetValue(now, out var there) && there > when ? there : when;
+                    moved = true;
+                }
+            }
+
+            if (moved) _dirty = true;
+        }
+
+        if (moved) Changed?.Invoke(this, EventArgs.Empty);
+    }
+
     public void Forget(string path)
     {
         var key = Normalise(path);

@@ -206,6 +206,27 @@ public static class PathRules
     }
 
     /// <summary>
+    /// <paramref name="path"/> as it reads once the folder <paramref name="from"/>
+    /// has become <paramref name="to"/>, or null when it does not lie at or
+    /// under <paramref name="from"/>.
+    ///
+    /// **Through <see cref="Contains"/>, never a bare StartsWith**, for the
+    /// reason Contains gives: renaming "/media/one" must not touch
+    /// "/media/onetwo". The tail is kept exactly as it was spelled, so a path
+    /// that only moved keeps every character below the folder that moved.
+    /// </summary>
+    public static string? Rebase(string? path, string from, string to)
+    {
+        if (!Contains(from, path)) return null;
+
+        var inner = Normalise(path);
+        var top = Normalise(from);
+        var tail = inner.Length > top.Length ? inner[top.Length..].TrimStart(Path.DirectorySeparatorChar) : "";
+
+        return tail.Length == 0 ? Normalise(to) : Path.Combine(Normalise(to), tail);
+    }
+
+    /// <summary>
     /// Every ancestor from the root down to <paramref name="path"/> itself, which
     /// is what the column strip walks.
     ///

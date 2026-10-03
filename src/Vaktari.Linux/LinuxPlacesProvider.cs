@@ -509,6 +509,32 @@ public sealed class LinuxPlacesProvider : IPlacesProvider, IDisposable
         return new ValueTask(SavePins());
     }
 
+    /// <inheritdoc/>
+    public async ValueTask<bool> RepointAsync(string from, string to, CancellationToken ct)
+    {
+        var changed = false;
+
+        // Copy-on-write, as every edit here is. PathRules compares ordinally on
+        // this side, matching Pin and Unpin.
+        var next = _pins.Select(p =>
+        {
+            if (Vaktari.Core.FileSystem.PathRules.Rebase(p.Path, from, to) is not { } now || now == p.Path) return p;
+
+            changed = true;
+
+            var label = p.Label == Vaktari.Core.FileSystem.PathRules.LeafName(p.Path) ? Vaktari.Core.FileSystem.PathRules.LeafName(now) : p.Label;
+
+            return new PinnedPlace(now, label);
+        }).ToList();
+
+        if (!changed) return false;
+
+        _pins = next;
+        await SavePins().ConfigureAwait(false);
+
+        return true;
+    }
+
     public ValueTask RenameAsync(string id, string label, CancellationToken ct)
     {
         var tidy = PlaceNames.Clean(label);

@@ -110,6 +110,29 @@ public sealed class JsonFolderViewStore : IFolderViewStore
         }
     }
 
+    /// <summary>
+    /// Every folder's overrides at or under <paramref name="from"/>, carried to
+    /// where that folder now is. An override already recorded at the new
+    /// spelling is the newer opinion and wins.
+    /// </summary>
+    public void Rebase(string from, string to)
+    {
+        lock (_gate)
+        {
+            foreach (var key in _states.Keys.ToList())
+            {
+                if (VirtualPaths.IsVirtual(key)) continue;
+
+                if (PathRules.Rebase(key, from, to) is not { } now || now == key) continue;
+
+                var state = _states[key];
+                _states.Remove(key);
+                _states.TryAdd(now, state);
+                _dirty = true;
+            }
+        }
+    }
+
     public int Remembered
     {
         get { lock (_gate) return _states.Count; }

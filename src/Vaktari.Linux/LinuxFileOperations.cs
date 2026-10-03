@@ -130,10 +130,24 @@ public sealed class LinuxFileOperations : IFileOperations
 
                     handle.ItemStarted(path);
 
-                    // **Per item.** One try wrapped the whole loop, so a single
-                    // file the user could not write abandoned every remaining
-                    // item in the selection, and the message named the
-                    // exception rather than the file.
+                    // A folder is handed over first, so the tabs inside it
+                    // are read again — and told it has gone — rather than
+                    // left showing a folder that is in the bin. See
+                    // IFolderHandover.
+                    var folder = Directory.Exists(path) && !IsLink(path);
+
+                    await FolderMoves.RunAsync(
+                        Handover, folder ? [(path, null)] : [],
+                        () => { TrashOne(path); return ValueTask.CompletedTask; },
+                        CancellationToken.None).ConfigureAwait(false);
+                }
+
+                // **Per item.** One try wrapped the whole loop, so a single
+                // file the user could not write abandoned every remaining
+                // item in the selection, and the message named the
+                // exception rather than the file.
+                void TrashOne(string path)
+                {
                     try
                     {
                         var name = XdgTrash.Trash(path);
@@ -248,7 +262,10 @@ public sealed class LinuxFileOperations : IFileOperations
         return handle;
     }
 
-    public ValueTask RenameAsync(string path, string newName, CancellationToken ct)
+    /// <inheritdoc/>
+    public IFolderHandover? Handover { get; set; }
+
+    public async ValueTask RenameAsync(string path, string newName, CancellationToken ct)
     {
         // Shared with the Windows twin so the two cannot drift, and so the
         // rules that are genuinely Windows-only stay Windows-only: ext4 takes
@@ -264,12 +281,20 @@ public sealed class LinuxFileOperations : IFileOperations
         var directory = Path.GetDirectoryName(Path.GetFullPath(path))!;
         var target = Path.Combine(directory, newName);
 
-        if (target == path) return ValueTask.CompletedTask;
+        if (target == path) return;
 
         if (File.Exists(target) || Directory.Exists(target))
             throw new IOException($"'{newName}' already exists here.");
 
-        if (Directory.Exists(path)) Directory.Move(path, target);
+        // Nothing of ours blocks a rename here — Linux renames an open
+        // folder without complaint — but the tabs inside it were left showing
+        // a folder that had gone. The same hand-over as the Windows twin, so
+        // they follow it. See IFolderHandover.
+        if (Directory.Exists(path))
+            await FolderMoves.RunAsync(
+                Handover, [(path, target)],
+                () => { Directory.Move(path, target); return ValueTask.CompletedTask; },
+                ct).ConfigureAwait(false);
         else File.Move(path, target, overwrite: false);
 
         var back = new UndoRename(target, path);
@@ -278,8 +303,6 @@ public sealed class LinuxFileOperations : IFileOperations
         // rather than each becoming a press of Ctrl+Z of its own.
         if (_group is { } group) group.Add(back);
         else Remember(back);
-
-        return ValueTask.CompletedTask;
     }
 
     /// <summary>Records something new, and abandons the redo history — see the
@@ -337,7 +360,7 @@ public sealed class LinuxFileOperations : IFileOperations
 
             try
             {
-                var undo = await Walk(action, ct).ConfigureAwait(false);
+                var undo = await WalkHandedOver(action, ct).ConfigureAwait(false);
 
                 if (undo is not null && generation == _generation) _undo.Push(undo);
             }
@@ -349,6 +372,11 @@ public sealed class LinuxFileOperations : IFileOperations
                     if (partly.Left is { } left) _redo.Push(left);
                 }
 
+                throw;
+            }
+            catch (Exception) when (Refused(action, generation))
+            {
+                _redo.Push(action);
                 throw;
             }
         }
@@ -370,7 +398,7 @@ public sealed class LinuxFileOperations : IFileOperations
 
             try
             {
-                var redo = await Walk(action, ct).ConfigureAwait(false);
+                var redo = await WalkHandedOver(action, ct).ConfigureAwait(false);
 
                 if (redo is not null && generation == _generation) _redo.Push(redo);
             }
@@ -384,11 +412,49 @@ public sealed class LinuxFileOperations : IFileOperations
 
                 throw;
             }
+            catch (Exception) when (Refused(action, generation))
+            {
+                _undo.Push(action);
+                throw;
+            }
         }
         finally
         {
             Interlocked.Exchange(ref _walking, 0);
         }
+    }
+
+    /// <summary>Whether a step that threw goes back where it came from — a
+    /// lone rename, which a refusal leaves untouched on disk. See the Windows
+    /// twin (review finding 8).</summary>
+    private bool Refused(IUndoable action, int generation)
+        => action is UndoRename && generation == _generation;
+
+    /// <summary>The walk, with the folders it renames whole handed over and
+    /// the folders it carries followed — see the Windows twin (review
+    /// finding 10).</summary>
+    private async Task<IUndoable?> WalkHandedOver(IUndoable action, CancellationToken ct)
+    {
+        var leased = action.FoldersLeased;
+        var followed = action.FoldersFollowed;
+
+        IUndoable? result = null;
+
+        try
+        {
+            await FolderMoves.RunAsync(
+                Handover, leased,
+                async () => result = await Walk(action, ct).ConfigureAwait(false),
+                ct).ConfigureAwait(false);
+        }
+        finally
+        {
+            if (Handover is { } handover)
+                foreach (var (from, to) in followed)
+                    if (FolderMoves.Arrived(from, to, threw: false)) handover.Followed(from, to);
+        }
+
+        return result;
     }
 
     /// <summary>
@@ -825,6 +891,15 @@ public sealed class LinuxFileOperations : IFileOperations
                             && !IsLink(directory)
                             && !Directory.EnumerateFileSystemEntries(directory).Any())
                             Directory.Delete(directory);
+
+                    // The tabs inside a moved folder follow it, afterwards —
+                    // see the Windows twin (review finding 11).
+                    if (Handover is { } handover)
+                        foreach (var (source, target) in roots)
+                            if (plan.Any(i => i.IsDirectory && !i.IsLink && i.Source == source)
+                                && Redirect(target, redirects) is var landed
+                                && FolderMoves.Arrived(source, landed, threw: false))
+                                handover.Followed(source, landed);
                 }
 
                 // **What the pane selects when the rows come back.** The list
@@ -1554,6 +1629,14 @@ public sealed class LinuxFileOperations : IFileOperations
         /// <summary>What this would take back, for the menu row and the status
         /// line — see the Windows implementation.</summary>
         string Describe { get; }
+
+        /// <summary>The folders this step renames whole, asked before it runs
+        /// — see the Windows implementation.</summary>
+        IReadOnlyList<(string From, string? To)> FoldersLeased => [];
+
+        /// <summary>The folders this step carries item by item, which the tabs
+        /// inside follow afterwards.</summary>
+        IReadOnlyList<(string From, string To)> FoldersFollowed => [];
     }
 
 
@@ -1631,6 +1714,9 @@ public sealed class LinuxFileOperations : IFileOperations
     {
         public string Describe => describe;
 
+        public IReadOnlyList<(string From, string? To)> FoldersLeased
+            => [.. steps.SelectMany(s => s.FoldersLeased)];
+
         public async ValueTask<IUndoable?> UndoAsync(CancellationToken ct)
         {
             var back = new List<IUndoable>(steps.Count);
@@ -1705,6 +1791,9 @@ public sealed class LinuxFileOperations : IFileOperations
     private sealed class UndoRename(string current, string original) : IUndoable
     {
         public string Describe => UndoNames.Of("rename", [current]);
+
+        public IReadOnlyList<(string From, string? To)> FoldersLeased
+            => Directory.Exists(current) ? [(current, original)] : [];
 
         public ValueTask<IUndoable?> UndoAsync(CancellationToken ct)
         {
@@ -1880,6 +1969,13 @@ public sealed class LinuxFileOperations : IFileOperations
         /// <summary>The name of the roots the move was asked about, carried
         /// rather than read off the steps — see the Windows twin.</summary>
         public string Describe => _describe;
+
+        /// <summary>The real folders among this step's top-level entries,
+        /// asked before the walk — see the Windows twin.</summary>
+        public IReadOnlyList<(string From, string To)> FoldersFollowed
+            => [.. _steps.OfType<Travel>()
+                    .Where(t => Directory.Exists(t.From) && !IsLink(t.From))
+                    .Select(t => (t.From, t.To))];
 
         public ValueTask<IUndoable?> UndoAsync(CancellationToken ct)
         {

@@ -21,6 +21,9 @@ public static class Failures
     private const int SharingViolation = unchecked((int)0x80070020);
     private const int LockViolation = unchecked((int)0x80070021);
 
+    /// <summary>ERROR_ACCESS_DENIED, as an HRESULT.</summary>
+    private const int AccessDenied = unchecked((int)0x80070005);
+
     /// <summary>ERROR_DISK_FULL and ERROR_HANDLE_DISK_FULL.</summary>
     private const int DiskFull = unchecked((int)0x80070070);
     private const int HandleDiskFull = unchecked((int)0x80070027);
@@ -87,6 +90,11 @@ public static class Failures
         ArchiveUnreadableException or ArchiveDamagedException
             or ArchivePasswordRequiredException or ArchiveRefusedException => e.Message,
 
+        // Ahead of every IOException arm: it IS one, carrying the sharing or
+        // access code it arrived with, and the arms below would answer the
+        // code — "you do not have permission" for a folder held from below.
+        InUseException inUse => InUseException.Sentence(inUse.IsDirectory, inUse.ItselfOpen),
+
         DirectoryNotFoundException => "that folder is not there any more",
         FileNotFoundException => "that file is not there any more",
 
@@ -94,6 +102,16 @@ public static class Failures
 
         IOException io when io.HResult is SharingViolation or LockViolation =>
             "something else has that file open",
+
+        // **"Access to the path 'D:\…\Photos' is denied."** What a folder
+        // held from below answered with, through the message arm at the end:
+        // Windows says ERROR_ACCESS_DENIED for a folder something has a file
+        // open inside, and .NET hands that over as a plain IOException rather
+        // than as UnauthorizedAccessException. The engines tell the two apart
+        // where they can (InUseException above); one that reaches here could
+        // not be told apart, and saying either for certain would be a guess.
+        IOException io when io.HResult == AccessDenied =>
+            "Windows would not let go of that — something may have it open, or you may not have permission",
 
         IOException io when IsDiskFull(io) =>
             "there is not enough room on the disk",

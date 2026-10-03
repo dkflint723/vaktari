@@ -321,6 +321,16 @@ public interface IFileOperations
     /// joins the group is exactly what the caller asked for.
     /// </summary>
     IUndoGroup? BeginRenameGroup();
+
+    /// <summary>
+    /// Who to tell before a folder is moved whole and after it has gone
+    /// somewhere — see <see cref="IFolderHandover"/>. Set once, by the
+    /// application, on the one engine every window shares; an engine with none
+    /// behaves exactly as it did before there was one.
+    ///
+    /// Defaulted, so a test's own engine owes nothing for it.
+    /// </summary>
+    IFolderHandover? Handover { get => null; set { } }
 }
 
 /// <summary>

@@ -142,6 +142,25 @@ internal static partial class Native
     [LibraryImport("shell32.dll", EntryPoint = "SHFileOperationW")]
     internal static partial int SHFileOperation(ref SHFILEOPSTRUCTW operation);
 
+    /// <summary>The shell's move, for a test standing in for the bin: the
+    /// same machinery as a recycle, aimed at a folder the test owns.</summary>
+    internal const uint FO_MOVE = 0x0001;
+
+    // ---- Telling Explorer --------------------------------------------------
+
+    internal const int SHCNE_RENAMEITEM = 0x00000001;
+    internal const int SHCNE_RENAMEFOLDER = 0x00020000;
+    internal const uint SHCNF_PATHW = 0x0005;
+    internal const uint SHCNF_FLUSHNOWAIT = 0x3000;
+
+    /// <summary>
+    /// Tells Explorer, Quick Access and every open file dialog that something
+    /// was renamed, so a window showing it follows rather than waiting for its
+    /// own watcher — or, for Quick Access, never finding out at all.
+    /// </summary>
+    [LibraryImport("shell32.dll", EntryPoint = "SHChangeNotify", StringMarshalling = StringMarshalling.Utf16)]
+    internal static partial void SHChangeNotify(int eventId, uint flags, string item1, string item2);
+
     /// <summary>
     /// The list format SHFileOperation wants: entries separated by NUL and the
     /// whole thing terminated by a second NUL.

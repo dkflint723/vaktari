@@ -118,4 +118,11 @@ public interface IFolderViewStore
     /// no way to say otherwise short of deleting the file by hand.
     /// </summary>
     int ForgetAll();
+
+    /// <summary>
+    /// Carries every folder's overrides at or under <paramref name="from"/>
+    /// to where that folder now is, after a rename or a move. Defaulted to
+    /// nothing for a store that keeps nothing worth carrying.
+    /// </summary>
+    void Rebase(string from, string to) { }
 }

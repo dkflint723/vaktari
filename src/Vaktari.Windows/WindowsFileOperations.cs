@@ -313,7 +313,7 @@ public sealed class WindowsFileOperations : IFileOperations
             CanCancel = false,
         };
 
-        _ = Task.Run(() =>
+        _ = Task.Run(async () =>
         {
             // The file system's own answer as well, off the key's thread. See VolumeRoots.RefuseOnDisk.
             if (VolumeRoots.RefuseOnDisk(paths, RootOnDisk) is { } rootTrash) { handle.Failed(new IOException(rootTrash)); return; }
@@ -379,7 +379,24 @@ public sealed class WindowsFileOperations : IFileOperations
                 RecycleResult Attempt(IReadOnlyList<string> some)
                     => RecycleOverride is { } fake ? fake(some) : Recycle(some);
 
-                var outcome = Attempt(full);
+                // **A folder is binned whole, so Vaktari's own watchers under
+                // it refused it** — the same self-block a rename met. Let go of
+                // around the shell's call; each folder that went is told Gone,
+                // asked of the disk rather than read from the batch's one
+                // status (review finding 12), and one still standing is put
+                // back as it was. Links are left out: the shell takes a link,
+                // not what it points at.
+                var folders = full
+                    .Where(p => Directory.Exists(p) && !IsLink(p))
+                    .Select(p => (p, (string?)null))
+                    .ToList();
+
+                var outcome = default(RecycleResult);
+
+                await FolderMoves.RunAsync(
+                    Handover, folders,
+                    () => { outcome = Recycled(full, Attempt, handle); return ValueTask.CompletedTask; },
+                    CancellationToken.None).ConfigureAwait(false);
 
                 // Aborted covers the user declining the warning about a file too
                 // big for the bin, which is a cancellation rather than a failure.
@@ -392,46 +409,6 @@ public sealed class WindowsFileOperations : IFileOperations
                     if (remember) RememberArrivals(bin, before, paths);
                     handle.Cancelled();
                     return;
-                }
-
-                if (outcome.Status == 0)
-                {
-                    // One SHFileOperation covers the whole batch, so there is no
-                    // per-item progress along the way — but the count the handle
-                    // was opened with still has to be reached, or trashing three
-                    // files finishes reading "1/3".
-                    for (var i = 0; i < full.Count; i++) handle.ItemFinished();
-                }
-                else if (full.Count == 1)
-                {
-                    handle.ItemFailed(full[0], RecycleRefusal.For(outcome.Status));
-                }
-                else
-                {
-                    // **One number for a whole batch names nothing.** The shell
-                    // reports a single int for however many paths it was given,
-                    // so a file held open by another program produced
-                    // "SHFileOperation returned 32" and left the person to work
-                    // out which of their twenty files it was. Asked one at a
-                    // time, it answers one at a time.
-                    foreach (var one in full)
-                    {
-                        // Skipped, not re-asked: the batch call may have
-                        // recycled several before it refused, and asking again
-                        // would answer "not there any more" — a success
-                        // reported as a failure.
-                        if (!File.Exists(one) && !Directory.Exists(one))
-                        {
-                            handle.ItemFinished();
-                            continue;
-                        }
-
-                        var each = Attempt([one]);
-
-                        if (each.Aborted) handle.ItemFailed(one, new OperationCanceledException());
-                        else if (each.Status != 0) handle.ItemFailed(one, RecycleRefusal.For(each.Status));
-                        else handle.ItemFinished();
-                    }
                 }
 
                 if (remember) RememberArrivals(bin, before, paths);
@@ -449,6 +426,73 @@ public sealed class WindowsFileOperations : IFileOperations
 
         return handle;
     }
+
+    /// <summary>
+    /// The recycle itself and what it says about each path, inside the
+    /// folder lease (see Trash). An Aborted batch is left to the caller, which
+    /// owes it a cancellation rather than per-item answers.
+    ///
+    /// **Each refusal is read for what it is.** The shell answers a folder
+    /// with something open beneath it 0x20 — measured with a shell move
+    /// standing in for the bin (review, shellmove) — and a held file 0x20, and
+    /// a denial 5 or 0x78; <see cref="InUseCheck"/> turns the first two into
+    /// "something has it open" and asks the disk about the third, which a
+    /// folder held from below answers too.
+    /// </summary>
+    private static RecycleResult Recycled(
+        List<string> full, Func<IReadOnlyList<string>, RecycleResult> attempt, OperationHandle handle)
+    {
+        var outcome = attempt(full);
+
+        if (outcome.Aborted) return outcome;
+
+        if (outcome.Status == 0)
+        {
+            // One SHFileOperation covers the whole batch, so there is no
+            // per-item progress along the way — but the count the handle
+            // was opened with still has to be reached, or trashing three
+            // files finishes reading "1/3".
+            for (var i = 0; i < full.Count; i++) handle.ItemFinished();
+        }
+        else if (full.Count == 1)
+        {
+            handle.ItemFailed(full[0], Refusal(full[0], outcome.Status));
+        }
+        else
+        {
+            // **One number for a whole batch names nothing.** The shell
+            // reports a single int for however many paths it was given,
+            // so a file held open by another program produced
+            // "SHFileOperation returned 32" and left the person to work
+            // out which of their twenty files it was. Asked one at a
+            // time, it answers one at a time.
+            foreach (var one in full)
+            {
+                // Skipped, not re-asked: the batch call may have
+                // recycled several before it refused, and asking again
+                // would answer "not there any more" — a success
+                // reported as a failure.
+                if (!File.Exists(one) && !Directory.Exists(one))
+                {
+                    handle.ItemFinished();
+                    continue;
+                }
+
+                var each = attempt([one]);
+
+                if (each.Aborted) handle.ItemFailed(one, new OperationCanceledException());
+                else if (each.Status != 0) handle.ItemFailed(one, Refusal(one, each.Status));
+                else handle.ItemFinished();
+            }
+        }
+
+        return outcome;
+    }
+
+    /// <summary>A shell refusal for one path, in the words the rest of the
+    /// application uses.</summary>
+    private static Exception Refusal(string path, int status)
+        => InUseCheck.Classify(path, Directory.Exists(path) && !IsLink(path), RecycleRefusal.For(status));
 
     /// <summary>
     /// The trash names currently in the bin, or null when there is no bin to
@@ -932,7 +976,10 @@ public sealed class WindowsFileOperations : IFileOperations
         Directory.Delete(path);
     }
 
-    public ValueTask RenameAsync(string path, string newName, CancellationToken ct)
+    /// <inheritdoc/>
+    public IFolderHandover? Handover { get; set; }
+
+    public async ValueTask RenameAsync(string path, string newName, CancellationToken ct)
     {
         // **Every character Windows refuses, not just the separators.** A
         // colon used to reach the filesystem and come back as the raw "The
@@ -964,7 +1011,7 @@ public sealed class WindowsFileOperations : IFileOperations
         // renaming anything — silently swallowing the exact correction the
         // check below is written to let through.
         if (string.Equals(target, path, StringComparison.Ordinal))
-            return ValueTask.CompletedTask;
+            return;
 
         // Case-insensitively, so renaming "readme" to "README" is not rejected
         // as already existing — it is the same file, and the rename is exactly
@@ -973,11 +1020,28 @@ public sealed class WindowsFileOperations : IFileOperations
             && !string.Equals(target, path, StringComparison.OrdinalIgnoreCase))
             throw new IOException($"'{newName}' already exists here.");
 
-        if (Directory.Exists(path)) RenameDirectory(path, target);
-        else File.Move(path, target, overwrite: false);
+        var isDirectory = Directory.Exists(path);
 
-        // Before the undo entry, so a rename that is immediately undone leaves
-        // the index where it started rather than one step behind.
+        if (isDirectory)
+        {
+            // **Vaktari's own watchers were what blocked it.** A tab in a
+            // subfolder, in any window, holds a watch there, and Windows will
+            // not rename a folder with anything open beneath it — so the
+            // application refused its own rename. Let go of first, followed
+            // to the new name after, put back if the rename fails. See
+            // IFolderHandover.
+            await FolderMoves.RunAsync(
+                Handover, [(path, target)],
+                () => RenameHeldFolderAsync(path, target, Handover is not null),
+                ct).ConfigureAwait(false);
+        }
+        else
+        {
+            try { File.Move(path, target, overwrite: false); }
+            catch (IOException e) { throw InUseCheck.Classify(path, isDirectory: false, e); }
+        }
+
+        Announce(path, target, isDirectory);
 
         var back = new UndoRename(target, path);
 
@@ -985,8 +1049,67 @@ public sealed class WindowsFileOperations : IFileOperations
         // rather than each becoming a press of Ctrl+Z of its own.
         if (_group is { } group) group.Add(back);
         else Remember(back);
+    }
 
-        return ValueTask.CompletedTask;
+    /// <summary>
+    /// Renames a folder, once more after a moment if the first attempt met
+    /// something still open — and says what was in the way if it fails.
+    ///
+    /// **Once more, and only once, and only after letting go.** A watch that
+    /// was mid-read when it was let go, a size walk between two folders or a
+    /// thumbnail still being drawn can hold a handle for a moment after
+    /// everything was told to stop; 150 ms is long past any of those and short
+    /// enough to go unnoticed. Without a release first there is nothing a
+    /// second try would find changed, so it is not made.
+    /// </summary>
+    private static async ValueTask RenameHeldFolderAsync(string from, string to, bool released)
+    {
+        try
+        {
+            RenameDirectory(from, to);
+        }
+        catch (Exception first) when (released && first.HResult is AccessDenied or SharingViolation)
+        {
+            await Task.Delay(RetryAfterRelease).ConfigureAwait(false);
+
+            try { RenameDirectory(from, to); }
+            catch (Exception second) when (second is IOException or UnauthorizedAccessException)
+            {
+                throw InUseCheck.Classify(from, isDirectory: true, second);
+            }
+        }
+        catch (Exception refused) when (refused is IOException or UnauthorizedAccessException)
+        {
+            throw InUseCheck.Classify(from, isDirectory: true, refused);
+        }
+    }
+
+    private const int AccessDenied = unchecked((int)0x80070005);
+    private const int SharingViolation = unchecked((int)0x80070020);
+
+    /// <summary>How long a folder rename waits before its one second try. See
+    /// <see cref="RenameHeldFolderAsync"/>.</summary>
+    internal static readonly TimeSpan RetryAfterRelease = TimeSpan.FromMilliseconds(150);
+
+    /// <summary>
+    /// Tells Explorer, so a window of its own showing the folder — and Quick
+    /// Access, which follows only what it is told — follows the rename rather
+    /// than going on showing the old name. Nothing in Vaktari called this, so
+    /// a rename here went unseen by the shell until its own watcher caught up.
+    /// Fire-and-forget: SHCNF_FLUSHNOWAIT, so a hung shell cannot hold this up.
+    /// </summary>
+    private static void Announce(string from, string to, bool isDirectory)
+    {
+        try
+        {
+            Native.SHChangeNotify(
+                isDirectory ? Native.SHCNE_RENAMEFOLDER : Native.SHCNE_RENAMEITEM,
+                Native.SHCNF_PATHW | Native.SHCNF_FLUSHNOWAIT, from, to);
+        }
+        catch (Exception ex) when (ex is DllNotFoundException or EntryPointNotFoundException)
+        {
+            Vaktari.Core.Quiet.Swallowed("file-ops", ex);
+        }
     }
 
     /// <summary>
@@ -1107,7 +1230,7 @@ public sealed class WindowsFileOperations : IFileOperations
 
             try
             {
-                var undo = await Walk(action, ct).ConfigureAwait(false);
+                var undo = await WalkHandedOver(action, ct).ConfigureAwait(false);
 
                 // The same guard the partial result gets, and for the same
                 // reason: if an operation recorded itself while this walk ran,
@@ -1124,6 +1247,13 @@ public sealed class WindowsFileOperations : IFileOperations
                     if (partly.Left is { } left) _redo.Push(left);
                 }
 
+                throw;
+            }
+            catch (Exception) when (Refused(action, generation))
+            {
+                // Nothing moved, so the step goes back where it was — see
+                // Refused.
+                _redo.Push(action);
                 throw;
             }
         }
@@ -1157,7 +1287,7 @@ public sealed class WindowsFileOperations : IFileOperations
 
             try
             {
-                var redo = await Walk(action, ct).ConfigureAwait(false);
+                var redo = await WalkHandedOver(action, ct).ConfigureAwait(false);
 
                 // As in RedoAsync: an operation recorded while this walk ran has
                 // already cleared the redo stack, and this would land on top of
@@ -1174,11 +1304,69 @@ public sealed class WindowsFileOperations : IFileOperations
 
                 throw;
             }
+            catch (Exception) when (Refused(action, generation))
+            {
+                // Nothing moved, so the step goes back where it was — see
+                // Refused.
+                _undo.Push(action);
+                throw;
+            }
         }
         finally
         {
             Interlocked.Exchange(ref _walking, 0);
         }
+    }
+
+    /// <summary>
+    /// Whether a step that threw goes back on the stack it came from.
+    ///
+    /// **A refused undo of a folder rename was lost from the history**
+    /// (review finding 8). The stack is popped before the walk, and only a
+    /// partial result was ever put back — so Ctrl+Z on a renamed folder that
+    /// something still had open took the step off both stacks and changed
+    /// nothing, and every older step, recorded against the old name, was left
+    /// waiting for a name nothing has. A lone rename changes nothing on disk
+    /// when it is refused (see UndoRename), so it can go back exactly as it
+    /// was; anything else may have moved part of itself and is left to its own
+    /// partial result. Generation-checked, for <see cref="Stackable"/>'s reason.
+    /// </summary>
+    private bool Refused(IUndoable action, int generation)
+        => action is UndoRename && generation == _generation;
+
+    /// <summary>
+    /// The walk, with the folders it renames whole let go of first, and the
+    /// folders it carries followed afterwards — see IFolderHandover.
+    ///
+    /// **Around the whole step, at the engine's edge** (review finding 10).
+    /// The undo walk is synchronous and recursive, so a lease per folder from
+    /// inside it would be a hop to the window's thread per nested folder from
+    /// code that cannot await it — and an undone move, which walks its items,
+    /// cannot be blocked by anything of ours anyway: it only needs the tabs to
+    /// follow.
+    /// </summary>
+    private async Task<IUndoable?> WalkHandedOver(IUndoable action, CancellationToken ct)
+    {
+        var leased = action.FoldersLeased;
+        var followed = action.FoldersFollowed;
+
+        IUndoable? result = null;
+
+        try
+        {
+            await FolderMoves.RunAsync(
+                Handover, leased,
+                async () => result = await Walk(action, ct).ConfigureAwait(false),
+                ct).ConfigureAwait(false);
+        }
+        finally
+        {
+            if (Handover is { } handover)
+                foreach (var (from, to) in followed)
+                    if (FolderMoves.Arrived(from, to, threw: false)) handover.Followed(from, to);
+        }
+
+        return result;
     }
 
     /// <summary>
@@ -1683,6 +1871,19 @@ public sealed class WindowsFileOperations : IFileOperations
                         if (Directory.Exists(directory)
                             && !Directory.EnumerateFileSystemEntries(directory).Any())
                             Directory.Delete(directory);
+
+                    // **The tabs inside a moved folder follow it** (review
+                    // finding 11: afterwards, never by holding them off for a
+                    // move that can run for hours). Nothing of ours can block
+                    // this walk, which moves item by item, so there is
+                    // nothing to let go of first — only somewhere to go. A
+                    // root that is still standing did not go, wholly or at all.
+                    if (Handover is { } handover)
+                        foreach (var (source, target) in roots)
+                            if (plan.Any(i => i.Kind == ItemKind.Directory && PathRules.Same(i.Source, source))
+                                && Redirect(target, redirects) is var landed
+                                && FolderMoves.Arrived(source, landed, threw: false))
+                                handover.Followed(source, landed);
                 }
 
                 // **What the pane selects when the rows come back.** The list
@@ -2597,6 +2798,21 @@ public sealed class WindowsFileOperations : IFileOperations
         /// it is the one place that cannot drift out of agreement with what was
         /// actually done.</summary>
         string Describe { get; }
+
+        /// <summary>
+        /// The folders this step will rename WHOLE, and to what, asked before
+        /// it runs: they are let go of first, exactly as a rename lets go of
+        /// its folder (review finding 10 — at the engine's edge, around the
+        /// whole step, never per folder from inside a walk).
+        /// </summary>
+        IReadOnlyList<(string From, string? To)> FoldersLeased => [];
+
+        /// <summary>
+        /// The folders this step moves without any rename that could be
+        /// blocked — an undone move walks its items — which the tabs inside
+        /// follow afterwards, if they went.
+        /// </summary>
+        IReadOnlyList<(string From, string To)> FoldersFollowed => [];
     }
 
 
@@ -2701,6 +2917,9 @@ public sealed class WindowsFileOperations : IFileOperations
     {
         public string Describe => describe;
 
+        public IReadOnlyList<(string From, string? To)> FoldersLeased
+            => [.. steps.SelectMany(s => s.FoldersLeased)];
+
         public async ValueTask<IUndoable?> UndoAsync(CancellationToken ct)
         {
             var back = new List<IUndoable>(steps.Count);
@@ -2788,14 +3007,35 @@ public sealed class WindowsFileOperations : IFileOperations
         // person is looking at when they wonder what Ctrl+Z will do.
         public string Describe => UndoNames.Of("rename", [current]);
 
-        public ValueTask<IUndoable?> UndoAsync(CancellationToken ct)
+        public IReadOnlyList<(string From, string? To)> FoldersLeased
+            => Directory.Exists(current) ? [(current, original)] : [];
+
+        /// <summary>
+        /// The rename, the other way round. **A refusal changes nothing on
+        /// disk** — a file move is one call, and RenameDirectory puts a folder
+        /// back if its second step fails — which is what lets the engine put
+        /// the step back on its stack (review finding 8).
+        /// </summary>
+        public async ValueTask<IUndoable?> UndoAsync(CancellationToken ct)
         {
-            if (Directory.Exists(current)) RenameDirectory(current, original);
-            else if (File.Exists(current)) File.Move(current, original, overwrite: false);
-            else return ValueTask.FromResult<IUndoable?>(null);
+            if (Directory.Exists(current))
+            {
+                // Let go of beforehand by the engine (FoldersLeased), so the
+                // same second try a rename makes is worth making here.
+                await RenameHeldFolderAsync(current, original, released: true).ConfigureAwait(false);
+                Announce(current, original, isDirectory: true);
+            }
+            else if (File.Exists(current))
+            {
+                try { File.Move(current, original, overwrite: false); }
+                catch (IOException refused) { throw InUseCheck.Classify(current, isDirectory: false, refused); }
+
+                Announce(current, original, isDirectory: false);
+            }
+            else return null;
 
             // The same rename, the other way round.
-            return ValueTask.FromResult<IUndoable?>(new UndoRename(original, current));
+            return new UndoRename(original, current);
         }
     }
 
@@ -2914,6 +3154,13 @@ public sealed class WindowsFileOperations : IFileOperations
         /// for a folder with nothing in it.
         /// </summary>
         public string Describe => _describe;
+
+        /// <summary>The real folders among this step's top-level entries:
+        /// asked before the walk, because afterwards they are somewhere else.</summary>
+        public IReadOnlyList<(string From, string To)> FoldersFollowed
+            => [.. _steps.OfType<Travel>()
+                    .Where(t => Directory.Exists(t.From) && !IsLink(t.From))
+                    .Select(t => (t.From, t.To))];
 
         public ValueTask<IUndoable?> UndoAsync(CancellationToken ct)
         {
