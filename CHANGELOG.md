@@ -37,7 +37,8 @@ should not be trusted for compatibility yet.
   sidebar's folder tree (what was open stays open), the view the folder
   remembers, Recent locations and Recent files, pinned places (a pin with the
   folder's own name takes the new name; a name you gave it is kept; a pinned
-  search started inside it follows too), Proton Drive links shared from inside
+  search started inside it follows too, and so does the name Vaktari gave
+  it, such as "report  in Photos"), Proton Drive links shared from inside
   it, and files cut and not yet pasted, as long
   as the clipboard still holds that cut. The same happens when an undo or redo
   renames or moves a folder back. The undo history itself is not rewritten:

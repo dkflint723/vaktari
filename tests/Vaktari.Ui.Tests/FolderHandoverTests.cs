@@ -495,8 +495,13 @@ public sealed class FolderHandoverTests : OwnedViewModels
     {
         public List<string> Paths { get; } = [.. paths];
 
-        public ValueTask<bool> RepointAsync(Func<string, string?> rebase, CancellationToken ct)
+        /// <summary>The naming rule the window handed over.</summary>
+        public Func<string, string>? Given { get; private set; }
+
+        public ValueTask<bool> RepointAsync(Func<string, string?> rebase, Func<string, string>? givenName, CancellationToken ct)
         {
+            Given = givenName;
+
             var changed = false;
 
             for (var i = 0; i < Paths.Count; i++)
@@ -545,6 +550,15 @@ public sealed class FolderHandoverTests : OwnedViewModels
         Assert.True(PathRules.Same(At("uno", "sub"), VirtualPaths.OriginOf(pins.Paths[1])),
                     $"the pinned search still starts in {VirtualPaths.OriginOf(pins.Paths[1])}");
         Assert.Equal(sibling, pins.Paths[2]);
+
+        // **And the name a pin would have been given, so a generated one is
+        // generated again** (rename QA, round 3): a pinned search is called
+        // "report  in sub", which the provider can only tell from a chosen
+        // name by asking the window's own rule.
+        Assert.NotNull(pins.Given);
+        Assert.Equal(PaneViewModel.SearchStepName(search), pins.Given!(search));
+        Assert.Equal("report  in sub", pins.Given(search));
+        Assert.Equal("one", pins.Given(At("one")));
     }
 
     /// <summary>A clipboard that hands back what it was last given.</summary>

@@ -127,8 +127,17 @@ public interface IPlacesProvider
     /// round 2). A search pin's path carries its folder escaped inside a
     /// vaktari:search: string, which only the window's VirtualPaths can read
     /// and write, so the window hands over the rule that the tabs follow by.
+    ///
+    /// **And the name it would have been given** (rename QA, round 3).
+    /// <paramref name="givenName"/> answers the name a pin at a path gets when
+    /// nobody chooses one — a folder's leaf, or for a search the question and
+    /// where it was asked ("report  in one"). A pin still called what it would
+    /// have been given at its old path takes what it would be given at the new
+    /// one; a name the person chose is kept. Null means a folder's leaf.
     /// </summary>
-    ValueTask<bool> RepointAsync(Func<string, string?> rebase, CancellationToken ct) => ValueTask.FromResult(false);
+    ValueTask<bool> RepointAsync(
+        Func<string, string?> rebase, Func<string, string>? givenName, CancellationToken ct)
+        => ValueTask.FromResult(false);
 
     /// <summary>
     /// Completes once every change to the pins asked for so far is on the

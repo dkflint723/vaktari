@@ -323,11 +323,14 @@ public sealed class WindowsPlacesProvider : IPlacesProvider, IDisposable
 
     /// <inheritdoc/>
     public ValueTask<bool> RepointAsync(string from, string to, CancellationToken ct)
-        => RepointAsync(path => PathRules.Rebase(path, from, to), ct);
+        => RepointAsync(path => PathRules.Rebase(path, from, to), givenName: null, ct);
 
     /// <inheritdoc/>
-    public async ValueTask<bool> RepointAsync(Func<string, string?> rebase, CancellationToken ct)
+    public async ValueTask<bool> RepointAsync(
+        Func<string, string?> rebase, Func<string, string>? givenName, CancellationToken ct)
     {
+        var named = givenName ?? PathRules.LeafName;
+
         var changed = false;
 
         // Copy-on-write, as every edit here is: _pins is read on other threads.
@@ -339,7 +342,7 @@ public sealed class WindowsPlacesProvider : IPlacesProvider, IDisposable
 
             // The folder's own name follows the folder; a label chosen by hand
             // is the person's and stays.
-            var label = p.Label == PathRules.LeafName(p.Path) ? PathRules.LeafName(now) : p.Label;
+            var label = p.Label == named(p.Path) ? named(now) : p.Label;
 
             return new PinnedPlace(now, label);
         }).ToList();

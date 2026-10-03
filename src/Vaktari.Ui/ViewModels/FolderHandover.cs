@@ -182,6 +182,13 @@ internal sealed class FolderHandover : IFolderHandover
         if (shells.FirstOrDefault() is { } first) _ = first.FollowCutAsync(from, to);
     }
 
+    /// <summary>
+    /// The name a pin at <paramref name="path"/> is given when nobody chooses
+    /// one: what ShellViewModel pins a search under, and a folder's leaf.
+    /// </summary>
+    internal static string GivenName(string path)
+        => VirtualPaths.IsSearch(path) ? PaneViewModel.SearchStepName(path) : PathRules.LeafName(path);
+
     /// <summary>The pins, carried, and every sidebar rebuilt if one moved.</summary>
     private static async Task RepointAsync(
         Core.Places.IPlacesProvider places, string from, string to, List<ShellViewModel> shells)
@@ -190,7 +197,7 @@ internal sealed class FolderHandover : IFolderHandover
         {
             // By the tabs' own rule, so a pinned search started in the folder
             // follows it as a tab on that search does.
-            if (!await places.RepointAsync(path => VirtualPaths.Rebase(path, from, to), CancellationToken.None)
+            if (!await places.RepointAsync(path => VirtualPaths.Rebase(path, from, to), GivenName, CancellationToken.None)
                     .ConfigureAwait(true)) return;
 
             foreach (var shell in shells) await shell.Sidebar.ReloadAsync().ConfigureAwait(true);

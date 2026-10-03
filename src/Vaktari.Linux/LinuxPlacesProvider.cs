@@ -511,11 +511,14 @@ public sealed class LinuxPlacesProvider : IPlacesProvider, IDisposable
 
     /// <inheritdoc/>
     public ValueTask<bool> RepointAsync(string from, string to, CancellationToken ct)
-        => RepointAsync(path => Vaktari.Core.FileSystem.PathRules.Rebase(path, from, to), ct);
+        => RepointAsync(path => Vaktari.Core.FileSystem.PathRules.Rebase(path, from, to), givenName: null, ct);
 
     /// <inheritdoc/>
-    public async ValueTask<bool> RepointAsync(Func<string, string?> rebase, CancellationToken ct)
+    public async ValueTask<bool> RepointAsync(
+        Func<string, string?> rebase, Func<string, string>? givenName, CancellationToken ct)
     {
+        var named = givenName ?? Vaktari.Core.FileSystem.PathRules.LeafName;
+
         var changed = false;
 
         // Copy-on-write, as every edit here is. PathRules compares ordinally on
@@ -526,7 +529,7 @@ public sealed class LinuxPlacesProvider : IPlacesProvider, IDisposable
 
             changed = true;
 
-            var label = p.Label == Vaktari.Core.FileSystem.PathRules.LeafName(p.Path) ? Vaktari.Core.FileSystem.PathRules.LeafName(now) : p.Label;
+            var label = p.Label == named(p.Path) ? named(now) : p.Label;
 
             return new PinnedPlace(now, label);
         }).ToList();
