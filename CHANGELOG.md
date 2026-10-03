@@ -61,16 +61,17 @@ should not be trusted for compatibility yet.
 - **An undo of a rename that something blocked was lost.** `Ctrl+Z` left
   the file or folder as it was and took the step out of the history. When
   something has it open, the step now stays there, to be pressed again once
-  it lets go. The same goes for the undo of a batch rename: whatever could be
-  put back is put back, and whatever something had open stays to be undone.
+  it lets go. The same goes for the undo of a batch rename: it puts names back
+  until it meets one something has open, and stops there. What went back can
+  be redone; that name and the ones not yet reached stay to be undone.
   A refusal that will not pass — the old name has been taken since — still
   drops the step, so `Ctrl+Z` can reach the ones beneath it.
 - **Undoing or redoing a batch rename that swapped names could leave a file
   under a temporary name** (`.vaktari-rename-…`) when something had one of
   the files open. The step that was refused was skipped and the undo went on,
   so the next step met a name that was still taken. Older releases did this
-  too. The undo or redo now stops at the refused step and keeps it and
-  everything after it, so pressing `Ctrl+Z` or `Ctrl+Y` again once the file is
+  too. The undo or redo now stops at the refused step and keeps it and every
+  step it had not reached yet, so pressing `Ctrl+Z` or `Ctrl+Y` again once the file is
   let go of puts both names back.
 - **Every failure on the transfer bar was worded as a copy.** A folder the
   Recycle Bin refused read "you do not have permission to copy that". Each
