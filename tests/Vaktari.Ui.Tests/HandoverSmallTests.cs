@@ -72,7 +72,7 @@ public sealed class HandoverSmallTests
         var held = new Core.FileSystem.ItemProblem(
             At("old"), new InUseException(At("old"), isDirectory: true, unchecked((int)0x80070020)));
 
-        Assert.Equal("something has a file inside that folder open",
+        Assert.Equal("something inside that folder is open",
                      Assert.Single(ShellViewModel.ListProblems([held], OperationKind.Trash)).Reason);
     }
 

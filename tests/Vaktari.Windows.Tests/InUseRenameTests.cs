@@ -86,7 +86,7 @@ public sealed class InUseRenameTests
 
         Assert.True(refused.IsDirectory);
         Assert.False(refused.ItselfOpen);
-        Assert.Equal("something has a file inside that folder open", Failures.Describe(refused, "rename that"));
+        Assert.Equal("something inside that folder is open", Failures.Describe(refused, "rename that"));
         Assert.True(Directory.Exists(folder), "the folder moved although the rename failed");
         Assert.True(holder.IsRunning, "the other program was closed");
     }
@@ -122,7 +122,7 @@ public sealed class InUseRenameTests
             await new WindowsFileOperations().RenameAsync(folder, "renamed", CancellationToken.None));
 
         Assert.False(refused.ItselfOpen);
-        Assert.Equal("something has a file inside that folder open", Failures.Describe(refused, "rename that"));
+        Assert.Equal("something inside that folder is open", Failures.Describe(refused, "rename that"));
     }
 
     [WindowsFact]
@@ -414,6 +414,6 @@ public sealed class InUseRenameTests
         var problem = Assert.Single(handle.Problems);
 
         Assert.IsType<InUseException>(problem.Error);
-        Assert.Equal("something has a file inside that folder open", Failures.Describe(problem.Error));
+        Assert.Equal("something inside that folder is open", Failures.Describe(problem.Error));
     }
 }

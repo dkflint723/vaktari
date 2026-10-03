@@ -117,6 +117,32 @@ public sealed class HandoverEngineTests : IDisposable
         Assert.True(PathRules.Same(folder, moved.To));
     }
 
+    /// <summary>
+    /// **An undo refused because the old name is taken is not put back**
+    /// (rename QA, note 1): it would meet the same refusal on every press and
+    /// wall off the step beneath it. Only something having it open is put
+    /// back, and nothing of that kind is refused on Linux.
+    /// </summary>
+    [Fact]
+    public async Task An_undo_refused_because_the_old_name_is_taken_does_not_wedge_the_history()
+    {
+        var file = At("older.txt");
+        File.WriteAllText(file, "x");
+        var folder = Directory.CreateDirectory(At("photos")).FullName;
+        var ops = new LinuxFileOperations();
+
+        await ops.RenameAsync(file, "older2.txt", CancellationToken.None);
+        var beneath = ops.UndoDescription;
+
+        await ops.RenameAsync(folder, "pictures", CancellationToken.None);
+
+        Directory.CreateDirectory(folder);
+
+        await Assert.ThrowsAnyAsync<IOException>(async () => await ops.UndoAsync(CancellationToken.None));
+
+        Assert.Equal(beneath, ops.UndoDescription);
+    }
+
     /// <summary>A move is followed once it has landed, and never held.</summary>
     [Fact]
     public async Task Moving_a_folder_follows_it_without_holding_it()

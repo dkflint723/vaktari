@@ -160,6 +160,32 @@ public sealed class BatchRenameStopTests
         Assert.Equal(["x001.txt", "x002.txt"], folder.Live.Order(StringComparer.Ordinal));
     }
 
+    /// <summary>
+    /// **The folder is read again off the window's thread** (rename QA): on a
+    /// share that read is a wait on the network, and the dialog is drawn on
+    /// the thread it would have waited on.
+    /// </summary>
+    [AvaloniaFact]
+    public async Task The_folder_is_read_again_off_the_window_s_thread()
+    {
+        var folder = new Folder("a.txt", "b.txt") { HeldOpen = "b.txt" };
+        bool? onTheWindowsThread = null;
+
+        var model = new BatchRenameViewModel(folder.Entries, folder.Rename, folder.Entries, reread: () =>
+        {
+            onTheWindowsThread = Dispatcher.UIThread.CheckAccess();
+            return folder.Entries;
+        })
+        {
+            Pattern = "x###",
+        };
+
+        await model.ApplyCommand.ExecuteAsync(null);
+
+        Assert.True(model.IsInUse);
+        Assert.False(onTheWindowsThread ?? true, "the folder was read on the window's thread, or not at all");
+    }
+
     /// <summary>Changing the options after a stop plans afresh from the
     /// names the files have now.</summary>
     [AvaloniaFact]

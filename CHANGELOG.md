@@ -15,17 +15,19 @@ should not be trusted for compatibility yet.
 
 - **When something has a file or folder open, renaming it says so and
   offers Try again.** The bar at the bottom of the window says which of three
-  things is true — "something else has that file open", "something has a file
-  inside that folder open" or "something has that folder open" — with
+  things is true — "something else has that file open", "something inside
+  that folder is open" or "something has that folder open" — with
   *Try again* and *Cancel*. On Windows it also says where to look:
   Resource Monitor (CPU tab ▸ Associated Handles, search the name) or
   PowerToys File Locksmith. Vaktari does not look inside other programs, so it
   cannot say which one it is.
-  - *Try again* has the keyboard when the bar opens, and `Tab` moves between
-    its two buttons without leaving the bar. `Escape` closes it from anywhere.
+  - *Try again* has the keyboard when the bar opens, with the focus ring
+    showing, and `Tab` moves between its two buttons without leaving the bar. `Escape` closes it from anywhere.
     `Enter` in the listing does nothing while the bar is open, so it cannot
     try again by accident.
   - A run of renames with `Tab` stops at the file that was refused.
+  - The bar wraps onto further lines when it needs them, so the whole
+    sentence and the hint can be read at any window width.
   - Batch rename (`Shift+F2`) shows a *Try again* row under its summary when
     a file in use stopped it.
 - **Tabs follow a folder Vaktari renames or moves.** A tab anywhere inside it
@@ -55,9 +57,13 @@ should not be trusted for compatibility yet.
 - **"Access to the path … is denied" for a folder something else had open.** It
   now says one of the three sentences above. A folder you are not allowed to
   rename still says "you do not have permission to rename that".
-- **An undo of a folder rename that something blocked was lost.** `Ctrl+Z`
-  left the folder as it was and took the step out of the history; it now stays
-  there, to be pressed again once whatever had the folder open lets go.
+- **An undo of a rename that something blocked was lost.** `Ctrl+Z` left
+  the file or folder as it was and took the step out of the history. When
+  something has it open, the step now stays there, to be pressed again once
+  it lets go. The same goes for the undo of a batch rename: whatever could be
+  put back is put back, and whatever something had open stays to be undone.
+  A refusal that will not pass — the old name has been taken since — still
+  drops the step, so `Ctrl+Z` can reach the ones beneath it.
 - **Every failure on the transfer bar was worded as a copy.** A folder the
   Recycle Bin refused read "you do not have permission to copy that". Each
   operation now says its own verb: move, move to the Recycle Bin, delete or
@@ -69,6 +75,9 @@ should not be trusted for compatibility yet.
   where the files are now, and Rename (or *Try again*) finishes the run. What
   landed before the stop and what lands after it are two separate `Ctrl+Z`
   steps.
+- **`Enter` did nothing in the bar's own box** when naming a pinned place
+  or connecting to a server, although the bar said "enter to confirm"; only
+  the button worked. `Enter` in the box now confirms.
 - **`vaktari .` from a terminal kept that folder from being renamed** on
   Windows for as long as Vaktari ran. Once it has read its arguments, Vaktari
   now works in its own install folder rather than the one it was started in.

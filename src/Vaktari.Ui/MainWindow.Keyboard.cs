@@ -315,6 +315,21 @@ public partial class MainWindow : ICommandHost
             }
         }
 
+        // **"enter to confirm", and Enter did nothing** (rename QA, an older
+        // fault). Naming a pinned place and connecting to a server type into
+        // the bar's own box, which leaves Enter to the window — and nothing
+        // here answered it, so only the button confirmed. Only from that box:
+        // the bar sits under a live listing whose Enter means open.
+        if (_prompt is PromptMode.RenamePlace or PromptMode.Connect
+            && e.Key == Key.Enter
+            && PromptInput is not null
+            && ReferenceEquals(FocusManager?.GetFocusedElement(), PromptInput))
+        {
+            e.Handled = true;
+            ConfirmPrompt();
+            return;
+        }
+
         // The prompt owns the keyboard while it is open.
         if (IsConfirming)
         {

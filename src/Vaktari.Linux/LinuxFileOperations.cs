@@ -374,7 +374,7 @@ public sealed class LinuxFileOperations : IFileOperations
 
                 throw;
             }
-            catch (Exception) when (Refused(action, generation))
+            catch (InUseException) when (Refused(action, generation))
             {
                 _redo.Push(action);
                 throw;
@@ -412,7 +412,7 @@ public sealed class LinuxFileOperations : IFileOperations
 
                 throw;
             }
-            catch (Exception) when (Refused(action, generation))
+            catch (InUseException) when (Refused(action, generation))
             {
                 _undo.Push(action);
                 throw;
@@ -428,7 +428,7 @@ public sealed class LinuxFileOperations : IFileOperations
     /// lone rename, which a refusal leaves untouched on disk. See the Windows
     /// twin (review finding 8).</summary>
     private bool Refused(IUndoable action, int generation)
-        => action is UndoRename && generation == _generation;
+        => action is UndoRename or UndoBatch && generation == _generation;
 
     /// <summary>The walk, with the folders it renames whole handed over and
     /// the folders it carries followed — see the Windows twin (review
@@ -1721,6 +1721,10 @@ public sealed class LinuxFileOperations : IFileOperations
         {
             var back = new List<IUndoable>(steps.Count);
 
+            // The steps something had open, in their own order: what is left
+            // to undo.
+            var refused = new List<(IUndoable Step, InUseException Why)>();
+
             for (var i = steps.Count - 1; i >= 0; i--)
             {
                 try
@@ -1732,7 +1736,30 @@ public sealed class LinuxFileOperations : IFileOperations
                 // halves of a walk back to the engine, and swallowing it here
                 // would drop both.
                 catch (PartlyUndone) { throw; }
+
+                // **Kept, not swallowed, when something has it open** (rename
+                // QA, note 2 — review finding 8, for a batch). A refused step
+                // changed nothing and can be pressed again once whatever had it
+                // open lets go; dropped here, it was gone from the history with
+                // its name never put back.
+                catch (InUseException inUse) { refused.Insert(0, (steps[i], inUse)); }
                 catch (IOException) { /* this one name, and only this one */ }
+            }
+
+            if (refused.Count > 0)
+            {
+                // Nothing went at all: the batch goes back on its stack whole,
+                // exactly as it was (see Refused in the engine).
+                if (back.Count == 0) throw refused[0].Why;
+
+                // Some went: what went is the redo, what did not is still an
+                // undo — the same two halves a partly undone move hands back.
+                throw new PartlyUndone(
+                    $"“{Path.GetFileName(refused[0].Why.Path)}”"
+                    + (refused.Count > 1 ? $" and {refused.Count - 1} more" : "")
+                    + $" could not be put back — {refused[0].Why.Message}",
+                    back.Count == 1 ? back[0] : new UndoBatch(describe, back),
+                    refused.Count == 1 ? refused[0].Step : new UndoBatch(describe, [.. refused.Select(r => r.Step)]));
             }
 
             if (back.Count == 0) return null;

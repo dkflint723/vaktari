@@ -43,10 +43,18 @@ public sealed class InUseException : IOException
     /// </summary>
     public bool ItselfOpen { get; }
 
-    /// <summary>The words <see cref="Failures.Describe"/> uses, kept here so
-    /// the message and the sentence cannot disagree.</summary>
+    /// <summary>
+    /// The words <see cref="Failures.Describe"/> uses, kept here so the
+    /// message and the sentence cannot disagree.
+    ///
+    /// **"Something inside", not "a file inside"** (rename QA). A folder held
+    /// from below answers the same whether a file in it is open, a terminal is
+    /// working in a subfolder, or a window or a watcher is on one, and the
+    /// engine cannot tell those apart without looking inside other programs,
+    /// which Vaktari does not do. So the sentence claims only what is known.
+    /// </summary>
     public static string Sentence(bool isDirectory, bool itselfOpen)
         => !isDirectory ? "something else has that file open"
             : itselfOpen ? "something has that folder open"
-            : "something has a file inside that folder open";
+            : "something inside that folder is open";
 }

@@ -262,12 +262,12 @@ public sealed class HandoverWindowTests : OwnedViewModels
         try
         {
             var tried = 0;
-            Offer(window, new InUseOffer("could not rename “photos” — something has a file inside that folder open",
+            Offer(window, new InUseOffer("could not rename “photos” — something inside that folder is open",
                 () => { tried++; return Task.FromResult(true); }));
             Settle();
 
             Assert.True(Bar(window).IsVisible);
-            Assert.Equal("could not rename “photos” — something has a file inside that folder open",
+            Assert.Equal("could not rename “photos” — something inside that folder is open",
                          window.FindControl<TextBlock>("PromptLabel")!.Text);
             Assert.Equal("Try again", TryAgain(window).Content);
             Assert.True(TryAgain(window).IsVisible && window.FindControl<Button>("PromptCancel")!.IsVisible);
@@ -319,7 +319,7 @@ public sealed class HandoverWindowTests : OwnedViewModels
             await Until(() => pane.Entries.Any(e => e.Name == "photos"), "the folder never listed");
 
             var tried = 0;
-            Offer(window, new InUseOffer("could not rename “photos” — something has a file inside that folder open",
+            Offer(window, new InUseOffer("could not rename “photos” — something inside that folder is open",
                 () => { tried++; return Task.FromResult(true); }));
             Settle();
 
@@ -441,7 +441,7 @@ public sealed class HandoverWindowTests : OwnedViewModels
 
             await Until(() => Bar(window).IsVisible, $"no offer appeared; the status line says: {pane.Status}");
 
-            Assert.Equal("could not rename “photos” — something has a file inside that folder open",
+            Assert.Equal("could not rename “photos” — something inside that folder is open",
                          window.FindControl<TextBlock>("PromptLabel")!.Text);
             Assert.True(holder.IsRunning, "the other program was closed");
 

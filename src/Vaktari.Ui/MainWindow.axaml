@@ -5011,10 +5011,18 @@
 
     <!-- Inline bar rather than a modal dialog: when you are about to destroy
          something you want the listing still visible behind the question. -->
+    <!-- **Wrapped, so nothing runs off the window's edge** (rename QA). A
+         StackPanel laid the bar out on one line however long it was, and the
+         in-use bar - the item's name, why it could not be renamed, two buttons
+         and where to look on Windows - lost everything after "search the
+         name) or" in a 1300 px window, and more at the 560 px minimum. A short
+         prompt still sits on one line exactly as before; a long one carries on
+         underneath, and a sentence too long for a line wraps within it. -->
     <Border x:Name="PromptBar" DockPanel.Dock="Bottom" Padding="8,6"
             Background="{DynamicResource AppBackground}" IsVisible="False">
-      <StackPanel Orientation="Horizontal" Spacing="8">
-        <TextBlock x:Name="PromptLabel" FontSize="{DynamicResource FontSizeBase}" VerticalAlignment="Center"/>
+      <WrapPanel x:Name="PromptRow" ItemSpacing="8" LineSpacing="4">
+        <TextBlock x:Name="PromptLabel" FontSize="{DynamicResource FontSizeBase}" VerticalAlignment="Center"
+                   TextWrapping="Wrap"/>
         <TextBox x:Name="PromptInput" Width="320" FontFamily="{DynamicResource AppMonoFamily}"
                  FontSize="{DynamicResource FontSizeBase}" IsVisible="False"/>
         <!-- Real buttons, not just a keystroke. A destructive confirmation
@@ -5032,8 +5040,9 @@
              against the ground it sits on; multiplying it by an opacity throws
              that away, so the hint is that colour and nothing further. -->
         <TextBlock x:Name="PromptHint" FontSize="{DynamicResource FontSizeSmall}"
-                   Foreground="{DynamicResource ViewDimText}" VerticalAlignment="Center"/>
-      </StackPanel>
+                   Foreground="{DynamicResource ViewDimText}" VerticalAlignment="Center"
+                   TextWrapping="Wrap"/>
+      </WrapPanel>
     </Border>
 
 

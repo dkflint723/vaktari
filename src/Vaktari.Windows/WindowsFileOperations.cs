@@ -1249,7 +1249,7 @@ public sealed class WindowsFileOperations : IFileOperations
 
                 throw;
             }
-            catch (Exception) when (Refused(action, generation))
+            catch (InUseException) when (Refused(action, generation))
             {
                 // Nothing moved, so the step goes back where it was — see
                 // Refused.
@@ -1304,7 +1304,7 @@ public sealed class WindowsFileOperations : IFileOperations
 
                 throw;
             }
-            catch (Exception) when (Refused(action, generation))
+            catch (InUseException) when (Refused(action, generation))
             {
                 // Nothing moved, so the step goes back where it was — see
                 // Refused.
@@ -1328,11 +1328,18 @@ public sealed class WindowsFileOperations : IFileOperations
     /// nothing, and every older step, recorded against the old name, was left
     /// waiting for a name nothing has. A lone rename changes nothing on disk
     /// when it is refused (see UndoRename), so it can go back exactly as it
-    /// was; anything else may have moved part of itself and is left to its own
-    /// partial result. Generation-checked, for <see cref="Stackable"/>'s reason.
+    /// was; so can a batch of them that undid nothing (UndoBatch). Anything else
+    /// may have moved part of itself and is left to its own partial result.
+    /// Generation-checked, for <see cref="Stackable"/>'s reason.
+    ///
+    /// **Only for something having it open** (rename QA, note 1). That passes:
+    /// the next press can succeed. A refusal that does not pass — the old name
+    /// taken since, a permission — put back would meet the same refusal on
+    /// every press of Ctrl+Z and wall off every step beneath it, which is
+    /// Stackable's wedge again; it is dropped, as before.
     /// </summary>
     private bool Refused(IUndoable action, int generation)
-        => action is UndoRename && generation == _generation;
+        => action is UndoRename or UndoBatch && generation == _generation;
 
     /// <summary>
     /// The walk, with the folders it renames whole let go of first, and the
@@ -2924,6 +2931,10 @@ public sealed class WindowsFileOperations : IFileOperations
         {
             var back = new List<IUndoable>(steps.Count);
 
+            // The steps something had open, in their own order: what is left
+            // to undo.
+            var refused = new List<(IUndoable Step, InUseException Why)>();
+
             for (var i = steps.Count - 1; i >= 0; i--)
             {
                 try
@@ -2936,7 +2947,30 @@ public sealed class WindowsFileOperations : IFileOperations
                 // here would drop both. Inert today, because UndoGroup.Add is
                 // only ever reached from RenameAsync; here so it stays true.
                 catch (PartlyUndone) { throw; }
+
+                // **Kept, not swallowed, when something has it open** (rename
+                // QA, note 2 — review finding 8, for a batch). A refused step
+                // changed nothing and can be pressed again once whatever had it
+                // open lets go; dropped here, it was gone from the history with
+                // its name never put back.
+                catch (InUseException inUse) { refused.Insert(0, (steps[i], inUse)); }
                 catch (IOException) { /* this one name, and only this one */ }
+            }
+
+            if (refused.Count > 0)
+            {
+                // Nothing went at all: the batch goes back on its stack whole,
+                // exactly as it was (see Refused in the engine).
+                if (back.Count == 0) throw refused[0].Why;
+
+                // Some went: what went is the redo, what did not is still an
+                // undo — the same two halves a partly undone move hands back.
+                throw new PartlyUndone(
+                    $"“{Path.GetFileName(refused[0].Why.Path)}”"
+                    + (refused.Count > 1 ? $" and {refused.Count - 1} more" : "")
+                    + $" could not be put back — {refused[0].Why.Message}",
+                    back.Count == 1 ? back[0] : new UndoBatch(describe, back),
+                    refused.Count == 1 ? refused[0].Step : new UndoBatch(describe, [.. refused.Select(r => r.Step)]));
             }
 
             if (back.Count == 0) return null;

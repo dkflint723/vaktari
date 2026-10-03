@@ -15,7 +15,7 @@ public sealed partial class BatchRenameViewModel : ObservableObject
 {
     /// <summary>
     /// The files being renamed, where each one is NOW — re-pointed after a run
-    /// that stopped part-way (see <see cref="AfterAStop"/>), so the next plan
+    /// that stopped part-way (see <see cref="AfterAStopAsync"/>), so the next plan
     /// starts from the names the files actually have.
     /// </summary>
     private IReadOnlyList<FileEntry> _entries;
@@ -271,7 +271,7 @@ public sealed partial class BatchRenameViewModel : ObservableObject
             return;
         }
 
-        AfterAStop(now, wanted);
+        await AfterAStopAsync(now, wanted).ConfigureAwait(true);
 
         // Worded the way the status bar words a failure, rather than handing
         // back a .NET exception message.
@@ -292,7 +292,7 @@ public sealed partial class BatchRenameViewModel : ObservableObject
     /// there, or renumbered from names that had already moved. Every stop
     /// comes through here: in use, name taken, permission, anything.
     /// </summary>
-    private void AfterAStop(Dictionary<string, string> now, Dictionary<string, string> wanted)
+    private async Task AfterAStopAsync(Dictionary<string, string> now, Dictionary<string, string> wanted)
     {
         var owed = new Dictionary<string, string>(StringComparer.Ordinal);
 
@@ -307,7 +307,11 @@ public sealed partial class BatchRenameViewModel : ObservableObject
             return here;
         })];
 
-        _folder = _reread?.Invoke() ?? Moved(_folder, now);
+        // **Read off the window's thread** (rename QA, note 3): the folder
+        // can be on a share, and a listing of it is a wait on the network.
+        _folder = _reread is { } reread
+            ? await Task.Run(reread).ConfigureAwait(true)
+            : Moved(_folder, now);
         _owed = owed;
 
         Refresh();

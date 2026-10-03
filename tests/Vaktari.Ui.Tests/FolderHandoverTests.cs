@@ -358,8 +358,8 @@ public sealed class FolderHandoverTests : OwnedViewModels
 
         Assert.True(PathRules.Same(At("one", "sub"), inside.CurrentPath));
         Assert.NotNull(offered);
-        Assert.Equal("could not rename “one” — something has a file inside that folder open", offered!.Sentence);
-        Assert.Equal("something has a file inside that folder open", from.Status);
+        Assert.Equal("could not rename “one” — something inside that folder is open", offered!.Sentence);
+        Assert.Equal("something inside that folder is open", from.Status);
     }
 
     /// <summary>

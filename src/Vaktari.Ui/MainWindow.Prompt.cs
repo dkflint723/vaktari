@@ -143,7 +143,10 @@ public partial class MainWindow
 
         KeyboardNavigation.SetTabNavigation(PromptBar, KeyboardNavigationMode.Cycle);
 
-        PromptConfirm.Focus();
+        // **As the keyboard would have put it there**, so the focus ring shows
+        // (rename QA). Focus given from code draws nothing, and a bar whose
+        // Enter acts only on its own buttons has to show which button has it.
+        PromptConfirm.Focus(NavigationMethod.Tab);
     }
 
     /// <summary>Whether the keyboard is on something inside the prompt bar.</summary>

@@ -28,7 +28,7 @@ public class InUseWordingTests
     [Fact]
     public void A_folder_with_something_open_inside_it()
         => Assert.Equal(
-            "something has a file inside that folder open",
+            "something inside that folder is open",
             Failures.Describe(new InUseException(@"C:\x\Photos", isDirectory: true, AccessDenied), "rename that"));
 
     [Fact]
