@@ -82,6 +82,15 @@ public sealed class FolderHandoverTests : OwnedViewModels
         /// a timer instead, which is a real PollingWatch on the real folder.</summary>
         public HashSet<string> Unwatchable { get; } = new(StringComparer.OrdinalIgnoreCase);
 
+        /// <summary>Folders whose watch takes until the test says to open —
+        /// the shape of a load that has finished reading and is still waiting
+        /// for its watch.</summary>
+        public Dictionary<string, ManualResetEventSlim> SlowWatches { get; } = new(StringComparer.OrdinalIgnoreCase);
+
+        private int _watchesStarted;
+
+        public int WatchesStarted => Volatile.Read(ref _watchesStarted);
+
         public int OpenedOn(string path)
         {
             lock (_opened) return _opened.Count(p => PathRules.Same(p, path));
@@ -130,6 +139,13 @@ public sealed class FolderHandoverTests : OwnedViewModels
             lock (Unwatchable)
                 if (Unwatchable.Contains(PathRules.Normalise(path)))
                     throw new IOException("this folder cannot be watched");
+
+            Interlocked.Increment(ref _watchesStarted);
+
+            ManualResetEventSlim? slow;
+            lock (SlowWatches) SlowWatches.TryGetValue(PathRules.Normalise(path), out slow);
+
+            slow?.Wait(TimeSpan.FromSeconds(30));
 
             lock (_opened) _opened.Add(path);
             lock (_live) _live.Add(path);
@@ -346,6 +362,29 @@ public sealed class FolderHandoverTests : OwnedViewModels
         Assert.Equal("something has a file inside that folder open", from.Status);
     }
 
+    /// <summary>
+    /// A folder moved between folders goes item by item and nothing of ours
+    /// can block it, so it is not held (review finding 11) — but the tabs
+    /// inside still follow it, once it has landed.
+    /// </summary>
+    [AvaloniaFact]
+    public async Task A_folder_moved_elsewhere_is_followed_without_a_hold()
+    {
+        var rig = Build();
+        await Until(() => rig.Shell.ActiveTab!.IsLoaded, "the first tab never loaded");
+
+        var inside = await TabAt(rig, At("one", "sub"));
+
+        Directory.CreateDirectory(At("onetwo", "moved"));
+        Directory.Move(At("one"), At("onetwo", "moved", "one"));
+
+        rig.Handover.Followed(At("one"), At("onetwo", "moved", "one"));
+
+        await Until(() => PathRules.Same(inside.CurrentPath, At("onetwo", "moved", "one", "sub"))
+                          && inside.IsLoaded && rig.Fs.LiveOn(At("onetwo", "moved", "one", "sub")) == 1,
+            $"the tab inside is at {inside.CurrentPath}");
+    }
+
     /// <summary>The hold reaches every window, not only the one that asked.</summary>
     [AvaloniaFact]
     public async Task A_tab_in_another_window_follows_too()
@@ -500,7 +539,8 @@ public sealed class FolderHandoverTests : OwnedViewModels
         var file = At("one", "sub", "a.txt");
         File.WriteAllText(file, "a");
 
-        var theirs = new ClipboardPayload(ClipboardAction.Copy, [At("onetwo")]);
+        // A COPY of the same file: only the verb says it is not Vaktari's cut.
+        var theirs = new ClipboardPayload(ClipboardAction.Copy, [file]);
         var clipboard = new Clipboard { Held = theirs };
         CutMarks.Mark([file]);
 
@@ -624,6 +664,137 @@ public sealed class FolderHandoverTests : OwnedViewModels
         {
             PaneViewModel.PollInterval = before;
         }
+    }
+
+    /// <summary>
+    /// **The watch a finished load is still waiting for** (review finding 3).
+    /// The listing has been read; the watch is still opening, and the block
+    /// that installs it checks only the generation. Held here until the hold
+    /// has begun: it must be let go of, not installed under the folder.
+    /// </summary>
+    [AvaloniaFact]
+    public async Task A_watch_that_finishes_opening_after_the_hold_began_is_not_installed()
+    {
+        var rig = Build();
+        await Until(() => rig.Shell.ActiveTab!.IsLoaded, "the first tab never loaded");
+
+        var sub = At("one", "sub");
+        using var slow = new ManualResetEventSlim();
+        lock (rig.Fs.SlowWatches) rig.Fs.SlowWatches[PathRules.Normalise(sub)] = slow;
+
+        var pane = rig.Shell.Left.AddTab(sub, activate: false);
+
+        await Until(() => rig.Fs.WatchesStarted > 1 && rig.Fs.ListingsOf(sub) == 1, "the load never began opening its watch");
+
+        var releasing = rig.Handover.ReleaseAsync([At("one")], CancellationToken.None).AsTask();
+        slow.Set();
+
+        var lease = await releasing;
+
+        Assert.Equal(1, rig.Fs.OpenedOn(sub));
+        Assert.Equal(0, rig.Fs.LiveOn(sub));
+
+        lock (rig.Fs.SlowWatches) rig.Fs.SlowWatches.Clear();
+        await lease.DisposeAsync();
+
+        await Until(() => rig.Fs.LiveOn(sub) == 1 && pane.IsLoaded, "the pane was left unwatched after the hold");
+    }
+
+    /// <summary>
+    /// **A tab opened into the folder while it was held** is refused its watch
+    /// — and is owed a reload when the hold ends, or it would stay unwatched
+    /// for good.
+    /// </summary>
+    [AvaloniaFact]
+    public async Task A_tab_opened_into_the_folder_during_the_hold_is_watched_after_it()
+    {
+        var rig = Build();
+        await Until(() => rig.Shell.ActiveTab!.IsLoaded, "the first tab never loaded");
+
+        var sub = At("one", "sub");
+
+        var lease = await rig.Handover.ReleaseAsync([At("one")], CancellationToken.None);
+
+        var late = rig.Shell.Left.AddTab(sub, activate: false);
+        await Until(() => late.IsLoaded, "the tab opened during the hold never listed");
+
+        Assert.Equal(0, rig.Fs.OpenedOn(sub));
+
+        await lease.DisposeAsync();
+
+        await Until(() => rig.Fs.LiveOn(sub) == 1, "the tab opened during the hold was never watched");
+    }
+
+    /// <summary>
+    /// A Size total being measured inside the folder is stopped, and the hold
+    /// waits for its walk to leave the tree. The walk is held mid-tree on the
+    /// one hook it asks for every folder it enters.
+    /// </summary>
+    [AvaloniaFact]
+    public async Task A_size_being_measured_inside_the_folder_is_stopped_and_waited_for()
+    {
+        Directory.CreateDirectory(At("one", "gate"));
+
+        var settings = AppSettings.Current;
+        var provider = Thumbnails.RowMetadata.Provider;
+        var hook = SafeWalk.DoNotEnter;
+
+        using var entered = new ManualResetEventSlim();
+        using var gate = new ManualResetEventSlim();
+
+        try
+        {
+            AppSettings.Apply(settings with
+            {
+                Views = settings.Views with
+                {
+                    Details = settings.Views.Details with { FolderSize = Core.Settings.FolderSizeMode.ContentSize },
+                },
+            });
+
+            Thumbnails.RowMetadata.Provider = new Describes();
+
+            SafeWalk.DoNotEnter = path =>
+            {
+                if (path.EndsWith("gate", StringComparison.Ordinal))
+                {
+                    entered.Set();
+                    gate.Wait(TimeSpan.FromSeconds(30));
+                }
+
+                return false;
+            };
+
+            var cell = new Avalonia.Controls.TextBlock();
+            Thumbnails.RowMetadata.SetSize(cell, Folder("one"));
+
+            Assert.True(entered.Wait(TimeSpan.FromSeconds(30)), "the measure never walked into the folder");
+
+            var handover = new FolderHandover(() => []);
+            var releasing = handover.ReleaseAsync([At("one")], CancellationToken.None).AsTask();
+
+            for (var i = 0; i < 40; i++) { Dispatcher.UIThread.RunJobs(); await Task.Delay(5); }
+
+            Assert.False(releasing.IsCompleted, "the hold did not wait for the walk inside the folder");
+
+            gate.Set();
+
+            await (await releasing).DisposeAsync();
+        }
+        finally
+        {
+            gate.Set();
+            SafeWalk.DoNotEnter = hook;
+            Thumbnails.RowMetadata.Provider = provider;
+            AppSettings.Apply(settings);
+        }
+    }
+
+    private sealed class Describes : IFileMetadataProvider
+    {
+        public bool CanDescribe(string path, bool isDirectory) => true;
+        public ValueTask<string?> DescribeAsync(string path, bool isDirectory, CancellationToken ct) => ValueTask.FromResult<string?>(null);
+        public ValueTask<string?> DescribeAccessAsync(string path, bool isDirectory, CancellationToken ct) => ValueTask.FromResult<string?>(null);
     }
 
     /// <summary>A version-control backend whose read of one folder waits for
