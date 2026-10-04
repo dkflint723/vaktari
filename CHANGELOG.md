@@ -57,6 +57,20 @@ should not be trusted for compatibility yet.
   Finding the repository there asked the network about every parent folder on
   every listing. A local folder opened through `\\?\` keeps its marks.
 
+### Fixed
+
+- **`→` and `←` open and close a folder in place, as the key list has always
+  said.** With the keyboard on a folder row in the List layout, both keys did
+  nothing: the listing kept them for itself. They now open and close it.
+  - Pressed in the rename box, the path bar, the filter, the search box or the
+    bar at the bottom of the window, they move the text cursor and open
+    nothing.
+  - `→` on a column heading no longer opens the folder selected below it.
+  - In the grid layouts they still move the selection sideways.
+- **`→` at the end of a name being renamed no longer ends the rename,** and
+  neither does `←` at its start. Before, the press went on to the listing,
+  which took the keyboard back to the row and threw away the name being typed.
+
 ## [0.11.3] — 2026-10-03
 
 ### Added

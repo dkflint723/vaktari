@@ -246,8 +246,8 @@ public partial class MainWindow : ICommandHost
     }
 
     /// <summary>
-    /// Enter and Space on a focused listing row, answered by the window before
-    /// the row can take them.
+    /// Enter, Space, Right and Left on a focused listing row, answered by the
+    /// window before the row can take them.
     ///
     /// **Enter on a clicked row did nothing.** Avalonia 12's ListBoxItem has an
     /// OnKeyDown of its own that selects the row on Enter and Space — toggles
@@ -264,13 +264,26 @@ public partial class MainWindow : ICommandHost
     /// row — Ctrl+Space toggling a row in a multiple selection is the row's,
     /// and nothing here answers it.
     ///
-    /// Only these two keys, and only for a row of the listing on show: any
-    /// other key reaches the bubble handler already, and a row in some other
-    /// list keeps its own keys.
+    /// **Right and Left as well, for the same reason: they never opened a
+    /// folder in place.** The README promised "→ ← open and close a folder in
+    /// place", and the bubble handler below has answered them since the
+    /// triangles shipped — but the ListBox marks both keys handled on its way
+    /// up, so the answer never ran. Through here rather than a tunnel arm of
+    /// their own, because every guard they need is in the bubble handler: the
+    /// rename box, the prompt, the sidebar and the text-box guard all run
+    /// before TurnExpansion, and TurnExpansion itself never looks at focus.
+    /// Only unmodified: Alt+Left is Back and Shift+Right extends a selection in
+    /// the grid. A press that turns nothing is left unhandled and goes on to
+    /// the row, so the grid and compact layouts keep their sideways moves.
+    ///
+    /// Only for a row of the listing on show: any other key reaches the bubble
+    /// handler already, and a row in some other list keeps its own keys.
     /// </summary>
     private bool AnswerForTheRow(object? sender, KeyEventArgs e)
     {
-        if (e.Key is not (Key.Enter or Key.Space)) return false;
+        if (e.Key is not (Key.Enter or Key.Space)
+            && !(e.Key is Key.Left or Key.Right && e.KeyModifiers == KeyModifiers.None))
+            return false;
 
         if (FocusManager?.GetFocusedElement() is not ListBoxItem row) return false;
         if (ActiveListing() is not { } list
@@ -281,6 +294,22 @@ public partial class MainWindow : ICommandHost
         _answeredOnTheTunnel = e;
 
         return e.Handled;
+    }
+
+    /// <summary>
+    /// Whether the keyboard is on the listing on show: one of its rows, or the
+    /// ListBox itself.
+    /// </summary>
+    private bool KeyboardOnTheListing()
+    {
+        if (ActiveListing() is not { } list) return false;
+
+        return FocusManager?.GetFocusedElement() switch
+        {
+            ListBoxItem row => ReferenceEquals(ItemsControl.ItemsControlFromItemContainer(row), list),
+            ListBox box => ReferenceEquals(box, list),
+            _ => false,
+        };
     }
 
     /// <summary>The keystroke <see cref="AnswerForTheRow"/> already ran the
@@ -593,11 +622,17 @@ public partial class MainWindow : ICommandHost
             // that has no triangles, falls straight through.
             //
             // Modifiers spelled out rather than ignored: Alt+Left is Back.
-            case Key.Right when e.KeyModifiers == KeyModifiers.None:
+            //
+            // **And only with the keyboard on the listing.** TurnExpansion asks
+            // about the selection, never about focus, so → on a focused sort
+            // heading — reached with Shift+Tab from a row — opened whatever
+            // folder was selected under it. A key pressed somewhere else is
+            // that somewhere else's.
+            case Key.Right when e.KeyModifiers == KeyModifiers.None && KeyboardOnTheListing():
                 e.Handled = TurnExpansion(pane, open: true);
                 break;
 
-            case Key.Left when e.KeyModifiers == KeyModifiers.None:
+            case Key.Left when e.KeyModifiers == KeyModifiers.None && KeyboardOnTheListing():
                 e.Handled = TurnExpansion(pane, open: false);
                 break;
 

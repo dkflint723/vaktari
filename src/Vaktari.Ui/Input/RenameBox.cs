@@ -1,5 +1,6 @@
 using Avalonia;
 using Avalonia.Controls;
+using Avalonia.Input;
 using Avalonia.Threading;
 using Vaktari.Core.FileSystem;
 
@@ -33,6 +34,24 @@ public static class RenameBox
 
     static RenameBox()
     {
+        // **→ at the end of the name ended the rename.** The box moves its
+        // caret with the arrows and claims the key — except where there is
+        // nowhere to move, at either end, where it leaves the key unhandled.
+        // The press then reached the ListBox the row sits in, which took the
+        // keyboard back to the row; the box lost focus, and losing focus
+        // commits. In Explorer the key does nothing there, and the name is
+        // still being typed. A class handler runs after the box's own, so this
+        // only ever sees a press the box did not use. Alt is left alone: it is
+        // Back and Forward, which a rename gives way to.
+        InputElement.KeyDownEvent.AddClassHandler<TextBox>((box, e) =>
+        {
+            if (e.Handled || !GetEditing(box)) return;
+
+            if (e.Key is Key.Left or Key.Right
+                && (e.KeyModifiers & KeyModifiers.Alt) == 0)
+                e.Handled = true;
+        });
+
         EditingProperty.Changed.AddClassHandler<TextBox>((box, args) =>
         {
             if (args.NewValue is not true) return;

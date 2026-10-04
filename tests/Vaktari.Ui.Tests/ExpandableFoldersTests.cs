@@ -1885,6 +1885,13 @@ public sealed class ExpandableFoldersTests : OwnedViewModels
             Assert.Same(stops[0], window.FocusManager?.GetFocusedElement());
 
             window.KeyPress(Key.Right, RawInputModifiers.None, PhysicalKey.ArrowRight, null);
+
+            // **Waited for, not just laid out.** Opening reads the folder from
+            // the disk, so a wrong answer lands a few milliseconds later — and
+            // this read straight after the press passed with both of the guards
+            // in front of it mutated away (measured: the folder did open, after
+            // the assertion had already looked).
+            await Until(() => pane.IsExpanded(Path.Combine(root, "docs")));
             await Layout(window);
 
             Assert.False(pane.IsExpanded(Path.Combine(root, "docs")),
