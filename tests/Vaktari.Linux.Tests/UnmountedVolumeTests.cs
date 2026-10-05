@@ -71,9 +71,10 @@ public sealed class UnmountedVolumeTests
     }
 
     /// <summary>
-    /// A loop device with a filesystem is a mounted disk image, which has its
-    /// own row and its own way of going away. Offering to mount one would be a
-    /// second, worse route to the same thing.
+    /// A loop device with a filesystem is a disk image, or a snap or flatpak's
+    /// squashfs. An image is mounted and put away by the desktop's own tools;
+    /// offering to mount one here would be a second, worse route to the same
+    /// thing.
     /// </summary>
     [Fact]
     public async Task Loop_devices_are_left_alone()

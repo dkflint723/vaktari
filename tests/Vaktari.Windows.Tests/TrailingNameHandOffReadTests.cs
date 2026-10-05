@@ -7,7 +7,7 @@ using Xunit;
 namespace Vaktari.Windows.Tests;
 
 /// <summary>
-/// **Three reads that only an extension, or nothing at all, kept off the
+/// **Reads that only an extension, or nothing at all, kept off the
 /// neighbour** (0.11.1 path-safety check, left for 0.11.2):
 ///
 /// - a row's reparse tag was read by its plain spelling, so "x " took "x"'s
@@ -15,10 +15,10 @@ namespace Vaktari.Windows.Tests;
 ///   neighbour's link emblem, or lost the row's own;
 /// - a .lnk was read by its plain spelling, so "…\links.\x.lnk" — an extension
 ///   that matches — opened as "…\links\x.lnk" and went where the neighbour
-///   points;
-/// - a disk image was handed to the Virtual Disk Service by its resolved
-///   path, so "…\iso.\x.iso" was the neighbour's image to Mount, Unmount and
-///   the menu's question of whether it is mounted.
+///   points.
+///
+/// (A third, a disk image handed to the Virtual Disk Service by its resolved
+/// path, went with the Mount verb.)
 ///
 /// **The folders end in a dot, not a space, and that is measured.** Win32
 /// takes a trailing dot off every name in a plain path but a trailing space
@@ -29,12 +29,10 @@ namespace Vaktari.Windows.Tests;
 /// the dot reaches the neighbour, so only the dot can show the old reads
 /// doing it.
 ///
-/// A read reaches the row itself through ReachablePath.Exact; the image, which
-/// another program opens by name, is refused under the hand-off rule. Every
-/// neighbour here is made to answer differently from the row, so an answer
-/// that came from it cannot pass. All in a temporary folder, the trailing
-/// names made through "\\?\"; nothing is mounted — the mounted image is a
-/// stand-in, and the folded paths refuse before anything reaches the service.
+/// A read reaches the row itself through ReachablePath.Exact. Every neighbour
+/// here is made to answer differently from the row, so an answer that came
+/// from it cannot pass. All in a temporary folder, the trailing names made
+/// through "\\?\".
 /// </summary>
 [SupportedOSPlatform("windows")]
 public sealed class TrailingNameHandOffReadTests : IDisposable
@@ -167,78 +165,6 @@ public sealed class TrailingNameHandOffReadTests : IDisposable
         Assert.Equal(own, shortcuts.TargetOf(Path.Combine(_root, "links.", "x.lnk")), ignoreCase: true);
     }
 
-    // ---- the disk image ------------------------------------------------------
-
-    private const string Refusal = "\"iso.\" cannot be handed to another program";
-
-    /// <summary>"iso.\x.iso", made through "\\?\"; with
-    /// <paramref name="neighbour"/>, "iso\x.iso" beside it as well.</summary>
-    private (string Folded, string Neighbour) Images(bool neighbour)
-    {
-        var folded = Path.Combine(_root, "iso.", "x.iso");
-        Directory.CreateDirectory(Raw(Path.Combine(_root, "iso.")));
-        File.WriteAllText(Raw(folded), "not an image, and never handed to anything that would mount one");
-
-        var plain = Path.Combine(_root, "iso", "x.iso");
-
-        if (neighbour)
-        {
-            Directory.CreateDirectory(Path.Combine(_root, "iso"));
-            File.WriteAllText(plain, "the neighbour");
-        }
-
-        return (folded, plain);
-    }
-
-    [WindowsFact]
-    public void Mount_is_not_offered_for_an_image_under_a_folded_folder()
-    {
-        var (folded, plain) = Images(neighbour: true);
-        var images = new WindowsDiskImages();
-
-        Assert.True(images.CanMount(plain));
-        Assert.False(images.CanMount(folded));
-    }
-
-    /// <summary>
-    /// **The menu's question as well.** With the neighbour mounted, the folded
-    /// row read as mounted and offered Unmount — which would have detached the
-    /// neighbour. The mount is a stand-in naming the neighbour's path after
-    /// its volume, the way Windows names an image's backing file.
-    /// </summary>
-    [WindowsFact]
-    public void An_image_under_a_folded_folder_is_not_mounted_because_its_neighbour_is()
-    {
-        var (folded, plain) = Images(neighbour: true);
-        var relative = plain[Path.GetPathRoot(plain)!.TrimEnd('\\').Length..];
-
-        var images = new WindowsDiskImages
-        {
-            MountedOverride = () => [("Q:\\", (relative, (string?)null))],
-        };
-
-        Assert.Equal("Q:\\", images.MountOf(plain)?.MountPath);
-        Assert.Null(images.MountOf(folded));
-    }
-
-    /// <summary>
-    /// Mount and Unmount refuse before anything resolves the path. No
-    /// neighbour exists here, so a version of this that reached the service
-    /// would be refused for another reason — and say so in another sentence.
-    /// </summary>
-    [WindowsFact]
-    public async Task Mount_and_unmount_refuse_an_image_under_a_folded_folder()
-    {
-        var (folded, _) = Images(neighbour: false);
-        var images = new WindowsDiskImages();
-
-        var mount = await Assert.ThrowsAnyAsync<IOException>(() => images.MountAsync(folded, CancellationToken.None));
-        Assert.StartsWith(Refusal, mount.Message, StringComparison.Ordinal);
-
-        var unmount = await Assert.ThrowsAnyAsync<IOException>(() => images.UnmountAsync(folded, CancellationToken.None));
-        Assert.StartsWith(Refusal, unmount.Message, StringComparison.Ordinal);
-    }
-
     // ---- a path with no spelling that reaches it (batch-0.11.2 QA) ----------
 
     /// <summary>
@@ -272,26 +198,5 @@ public sealed class TrailingNameHandOffReadTests : IDisposable
 
         Assert.Null(shortcuts.TargetOf(@"\\.\" + Path.Combine(_root, "links.", "x.lnk")));
         Assert.Equal(theirs, shortcuts.TargetOf(@"\\.\" + Path.Combine(neighbours, "x.lnk")), ignoreCase: true);
-    }
-
-    /// <summary>
-    /// **Through "\\?\" as well.** A pane opened that way hands over
-    /// "\\?\…\iso.\x.iso", which reaches the image itself — but the Virtual
-    /// Disk Service is another program handed it by name, and the hand-off
-    /// rule asks of the name with the prefix taken off, because what the
-    /// receiver does with the prefix is its own business. So it is not
-    /// offered, and the menu's mounted question answers "no" rather than
-    /// asking. Refuse, which lets a "\\?\" path through, would offer it.
-    /// </summary>
-    [WindowsFact]
-    public void An_image_under_a_folded_folder_reached_through_the_prefix_is_not_offered_either()
-    {
-        var (folded, _) = Images(neighbour: true);
-        var images = new WindowsDiskImages();
-
-        Assert.True(File.Exists(Raw(folded)), "the image is not there by its extended spelling, so this would prove nothing");
-
-        Assert.False(images.CanMount(Raw(folded)));
-        Assert.Null(images.MountOf(Raw(folded)));
     }
 }

@@ -16,7 +16,8 @@ namespace Vaktari.Ui.Tests;
 /// <summary>
 /// That the application's composition root actually hands out what it builds.
 ///
-/// **Eleven service locators were wired by WindowServices.Create() and not one
+/// **Eleven service locators (ten since the disk-image provider went) were
+/// wired by WindowServices.Create() and not one
 /// of them was observed by any test.** Deleting an assignment line left the
 /// suite green: every test that uses one of these statics installs its own
 /// value first, so none was ever reading what Create() put there. The single
@@ -60,7 +61,6 @@ public sealed class CompositionRootTests : IDisposable
     private readonly ISearchHistory? _searches = PaneViewModel.Searches;
     private readonly IVersionControl? _vcs = PaneViewModel.Vcs;
     private readonly IShellMenuProvider? _shellMenu = PaneViewModel.ShellMenu;
-    private readonly Vaktari.Core.Places.IDiskImages? _diskImages = PaneViewModel.DiskImages;
     private readonly IShortcutMaker? _shortcuts = PaneViewModel.Shortcuts;
     private readonly IPlacesProvider? _places = PaneViewModel.Places;
     private readonly ISearchProvider? _search = PaneViewModel.Search;
@@ -81,7 +81,6 @@ public sealed class CompositionRootTests : IDisposable
         PaneViewModel.Searches = _searches;
         PaneViewModel.Vcs = _vcs;
         PaneViewModel.ShellMenu = _shellMenu;
-        PaneViewModel.DiskImages = _diskImages;
         PaneViewModel.Shortcuts = _shortcuts;
         PaneViewModel.Places = _places;
         PaneViewModel.Search = _search;
@@ -113,7 +112,6 @@ public sealed class CompositionRootTests : IDisposable
         PaneViewModel.Searches = null;
         PaneViewModel.Vcs = null;
         PaneViewModel.ShellMenu = null;
-        PaneViewModel.DiskImages = null;
         PaneViewModel.Shortcuts = null;
         PaneViewModel.Places = null;
         PaneViewModel.Search = null;
@@ -134,7 +132,6 @@ public sealed class CompositionRootTests : IDisposable
                 (services.Recents, PaneViewModel.Recents, "PaneViewModel.Recents"),
                 (services.Searches, PaneViewModel.Searches, "PaneViewModel.Searches"),
                 (platform.ShellMenu, PaneViewModel.ShellMenu, "PaneViewModel.ShellMenu"),
-                (platform.DiskImages, PaneViewModel.DiskImages, "PaneViewModel.DiskImages"),
                 (platform.Shortcuts, PaneViewModel.Shortcuts, "PaneViewModel.Shortcuts"),
                 (platform.Places, PaneViewModel.Places, "PaneViewModel.Places"),
                 (platform.Search, PaneViewModel.Search, "PaneViewModel.Search"),
@@ -155,10 +152,11 @@ public sealed class CompositionRootTests : IDisposable
 
             // Both halves of a null pairing pass by construction, so a platform
             // that returns fewer services would quietly reduce this to a test of
-            // nothing. Nine is what the leanest platform supplies: the four
-            // non-nullable providers, the two it does implement, and the three
-            // stores WindowServices builds itself.
-            Assert.True(meaningful >= 9,
+            // nothing. Eight is what the leanest platform supplies: the four
+            // non-nullable providers, the one optional one it does implement
+            // (Shortcuts, on Linux, since the disk-image provider went), and
+            // the three stores WindowServices builds itself.
+            Assert.True(meaningful >= 8,
                         $"only {meaningful} of the {wiring.Length} pairings were non-null, so "
                         + "most of this test asserted null against null. Either the platform "
                         + "stopped supplying services, or Create() stopped building them.");

@@ -48,10 +48,12 @@ namespace Vaktari.Ui.Tests;
 ///
 /// Splitting it into an item menu and a background menu freed most of them.
 /// The background menu's sixteen literal rows all have a key. The item menu
-/// has twenty-seven, and still no j or q among them — and g and k only in
-/// "Forget (keeps the file)", which can take one — so twenty-three is its
-/// ceiling and four rows go without: Create shortcut, Add to places, Scripts
-/// and Windows menu, each with every letter of its first word taken.
+/// had twenty-seven, and still no j or q among them — and g and k only in
+/// "Forget (keeps the file)", which can take one — so twenty-three was its
+/// ceiling and four rows went without. Mount and Unmount then left it, which
+/// freed m and n, and "Windows menu" took the n: twenty-five literal rows now,
+/// and three go without — Create shortcut, Add to places and Scripts, each
+/// with every letter of its first word taken.
 ///
 /// Sharing is the worse half. **Measured on Avalonia 12.1's own
 /// AccessKeyHandler: a key two rows answer to MOVES THE HIGHLIGHT and picks
@@ -305,8 +307,9 @@ public sealed class ContextMenuKeysTests
 
         // And both listing menus are in there with all of their rows. There
         // was one, of thirty-nine rows, and its floor was thirty-five; it is
-        // two now — the item menu with twenty-eight direct rows, twenty-seven
-        // of them literal, and the background menu with eighteen, sixteen
+        // two now — the item menu with twenty-six direct rows, twenty-five
+        // of them literal (twenty-eight before Mount and Unmount left it),
+        // and the background menu with eighteen, sixteen
         // literal — so the one floor became two, each a little under its own
         // count for the reason the floors above are.
         var item = Assert.Single(menus, m => m.Where == "ContextMenu ItemMenu");

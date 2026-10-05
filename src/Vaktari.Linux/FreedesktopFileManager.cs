@@ -28,8 +28,8 @@ namespace Vaktari.Linux;
 /// question by choosing a default folder handler, so that answer is the one
 /// used, and turning the setting on or off takes effect at once.
 ///
-/// **Tmds.DBus.Protocol rather than a hand-rolled client.** UdisksEjector and
-/// LinuxDiskImages both record the standing objection to speaking D-Bus by
+/// **Tmds.DBus.Protocol rather than a hand-rolled client.** UdisksEjector
+/// records the standing objection to speaking D-Bus by
 /// hand, and it is right — for a CLIENT, which can drive a daemon's own command
 /// line instead. There is no CLI that can OWN a bus name: busctl and gdbus can
 /// call a method, neither can serve one. Serving is the entire feature.

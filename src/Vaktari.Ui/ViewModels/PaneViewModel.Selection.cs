@@ -68,8 +68,6 @@ public sealed partial class PaneViewModel
         OnPropertyChanged(nameof(HasAnyDirectorySelected));
         OnPropertyChanged(nameof(CanRunSelection));
         OnPropertyChanged(nameof(CanRunSelectionAsAdministrator));
-        OnPropertyChanged(nameof(CanMountSelection));
-        OnPropertyChanged(nameof(CanUnmountSelection));
         OnPropertyChanged(nameof(CanCompressSelection));
         OnPropertyChanged(nameof(CanExtractSelection));
         NotifyMenuGates();

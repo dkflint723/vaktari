@@ -908,7 +908,7 @@ public sealed partial class PaneViewModel
     /// **IsRealFolder rather than CanActOnSelection**, which excludes only the
     /// bin. A Recent or a search row names where a file was when it was
     /// indexed, so compressing there would archive whatever occupies that path
-    /// now — the same reason Mount and Duplicate refuse those listings.
+    /// now — the same reason Duplicate refuses those listings.
     ///
     /// **And out of one folder**, which is <see cref="Archives.CanCompress"/>'s
     /// rule and is written there with what it costs to break it. A selection

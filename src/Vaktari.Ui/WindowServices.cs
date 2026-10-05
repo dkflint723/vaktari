@@ -65,15 +65,17 @@ namespace Vaktari.Ui;
 ///
 /// **And no production defect in the history is attributable to any of them.**
 /// The one measured cost was a test failure — a class that set
-/// PaneViewModel.DiskImages and never put it back. The multi-window bugs that
+/// PaneViewModel.DiskImages (gone since, with the Mount verb) and never put it
+/// back. The multi-window bugs that
 /// actually shipped came from the OPPOSITE shape: one CopypartyShare instance
 /// shared between windows, so closing one killed the other's server, and a
 /// static EVENT holding a disposed shell. An explicit services object hands
 /// out shared instances — it is what caused the first, and it cannot fix the
 /// second.
 ///
-/// **What was genuinely wrong, and is now fixed:** none of the eleven wiring
-/// assignments below was observed by any test, and every reader of them fails
+/// **What was genuinely wrong, and is now fixed:** none of the wiring
+/// assignments below (eleven then, ten since the disk-image provider went)
+/// was observed by any test, and every reader of them fails
 /// silently, so a forgotten service cost a feature at runtime and nothing in
 /// the suite. CompositionRootTests now asserts each one by reference identity.
 /// If this class ever gains another service, add it there too — the test
@@ -417,7 +419,6 @@ internal sealed class WindowServices
         // context menu is entirely a platform fact, and on Linux the answer is
         // that there is no such thing.
         ViewModels.PaneViewModel.ShellMenu = platform.ShellMenu;
-        ViewModels.PaneViewModel.DiskImages = platform.DiskImages;
         ViewModels.PaneViewModel.Shortcuts = platform.Shortcuts;
         ViewModels.PaneViewModel.Places = platform.Places;
 

@@ -11,6 +11,18 @@ should not be trusted for compatibility yet.
 
 ## [Unreleased]
 
+### Removed
+
+- **Mount and Unmount are gone from the right-click menu.** Double-clicking a
+  disk image (or choosing *Open*) still hands it to your system, as it always
+  did.
+  - On Windows, that mounts it, as Explorer does. A mounted image still
+    appears in the sidebar as a disc drive with an eject button.
+  - On Linux, it opens in whatever your desktop uses for disk images (GNOME's
+    Disk Image Mounter, or Dolphin through udisks). Vaktari never listed a
+    mounted image in its sidebar, so put one away from the desktop's own file
+    manager or with `udisksctl unmount` and `udisksctl loop-delete`.
+
 ### Changed
 
 - **Vaktari starts sooner and stays idle when nothing is happening.** The

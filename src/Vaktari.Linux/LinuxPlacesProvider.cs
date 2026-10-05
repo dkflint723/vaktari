@@ -436,8 +436,9 @@ public sealed class LinuxPlacesProvider : IPlacesProvider, IDisposable
         {
             if (seenDevices.Contains(device)) continue;
 
-            // A loop device with a filesystem is a mounted disk image, which
-            // has its own row and its own way of going away.
+            // A loop device is a disk image, or a snap or flatpak's squashfs:
+            // not a volume to offer. An image the desktop mounted is put away
+            // from the desktop's own tools; Vaktari has no row for it.
             if (device.StartsWith("/dev/loop", StringComparison.Ordinal)) continue;
 
             // **A swap partition has a UUID and is not a volume.** by-uuid

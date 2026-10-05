@@ -2532,21 +2532,6 @@
               <MenuItem Header="Run as _administrator"
                         Command="{Binding ActiveTab.RunAsAdministratorCommand}"
                         IsVisible="{Binding ActiveTab.CanRunSelectionAsAdministrator}"/>
-              <!-- **A verb of its own, and Open is left alone.** Explorer
-                   mounts an .iso on double-click; doing the same here would
-                   change what Open means for a file type, silently, for
-                   everyone who had it opening in an archive tool. Mount says
-                   what it does and is one click away.
-
-                   The two entries are mutually exclusive — an image is either
-                   attached or it is not — so this is one row that changes its
-                   word, not two rows to choose between. -->
-              <MenuItem Header="_Mount"
-                        Command="{Binding ActiveTab.MountImageCommand}"
-                        IsVisible="{Binding ActiveTab.CanMountSelection}"/>
-              <MenuItem Header="U_nmount"
-                        Command="{Binding ActiveTab.UnmountImageCommand}"
-                        IsVisible="{Binding ActiveTab.CanUnmountSelection}"/>
               <MenuItem Header="Open in new _tab"
                         Command="{Binding $parent[Window].((vm:ShellViewModel)DataContext).OpenInNewTabCommand}"
                         CommandParameter="{Binding ActiveTab.SelectedEntry}"
@@ -2878,9 +2863,11 @@
                    Named for what it IS, not for how much of it there is: these
                    rows come from Windows and the applications installed on it,
                    hosted here. Explorer's "Show more options" said "more"
-                   without saying whose; this says whose. No access key: every
-                   letter of "Windows" is taken on this menu. -->
-              <MenuItem x:Name="ShellMenu" Header="Windows menu"
+                   without saying whose; this says whose. Its key is the "n"
+                   that Unmount gave up when Mount and Unmount left the menu:
+                   with a letter of its first word free, a row without a key
+                   is a row someone has to reach for with the mouse. -->
+              <MenuItem x:Name="ShellMenu" Header="Wi_ndows menu"
                         IsVisible="{Binding ActiveTab.HasShellMenu}"
                         ItemsSource="{Binding ActiveTab.ShellMenuItems}"
                         SubmenuOpened="OnShellMenuOpening">

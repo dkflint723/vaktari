@@ -1351,8 +1351,7 @@ public sealed partial class PlaceItemViewModel(Place place) : ObservableObject
     /// have is a build error rather than the silent nothing an interpreted one
     /// would be. The same reason CanDisconnect is here.
     ///
-    /// Not to be confused with PaneViewModel.CanMountSelection, which is about
-    /// a disk image file in a listing. This one is about a partition.
+    /// About a partition, not a disk image file: a listing has no Mount row.
     /// </summary>
     public bool CanMount { get; } = place.CanMount;
 

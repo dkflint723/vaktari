@@ -135,7 +135,7 @@ public sealed class ArchiveMenuTests : OwnedViewModels
     /// <summary>
     /// **A Recent or a bin row names where a file WAS.** Compressing there
     /// would archive whatever occupies that path now, which is the fault
-    /// Duplicate and Mount already refuse those listings for.
+    /// Duplicate already refuses those listings for.
     /// </summary>
     [AvaloniaTheory]
     [InlineData(VirtualPaths.Trash)]

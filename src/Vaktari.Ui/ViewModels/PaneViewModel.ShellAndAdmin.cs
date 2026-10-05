@@ -8,14 +8,16 @@ namespace Vaktari.Ui.ViewModels;
 
 /// <summary>
 /// What this pane hands to the operating system: the desktop's own context
-/// menu, running something as another user, and mounting a disk image.
+/// menu, and running something as another user.
 ///
 /// **Everything here is a request the application cannot fulfil itself.** It
 /// either asks the shell to build a menu it does not own, or asks for elevation
 /// it does not have — which is why the whole file is guards and refusals. A
-/// listing that is not a real folder has no paths to hand over; a selection
-/// that is not runnable must not be offered a Run row; and the mount commands
-/// keep their own gates beside them rather than across the file.
+/// listing that is not a real folder has no paths to hand over, and a selection
+/// that is not runnable must not be offered a Run row.
+///
+/// (It also mounted disk images, until that verb left the menu: a double-click
+/// on an .iso hands it to the system, which mounts it on Windows.)
 ///
 /// The providers themselves stay in PaneViewModel with the other static hooks
 /// — ShellMenu sits in a run with Trash and Vcs, and splitting one out of that
@@ -65,12 +67,6 @@ public sealed partial class PaneViewModel
     public bool HasBackgroundShellMenu => HasShellMenu && IsRealFolder;
 
     /// <summary>
-    /// Mounting disk images, or null where this machine cannot. Static like the
-    /// other providers on this type.
-    /// </summary>
-    public static Vaktari.Core.Places.IDiskImages? DiskImages { get; set; }
-
-    /// <summary>
     /// Where the machine's drives come from, for the This PC listing. Static
     /// like the other providers here; the sidebar holds the same one, which is
     /// the point — two enumerations of the drives would eventually disagree.
@@ -93,31 +89,6 @@ public sealed partial class PaneViewModel
     /// indirection to read.
     /// </summary>
     public static Vaktari.Core.FileSystem.IShortcutMaker? Shortcuts { get; set; }
-
-    /// <summary>
-    /// Whether the selected file is an image this machine could mount, and is
-    /// not mounted already.
-    ///
-    /// **The bin and Recent are excluded.** Both hold rows naming where a file
-    /// USED to be, so mounting there would attach whatever occupies that path
-    /// now.
-    /// </summary>
-    public bool CanMountSelection =>
-        DiskImages is { IsAvailable: true } images
-        && !IsTrashListing
-        && !IsRecentListing
-        && SelectedEntry is { IsDirectory: false } entry
-        && images.CanMount(entry.FullPath)
-        && images.MountOf(entry.FullPath) is null;
-
-    /// <summary>The other half: an image this application has mounted, which
-    /// can therefore be put away again.</summary>
-    public bool CanUnmountSelection =>
-        DiskImages is { IsAvailable: true } images
-        && !IsTrashListing
-        && !IsRecentListing
-        && SelectedEntry is { IsDirectory: false } entry
-        && images.MountOf(entry.FullPath) is not null;
 
     private Vaktari.Core.FileSystem.IShellMenu? _shellMenu;
 
@@ -374,8 +345,6 @@ public sealed partial class PaneViewModel
     {
         OnPropertyChanged(nameof(ShowAdminEntries));
         OnPropertyChanged(nameof(CanRunSelectionAsAdministrator));
-        OnPropertyChanged(nameof(CanMountSelection));
-        OnPropertyChanged(nameof(CanUnmountSelection));
     }
 
     /// <summary>
@@ -517,94 +486,6 @@ public sealed partial class PaneViewModel
         if (RefusedHandOff(runnable.Select(e => e.FullPath))) return;
 
         foreach (var entry in runnable) launcher.OpenElevated(entry.FullPath);
-    }
-
-    /// <summary>
-    /// Mounts the selected disk image and shows what is inside it.
-    ///
-    /// **Navigating there is the point of the verb.** Explorer opens the drive
-    /// it just mounted, and a Mount that left the person looking at the .iso
-    /// they started from would make them go and find it. The arrival watcher
-    /// puts the drive in the sidebar a moment later either way; this is the
-    /// direct answer to a direct request.
-    /// </summary>
-    [RelayCommand]
-    public async Task MountImageAsync()
-    {
-        if (!CanMountSelection || DiskImages is not { } images
-            || SelectedEntry is not { } entry) return;
-
-        var name = entry.Name;
-
-        Status = $"mounting {name}…";
-
-        try
-        {
-            var mounted = await images.MountAsync(entry.FullPath, CancellationToken.None)
-                .ConfigureAwait(true);
-
-            await NavigateAsync(mounted.MountPath).ConfigureAwait(true);
-        }
-        catch (Exception ex)
-        {
-            // The tool's own sentence, which says whether the file is not an
-            // image or the machine cannot mount one.
-            Status = Vaktari.Core.FileSystem.Failures.Describe(ex, $"mount {name}");
-        }
-
-        OnPropertyChanged(nameof(CanMountSelection));
-        OnPropertyChanged(nameof(CanUnmountSelection));
-    }
-
-    /// <summary>Detaches an image this application mounted. The file itself is
-    /// untouched.</summary>
-    [RelayCommand]
-    public async Task UnmountImageAsync()
-    {
-        if (!CanUnmountSelection || DiskImages is not { } images
-            || SelectedEntry is not { } entry) return;
-
-        var name = entry.Name;
-        var mounted = images.MountOf(entry.FullPath);
-
-        Status = $"unmounting {name}…";
-
-        try
-        {
-            // Out of the way first, for the same reason ejecting a drive moves
-            // the panes: a pane inside the mounted image holds it open.
-            if (mounted is not null && IsInside(CurrentPath, mounted.MountPath))
-                await NavigateAsync(
-                    Path.GetDirectoryName(entry.FullPath)
-                    ?? Environment.GetFolderPath(Environment.SpecialFolder.UserProfile))
-                    .ConfigureAwait(true);
-
-            await images.UnmountAsync(entry.FullPath, CancellationToken.None).ConfigureAwait(true);
-
-            Status = $"unmounted {name}";
-        }
-        catch (Exception ex)
-        {
-            Status = Vaktari.Core.FileSystem.Failures.Describe(ex, $"unmount {name}");
-        }
-
-        OnPropertyChanged(nameof(CanMountSelection));
-        OnPropertyChanged(nameof(CanUnmountSelection));
-    }
-
-    private static bool IsInside(string? path, string root)
-    {
-        if (string.IsNullOrEmpty(path)) return false;
-
-        if (Vaktari.Core.FileSystem.PathRules.Same(path, root)) return true;
-
-        var prefix = Vaktari.Core.FileSystem.PathRules.Normalise(root);
-        var full = Vaktari.Core.FileSystem.PathRules.Normalise(path);
-
-        return full.StartsWith(prefix, Vaktari.Core.FileSystem.PathRules.Comparison)
-               && (prefix.EndsWith(Path.DirectorySeparatorChar)
-                   || (full.Length > prefix.Length
-                       && full[prefix.Length] == Path.DirectorySeparatorChar));
     }
 
     /// <summary>An elevated terminal in this folder, in the preferred terminal.</summary>

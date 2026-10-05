@@ -435,9 +435,8 @@ ordinary folder — not in the bin, the recent lists, *This PC*, a search, or
 the space and duplicate listings. See
 [Fitting your desktop](#fitting-your-desktop).
 
-**Also on those menus:** *Mount* for a disk image, which attaches it and takes
-you inside, and *Unmount* when you are done. *New folder*, *New file* and *New
-from template*, each opening straight into the rename box. *Compress to ZIP*
+**Also on those menus:** *New folder*, *New file* and *New from template*,
+each opening straight into the rename box. *Compress to ZIP*
 and *Extract all* — Vaktari's own, undoable, written beside what they act on,
 and refusing any archive entry that points outside the folder it is landing
 in. *Extract all* opens zip, 7z, RAR and tar, plain or compressed as
