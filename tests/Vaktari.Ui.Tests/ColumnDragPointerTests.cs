@@ -293,9 +293,8 @@ public sealed class ColumnDragPointerTests : OwnedViewModels
         var pane = shell.ActiveTab!;
         var cell = Cell(column);
 
-        // No edge goes past the pane's (Name_cannot_be_dragged_past_the_
-        // panes_edge, An_edge_dragged_far_stops_at_the_panes_edge), and a
-        // name that fills leaves no room to widen into — so make some first.
+        // Room after the last column first, so widening any column keeps
+        // every edge on screen and nothing here measures the scrolling.
         Drag(window, pane, "Name", -60);
 
         var before = Edges(Heading(window, pane), window);
@@ -466,14 +465,31 @@ public sealed class ColumnDragPointerTests : OwnedViewModels
 
     /// <summary>
     /// The right edge of the heading band as drawn, in the window's pixels:
-    /// what is right of it is cut off.
+    /// what is right of it is cut off. The band is the Border the heading's
+    /// scroller sits in.
     /// </summary>
     private static double BandRight(Window window, PaneViewModel pane)
     {
-        var band = Assert.IsType<Border>(Heading(window, pane).Parent);
+        var band = Heading(window, pane).GetVisualAncestors().OfType<Border>().First(b => b.ContextMenu is not null);
 
         return band.TranslatePoint(new Point(band.Bounds.Width, 0), window)!.Value.X;
     }
+
+    /// <summary>The heading's own scroller, and the rows'.</summary>
+    private static ScrollViewer HeadingScroller(Window window, PaneViewModel pane)
+        => Heading(window, pane).FindAncestorOfType<ScrollViewer>()!;
+
+    private static ScrollViewer RowsScroller(Window window, PaneViewModel pane)
+        => List(window, pane).GetVisualDescendants().OfType<ScrollViewer>().First();
+
+    /// <summary>
+    /// The row as much of it as is on screen: the heading scroller's viewport
+    /// less the grid's margins. Not the heading grid's own width, which is the
+    /// columns' once they scroll — read from that, the expectation below is
+    /// whatever the name already is, and the check cannot fail.
+    /// </summary>
+    private static double VisibleRow(Window window, PaneViewModel pane)
+        => HeadingScroller(window, pane).Viewport.Width - 30;
 
     /// <summary>Every visible grip of the pane lies inside its heading band,
     /// where a pointer can reach it, and a row lines up with the headings.</summary>
@@ -567,8 +583,8 @@ public sealed class ColumnDragPointerTests : OwnedViewModels
 
     /// <summary>
     /// The name gives way no further than its floor, 80 pixels at 100%: in a
-    /// pane too narrow even for that, the columns after it are what is cut
-    /// off, not the name.
+    /// pane too narrow even for that, the columns scroll sideways, and the
+    /// name stays at its floor.
     /// </summary>
     [AvaloniaFact]
     public async Task A_name_gives_way_no_further_than_its_floor()
@@ -588,6 +604,7 @@ public sealed class ColumnDragPointerTests : OwnedViewModels
         NameGivesOnlyWhatIsNeeded(window, pane, "a 1100-pixel window");
         Assert.Equal(PaneScale.NameMin, Width(Edges(Heading(window, pane), window), 1), 0.5);
         Assert.Equal(Edges(Heading(window, pane), window), Edges(Row(window, pane), window), Close);
+        Assert.True(pane.ColumnsOverflow, "the columns do not fit, and nothing scrolls");
     }
 
     /// <summary>
@@ -629,30 +646,6 @@ public sealed class ColumnDragPointerTests : OwnedViewModels
         Assert.Equal(narrower[2] + 30, back[2], 0.5);
         Assert.Equal(back, Edges(Row(window, pane), window), Close);
         EveryGripOnScreen(window, pane, "after the drags");
-    }
-
-    /// <summary>
-    /// **The name's edge stops at the pane's.** Dragged past it, the columns
-    /// after the name went off the side, which is how a name came to hide
-    /// every grip; now the edge goes no further than the room after the last
-    /// column, and the last grip stays on screen.
-    /// </summary>
-    [AvaloniaFact]
-    public async Task Name_cannot_be_dragged_past_the_panes_edge()
-    {
-        var (window, shell) = await Open(1.0, split: false);
-        var pane = shell.ActiveTab!;
-
-        Drag(window, pane, "Name", -30);
-
-        var before = Edges(Heading(window, pane), window);
-
-        Drag(window, pane, "Name", 200);
-
-        var after = Edges(Heading(window, pane), window);
-
-        Assert.Equal(before[2] + 30, after[2], 1.0);
-        EveryGripOnScreen(window, pane, "after dragging past the edge");
     }
 
     /// <summary>
@@ -702,10 +695,11 @@ public sealed class ColumnDragPointerTests : OwnedViewModels
         var edges = Edges(heading, window);
         var others = Enumerable.Range(0, Trailing).Where(c => c != 1).Sum(c => Width(edges, c));
         var scale = pane.TextScale;
-        var expected = Math.Clamp(heading.Bounds.Width - others, PaneScale.NameMin * scale, pane.ColumnWidths.Name * scale);
+        var row = VisibleRow(window, pane);
+        var expected = Math.Clamp(row - others, PaneScale.NameMin * scale, pane.ColumnWidths.Name * scale);
 
         Assert.True(Math.Abs(Width(edges, 1) - expected) < 0.75,
-            $"{when}: the name is {Width(edges, 1)} where the row leaves it {heading.Bounds.Width - others} (chosen {pane.ColumnWidths.Name * scale})");
+            $"{when}: the name is {Width(edges, 1)} where the row leaves it {row - others} (chosen {pane.ColumnWidths.Name * scale})");
 
         if (Width(edges, 1) < pane.ColumnWidths.Name * scale - 0.75)
             Assert.True(Width(edges, Trailing) < 0.75 || Width(edges, 1) <= PaneScale.NameMin * scale + 0.75,
@@ -751,38 +745,57 @@ public sealed class ColumnDragPointerTests : OwnedViewModels
     }
 
     /// <summary>
-    /// **No column's edge goes past the pane's.** QA dragged Size 330 pixels
-    /// wider in a full row and its edge, and its grip, landed 190 pixels off
-    /// the side — easiest to do by dragging on into the other half of a
-    /// split. Every column's edge now stops at the pane's right edge, and its
-    /// grip stays where a pointer can take it back.
+    /// **Every edge follows the pointer past the pane's, and the columns
+    /// scroll.** In 0.11.2 no edge could go past the pane's right edge, because
+    /// a column pushed off the side took its grip with it and nothing could
+    /// bring it back. Now the edge lands where the pointer let go, hundreds of
+    /// pixels on in the left half of a split; the headings and the rows scroll, and
+    /// scrolled to the far right the grip is on screen and the rows line up.
     /// </summary>
     [AvaloniaTheory]
+    [InlineData("Name")]
     [InlineData("Type")]
     [InlineData("Size")]
     [InlineData("Modified")]
     [InlineData("Created")]
-    public async Task An_edge_dragged_far_stops_at_the_panes_edge(string column)
+    public async Task An_edge_dragged_past_the_pane_follows_the_pointer_and_the_columns_scroll(string column)
     {
         var (window, shell) = await Open(1.0, split: true);
         var pane = shell.Left.ActiveTab!;
 
         shell.ActivateGroup(shell.Left);
 
-        var heading = Heading(window, pane);
-        var right = heading.TranslatePoint(new Point(heading.Bounds.Width, 0), window)!.Value.X;
+        var before = Edges(Heading(window, pane), window);
 
-        Drag(window, pane, column, 700);
+        Assert.False(pane.ColumnsOverflow, "the columns overflow before the drag");
+
+        // 450 for the others: the most any of them can be is 600 at 100%.
+        var dx = column == "Name" ? 700 : 450;
+
+        Drag(window, pane, column, dx);
+        await Settle(window, shell);
 
         var after = Edges(Heading(window, pane), window);
 
-        Assert.Equal(right, after[Cell(column) + 1], 1.0);
+        Assert.Equal(before[Cell(column) + 1] + dx, after[Cell(column) + 1], 1.0);
+        Assert.True(after[Cell("Created") + 1] > BandRight(window, pane), "the columns did not go past the pane's edge");
+        Assert.True(pane.ColumnsOverflow, "the columns run past the pane and nothing scrolls");
+
+        var rows = RowsScroller(window, pane);
+
+        rows.Offset = new Vector(double.MaxValue, rows.Offset.Y);
+        window.UpdateLayout();
+
+        Assert.True(rows.Offset.X > 0, "the rows did not scroll");
+        Assert.Equal(rows.Offset.X, HeadingScroller(window, pane).Offset.X);
 
         var grip = Grip(window, pane, column);
         var at = grip.TranslatePoint(new Point(grip.Bounds.Width / 2, 0), window)!.Value.X;
 
-        Assert.True(at < BandRight(window, pane), $"the {column} grip is at {at}, off the band");
+        Assert.True(at < BandRight(window, pane), $"scrolled to the far right, the {column} grip is at {at}, off the band");
+        Assert.Equal(Edges(Heading(window, pane), window), Edges(Row(window, pane), window), Close);
     }
+
     /// <summary>
     /// **A column dragged while the name is giving way follows the pointer**,
     /// because how far the name gives is held where it was until the drag

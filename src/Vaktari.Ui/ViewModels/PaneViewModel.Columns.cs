@@ -169,4 +169,81 @@ public sealed partial class PaneViewModel
     /// </summary>
     [RelayCommand]
     private void ResetColumnWidths() => ColumnWidths = Core.Settings.ColumnWidths.Designed;
+
+    // ---- when the columns do not fit -------------------------------------------
+    //
+    // **The columns scroll sideways once nothing else will make them fit.** The
+    // room after the last column goes first, then the name gives way down to its
+    // floor (NameGive); only a row that is still too wide after both scrolls,
+    // headings and rows together. Worked out once, on the heading, like the give
+    // (DetailsColumns.OnHeadingLaidOut), and handed out from here so the two
+    // scrollers take their content width from the same number.
+
+    /// <summary>True while the columns are wider than the visible row even
+    /// with the name at its floor, which is when the headings and the rows
+    /// scroll sideways. Not saved: it belongs to the pane's width now.</summary>
+    [ObservableProperty] private bool _columnsOverflow;
+
+    /// <summary>
+    /// How wide the row is drawn while <see cref="ColumnsOverflow"/>, margins
+    /// included, in pixels as drawn — or NaN, "as wide as the pane", while the
+    /// columns fit. **One number for both scrollers**: the heading's panel and
+    /// the rows' panel both take it, because two widths that round apart by a
+    /// device pixel leave the heading a pixel short at the far right (measured:
+    /// 0.8 at 125% device scaling and 125% zoom).
+    /// </summary>
+    [ObservableProperty] private double _detailsRowWidth = double.NaN;
+
+    /// <summary>
+    /// Asked of whatever draws this tab's headings: fit one column to its
+    /// widest entry, or every column drawn when the column is null. A view
+    /// model cannot measure text, so the heading answers it — see ColumnScroll.
+    /// </summary>
+    public event EventHandler<Core.Settings.DetailsColumn?>? ColumnFitRequested;
+
+    /// <summary>Fits one column, as a double-click on its edge does.</summary>
+    public void FitColumn(Core.Settings.DetailsColumn column) => ColumnFitRequested?.Invoke(this, column);
+
+    /// <summary>
+    /// Every column drawn, fitted to its widest entry. **Only in the List
+    /// layout**: the other two draw no headings, so there is nothing to fit and
+    /// nothing laid out to measure the visible row against.
+    ///
+    /// Greyed by CanExecute in the menus; refused here as well, because a
+    /// command run by name — the palette — is executed without being asked
+    /// first, and a fit run against a hidden heading measures a row of nothing.
+    /// </summary>
+    [RelayCommand(CanExecute = nameof(IsDetailsView))]
+    private void SizeAllColumnsToFit()
+    {
+        if (!IsDetailsView) return;
+
+        ColumnFitRequested?.Invoke(this, null);
+    }
+
+    /// <summary>
+    /// Columns given widths of their own at 100%, all in one assignment, so a
+    /// fit of every column is one change to the tab and one rewrite of its
+    /// metrics.
+    ///
+    /// **The name keeps where it is unless it is one of them**, for the reason
+    /// the drag gives it a width of its own on the first move: a name that
+    /// fills would take up every pixel the fitted columns gained or gave back,
+    /// and the fit would visibly move the name instead. A name that is one of
+    /// them is chosen in the visible row, as a dragged one is, so it is not
+    /// given away again the moment it is set.
+    /// </summary>
+    public void ChooseColumnWidths(
+        IReadOnlyDictionary<Core.Settings.DetailsColumn, double> widths, double drawnName, double visibleRow)
+    {
+        var next = ColumnWidths;
+
+        if (NameFills || widths.ContainsKey(Core.Settings.DetailsColumn.Name))
+            next = next with { Name = drawnName, Span = visibleRow };
+
+        foreach (var (column, width) in widths)
+            next = next.WithWidth(column, PaneScale.Clamp(column, Math.Round(width, 1)));
+
+        ColumnWidths = next;
+    }
 }

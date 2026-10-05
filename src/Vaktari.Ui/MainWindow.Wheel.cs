@@ -63,6 +63,17 @@ public partial class MainWindow
                  ?? Array.Empty<Visual>())
         {
             if (visual is not ScrollViewer viewer) continue;
+
+            // **Not the column headings.** Their scroller is exactly the shape
+            // this rule is for — sideways only — but a plain wheel over the
+            // headings is a wheel over the listing, and turning it into a
+            // 64-pixel jump sideways (measured) is not what anybody rolling it
+            // there means. The search ENDS here rather than going on to the
+            // scrollers outside: there is no strip out there either. Shift
+            // and a touchpad's sideways swipe reach the headings' own scroller
+            // as they reach any other, and the rows follow.
+            if (viewer.Classes.Contains("columnHeadings")) return false;
+
             if (viewer.VerticalScrollBarVisibility
                 != Avalonia.Controls.Primitives.ScrollBarVisibility.Disabled) continue;
 

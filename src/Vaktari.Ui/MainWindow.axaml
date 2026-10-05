@@ -290,7 +290,14 @@
       <Setter Property="Template">
         <ControlTemplate>
           <Panel Background="{TemplateBinding Background}">
+            <!-- **Not hit-testable, or a double-click across it is two
+                 clicks.** Avalonia counts a second press as a double only on
+                 the element the first landed on, and this one-pixel line —
+                 the obvious place to aim — lay over the Panel: a press either
+                 side of it by a pixel landed on two different elements, so
+                 the column was not fitted and each press began a drag. -->
             <Border Classes="edge" Width="1" HorizontalAlignment="Center"
+                    IsHitTestVisible="False"
                     Background="{DynamicResource ViewDimText}" Opacity="0"/>
           </Panel>
         </ControlTemplate>
@@ -2061,6 +2068,8 @@
                   <!-- The grips are a pointer's; this row is how
                        a keyboard undoes what one did. On the active tab, like
                        the ticks above it: the widths are the tab's own. -->
+                  <MenuItem Header="Size all columns to _fit"
+                            Command="{Binding ActiveTab.SizeAllColumnsToFitCommand}"/>
                   <MenuItem Header="Reset column _widths"
                             Command="{Binding ActiveTab.ResetColumnWidthsCommand}"/>
                   <Separator/>
@@ -3175,10 +3184,10 @@
               <!-- The header is a raised band: highlight above, shadow below.
                    Without it the column labels float on the same plane as the
                    rows they describe. -->
-              <!-- ClipToBounds: once the name has a width of its own, columns
-                   dragged wider than the pane carry on past its right edge,
-                   and the headings are cut off there the way the rows are
-                   rather than drawn over the pane beside. -->
+              <!-- ClipToBounds: the headings scroll sideways with the rows
+                   once the columns do not fit (ColumnScroll), and what is
+                   scrolled out is cut off at the band's edge rather than drawn
+                   over the pane beside. -->
               <Border DockPanel.Dock="Top" Padding="0,4" Background="{DynamicResource ChromeBrush}"
                       BorderThickness="0,1,0,1" BorderBrush="{DynamicResource SeparatorColour}"
                       ClipToBounds="True"
@@ -3225,6 +3234,11 @@
                          the pane under it like the four toggles above, and for
                          their reason: the widths are this tab's own, and a
                          reset on the left must not move the right. -->
+                    <!-- Every column drawn, fitted to its widest entry: what
+                         a double-click on one edge does for one column. On the
+                         pane under it, like Reset below. -->
+                    <MenuItem Header="Size all columns to _fit"
+                              Command="{Binding SizeAllColumnsToFitCommand}"/>
                     <MenuItem Header="Reset column _widths"
                               Command="{Binding ResetColumnWidthsCommand}"/>
                     <Separator/>
@@ -3250,6 +3264,19 @@
                      label in the application, and LabelCasingTests holds
                      it — both the casing and the words themselves, Created
                      included. -->
+                <!-- **The headings scroll with the rows.** Their own scroller,
+                     sideways only and with no bar of its own — the rows' bar
+                     is the one — paired with the listing's by ColumnScroll, so
+                     the two offsets are one. The Panel takes the row's width
+                     from the tab, the same number the rows' panel takes; see
+                     PaneViewModel.DetailsRowWidth for why it must be the same
+                     number. While the columns fit, the axis is off and the
+                     width is NaN, which is the layout this band always had. -->
+                <ScrollViewer Classes="columnHeadings"
+                              HorizontalScrollBarVisibility="{Binding ColumnsOverflow, Converter={x:Static local:ColumnScroll.HeadingBar}}"
+                              VerticalScrollBarVisibility="Disabled"
+                              local:ColumnScroll.Rows="{Binding #DetailsRows}">
+                <Panel Width="{Binding DetailsRowWidth}">
                 <!-- DetailsColumns.NameWidth turns column 1 from "fills" into
                      a width of its own once the name's edge has been dragged;
                      the rows' grid carries the same, from the same resource. -->
@@ -3438,38 +3465,47 @@
                          AutomationProperties.Name="Resize the name column"
                          DragStarted="OnColumnGripDragStarted"
                          DragDelta="OnColumnGripDragDelta"
-                         DragCompleted="OnColumnGripDragCompleted"/>
+                         DragCompleted="OnColumnGripDragCompleted"
+                         DoubleTapped="OnColumnGripDoubleTapped"/>
                   <Thumb Grid.Column="3" Classes="columnGrip" Tag="Type"
                          IsVisible="{Binding ShowType}"
                          AutomationProperties.Name="Resize the type column"
                          DragStarted="OnColumnGripDragStarted"
                          DragDelta="OnColumnGripDragDelta"
-                         DragCompleted="OnColumnGripDragCompleted"/>
+                         DragCompleted="OnColumnGripDragCompleted"
+                         DoubleTapped="OnColumnGripDoubleTapped"/>
                   <Thumb Grid.Column="4" Classes="columnGrip" Tag="Size"
                          IsVisible="{Binding ShowSize}"
                          AutomationProperties.Name="Resize the size column"
                          DragStarted="OnColumnGripDragStarted"
                          DragDelta="OnColumnGripDragDelta"
-                         DragCompleted="OnColumnGripDragCompleted"/>
+                         DragCompleted="OnColumnGripDragCompleted"
+                         DoubleTapped="OnColumnGripDoubleTapped"/>
                   <Thumb Grid.Column="5" Classes="columnGrip" Tag="Modified"
                          IsVisible="{Binding ShowModified}"
                          AutomationProperties.Name="Resize the date modified column"
                          DragStarted="OnColumnGripDragStarted"
                          DragDelta="OnColumnGripDragDelta"
-                         DragCompleted="OnColumnGripDragCompleted"/>
+                         DragCompleted="OnColumnGripDragCompleted"
+                         DoubleTapped="OnColumnGripDoubleTapped"/>
                   <Thumb Grid.Column="6" Classes="columnGrip" Tag="Created"
                          IsVisible="{Binding ShowCreated}"
                          AutomationProperties.Name="Resize the date created column"
                          DragStarted="OnColumnGripDragStarted"
                          DragDelta="OnColumnGripDragDelta"
-                         DragCompleted="OnColumnGripDragCompleted"/>
+                         DragCompleted="OnColumnGripDragCompleted"
+                         DoubleTapped="OnColumnGripDoubleTapped"/>
                 </Grid>
+                </Panel>
+                </ScrollViewer>
               </Border>
 
               <!-- Both layouts share one slot: in a DockPanel only the last child
                    fills, so two bare siblings would dock the list to the left. -->
               <Panel>
-              <ListBox ItemsSource="{Binding DetailsEntries}"
+              <ListBox x:Name="DetailsRows"
+                       ItemsSource="{Binding DetailsEntries}"
+                       ScrollViewer.HorizontalScrollBarVisibility="{Binding ColumnsOverflow, Converter={x:Static local:ColumnScroll.RowsBar}}"
                        local:FocusBehavior.FocusWhen="{Binding FocusListing}"
                        SelectedItem="{Binding SelectedEntry}"
                        SelectedItems="{Binding DetailsSelection}"
@@ -3546,9 +3582,14 @@
                     <Setter Property="Foreground" Value="{DynamicResource ViewText}"/>
                   </Style>
                 </ListBox.Styles>
+                <!-- The rows' width while the columns scroll: the heading's
+                     panel takes the same number. KeepsSideways makes a row
+                     brought into view move the rows up or down and never back
+                     to the left; see ColumnScroll. -->
                 <ListBox.ItemsPanel>
                   <ItemsPanelTemplate>
-                    <VirtualizingStackPanel/>
+                    <VirtualizingStackPanel Width="{Binding DetailsRowWidth}"
+                                            local:ColumnScroll.KeepsSideways="True"/>
                   </ItemsPanelTemplate>
                 </ListBox.ItemsPanel>
                 <ListBox.ItemTemplate>
@@ -3583,8 +3624,18 @@
                            is the FileEntry; the parameter is the path the
                            heading sits on, which is the key the pane's header
                            map is built with. -->
+                      <!-- Moved right by as far as the rows are scrolled, so a
+                           band keeps its heading on screen while its Size or
+                           Modified is being read across it.
+
+                           **No transitions**, or the move never lands: Fluent's
+                           button animates its RenderTransform, an animation
+                           outranks a local value, and the heading stayed where
+                           the first offset put it (measured: 123 short). -->
                       <Button Classes="groupheading"
                               th:RowGroup.Entry="{Binding}"
+                              Transitions="{x:Null}"
+                              RenderTransform="{Binding $parent[ListBox].(local:ColumnScroll.Pinned), Converter={x:Static local:ColumnScroll.Shift}}"
                               IsVisible="False"
                               Command="{Binding $parent[ListBox].((vm:PaneViewModel)DataContext).SelectGroupCommand}"
                               CommandParameter="{Binding FullPath}"
@@ -3620,8 +3671,12 @@
                            as by colour, which the theme default does not. -->
                       <Border Background="{DynamicResource AccentDim}"
                               IsVisible="{Binding $parent[ListBoxItem].IsSelected}" IsHitTestVisible="False"/>
+                      <!-- Pinned to the left of what is on screen while the
+                           columns scroll, or the one cue that does not depend on
+                           colour scrolls out with the row. -->
                       <Border Width="3" HorizontalAlignment="Left"
                               Background="{DynamicResource AccentColour}"
+                              RenderTransform="{Binding $parent[ListBox].(local:ColumnScroll.Pinned), Converter={x:Static local:ColumnScroll.Shift}}"
                               IsVisible="{Binding $parent[ListBoxItem].IsSelected}" IsHitTestVisible="False"/>
                       <!-- The same name width as the heading's grid, from the
                            same resource, less this row's indent: see
@@ -3954,6 +4009,7 @@
                                    Foreground="{DynamicResource ViewDimText}"
                                    VerticalAlignment="Center" TextTrimming="CharacterEllipsis"/>
                         <TextBlock Grid.Column="4" Width="{DynamicResource ColSize}" Classes="meta" th:RowMetadata.Size="{Binding}" TextAlignment="Right"
+                                   TextTrimming="CharacterEllipsis"
                                    IsVisible="{Binding $parent[ListBox].((vm:PaneViewModel)DataContext).ShowSize}"
                                    FontSize="{DynamicResource FontSizeSmall}" FontFamily="{DynamicResource AppMonoFamily}" Foreground="{DynamicResource ViewDimText}"
                                    VerticalAlignment="Center"/>
@@ -3961,6 +4017,7 @@
                              is still right there, so the colour is a shortcut rather than
                              the only signal. -->
                         <TextBlock Grid.Column="5" Width="{DynamicResource ColModified}" Classes="meta" Text="{Binding LastWriteTime, Converter={x:Static vm:FileConverters.Modified}}" TextAlignment="Right"
+                                   TextTrimming="CharacterEllipsis"
                                    IsVisible="{Binding $parent[ListBox].((vm:PaneViewModel)DataContext).ShowModified}"
                                    Foreground="{Binding LastWriteTime, Converter={x:Static vm:AgeConverters.Brush}}"
                                    ToolTip.Tip="{Binding LastWriteTime, Converter={x:Static vm:AgeConverters.Description}}"
@@ -3978,6 +4035,7 @@
                              default, which the converter already renders as an
                              empty cell rather than as a date in year one. -->
                         <TextBlock Grid.Column="6" Width="{DynamicResource ColCreated}" Classes="meta" Text="{Binding CreationTime, Converter={x:Static vm:FileConverters.Modified}}" TextAlignment="Right"
+                                   TextTrimming="CharacterEllipsis"
                                    IsVisible="{Binding $parent[ListBox].((vm:PaneViewModel)DataContext).ShowCreated}"
                                    FontSize="{DynamicResource FontSizeSmall}" FontFamily="{DynamicResource AppMonoFamily}" Foreground="{DynamicResource ViewDimText}"
                                    VerticalAlignment="Center"/>

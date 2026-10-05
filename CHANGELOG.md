@@ -11,6 +11,45 @@ should not be trusted for compatibility yet.
 
 ## [Unreleased]
 
+### Added
+
+- **The details columns scroll sideways when they do not fit.** As the pane
+  gets narrower the empty space after the last column goes first, then the
+  name narrows down to 80 pixels, and only then do the headings and the rows
+  scroll sideways, together.
+  - `Shift` with the mouse wheel, or a sideways swipe on a touchpad, scrolls
+    them, over the rows or over the headings. A heading that is off the edge
+    scrolls into view, with the rows, when `Shift+Tab` gives it the keyboard.
+  - Every column's right edge, the name's included, can now be dragged past
+    the pane's right edge, up to the widest a column can be (600 pixels, or
+    4,000 for the name, at 100% zoom).
+  - Opening another folder goes back to the left. Refreshing, sorting or
+    grouping the folder, opening a folder in place, and moving the selection
+    with the keyboard keep the view where it is, and each tab and each half
+    of a split keeps its own.
+  - When type-ahead finds a name that is scrolled out to the left, the view
+    goes back to the left to show it.
+  - The bar that marks a selected row, and the group headings, stay at the
+    left edge of the pane while the columns are scrolled.
+- **Double-click the right edge of a heading to fit that column to its
+  widest entry,** as in File Explorer, the name's included.
+  - Every row the listing shows is measured, not only the rows on screen:
+    the rows of a folder opened in place count, and rows hidden by the
+    filter do not. The heading counts too, with its sort arrow either way
+    round.
+  - The date columns are fitted to the widest date they can show in your
+    language, so a folder of today's files, which shows only times, is not
+    too narrow tomorrow. A folder whose size is still being counted is
+    fitted to the widest answer it can get.
+  - In a folder of more than a thousand rows, the column is fitted to the
+    rows on screen at once and widens a moment later if a row further down
+    is wider.
+  - The fitted width is kept like a dragged one, and *Reset column widths*
+    undoes it. A double-click never sorts and never starts a drag.
+- ***Size all columns to fit*** fits every column shown in one step. It is on
+  the headings' right-click menu, under *Columns* in the listing menu, and in
+  the command palette, and is greyed out outside the List layout.
+
 ### Removed
 
 - **Mount and Unmount are gone from the right-click menu.** Double-clicking a
@@ -57,7 +96,15 @@ should not be trusted for compatibility yet.
   Finding the repository there asked the network about every parent folder on
   every listing. A local folder opened through `\\?\` keeps its marks.
 
+- The 0.11.2 rules that no edge can be dragged past the pane's right edge,
+  and that there is no horizontal scroll bar, no longer hold: see the first
+  entry above.
+
 ### Fixed
+
+- **A Size, Modified or Created column narrower than its text no longer
+  draws the text over the column beside it.** The text is cut short with an
+  ellipsis, as the Type column's always was.
 
 - **`→` and `←` open and close a folder in place, as the key list has always
   said.** With the keyboard on a folder row in the List layout, both keys did

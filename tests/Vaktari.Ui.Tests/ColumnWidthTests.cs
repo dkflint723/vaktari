@@ -757,6 +757,7 @@ public sealed class ColumnWidthTests : OwnedViewModels
             Assert.Equal("OnColumnGripDragStarted", (string?)grip.Attribute("DragStarted"));
             Assert.Equal("OnColumnGripDragDelta", (string?)grip.Attribute("DragDelta"));
             Assert.Equal("OnColumnGripDragCompleted", (string?)grip.Attribute("DragCompleted"));
+            Assert.Equal("OnColumnGripDoubleTapped", (string?)grip.Attribute("DoubleTapped"));
         }
 
         var style = doc.Descendants(Avalonia + "Style")
@@ -796,6 +797,31 @@ public sealed class ColumnWidthTests : OwnedViewModels
                 "{Binding ResetColumnWidthsCommand}",
             ],
             commands);
+    }
+
+    /// <summary>
+    /// *Size all columns to fit* is on both menus too, bound the same way —
+    /// the heading's to the pane under it, the listing menu's to the active
+    /// tab — and sits above the way back in each.
+    /// </summary>
+    [AvaloniaFact]
+    public void Both_column_menus_offer_the_fit()
+    {
+        var doc = XDocument.Parse(RepoSource.Ui("MainWindow.axaml"));
+
+        var rows = doc.Descendants(Avalonia + "MenuItem")
+                      .Where(m => (string?)m.Attribute("Header") == "Size all columns to _fit")
+                      .ToList();
+
+        Assert.Equal(
+            [
+                "{Binding ActiveTab.SizeAllColumnsToFitCommand}",
+                "{Binding SizeAllColumnsToFitCommand}",
+            ],
+            rows.Select(m => (string?)m.Attribute("Command")).Order(StringComparer.Ordinal).ToList());
+
+        Assert.All(rows, row => Assert.Equal("Reset column _widths",
+            (string?)row.ElementsAfterSelf(Avalonia + "MenuItem").First().Attribute("Header")));
     }
 
     // ---- helpers ----------------------------------------------------------------

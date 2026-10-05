@@ -190,6 +190,25 @@ public static class RowMetadata
             : SizeFill.Count);
     }
 
+    /// <summary>
+    /// What the size cell for this row reads right now, and whether it is still
+    /// owed an answer: the text <see cref="SizeCell"/> decides, or the count or
+    /// total already kept for it. For fitting the column, which measures what
+    /// is on screen and must not start a count of its own.
+    /// </summary>
+    internal static (string Text, bool Pending) SizeTextNow(
+        FileEntry entry, Core.Settings.FolderSizeMode folders)
+    {
+        var (text, fill) = SizeCell(entry, folders);
+
+        if (fill == SizeFill.Nothing) return (text, false);
+
+        lock (Gate)
+            return Cache.TryGetValue(CacheKey(entry, fill), out var cached) && cached.Text is { Length: > 0 }
+                ? (cached.Text, false)
+                : (text, true);
+    }
+
     private static async void OnSizeChanged(TextBlock target, FileEntry? entry)
     {
         if (target.GetValue(SizeTokenProperty) is { } previous)

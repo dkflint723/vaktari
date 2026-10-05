@@ -243,6 +243,11 @@ public partial class MainWindow : ICommandHost
 
         pane.TypeAhead(e.Text);
         e.Handled = true;
+
+        // A name found by typing it, scrolled out to the left by the columns,
+        // is brought back: see ColumnScroll.RevealName.
+        if (pane.IsDetailsView && pane.SelectedEntry is { } found && ActiveListing() is { } list)
+            ColumnScroll.RevealName(list, pane, found);
     }
 
     /// <summary>

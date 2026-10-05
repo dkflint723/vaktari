@@ -1,5 +1,6 @@
 using Avalonia;
 using Avalonia.Controls;
+using Avalonia.VisualTree;
 using Vaktari.Ui.ViewModels;
 
 namespace Vaktari.Ui;
@@ -134,8 +135,12 @@ public static class DetailsColumns
     ///   no gap after it: in QA's split the name went to its floor with 170
     ///   pixels empty after Size.
     ///
-    /// And never past <paramref name="min"/>: a pane too narrow even for that
-    /// cuts the last columns off rather than the name.
+    /// And never past <paramref name="min"/>: in a pane too narrow even for
+    /// that, the columns scroll sideways rather than the name getting any
+    /// narrower (<see cref="PaneViewModel.ColumnsOverflow"/>).
+    ///
+    /// <paramref name="width"/> is the row as much of it as is on SCREEN, not
+    /// the heading grid's own width, which is the columns' once they scroll.
     /// </summary>
     public static double Give(double pinned, double span, double min, double width, double others)
     {
@@ -176,21 +181,43 @@ public static class DetailsColumns
     }
 
     /// <summary>
-    /// The heading, laid out: works out how far its tab's name gives way from
-    /// its own row and columns, and hands it to the tab, from where the
-    /// heading and every row take it.
+    /// The heading, laid out: works out how far its tab's name gives way, and
+    /// whether the columns still overflow after that, from its own columns and
+    /// the row as much of it as is on screen — and hands both to the tab, from
+    /// where the heading and every row take them.
     ///
-    /// **Not while a column is being dragged.** The edge under the pointer
-    /// has to follow it, and a name giving more or less as the columns change
-    /// width would move it; the drag ends by asking for a layout, which lands
-    /// here again with the drag over.
+    /// **The visible row is the heading scroller's viewport, not the grid's
+    /// width.** Once the columns scroll, the grid is as wide as the columns,
+    /// and a give worked out from that would read a scrolled pane as a wider
+    /// one and never give anything.
+    ///
+    /// **Not while a column is being dragged** — neither the give, nor the
+    /// row's width shrinking. The edge under the pointer has to follow it: a
+    /// name giving more or less would move it, and so would a narrower row,
+    /// because at the far right the scroller pulls a shrinking row back by as
+    /// much as it shrank. The row may still GROW while a column is dragged
+    /// wider. The drag ends by asking for a layout, which lands here again
+    /// with the drag over.
+    ///
+    /// **Not for a heading nobody can see.** A hidden tab's heading is laid
+    /// out with every other, from numbers that are stale, and a tab never shown
+    /// in this layout has a viewport of nothing — which would read as columns
+    /// that overflow it entirely. **No test has reached that state yet**: a
+    /// tab opened in the grid and never shown in this layout stayed unmarked
+    /// with both guards mutated away, so they stay as the review's measurement
+    /// (a hidden tab's heading laid out five times in five passes) rather than
+    /// as a tested rule.
     /// </summary>
     private static void OnHeadingLaidOut(object? sender, EventArgs e)
     {
         if (sender is not Grid { DataContext: PaneViewModel pane } grid
-            || pane.IsResizingColumns
-            || grid.ColumnDefinitions.Count <= TrailingColumn)
+            || grid.ColumnDefinitions.Count <= TrailingColumn
+            || !grid.IsEffectivelyVisible
+            || grid.FindAncestorOfType<ScrollViewer>() is not { Viewport.Width: > 0 } scroller)
             return;
+
+        var margins = grid.Margin.Left + grid.Margin.Right;
+        var visible = scroller.Viewport.Width - margins;
 
         var others = 0.0;
 
@@ -198,8 +225,37 @@ public static class DetailsColumns
             if (i != NameColumn && i != TrailingColumn)
                 others += grid.ColumnDefinitions[i].ActualWidth;
 
-        var give = Give(GetNameWidth(grid), GetNameSpan(grid), GetNameMin(grid), grid.Bounds.Width, others);
+        var pinned = GetNameWidth(grid);
 
-        if (Math.Abs(give - pane.NameGive) > 0.25) pane.NameGive = give;
+        var give = pane.IsResizingColumns
+            ? pane.NameGive
+            : Give(pinned, GetNameSpan(grid), GetNameMin(grid), visible, others);
+
+        if (!pane.IsResizingColumns && Math.Abs(give - pane.NameGive) > 0.25) pane.NameGive = give;
+
+        // What the columns take with the name as narrow as it will be drawn:
+        // its width less the give, or its floor while it fills — a filling
+        // name in a pane too narrow even for that scrolls rather than cutting
+        // the last columns off.
+        var content = others + (pinned > 0 ? pinned - give : GetNameMin(grid));
+
+        // Half a pixel is rounding, as in Give. Without it a sub-pixel
+        // difference at 115% showed a scroll bar with nothing to scroll.
+        var overflow = content > visible + 0.5;
+        var row = overflow ? content + margins : double.NaN;
+
+        // Held during a drag: it may grow, and it may start, but nothing smaller.
+        if (pane.IsResizingColumns
+            && (!overflow || (pane.ColumnsOverflow && row <= pane.DetailsRowWidth)))
+            return;
+
+        pane.ColumnsOverflow = overflow;
+
+        // **NaN on either side is a change**: the 0.25 rule alone never leaves
+        // NaN and never goes back to it, because every comparison with NaN is
+        // false.
+        if (double.IsNaN(row) != double.IsNaN(pane.DetailsRowWidth)
+            || Math.Abs(row - pane.DetailsRowWidth) > 0.25)
+            pane.DetailsRowWidth = row;
     }
 }

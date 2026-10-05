@@ -79,6 +79,20 @@ public sealed class DetailsRowAlignmentTests : OwnedViewModels
         }
     }
 
+    /// <summary>A device scaling for the headless window, through the platform's
+    /// own setter, asserted to have taken: a renamed setter would otherwise
+    /// leave the scaled cases quietly running at 100%.</summary>
+    private static void SetScaling(Window w, double scaling)
+    {
+        var impl = w.PlatformImpl!;
+        impl.GetType().GetProperty("RenderScaling",
+            System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.NonPublic
+            | System.Reflection.BindingFlags.Instance)!.SetValue(impl, scaling);
+        (impl.GetType().GetProperty("ScalingChanged")?.GetValue(impl) as Action<double>)?.Invoke(scaling);
+
+        Assert.Equal(scaling, w.RenderScaling);
+    }
+
     private static void Pump(Window w)
     {
         for (var i = 0; i < 5; i++) { Dispatcher.UIThread.RunJobs(); w.UpdateLayout(); }
@@ -100,11 +114,12 @@ public sealed class DetailsRowAlignmentTests : OwnedViewModels
     private static double Right(Grid g, int col, Visual root)
         => g.TranslatePoint(default, root)!.Value.X + g.ColumnDefinitions.Take(col + 1).Sum(c => c.ActualWidth);
 
-    private async Task<(MainWindow W, PaneViewModel Pane)> Open(int width = 1600)
+    private async Task<(MainWindow W, PaneViewModel Pane)> Open(int width = 1600, double scaling = 1.0)
     {
         UseSearch(PaneViewModel.Search);
         var w = _window = new MainWindow { Width = width, Height = 800 };
         w.Show();
+        if (scaling != 1.0) SetScaling(w, scaling);
         Pump(w);
         var shell = Assert.IsType<ShellViewModel>(w.DataContext);
         if (shell.IsSplit) { shell.ToggleSplit(); Pump(w); }
@@ -195,6 +210,141 @@ public sealed class DetailsRowAlignmentTests : OwnedViewModels
                 await pane.NavigateAsync(VirtualPaths.Search("notes", _root, scoped: false));
                 bad.AddRange(await Compare(w, pane, "search " + tag));
                 UseSearch(PaneViewModel.Search);
+            }
+        }
+
+        foreach (var b in bad) _out.WriteLine("MISALIGNED " + b);
+        Assert.Empty(bad);
+    }
+
+    /// <summary>
+    /// **A row nested under an opened folder may sit up to a pixel off at a
+    /// fractional device scaling, scrolled or not.** Its indent is a Border in
+    /// the first column, rounded to the device pixel on its own, while the name
+    /// column is narrowed by the indent unrounded; at 115% device scaling and
+    /// 125% zoom that measured 0.96 at offset 0, where nothing has scrolled. It
+    /// belongs to the indent, not to the scrolling, and is held here so it
+    /// cannot grow unseen.
+    /// </summary>
+    private const double NestedTolerance = 1.0;
+
+    /// <summary>
+    /// The rows' scroller and the headings' (ColumnScroll).
+    /// </summary>
+    private static ScrollViewer RowsScroller(Window w, PaneViewModel pane)
+        => w.GetVisualDescendants().OfType<ListBox>()
+            .First(l => ReferenceEquals(l.DataContext, pane) && l.ItemsSource == pane.DetailsEntries)
+            .GetVisualDescendants().OfType<ScrollViewer>().First();
+
+    /// <summary>
+    /// **Every listing stays under its headings while the columns are scrolled
+    /// sideways**, at device scaling as well as zoom — 115% is where QA saw
+    /// the drift and the jitter of the earlier rounds, and the headless window
+    /// can be given it. Each offset is set and the window laid out ONCE, with
+    /// nothing run on the dispatcher, because that is what a frame shows: a
+    /// heading that caught up a job later would pass a test that settled
+    /// first. The two scrollers must also agree on everything the offset
+    /// depends on — the extent, the viewport and the offset itself; with docked
+    /// rather than overlaid scroll bars the rows' viewport would be a bar
+    /// narrower than the headings'.
+    /// </summary>
+    [AvaloniaTheory]
+    [InlineData(1.0, 1.0)]
+    [InlineData(1.15, 1.0)]
+    [InlineData(1.25, 1.0)]
+    [InlineData(1.15, 1.25)]
+    [InlineData(1.25, 1.25)]
+    public async Task Every_details_listing_lines_up_while_scrolled(double scaling, double zoom)
+    {
+        Directory.CreateDirectory(Path.Combine(_root, "sub"));
+        File.WriteAllText(Path.Combine(_root, "sub", "child.txt"), "c");
+        File.WriteAllText(Path.Combine(_root, "notes.txt"), "n");
+
+        for (var i = 0; i < 60; i++) File.WriteAllText(Path.Combine(_root, $"row{i:000}.txt"), "r");
+
+        var (w, pane) = await Open(scaling: scaling);
+
+        pane.FontScale = zoom;
+
+        var bad = new List<string>();
+
+        foreach (var state in new[] { "pinned wide", "a column past the edge", "filling with wide columns" })
+        {
+            pane.ResetColumnWidthsCommand.Execute(null);
+
+            pane.ColumnWidths = state switch
+            {
+                "pinned wide" => pane.ColumnWidths with { Name = 1400, Size = 133.3, Type = 97.7 },
+                "a column past the edge" => pane.ColumnWidths with { Name = 500, Span = 1300, Size = 600 },
+                _ => pane.ColumnWidths with { Size = 600, Modified = 600 },
+            };
+
+            foreach (var listing in new[] { "folder", "recent", "bin", "search" })
+            {
+                var tag = $"{scaling}x{zoom} {state} {listing}";
+
+                switch (listing)
+                {
+                    case "folder":
+                        await pane.NavigateAsync(_root);
+                        await pane.RefreshAsync();
+                        var sub = pane.Entries.First(e => e.Name == "sub");
+                        if (!pane.Indents.ContainsKey(Path.Combine(_root, "sub", "child.txt"))) await pane.ToggleExpandAsync(sub);
+                        break;
+
+                    case "recent":
+                        PaneViewModel.Recents = new Remembered(Path.Combine(_root, "notes.txt"));
+                        await pane.NavigateAsync(VirtualPaths.Files);
+                        break;
+
+                    case "bin":
+                        PaneViewModel.Trash = new Bin("gone.txt", "also.txt");
+                        await pane.NavigateAsync(VirtualPaths.Trash);
+                        break;
+
+                    default:
+                        UseSearch(new Finds(new FileEntry("notes.txt", Path.Combine(_root, "notes.txt"), 1, DateTimeOffset.Now, EntryFlags.None)));
+                        await pane.NavigateAsync(VirtualPaths.Search("notes", _root, scoped: false));
+                        UseSearch(PaneViewModel.Search);
+                        break;
+                }
+
+                // Rows on screen, settled.
+                for (var i = 0; i < 300 && RowGrids(w, pane).Count == 0; i++) { Pump(w); await Task.Delay(10); }
+                Pump(w);
+
+                if (!pane.ColumnsOverflow)
+                {
+                    bad.Add($"{tag}: the columns do not overflow, so nothing scrolls");
+                    continue;
+                }
+
+                var rows = RowsScroller(w, pane);
+                var headings = HeadingGrid(w, pane)!.FindAncestorOfType<ScrollViewer>()!;
+                var max = rows.Extent.Width - rows.Viewport.Width;
+
+                foreach (var offset in new[] { new Vector(0, 0), new Vector(0.45, 0), new Vector(max / 2, 0),
+                                               new Vector(max, 0), new Vector(max / 2, 77.7) })
+                {
+                    rows.Offset = offset;
+                    w.UpdateLayout();
+
+                    var at = $"{tag} at {offset}";
+
+                    if (rows.Extent.Width != headings.Extent.Width)
+                        bad.Add($"{at}: extents {rows.Extent.Width} and {headings.Extent.Width}");
+                    if (rows.Viewport.Width != headings.Viewport.Width)
+                        bad.Add($"{at}: viewports {rows.Viewport.Width} and {headings.Viewport.Width}");
+                    if (rows.Offset.X != headings.Offset.X)
+                        bad.Add($"{at}: offsets {rows.Offset.X} and {headings.Offset.X}");
+
+                    var head = HeadingGrid(w, pane)!;
+
+                    foreach (var (name, row) in RowGrids(w, pane))
+                        for (var c = 1; c <= 6; c++)
+                            if (Math.Abs(Right(head, c, w) - Right(row, c, w)) > (DetailsColumns.GetIndent(row) > 0 ? NestedTolerance : 0.6))
+                                bad.Add($"{at} row '{name}' column {c}: heading {Right(head, c, w):N2} row {Right(row, c, w):N2} [{string.Join(" ", head.ColumnDefinitions.Select(d => d.ActualWidth.ToString("0.00")))}] vs [{string.Join(" ", row.ColumnDefinitions.Select(d => d.ActualWidth.ToString("0.00")))}] x {head.TranslatePoint(default, w)!.Value.X:0.00}/{row.TranslatePoint(default, w)!.Value.X:0.00}");
+                }
             }
         }
 

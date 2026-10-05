@@ -199,6 +199,7 @@ public sealed class KeymapTests : OwnedViewModels
         { "ZoomReset", "Shell.ZoomResetCommand" },
         { "UseThisViewEverywhere", "Shell.UseThisViewEverywhereCommand" },
         { "ResetColumnWidths", "Shell.ResetColumnWidthsCommand" },
+        { "SizeAllColumnsToFit", "Pane.SizeAllColumnsToFitCommand" },
         { "ShowShortcuts", "Shell.ShowShortcutsCommand" },
         { "ShowPalette", "Shell.ShowPaletteCommand" },
         { "OpenSettings", "Shell.OpenSettingsCommand" },

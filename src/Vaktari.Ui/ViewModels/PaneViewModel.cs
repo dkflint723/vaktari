@@ -1113,6 +1113,7 @@ public sealed partial class PaneViewModel : ObservableObject, IDisposable
         }
 
         OnPropertyChanged(nameof(IsDetailsView));
+        SizeAllColumnsToFitCommand.NotifyCanExecuteChanged();
         OnPropertyChanged(nameof(IsGridView));
         OnPropertyChanged(nameof(IsCompactView));
         OnPropertyChanged(nameof(SelectedEntries));

@@ -2,6 +2,7 @@ using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Controls.Primitives;
 using Avalonia.Input;
+using Avalonia.VisualTree;
 using Vaktari.Core.Settings;
 using Vaktari.Ui.ViewModels;
 
@@ -75,18 +76,21 @@ public partial class MainWindow
             return;
 
         var column = Enum.Parse<DetailsColumn>(tag);
-        var cell = column == DetailsColumn.Name ? 1 : 3 + (int)column;
 
         // The product PaneScale multiplies a width by on the way out.
         var scale = pane.TextScale > 0 ? pane.TextScale : 1.0;
 
-        // All read off the heading's own grid, which every grip is in, as it
-        // is drawn now: the name, the room after the last column, the row,
-        // and where this column's edge is in it.
+        // Read off the heading's own grid, which every grip is in, as it is
+        // drawn now: the name, and the row — **as much of it as is on screen**,
+        // the heading scroller's viewport less the grid's margins. Once the
+        // columns scroll the grid is as wide as they are, and a span taken
+        // from it would be wider than the row every time: the name would give
+        // way the moment the drag ended, which is "resizing Size resizes Name"
+        // again.
         var drawn = heading.ColumnDefinitions[1].ActualWidth / scale;
-        var room = heading.ColumnDefinitions[7].ActualWidth / scale;
-        var row = heading.Bounds.Width / scale;
-        var edge = heading.ColumnDefinitions.Take(cell + 1).Sum(c => c.ActualWidth) / scale;
+        var row = (heading.FindAncestorOfType<ScrollViewer>() is { Viewport.Width: > 0 } scroller
+            ? scroller.Viewport.Width - heading.Margin.Left - heading.Margin.Right
+            : heading.Bounds.Width) / scale;
 
         // **The name keeps exactly the width it is drawn at when the drag
         // begins**, so nothing moves. A name that was filling, or whose own
@@ -100,16 +104,15 @@ public partial class MainWindow
 
         var start = column == DetailsColumn.Name ? name : PaneScale.ColumnWidth(pane.ColumnWidths, column);
 
-        // **No edge goes past the pane's.** A size column dragged 330 pixels
-        // wider put its own edge, and so its grip, 190 pixels off the side,
-        // with nothing on screen to drag it back by. The name's stops at the
-        // room after the last column, because every other column is after
-        // it; any other column's at the pane's edge itself, so a column can
-        // still be widened in a full row, and what it pushes past the edge is
-        // the columns after it, which it gives back when it is narrowed.
+        // **Every edge follows the pointer past the pane's, the name's too.**
+        // In 0.11.2 no edge could go past it, because a column pushed off the
+        // side took its grip with it and nothing on screen could drag it back.
+        // The columns scroll now, so the grip is a scroll away, and a name too
+        // long for the pane is the commonest reason to widen a column at all.
+        // The top of each column's own range is the only limit left.
         var (least, most) = column == DetailsColumn.Name
-            ? (Math.Min(name, PaneScale.NameMin), name + room)
-            : (PaneScale.ColumnMin, start + Math.Max(0, row - edge));
+            ? (Math.Min(name, PaneScale.NameMin), PaneScale.NameMax)
+            : (PaneScale.ColumnMin, PaneScale.ColumnMax);
 
         pane.IsResizingColumns = true;
 

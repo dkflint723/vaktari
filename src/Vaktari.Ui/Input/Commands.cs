@@ -288,6 +288,12 @@ public static class Commands
         new("UseThisViewEverywhere", "Use this view for all folders", Looking, KeyTier.Listing, []) { Command = s => s.UseThisViewEverywhereCommand },
         new("ResetColumnWidths", "Reset column widths", Looking, KeyTier.Listing, []) { Command = s => s.ResetColumnWidthsCommand },
 
+        // Keyless, and the keyboard's way to the fit a double-click on an edge
+        // gives one column: every column drawn, in the tab the keyboard is in.
+        // The pane's own command, so it is greyed outside the List layout,
+        // which has no headings to fit.
+        new("SizeAllColumnsToFit", "Size all columns to fit", Looking, KeyTier.Listing, []) { Command = Pane(p => p.SizeAllColumnsToFitCommand) },
+
         // ---- the application -------------------------------------------------
         new("ShowShortcuts", "Keyboard shortcuts", App, KeyTier.Anywhere, ["F1"]) { Command = s => s.ShowShortcutsCommand },
 
