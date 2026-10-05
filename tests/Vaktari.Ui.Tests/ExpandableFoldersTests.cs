@@ -1323,10 +1323,10 @@ public sealed class ExpandableFoldersTests : OwnedViewModels
         var body = RepoSource.Body(
             RepoSource.UiClass("", "MainWindow"), "private void OnWindowKeyDown(");
 
-        Assert.Contains("e.Handled = TurnExpansion(pane, open: true);", body,
+        Assert.Contains("e.Handled = TurnExpansion(pane, open: true, out var opening);", body,
                         StringComparison.Ordinal);
 
-        Assert.Contains("e.Handled = TurnExpansion(pane, open: false);", body,
+        Assert.Contains("e.Handled = TurnExpansion(pane, open: false, out var shutting);", body,
                         StringComparison.Ordinal);
     }
 

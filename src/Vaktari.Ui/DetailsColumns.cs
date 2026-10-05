@@ -199,21 +199,19 @@ public static class DetailsColumns
     /// wider. The drag ends by asking for a layout, which lands here again
     /// with the drag over.
     ///
-    /// **Not for a heading nobody can see.** A hidden tab's heading is laid
-    /// out with every other, from numbers that are stale, and a tab never shown
-    /// in this layout has a viewport of nothing — which would read as columns
-    /// that overflow it entirely. **No test has reached that state yet**: a
-    /// tab opened in the grid and never shown in this layout stayed unmarked
-    /// with both guards mutated away, so they stay as the review's measurement
-    /// (a hidden tab's heading laid out five times in five passes) rather than
-    /// as a tested rule.
+    /// **No guard for a hidden heading.** One was written for the review's
+    /// worry — a hidden tab's heading laid out from stale numbers, or a viewport
+    /// of nothing read as columns that overflow it entirely — and QA proved it
+    /// dead: a tab opened in the grid, and a tab whose widths and window
+    /// changed while its heading was hidden, came back right in their first
+    /// pass with it removed. Removed rather than kept as a gate nothing can
+    /// show is needed.
     /// </summary>
     private static void OnHeadingLaidOut(object? sender, EventArgs e)
     {
         if (sender is not Grid { DataContext: PaneViewModel pane } grid
             || grid.ColumnDefinitions.Count <= TrailingColumn
-            || !grid.IsEffectivelyVisible
-            || grid.FindAncestorOfType<ScrollViewer>() is not { Viewport.Width: > 0 } scroller)
+            || grid.FindAncestorOfType<ScrollViewer>() is not { } scroller)
             return;
 
         var margins = grid.Margin.Left + grid.Margin.Right;

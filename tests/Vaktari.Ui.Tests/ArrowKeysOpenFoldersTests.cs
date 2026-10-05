@@ -143,8 +143,9 @@ public sealed class ArrowKeysOpenFoldersTests : OwnedViewModels
         Assert.True(pane.IsExpanded(folder.FullPath), "→ on a focused folder row did not open it");
         Assert.Contains(pane.DetailsEntries, e => e.Name == "kid.txt");
 
-        // The keyboard is still on a row of the listing, so ← is a real press too.
-        await FocusRow(window, pane, folder);
+        // Straight on, with nothing done in between: the keyboard has to be
+        // back on the row by itself, or ← moves it to the sidebar instead.
+        Assert.Equal(folder.FullPath, (window.FocusManager?.GetFocusedElement() as ListBoxItem)?.DataContext is FileEntry on ? on.FullPath : null);
 
         Press(window, Key.Left);
         await Wait(window, () => !pane.IsExpanded(folder.FullPath));
@@ -315,5 +316,44 @@ public sealed class ArrowKeysOpenFoldersTests : OwnedViewModels
         Assert.False(pane.IsExpanded(folder.FullPath));
         Assert.NotNull(pane.SelectedEntry);
         Assert.NotEqual(folder, pane.SelectedEntry);
+    }
+
+    /// <summary>
+    /// **↑ and ↓ in the rename box keep the name being typed**, in every
+    /// layout: a one-line box has no use for them, and the listing took them
+    /// to move the selection, which took the keyboard out of the box and
+    /// cancelled the rename.
+    /// </summary>
+    [AvaloniaTheory]
+    [InlineData(ViewMode.Details, Key.Up)]
+    [InlineData(ViewMode.Details, Key.Down)]
+    [InlineData(ViewMode.Grid, Key.Up)]
+    [InlineData(ViewMode.Grid, Key.Down)]
+    [InlineData(ViewMode.Compact, Key.Up)]
+    [InlineData(ViewMode.Compact, Key.Down)]
+    public async Task Up_and_Down_in_the_rename_box_keep_the_name(ViewMode view, Key key)
+    {
+        var (window, pane, _) = await Open();
+
+        pane.View = view;
+        await Settle(window);
+
+        var file = pane.Entries.Single(e => e.Name == "a-file.txt");
+
+        await FocusRow(window, pane, file);
+
+        pane.BeginRenameCommand.Execute(null);
+        await Settle(window);
+
+        var box = window.GetVisualDescendants().OfType<TextBox>()
+                        .Single(t => t.Classes.Contains(MainWindow.RenameBoxClass) && t.IsVisible);
+
+        Assert.True(box.IsFocused, "the name is not being typed anywhere, so this proves nothing");
+
+        window.KeyPress(key, RawInputModifiers.None, key == Key.Up ? PhysicalKey.ArrowUp : PhysicalKey.ArrowDown, null);
+        await Settle(window);
+
+        Assert.True(box.IsFocused, $"{key} took the keyboard out of the rename box");
+        Assert.Equal(file.FullPath, pane.RenamingPath);
     }
 }

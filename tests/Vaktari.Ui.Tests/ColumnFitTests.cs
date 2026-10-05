@@ -1,4 +1,5 @@
 using System.Globalization;
+using Avalonia.Headless.XUnit;
 using Xunit;
 
 namespace Vaktari.Ui.Tests;
@@ -209,5 +210,33 @@ public sealed class ColumnFitTests
                 Assert.True(drawn >= widest + ColumnFit.Padding * scale - 0.06,
                             $"at {scale}: {widest} fitted to {ColumnFit.Fitted(widest, scale)}, drawn {drawn}");
             }
+    }
+
+    /// <summary>
+    /// **The date shapes cover every form a date cell takes**: today's time,
+    /// a date this year, and a date in an earlier year. An earlier year's
+    /// "dd MMM yyyy" is never wider than this year's "dd MMM HH:mm" in the
+    /// monospace face the cells use, so no fit can tell it is missing — which
+    /// is why this asks for the forms themselves, through the cell's own
+    /// converter, rather than for a width.
+    /// </summary>
+    [AvaloniaFact]
+    public void The_date_shapes_cover_every_form_a_date_cell_takes()
+    {
+        var culture = CultureInfo.CurrentCulture;
+        var now = DateTime.Now;
+
+        string Cell(DateTime when)
+            => (string)ViewModels.FileConverters.Modified.Convert(
+                new DateTimeOffset(when), typeof(string), null, culture)!;
+
+        static string Form(string text)
+            => System.Text.RegularExpressions.Regex.Replace(
+                System.Text.RegularExpressions.Regex.Replace(text, @"\d", "9"), @"[^\d\s:\-]+", "M");
+
+        var shapes = ColumnFitter.DateShapes(culture).Select(Form).ToHashSet();
+
+        foreach (var when in new[] { now, new DateTime(now.Year, 1, 2, 3, 4, 0), new DateTime(now.Year - 3, 6, 7, 8, 9, 0) })
+            Assert.Contains(Form(Cell(when)), shapes);
     }
 }

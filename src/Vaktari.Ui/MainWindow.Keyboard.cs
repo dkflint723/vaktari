@@ -634,11 +634,13 @@ public partial class MainWindow : ICommandHost
             // folder was selected under it. A key pressed somewhere else is
             // that somewhere else's.
             case Key.Right when e.KeyModifiers == KeyModifiers.None && KeyboardOnTheListing():
-                e.Handled = TurnExpansion(pane, open: true);
+                e.Handled = TurnExpansion(pane, open: true, out var opening);
+                KeepTheKeyboardOnTheRow(pane, opening);
                 break;
 
             case Key.Left when e.KeyModifiers == KeyModifiers.None && KeyboardOnTheListing():
-                e.Handled = TurnExpansion(pane, open: false);
+                e.Handled = TurnExpansion(pane, open: false, out var shutting);
+                KeepTheKeyboardOnTheRow(pane, shutting);
                 break;
 
             // **Backspace answered Explorer's habit and nobody else's.** It
@@ -679,7 +681,13 @@ public partial class MainWindow : ICommandHost
     /// layout that draws them, in a state the press would change.
     /// </summary>
     internal static bool TurnExpansion(ViewModels.PaneViewModel pane, bool open)
+        => TurnExpansion(pane, open, out _);
+
+    /// <summary>The same, handing back the toggle it started, or null.</summary>
+    internal static bool TurnExpansion(ViewModels.PaneViewModel pane, bool open, out Task? toggling)
     {
+        toggling = null;
+
         if (!pane.IsDetailsView || !pane.CanExpandRows) return false;
 
         if (pane.SelectedEntry is not { IsDirectory: true } row) return false;
@@ -689,9 +697,59 @@ public partial class MainWindow : ICommandHost
         // alone rather than given a second meaning nothing announces.
         if (pane.IsExpanded(row.FullPath) == open) return false;
 
-        _ = pane.ToggleExpandAsync(row);
+        toggling = pane.ToggleExpandAsync(row);
 
         return true;
+    }
+
+    /// <summary>
+    /// After → or ← has opened or shut a folder in place: the keyboard back on
+    /// that folder's row.
+    ///
+    /// **← straight after → went to the sidebar.** Opening the folder rebuilds
+    /// the rows, the row the keyboard was on is recycled, and focus is left on
+    /// nothing — so the next arrow was a directional move from nowhere, and
+    /// Avalonia's went to the sidebar (QA, in the real window and headless).
+    /// Once the rows are rebuilt the keyboard goes back to the row's new
+    /// container, the way a person expects it never left. Only when the
+    /// keyboard is on nothing or still in this listing: a press that went
+    /// somewhere else meanwhile is not undone.
+    /// </summary>
+    private async void KeepTheKeyboardOnTheRow(ViewModels.PaneViewModel pane, Task? toggling)
+    {
+        if (toggling is null || pane.SelectedEntry is not { } row || ActiveListing() is not { } list) return;
+
+        try
+        {
+            await toggling;
+        }
+        catch (Exception)
+        {
+            // The toggle reports its own failures; the keyboard is all that is
+            // decided here.
+        }
+
+        // After the rebuild has been laid out: the container is made then.
+        await Dispatcher.UIThread.InvokeAsync(() => { }, DispatcherPriority.Loaded);
+
+        var focused = FocusManager?.GetFocusedElement();
+
+        if (focused is not null && !ReferenceEquals(focused, list)
+            && !(focused is Avalonia.Visual visual && Avalonia.VisualTree.VisualExtensions.IsVisualAncestorOf(list, visual)))
+            return;
+
+        var now = pane.DetailsEntries.FirstOrDefault(e => e.FullPath == row.FullPath);
+
+        if (now.FullPath is null) return;
+
+        if (list.ContainerFromItem(now) is not { } container)
+        {
+            list.ScrollIntoView(now);
+            list.UpdateLayout();
+            container = list.ContainerFromItem(now);
+        }
+
+        container?.Focus(NavigationMethod.Directional);
     }
 
     /// <summary>

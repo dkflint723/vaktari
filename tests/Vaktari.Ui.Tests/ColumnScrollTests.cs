@@ -693,4 +693,46 @@ public sealed class ColumnScrollTests : ColumnWindow
         Assert.True(pane.ColumnsOverflow);
         Assert.True(Worst(window, pane) < 0.6);
     }
+
+    /// <summary>
+    /// **Type-ahead counts the indent of a nested row**: the start of a name
+    /// inside an opened folder is further right by its indent, so a view
+    /// scrolled past the first column but not past that start already shows
+    /// the name, and is left where it is.
+    /// </summary>
+    [AvaloniaFact]
+    public async Task Type_ahead_counts_the_indent_of_a_nested_name()
+    {
+        Fill(10);
+        File.WriteAllText(Path.Combine(Root, "folder0", "nested-target.txt"), "n");
+
+        var (window, _, pane) = await Open();
+
+        Overflow(window, pane);
+
+        await pane.ToggleExpandAsync(pane.DetailsEntries.Single(e => e.Name == "folder0"));
+        Settle(window);
+
+        var nested = pane.DetailsEntries.Single(e => e.Name == "nested-target.txt");
+        var indent = pane.Indents[nested.FullPath];
+        var heading = Heading(window, pane);
+        var firstColumn = heading.Margin.Left + heading.ColumnDefinitions[0].ActualWidth;
+
+        Assert.True(indent > 4, "the row is not indented, so this measures nothing");
+
+        List(window, pane).ContainerFromItem(pane.DetailsEntries.First())!.Focus();
+        Settle(window);
+
+        var rows = Rows(window, pane);
+        var between = Math.Round(firstColumn + indent / 2);
+
+        rows.Offset = new Vector(between, 0);
+        window.UpdateLayout();
+
+        window.KeyTextInput("nested-t");
+        Settle(window);
+
+        Assert.Equal("nested-target.txt", pane.SelectedEntry?.Name);
+        Assert.Equal(between, rows.Offset.X);
+    }
 }

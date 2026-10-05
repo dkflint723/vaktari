@@ -4,6 +4,8 @@ using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Controls.Primitives;
 using Avalonia.Data.Converters;
+using Avalonia.Input;
+using Avalonia.Interactivity;
 using Avalonia.Layout;
 using Avalonia.Media;
 using Avalonia.VisualTree;
@@ -107,27 +109,26 @@ public static class ColumnScroll
     }
 
     /// <summary>
-    /// **A row brought into view keeps the horizontal offset.** A row is as
-    /// wide as the columns, wider than the pane once they scroll, and the
-    /// scroller brings a rectangle wider than itself into view by lining up
-    /// its left edge — so arrowing down past the bottom, a selection made from
-    /// code and type-ahead all threw the view back to the left (measured: 300
-    /// to 0). The request's rectangle is narrowed here to the part already on
-    /// screen, so only the vertical half acts.
+    /// **A row brought into view keeps the horizontal offset**: the request's
+    /// rectangle is narrowed here to the part already on screen, so only its
+    /// vertical half acts. On the items panel, because at the ListBox the
+    /// scroller has already acted; and only for a request whose target is a
+    /// row, because the rename box raises its own and that one must bring the
+    /// box into view sideways (held by the F2 test).
     ///
-    /// **On the items panel, not the ListBox**: rewritten at the ListBox it is
-    /// too late, the scroller has already acted. And only for a request whose
-    /// target is a row: the rename box raises its own, and that one must bring
-    /// the box into view sideways.
-    ///
-    /// **No mutation reddens the rewrite yet, and one was looked for.** With
-    /// the rows' panel as wide as the columns, removing it left X where it was
-    /// through twenty-five Downs past the bottom, a selection of the last row
-    /// made from code, ScrollIntoView and Home (measured in the headless
-    /// window). The adversarial review measured the snap to 0 with a
-    /// fixed-width panel, where this handler kept X in all three of its cases;
-    /// it stays on that measurement, and on QA's real window, until a case is
-    /// found here. Its other half — rows only — is held by the F2 test.
+    /// **Avalonia 12.1.2 no longer snaps, and this is kept as insurance.**
+    /// Planning measured arrowing past the bottom, a selection from code and
+    /// type-ahead throwing X from 300 to 0, and the adversarial review measured
+    /// this handler keeping it. In the shipped layout, with 12.1.2, nothing here
+    /// snaps without it: the implementer's mutation left X where it was through
+    /// Down past the bottom, a selection of the last row, ScrollIntoView and
+    /// Home, and QA's — Page Down, End, Ctrl+End, an arriving file, and a
+    /// FILLING name in a pane that overflows — kept X too. It stays because a
+    /// scroller that lines up the left edge of a rectangle wider than itself is
+    /// what Avalonia did before and may do again, and the cost of it doing so
+    /// unguarded is the view jumping back to the left on every arrow key. No
+    /// test can show it is needed today; the tests above would show it if the
+    /// snap came back with this handler gone.
     /// </summary>
     private static void OnBringIntoView(object? sender, RequestBringIntoViewEventArgs e)
     {
@@ -202,6 +203,7 @@ public static class ColumnScroll
 
             _heading.PropertyChanged += OnHeadingChanged;
             _heading.DataContextChanged += OnContext;
+            _heading.AddHandler(InputElement.PointerPressedEvent, OnHeadingPressed, RoutingStrategies.Tunnel);
             _list.TemplateApplied += OnTemplate;
 
 
@@ -213,6 +215,7 @@ public static class ColumnScroll
         {
             _heading.PropertyChanged -= OnHeadingChanged;
             _heading.DataContextChanged -= OnContext;
+            _heading.RemoveHandler(InputElement.PointerPressedEvent, OnHeadingPressed);
             _list.TemplateApplied -= OnTemplate;
 
             UseRows(null);
@@ -235,6 +238,53 @@ public static class ColumnScroll
 
             rows.PropertyChanged += OnRowsChanged;
             FromRows();
+        }
+
+        /// <summary>Where and when a grip was last pressed, and whose it is.</summary>
+        private (ulong Time, Point At, string Column)? _gripPress;
+
+        /// <summary>
+        /// **A press on a heading that makes a double-click with the grip's last
+        /// press is the grip's.** The first press of a double-click on a grip
+        /// starts a drag, so a wobble of a few pixels moves the edge — and the
+        /// grip with it. The second press, where the first one was, then lands
+        /// on the heading the grip half covers, and sorted by it: a double-click
+        /// on Name's edge left the listing sorted by Size (seen in the real
+        /// window; reproduced headless with a four-pixel wobble either way).
+        /// Within the platform's double-click time and distance of a grip press,
+        /// a heading press is taken here, on the tunnel, before the button, and
+        /// fits the grip's column as the double-click meant.
+        /// </summary>
+        private void OnHeadingPressed(object? sender, PointerPressedEventArgs e)
+        {
+            if (_pane is not { } pane || TopLevel.GetTopLevel(_heading) is not { } top) return;
+            if (!e.GetCurrentPoint(top).Properties.IsLeftButtonPressed) return;
+
+            var at = e.GetPosition(top);
+            var source = e.Source as Visual;
+            var grip = source as Thumb ?? source?.FindAncestorOfType<Thumb>();
+
+            if (grip is { Tag: string column } && grip.Classes.Contains("columnGrip"))
+            {
+                _gripPress = (e.Timestamp, at, column);
+                return;
+            }
+
+            if (_gripPress is not { } last) return;
+
+            _gripPress = null;
+
+            if (source is not Button && source?.FindAncestorOfType<Button>() is null) return;
+
+            var settings = Application.Current?.PlatformSettings;
+            var time = settings?.GetDoubleTapTime(e.Pointer.Type) ?? TimeSpan.FromMilliseconds(500);
+            var size = settings?.GetDoubleTapSize(e.Pointer.Type) ?? new Size(4, 4);
+
+            if (e.Timestamp - last.Time > (ulong)time.TotalMilliseconds) return;
+            if (Math.Abs(at.X - last.At.X) > size.Width / 2 || Math.Abs(at.Y - last.At.Y) > size.Height / 2) return;
+
+            e.Handled = true;
+            pane.FitColumn(Enum.Parse<DetailsColumn>(last.Column));
         }
 
         private void OnContext(object? sender, EventArgs e) => UsePane(_heading.DataContext as PaneViewModel);
@@ -324,6 +374,16 @@ public static class ColumnScroll
             // top there already. A refresh, a sort or a folder opened in place
             // is the same folder, and keeps its place: a watcher must never
             // jerk the view sideways under somebody reading a column.
+            // **A width chosen while a fit is finishing ends the fit**: a Reset,
+            // a drag, a zoom's rewrite — anything but the fit's own change. Its
+            // background finish would otherwise widen columns the person has
+            // just put back (QA: Reset, then the finish undid it).
+            if (e.PropertyName == nameof(PaneViewModel.ColumnWidths) && !ColumnFitter.Writing)
+            {
+                StopFitting();
+                return;
+            }
+
             if (e.PropertyName != nameof(PaneViewModel.CurrentPath)) return;
 
             StopFitting();

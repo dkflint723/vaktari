@@ -34,20 +34,22 @@ public static class RenameBox
 
     static RenameBox()
     {
-        // **→ at the end of the name ended the rename.** The box moves its
-        // caret with the arrows and claims the key — except where there is
-        // nowhere to move, at either end, where it leaves the key unhandled.
-        // The press then reached the ListBox the row sits in, which took the
-        // keyboard back to the row; the box lost focus, and losing focus
-        // commits. In Explorer the key does nothing there, and the name is
-        // still being typed. A class handler runs after the box's own, so this
-        // only ever sees a press the box did not use. Alt is left alone: it is
-        // Back and Forward, which a rename gives way to.
+        // **→ at the end of the name ended the rename, and so did ↑ and ↓
+        // anywhere in it.** The box moves its caret with ← and → and claims
+        // the key — except where there is nowhere to move, at either end, where
+        // it leaves the key unhandled; and a one-line box never uses ↑ or ↓.
+        // The press then reached the ListBox the row sits in, which moved the
+        // keyboard to a row; the box lost focus, and losing focus cancels the
+        // rename, throwing the name being typed away. In Explorer those keys do
+        // nothing there. A class handler runs after the box's own, so this only
+        // ever sees a press the box did not use. Alt is left alone: it is Back,
+        // Forward and Up, which a rename gives way to. Every layout's rename
+        // box is one of these, so the grid and compact keep the name too.
         InputElement.KeyDownEvent.AddClassHandler<TextBox>((box, e) =>
         {
             if (e.Handled || !GetEditing(box)) return;
 
-            if (e.Key is Key.Left or Key.Right
+            if (e.Key is Key.Left or Key.Right or Key.Up or Key.Down
                 && (e.KeyModifiers & KeyModifiers.Alt) == 0)
                 e.Handled = true;
         });

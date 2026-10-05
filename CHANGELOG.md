@@ -43,9 +43,11 @@ should not be trusted for compatibility yet.
     fitted to the widest answer it can get.
   - In a folder of more than a thousand rows, the column is fitted to the
     rows on screen at once and widens a moment later if a row further down
-    is wider.
+    is wider — unless a column width has been changed in the meantime, by a
+    drag, *Reset column widths* or another fit, which then stands.
   - The fitted width is kept like a dragged one, and *Reset column widths*
-    undoes it. A double-click never sorts and never starts a drag.
+    undoes it. A double-click never sorts and never starts a drag, even
+    when the first click moved the edge a few pixels.
 - ***Size all columns to fit*** fits every column shown in one step. It is on
   the headings' right-click menu, under *Columns* in the listing menu, and in
   the command palette, and is greyed out outside the List layout.
@@ -112,11 +114,14 @@ should not be trusted for compatibility yet.
   - Pressed in the rename box, the path bar, the filter, the search box or the
     bar at the bottom of the window, they move the text cursor and open
     nothing.
+  - The keyboard stays on the folder's row, so `←` straight after `→` shuts
+    the folder again.
   - `→` on a column heading no longer opens the folder selected below it.
   - In the grid layouts they still move the selection sideways.
-- **`→` at the end of a name being renamed no longer ends the rename,** and
-  neither does `←` at its start. Before, the press went on to the listing,
-  which took the keyboard back to the row and threw away the name being typed.
+- **The arrow keys no longer end a rename.** `→` at the end of the name, `←`
+  at its start, and `↑` or `↓` anywhere in it went on to the listing, which
+  took the keyboard back to a row and threw away the name being typed. They
+  now stay in the box, in every layout.
 
 ## [0.11.3] — 2026-10-03
 

@@ -175,6 +175,10 @@ internal static class ColumnFitter
         Choose(pane, heading, headingScroller, jobs, scale, widenOnly: false);
         heading.InvalidateMeasure();
 
+        // What this fit chose, so its finish can tell whether anything has
+        // been chosen since.
+        var wrote = pane.ColumnWidths;
+
         if (everything && jobs.All(j => j.Search.Done))
         {
             LastBackground = null;
@@ -196,7 +200,11 @@ internal static class ColumnFitter
 
             Dispatcher.UIThread.Post(() =>
             {
-                if (token.IsCancellationRequested) return;
+                // **Nothing chosen since is undone.** A Reset or a drag made
+                // while this ran is the person's later word; the pair also
+                // cancels the fit on any change it did not make, and this
+                // catches the one that lands between the task's end and here.
+                if (token.IsCancellationRequested || !Equals(pane.ColumnWidths, wrote)) return;
 
                 Choose(pane, heading, headingScroller, done.Result, scale, widenOnly: true);
                 LastExact = done.Result.Sum(j => j.Search.Exact);
@@ -258,8 +266,20 @@ internal static class ColumnFitter
             : 0;
         var visibleRow = Math.Max(0, headingScroller.Viewport.Width - RowMargins) / scale;
 
-        pane.ChooseColumnWidths(widths, drawnName, visibleRow);
+        Writing = true;
+        try
+        {
+            pane.ChooseColumnWidths(widths, drawnName, visibleRow);
+        }
+        finally
+        {
+            Writing = false;
+        }
     }
+
+    /// <summary>True while a fit is handing its widths to the tab, so the pair
+    /// can tell the fit's own change from anybody else's.</summary>
+    internal static bool Writing { get; private set; }
 
     // ---- what each column holds -----------------------------------------------
 
@@ -362,14 +382,17 @@ internal static class ColumnFitter
 
     /// <summary>
     /// The widest answers a folder still waiting for its size can get: the
-    /// most each platform's count says, or a total just short of each unit.
+    /// most this platform's count says, or a total just short of each unit.
     /// </summary>
     internal static IEnumerable<string> SizeAnswers(FolderSizeMode folders)
     {
+        // **This platform's count only**: Windows caps at "9999+ items" and
+        // Linux at "10,000+ items", and the provider that will answer is the
+        // one this build runs on — fitting to the other would leave Windows a
+        // column two characters too wide for anything it can show.
         if (folders == FolderSizeMode.ItemCount)
         {
-            yield return "9999+ items";
-            yield return "10,000+ items";
+            yield return OperatingSystem.IsWindows() ? "9999+ items" : "10,000+ items";
             yield break;
         }
 

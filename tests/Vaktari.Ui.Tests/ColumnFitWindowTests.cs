@@ -504,8 +504,14 @@ public sealed class ColumnFitWindowTests : ColumnWindow
 
         DoubleClick(window, pane, DetailsColumn.Size);
 
-        var widest = ColumnFitter.SizeAnswers(FolderSizeMode.ItemCount).Max(s => Measure(s, face, size));
+        // This platform's own cap, spelled here rather than read back from the
+        // code under test: each provider writes its own.
+        var answer = OperatingSystem.IsWindows() ? "9999+ items" : "10,000+ items";
+        var widest = Measure(answer, face, size);
+        var drawn = Math.Round(PaneScale.ColumnWidth(pane.ColumnWidths, DetailsColumn.Size) * pane.TextScale, 1);
 
+        Assert.True(drawn <= widest + ColumnFit.Padding * pane.TextScale + 0.2,
+                    $"fitted to {drawn}, wider than this platform's widest answer '{answer}' ({widest}) needs");
         Assert.True(PaneScale.ColumnWidth(pane.ColumnWidths, DetailsColumn.Size) * pane.TextScale
                     >= widest + ColumnFit.Padding * pane.TextScale - 0.06,
                     $"fitted {PaneScale.ColumnWidth(pane.ColumnWidths, DetailsColumn.Size)} for an answer {widest} wide; cell now '{Cell(RowGrids(window, pane).First(r => r.Entry.Name == "waiting").Grid, DetailsColumn.Size).Text}'");
@@ -633,5 +639,95 @@ public sealed class ColumnFitWindowTests : ColumnWindow
         DoubleClick(window, pane, DetailsColumn.Name);
 
         Assert.Equal(expected, pane.ColumnWidths.Name, 0.05);
+    }
+
+    /// <summary>
+    /// **A double-click whose first click wobbled is still a fit, and never a
+    /// sort.** The first press of a double-click on a grip starts a drag, so a
+    /// wobble of a few pixels moves the edge; the second press, at the same
+    /// place on screen, then lands beyond the moved grip — on the heading the
+    /// grip half covers — and pressed and released there, it sorted by that
+    /// column (seen once in the real window: a double-click on Name's edge
+    /// left the listing sorted by Size). A press on a heading that would make
+    /// a double-click with the grip's last press is the grip's.
+    /// </summary>
+    [AvaloniaTheory]
+    [InlineData(-4)]
+    [InlineData(4)]
+    public async Task A_double_click_whose_first_click_wobbled_fits_and_never_sorts(double wobble)
+    {
+        Fill(12);
+        File.WriteAllText(Path.Combine(Root, "the-longest-name-" + new string('q', 80) + ".txt"), "l");
+
+        var (window, _, pane) = await Open();
+
+        // Type hidden, so Size's heading starts right at Name's edge, under
+        // the right half of Name's grip.
+        pane.ShowTypeColumn = false;
+        pane.ColumnWidths = pane.ColumnWidths with { Name = 380, Span = VisibleRow(window, pane) };
+        Settle(window);
+
+        var sort = (pane.Sort, pane.SortDescending);
+        var heading = Heading(window, pane);
+        var y = heading.TranslatePoint(new Point(0, heading.Bounds.Height / 2), window)!.Value.Y;
+        var at = new Point(Edges(heading, window)[Cell(DetailsColumn.Name)] + 3 * Math.Sign(-wobble), y);
+
+        window.MouseMove(at);
+        window.MouseDown(at, MouseButton.Left);
+        Pump();
+        window.MouseMove(at + new Point(wobble, 0));
+        Pump();
+        window.UpdateLayout();
+        window.MouseUp(at + new Point(wobble, 0), MouseButton.Left);
+        Settle(window);
+
+        // The second press where the first one was.
+        window.MouseMove(at);
+        window.MouseDown(at, MouseButton.Left);
+        Pump();
+        window.MouseUp(at, MouseButton.Left);
+        Settle(window);
+
+        Assert.Equal(sort, (pane.Sort, pane.SortDescending));
+        Assert.True(pane.ColumnWidths.Name > 400, $"the name was not fitted: {pane.ColumnWidths.Name}");
+        Assert.False(pane.IsResizingColumns);
+    }
+
+    /// <summary>
+    /// **The background finish never narrows a column.** The rows on screen
+    /// are fitted at once and the rest later, and the later answer is only
+    /// ever applied where it is wider: here the widest name is on screen, so
+    /// the finish has nothing to add and must leave every column as the UI
+    /// thread set it.
+    /// </summary>
+    [AvaloniaFact]
+    public async Task The_background_finish_never_narrows_a_column()
+    {
+        Fill(60);
+        File.WriteAllText(Path.Combine(Root, "aaa-on-screen-" + new string('W', 70) + ".txt"), "w");
+
+        var (window, _, pane) = await Open();
+
+        ColumnFitter.SyncRows = 5;
+
+        pane.SizeAllColumnsToFitCommand.Execute(null);
+
+        var first = pane.ColumnWidths;
+        var background = ColumnFitter.LastBackground;
+
+        Assert.NotNull(background);
+        Assert.True(first.Name > 500, "the widest name was not on screen, so the finish would widen it");
+
+        await background!;
+
+        for (var i = 0; i < 20; i++)
+        {
+            Pump();
+            await Task.Delay(5);
+        }
+
+        foreach (var column in Enum.GetValues<DetailsColumn>())
+            Assert.True(PaneScale.ColumnWidth(pane.ColumnWidths, column) >= PaneScale.ColumnWidth(first, column),
+                        $"{column} narrowed from {PaneScale.ColumnWidth(first, column)} to {PaneScale.ColumnWidth(pane.ColumnWidths, column)}");
     }
 }
