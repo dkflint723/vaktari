@@ -315,6 +315,72 @@ public sealed class ThemeWatcherTests : IDisposable
         }
     }
 
+    /// <summary>
+    /// **A stop that arrives during a raise waits for it, then closes** (QA,
+    /// review M2). A settings save that stops following a key can land while
+    /// that key's change is being told to every window. The key handle and
+    /// the event must outlive the callback using them: the stop is Stopping
+    /// at once, but it is not Ended — the handle not closed — until the raise
+    /// in flight has returned, and nothing is raised after.
+    /// </summary>
+    [WindowsFact]
+    public async Task A_stop_during_a_raise_waits_for_it_and_then_closes()
+    {
+        var subKey = NewKey();
+        using var entered = new SemaphoreSlim(0);
+        using var release = new ManualResetEventSlim(false);
+        var raises = 0;
+
+        EventHandler handler = (_, _) =>
+        {
+            Interlocked.Increment(ref raises);
+            entered.Release();
+            release.Wait(Ceiling);
+        };
+
+        var provider = new WindowsThemeProvider();
+        provider.Changed += handler;
+        KeyWatch? watcher = null;
+
+        try
+        {
+            watcher = WindowsThemeProvider.Watch(subKey);
+            Assert.NotNull(watcher);
+
+            Assert.True(await WriteUntilHeard(subKey, entered, "held"), "the watch never heard the key");
+
+            // A raise is in flight, held in the handler. Stop now.
+            var stopping = watcher.Stop();
+            var atStop = Volatile.Read(ref raises);
+
+            // A change made while the stop drains is not followed any more:
+            // its callback finds the watch stopping and neither re-arms nor
+            // raises.
+            Write(subKey, "while stopping");
+
+            await Task.Delay(400);
+            Assert.False(stopping.IsCompleted, "the watch was closed while its raise was still running");
+            Assert.Equal(atStop, Volatile.Read(ref raises));
+
+            release.Set();
+            await stopping.WaitAsync(Ceiling);
+
+            while (await entered.WaitAsync(TimeSpan.FromMilliseconds(200))) { }
+            var before = Volatile.Read(ref raises);
+
+            Write(subKey, "after");
+
+            Assert.False(await entered.WaitAsync(TimeSpan.FromMilliseconds(500)), "a stopped watch still raised");
+            Assert.Equal(before, Volatile.Read(ref raises));
+        }
+        finally
+        {
+            release.Set();
+            provider.Changed -= handler;
+            await Forget(subKey, watcher);
+        }
+    }
+
     private static string NewKey()
     {
         var subKey = @"Software\Vaktari-tests\theme-" + Guid.NewGuid().ToString("N");

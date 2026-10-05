@@ -15,10 +15,12 @@ namespace Vaktari.Windows.Tests;
 /// (ERROR_MESSAGE_SYNC_ONLY, measured). DBT_DEVNODES_CHANGED carries none and
 /// is broadcast the same way, so posting it to the window's own handle drives
 /// the same window procedure a broadcast does. That the broadcast reaches a
-/// hidden top-level window is Windows' documented behaviour, checked by hand
-/// with a stick (see the release notes).
+/// hidden top-level window is Windows' documented behaviour, and NOT yet
+/// measured here: it is a hand check with a real stick, owed before release
+/// (QA, qa/streamline — no commit or note records one having been done).
 /// </summary>
 [SupportedOSPlatform("windows")]
+[Collection(DeviceNotificationsCollection.Name)]
 public sealed class DeviceNotificationsTests
 {
     private const nint DBT_DEVNODES_CHANGED = 0x0007;
@@ -81,7 +83,8 @@ public sealed class DeviceNotificationsTests
         {
             Assert.All(subscriptions, Assert.NotNull);
             Assert.Equal(made, DeviceNotifications.WindowsMade);
-            Assert.True(Threads() - threads < 10, $"twenty subscribers grew {Threads() - threads} threads");
+            var grown = Threads() - threads;
+            Assert.True(grown < 10, $"twenty subscribers grew {grown} threads");
         }
         finally
         {
@@ -110,4 +113,19 @@ public sealed class DeviceNotificationsTests
             Directory.Delete(state, recursive: true);
         }
     }
+}
+
+/// <summary>
+/// **Counts the process's threads, so it runs alone** (QA, qa/streamline).
+/// Beside the other classes, a pool that grew for someone else's blocked
+/// work — ThemeWatcherTests holds a pool thread in a raise on purpose — was
+/// charged to twenty subscribers: "grew 5 threads" in the message, ten or
+/// more at the assert, one full run in seven. The window count beside it is
+/// the exact check; the thread count is the leak's own symptom, and only
+/// means something with nothing else running.
+/// </summary>
+[CollectionDefinition(Name, DisableParallelization = true)]
+public sealed class DeviceNotificationsCollection
+{
+    public const string Name = "DeviceNotifications";
 }

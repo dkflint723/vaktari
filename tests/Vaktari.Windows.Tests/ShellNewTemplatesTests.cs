@@ -169,6 +169,43 @@ public sealed class ShellNewTemplatesTests : IDisposable
     }
 
     /// <summary>
+    /// **Warm returns before the walk does** (QA). The application calls it
+    /// from the UI thread, posted at Background priority; a Warm that walked
+    /// where it was called would only have moved the 0.2 s from the
+    /// constructor to the first idle moment after it. Nothing else can see
+    /// this: every other test sets the override, and Warm does nothing then.
+    /// Measured against the walk's own length rather than a fixed number, so
+    /// a slow machine does not decide it.
+    /// </summary>
+    [WindowsFact]
+    public void Warming_does_not_walk_on_the_calling_thread()
+    {
+        WindowsTemplates.Override = null;
+        WindowsTemplates.Forget();
+
+        try
+        {
+            var clock = System.Diagnostics.Stopwatch.StartNew();
+
+            new WindowsTemplates().Warm();
+            var warming = clock.Elapsed;
+
+            // Waits for the warmed walk to land.
+            new WindowsTemplates().Discover();
+            var whole = clock.Elapsed;
+
+            Assert.Equal(1, WindowsTemplates.Walks);
+            Assert.True(warming < whole / 4,
+                $"Warm took {warming.TotalMilliseconds:F1} ms of a {whole.TotalMilliseconds:F1} ms walk — it walked on the calling thread");
+        }
+        finally
+        {
+            WindowsTemplates.Override = null;
+            WindowsTemplates.Forget();
+        }
+    }
+
+    /// <summary>
     /// The walk itself, against keys this test writes under
     /// <c>HKCU\Software\Classes</c> — which HKEY_CLASSES_ROOT merges, so the
     /// walk sees them exactly as it sees an installer's. The same trick
