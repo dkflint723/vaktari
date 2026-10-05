@@ -7,20 +7,21 @@ namespace Vaktari.Core.FileSystem;
 /// **A decoder reading a large solid block has no cancellation of its own.**
 /// SharpCompress's readers take no token, so the only place a Cancel can reach
 /// them is the stream they pull bytes from, and it has to be checked on EVERY
-/// read — a 16 MiB solid 7z is one entry stream with nothing between its
-/// buffers for the caller to check. Measured (E-7): the exception thrown here
-/// comes out of the PPMd, BCJ2 and solid RAR decoders unchanged, and out of
-/// LZMA and LZMA2 as <c>DataErrorException: Data Error</c> — the decoder
-/// catches it and reports corruption. That is why the reader asks the token,
-/// not the exception type, whether a failure was a cancellation.
+/// read — one large zip member is one entry stream with nothing between its
+/// buffers for the caller to check. Measured (E-7, on 7z when Vaktari read
+/// it): the exception thrown here came out of PPMd unchanged, and out of LZMA
+/// and LZMA2 as <c>DataErrorException: Data Error</c> — the decoder catches it
+/// and reports corruption. Zip members use the same LZMA and PPMd decoders,
+/// which is why the reader still asks the token, not the exception type,
+/// whether a failure was a cancellation.
 ///
 /// **Reads are filled, and the position is the truth**, the two contracts
 /// <see cref="IconThemeArchive.ConcatStream"/> learned the xz decoder relies
 /// on: it misreads short reads as a corrupt block, and it works out block
 /// padding from <see cref="Position"/>.
 ///
-/// **Seeking passes through**, because zip, 7z and RAR are read by random
-/// access and seek by the offsets their directories give.
+/// **Seeking passes through**, because a zip is read by random access and
+/// seeks by the offsets its directory gives.
 /// </summary>
 internal sealed class CancellableCountingStream(Stream inner, CancellationToken token, bool fillReads) : Stream
 {

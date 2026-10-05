@@ -5,12 +5,10 @@ namespace Vaktari.Core.FileSystem;
 /// asking for the password is a later stage.
 ///
 /// **Never a hang and never a stack trace.** Without a password the formats
-/// fail in five different ways (measured, E-3r and refutations 2): a
-/// header-encrypted 7z or RAR throws <c>CryptographicException</c> at the
-/// first touch of its entries, a file-encrypted RAR4 reads as "unpacked file
-/// size does not match header", a RAR5 as "The password did not match", and a
-/// 7z as "no password specified". So the refusal is decided up front, from
-/// the flags every format does expose before any byte is decoded.
+/// failed in five different ways (measured, E-3r and refutations 2, when 7z
+/// and RAR were read too). So the refusal is decided up front, from the flag
+/// a zip entry exposes before any byte is decoded, and a
+/// <c>CryptographicException</c> on the way is mapped to it as well.
 /// </summary>
 public sealed class ArchivePasswordRequiredException(string message, Exception? inner = null)
     : IOException(message, inner);
@@ -50,6 +48,16 @@ internal static class ArchiveSentences
 {
     internal static string NotThisFormat(string leaf, ArchiveFormat format)
         => $"{leaf} is not a {ArchiveFormats.Word(format)} file, or is damaged";
+
+    /// <summary>
+    /// A format Vaktari recognises by its bytes and does not extract — a 7z,
+    /// a RAR, an xz, bzip2, zstd or lzip stream — however the file is named.
+    /// A refusal, not damage: the file is very likely intact, and what to do
+    /// is open it elsewhere.
+    /// </summary>
+    internal static string NotSupported(string leaf, string word)
+        => $"{leaf} is {(word is "xz" or "lzip" ? "an" : "a")} {word} archive. "
+           + "Vaktari extracts zip and tar.gz archives only — open this one with another app";
 
     internal static string DamagedAfter(string leaf, int entries)
         => entries == 0

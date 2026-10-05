@@ -143,9 +143,9 @@ public sealed class ExtractAllTests : OwnedViewModels
     [AvaloniaFact]
     public async Task A_damaged_archive_fails_the_operation_in_words()
     {
-        var archive = At("broken.7z");
+        var archive = At("broken.zip");
 
-        File.WriteAllText(archive, "not a 7z at all");
+        File.WriteAllText(archive, "not a zip at all");
 
         var pane = Pane();
         IOperationHandle? handle = null;
@@ -156,7 +156,7 @@ public sealed class ExtractAllTests : OwnedViewModels
         await pane.ExtractSelectionAsync();
 
         Assert.Equal(OperationState.Failed, handle!.State);
-        Assert.Equal("broken.7z is not a 7z file, or is damaged", pane.Status);
+        Assert.Equal("broken.zip is not a zip file, or is damaged", pane.Status);
     }
 
     [AvaloniaFact]

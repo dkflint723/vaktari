@@ -11,9 +11,9 @@ namespace Vaktari.Core.FileSystem;
 /// send it.
 ///
 /// **Extract reads every format <see cref="ArchiveFormats"/> names** — zip,
-/// 7z, RAR and tar however it is compressed, and a bare .gz, .bz2, .xz, .zst
-/// or .lz. RAR is read under the unRAR licence's terms, which are reproduced
-/// in THIRD-PARTY-NOTICES.txt.
+/// tar, tar.gz and a bare .gz — and refuses in words the formats it
+/// recognises and leaves to the system's own tools (7z, RAR, tar compressed
+/// with anything but gzip).
 ///
 /// **Containment is by construction.** Every segment of every landing path
 /// has come through <see cref="ArchiveNames.Land"/>, which leaves no

@@ -67,9 +67,10 @@ rest, audited at commit c083c6efd843a844b0c8f7878787360e815be781
 ==============================================================================
 
 SharpCompress is MIT (above), but some of the code it carries came from
-elsewhere under other terms, and Vaktari ships all of it: Extract all reads
-RAR, 7z, zip, tar, gzip, bzip2, xz, zstd and lzip through it. Each part is
-named below with the files it covers, as paths inside the SharpCompress
+elsewhere under other terms, and Vaktari ships the library whole: Extract all
+reads zip through it (members compressed with deflate, Deflate64, bzip2,
+LZMA, PPMd, xz or zstd), and the icon-theme installer reads xz with it. Each
+part is named below with the files it covers, as paths inside the SharpCompress
 repository at the commit above, which is the source of the 0.50.4 package.
 The audit read every file under src/ for a licence or copyright line.
 
@@ -98,7 +99,10 @@ licence asks for its own full text to be included, so here it is, in full:
     included in license, or in documentation if license is not available, and
     in source code comments of resulting package.
 
-Vaktari only extracts RAR archives; it cannot create them.
+Vaktari neither extracts nor creates RAR archives. This code is part of the
+SharpCompress library Vaktari ships, and whether a published binary still
+contains it after trimming has not been measured; until it has, the notice
+and the licence declaration below stay.
 
 Because of this paragraph the packages declare their licence as
 "MIT AND LicenseRef-unRAR" rather than MIT alone. The unRAR licence is not a

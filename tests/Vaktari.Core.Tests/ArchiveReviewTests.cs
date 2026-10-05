@@ -385,9 +385,6 @@ public sealed class ArchiveReviewTests : IDisposable
     /// </summary>
     [Theory]
     [InlineData(ArchiveFormat.Gz, "zeros.gz")]
-    [InlineData(ArchiveFormat.Zst, "zeros.zst")]
-    [InlineData(ArchiveFormat.Lz, "zeros.lz")]
-    [InlineData(ArchiveFormat.Bz2, "zeros.bz2")]
     public void A_bare_stream_of_any_compressor_stops_with_most_of_the_reserve_left(ArchiveFormat format, string name)
     {
         var archive = ArchiveTestData.Bare(At(name), format, new byte[40 * MiB]);
@@ -597,75 +594,6 @@ public sealed class ArchiveReviewTests : IDisposable
         Assert.Equal(2, done.Files);
         Assert.Equal("from before", File.ReadAllText(Path.Combine(done.Landed, "ancient.txt")));
         Assert.True(File.GetLastWriteTimeUtc(Path.Combine(done.Landed, "ancient.txt")).Year >= 1601);
-    }
-
-    // ---- 4. concatenated streams -------------------------------------------
-
-    [Fact]
-    public void Every_stream_of_a_concatenated_xz_arrives()
-    {
-        var done = Extract(ArchiveTestData.Fixture("concat.txt.xz"), Dir("out"));
-
-        var text = File.ReadAllText(done.Landed);
-
-        Assert.StartsWith("first stream line 0001", text);
-        Assert.EndsWith("second stream line 0300\n", text);
-    }
-
-    /// <summary>Null padding between streams, in fours, is part of the
-    /// format; the oracle's own decoder stops at it, so it is pinned here.</summary>
-    [Fact]
-    public void Padding_between_xz_streams_is_skipped()
-    {
-        var one = File.ReadAllBytes(ArchiveTestData.Fixture("bare.txt.xz"));
-
-        File.WriteAllBytes(At("twice.txt.xz"), [.. one, 0, 0, 0, 0, .. one]);
-
-        var done = Extract(At("twice.txt.xz"), Dir("out"));
-
-        Assert.Equal("Vaktari archive fixture\nVaktari archive fixture\n", File.ReadAllText(done.Landed));
-    }
-
-    /// <summary>
-    /// Bytes after the last stream that are not another one are trailing
-    /// data, not part of the archive. **This used to be refused as damage**;
-    /// the RC QA found the same rule refusing junk after a .tar.xz that had
-    /// always landed, and trailing bytes are now left alone for every
-    /// compressor, bare or tar (ArchiveTrailerTests).
-    /// </summary>
-    [Fact]
-    public void Bytes_after_an_xz_stream_that_are_not_another_are_left_alone()
-    {
-        var one = File.ReadAllBytes(ArchiveTestData.Fixture("bare.txt.xz"));
-
-        File.WriteAllBytes(At("junk.txt.xz"), [.. one, .. "not xz at all"u8.ToArray()]);
-
-        var done = Extract(At("junk.txt.xz"), Dir("out"));
-
-        Assert.Equal("Vaktari archive fixture\n", File.ReadAllText(done.Landed));
-    }
-
-    [Fact]
-    public void Every_member_of_a_multi_member_lzip_arrives()
-    {
-        var done = Extract(ArchiveTestData.Fixture("multi.txt.lz"), Dir("out"));
-
-        var text = File.ReadAllText(done.Landed);
-
-        Assert.Equal(16400, text.Length);
-        Assert.EndsWith("second member line 0300\n", text);
-    }
-
-    [Fact]
-    public void An_lzip_that_does_not_divide_into_members_is_damage()
-    {
-        var bytes = File.ReadAllBytes(ArchiveTestData.Fixture("multi.txt.lz"));
-
-        // The last member's recorded size no longer reaches back to a header.
-        BitConverter.GetBytes(40L).CopyTo(bytes, bytes.Length - 8);
-        File.WriteAllBytes(At("cut.txt.lz"), bytes);
-
-        Assert.Throws<ArchiveDamagedException>(() => Extract(At("cut.txt.lz"), Dir("out")));
     }
 
     // ---- 6 and 11. landing the result ---------------------------------------
@@ -933,7 +861,7 @@ public sealed class ArchiveReviewTests : IDisposable
         }
     }
 
-    // ---- 16 and 17. names, AE-2, a damaged 7z -------------------------------
+    // ---- 16 and 17. names and AE-2 -------------------------------------------
 
     [Fact]
     public void A_tar_name_that_lost_bytes_counts_as_renamed()
@@ -955,17 +883,5 @@ public sealed class ArchiveReviewTests : IDisposable
         using var pass = ArchiveReader.Open(path, CancellationToken.None);
 
         Assert.Equal(held, pass.Items().Single().Info.CrcIsOurs);
-    }
-
-    [Fact]
-    public void A_7z_with_a_damaged_byte_is_refused_and_leaves_nothing()
-    {
-        var bytes = File.ReadAllBytes(ArchiveTestData.Fixture("7z-ppmd.7z"));
-
-        bytes[200] ^= 0x55;
-        File.WriteAllBytes(At("hurt.7z"), bytes);
-
-        Assert.ThrowsAny<IOException>(() => Extract(At("hurt.7z"), Dir("out")));
-        Assert.Empty(Directory.EnumerateFileSystemEntries(At("out")));
     }
 }

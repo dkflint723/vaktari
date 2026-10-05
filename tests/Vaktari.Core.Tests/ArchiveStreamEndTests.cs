@@ -137,23 +137,9 @@ public sealed class ArchiveStreamEndTests : IDisposable
     /// never different bytes in silence. Before the fix, tree.tar.gz gave
     /// different bytes 55 times and sc-tar.tar.zst 52.
     /// </summary>
-    /// <remarks>
-    /// Not tree.tar.zst: its frame carries no checksum (the zstd flag is
-    /// optional, and SharpCompress's writer leaves it off), so there is
-    /// nothing in it to read, and a flip that decodes cannot be told from the
-    /// truth. The same holds for an xz written with no check.
-    /// </remarks>
     [Theory]
     [InlineData("tree.tar.gz")]
-    [InlineData("tree.tar.bz2")]
-    [InlineData("tree.tar.xz")]
-    [InlineData("tree.tar.lz")]
-    [InlineData("sc-tar.tar.zst")]
-    [InlineData("sc-tar.tar.lz")]
     [InlineData("bare.txt.gz")]
-    [InlineData("bare.txt.xz")]
-    [InlineData("multi.txt.lz")]
-    [InlineData("concat.txt.xz")]
     public void A_flipped_byte_is_never_extracted_as_different_bytes(string fixture)
     {
         var honest = File.ReadAllBytes(ArchiveTestData.Fixture(fixture));
@@ -197,19 +183,12 @@ public sealed class ArchiveStreamEndTests : IDisposable
     /// bytes that land would be right — but the check is the only thing that
     /// says so, and a check that fails is damage, whatever else decoded. Each
     /// case flips one byte of the stored check itself:
-    /// gzip's CRC-32 and its length (the last eight bytes); lzip's CRC-32
-    /// (twenty from the end); a checksummed zstd frame's (the last four); the
-    /// xz block check (just in front of the index); and bzip2's stream CRC
-    /// (the last byte holds at least one of its bits).
+    /// gzip's CRC-32 and its length (the last eight bytes). (The lzip, zstd,
+    /// xz and bzip2 cases went with those formats.)
     /// </summary>
     [Theory]
     [InlineData("tree.tar.gz", "gzip crc")]
     [InlineData("tree.tar.gz", "gzip length")]
-    [InlineData("tree.tar.lz", "lzip crc")]
-    [InlineData("sc-tar.tar.lz", "lzip crc")]
-    [InlineData("sc-tar.tar.zst", "zstd checksum")]
-    [InlineData("tree.tar.xz", "xz block check")]
-    [InlineData("tree.tar.bz2", "bzip2 stream crc")]
     public void A_compressed_tar_whose_trailer_check_fails_is_damaged(string fixture, string check)
     {
         var bytes = File.ReadAllBytes(ArchiveTestData.Fixture(fixture));
@@ -224,8 +203,6 @@ public sealed class ArchiveStreamEndTests : IDisposable
     [Theory]
     [InlineData(ArchiveFormat.TarGz, "x.tar.gz", "gzip crc")]
     [InlineData(ArchiveFormat.TarGz, "x.tar.gz", "gzip length")]
-    [InlineData(ArchiveFormat.TarLz, "x.tar.lz", "lzip crc")]
-    [InlineData(ArchiveFormat.TarBz2, "x.tar.bz2", "bzip2 stream crc")]
     public void A_tar_compressed_here_whose_trailer_check_fails_is_damaged(ArchiveFormat format, string name, string check)
     {
         var bytes = TarOfThree(format);
@@ -243,8 +220,6 @@ public sealed class ArchiveStreamEndTests : IDisposable
     [Theory]
     [InlineData("bare.txt.gz", "gzip crc")]
     [InlineData("bare.txt.gz", "gzip length")]
-    [InlineData("multi.txt.lz", "lzip crc")]
-    [InlineData("bare.txt.xz", "xz block check")]
     public void A_bare_stream_whose_trailer_check_fails_is_damaged(string fixture, string check)
     {
         var bytes = File.ReadAllBytes(ArchiveTestData.Fixture(fixture));
@@ -254,48 +229,11 @@ public sealed class ArchiveStreamEndTests : IDisposable
         AssertDamaged(fixture, bytes, "out");
     }
 
-    /// <summary>
-    /// A bare .bz2 and .zst compressed here, their checks damaged. The zstd
-    /// frame SharpCompress writes has no checksum, so its case damages the
-    /// bzip2 one only; see the sweep's remark.
-    /// </summary>
-    [Fact]
-    public void A_bare_bz2_whose_stream_crc_fails_is_damaged()
-    {
-        var data = System.Text.Encoding.UTF8.GetBytes(string.Concat(Enumerable.Range(0, 500).Select(i => $"line {i}\n")));
-        var bytes = File.ReadAllBytes(ArchiveTestData.Bare(At("src.bz2"), ArchiveFormat.Bz2, data));
-
-        bytes[TrailerCheck(bytes, "bzip2 stream crc")] ^= 0xFF;
-
-        AssertDamaged("x.txt.bz2", bytes, "out");
-    }
-
     /// <summary>Where the named check's byte is, in a single-stream file.</summary>
     private static int TrailerCheck(byte[] bytes, string check) => check switch
     {
         "gzip crc" => bytes.Length - 8,
         "gzip length" => bytes.Length - 1,
-        "lzip crc" => bytes.Length - 20,
-        "zstd checksum" => bytes.Length - 1,
-        "bzip2 stream crc" => bytes.Length - 1,
-        "xz block check" => XzBlockCheck(bytes),
         _ => throw new ArgumentOutOfRangeException(nameof(check)),
     };
-
-    /// <summary>
-    /// The last byte of the last block's check in an .xz of one stream: the
-    /// footer is the last twelve bytes, and its backward size names the
-    /// index in front of it, whose first byte follows the check directly.
-    /// </summary>
-    private static int XzBlockCheck(byte[] bytes)
-    {
-        Assert.True(bytes[^2] == (byte)'Y' && bytes[^1] == (byte)'Z', "not an xz footer");
-
-        var backward = BinaryPrimitives.ReadUInt32LittleEndian(bytes.AsSpan(bytes.Length - 8, 4));
-        var index = bytes.Length - 12 - (int)((backward + 1) * 4);
-
-        Assert.Equal(0, bytes[index]); // an index starts with its indicator, 0x00
-
-        return index - 1;
-    }
 }

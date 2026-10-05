@@ -1,9 +1,6 @@
 using System.Formats.Tar;
 using System.IO.Compression;
 using System.Text;
-using SharpCompress.Common;
-using SharpCompress.Writers;
-using SharpCompress.Writers.SevenZip;
 using Vaktari.Core.FileSystem;
 
 namespace Vaktari.Core.Tests;
@@ -11,9 +8,8 @@ namespace Vaktari.Core.Tests;
 /// <summary>
 /// Archives for the extraction tests: the committed fixtures (M and V in
 /// tests/Fixtures/Archives/PROVENANCE.md), and G archives generated here at
-/// run time — zips through the BCL, tars through System.Formats.Tar, 7z
-/// through SharpCompress's writer, and single streams through each
-/// compressor's own Compress mode (E-30: bzip2, lzip and zstd all round-trip).
+/// run time — zips through the BCL, tars through System.Formats.Tar, and
+/// gzip streams through the runtime's GZipStream.
 /// </summary>
 internal static class ArchiveTestData
 {
@@ -109,24 +105,6 @@ internal static class ArchiveTestData
     internal static Func<Stream, Stream> Compressor(ArchiveFormat format) => format switch
     {
         ArchiveFormat.Gz or ArchiveFormat.TarGz => s => new GZipStream(s, CompressionLevel.Optimal, leaveOpen: true),
-        ArchiveFormat.Bz2 or ArchiveFormat.TarBz2 => s => SharpCompress.Compressors.BZip2.BZip2Stream.Create(
-            s, SharpCompress.Compressors.CompressionMode.Compress, false, leaveOpen: true),
-        ArchiveFormat.Zst or ArchiveFormat.TarZst => s => new SharpCompress.Compressors.ZStandard.CompressionStream(s, leaveOpen: true),
-        ArchiveFormat.Lz or ArchiveFormat.TarLz => s => SharpCompress.Compressors.LZMA.LZipStream.Create(
-            s, SharpCompress.Compressors.CompressionMode.Compress, leaveOpen: true),
         _ => throw new NotSupportedException($"no compressor for {format}"),
     };
-
-    /// <summary>A 7z, one LZMA2 stream per entry, through SharpCompress's
-    /// writer.</summary>
-    internal static string SevenZip(string path, params (string Entry, byte[] Content)[] entries)
-    {
-        using var file = File.Create(path);
-        using var writer = new SevenZipWriter(file, new SevenZipWriterOptions(CompressionType.LZMA2));
-
-        foreach (var (entry, content) in entries)
-            writer.Write(entry, new MemoryStream(content), DateTime.Now);
-
-        return path;
-    }
 }

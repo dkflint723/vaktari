@@ -181,20 +181,24 @@ public sealed class ArchiveMenuTests : OwnedViewModels
     /// Every format Extract all reads is offered, by name — and a Word
     /// document or a jar, zips in all but name, is not. This was
     /// <c>Extract_is_offered_for_one_zip_and_nothing_else</c>; Stage A of the
-    /// archive plan widened it on purpose.
+    /// archive plan widened it on purpose, and the streamlining narrowed it
+    /// back to zip and tar.gz — 7z, RAR and the other tar compressors are
+    /// not offered it now.
     /// </summary>
     [AvaloniaFact]
     public void Extract_is_offered_for_one_archive_of_any_browsable_format()
     {
         var pane = Pane();
 
-        foreach (var name in new[] { "holiday.zip", "holiday.7z", "holiday.rar", "holiday.tar.gz", "holiday.tgz" })
+        foreach (var name in new[] { "holiday.zip", "holiday.tar", "holiday.tar.gz", "holiday.tgz", "notes.txt.gz" })
         {
             pane.SelectedEntry = Row(Write(name));
             Assert.True(pane.CanExtractSelection, name);
         }
 
-        foreach (var name in new[] { "report.docx", "app.jar" })
+        // The formats Extract all narrowed away: a double-click opens them in
+        // the system's own archive tool instead.
+        foreach (var name in new[] { "report.docx", "app.jar", "holiday.7z", "holiday.rar", "holiday.tar.xz", "holiday.tar.bz2", "holiday.tar.zst" })
         {
             pane.SelectedEntry = Row(Write(name));
             Assert.False(pane.CanExtractSelection, name);

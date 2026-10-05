@@ -22,6 +22,19 @@ should not be trusted for compatibility yet.
     Disk Image Mounter, or Dolphin through udisks). Vaktari never listed a
     mounted image in its sidebar, so put one away from the desktop's own file
     manager or with `udisksctl unmount` and `udisksctl loop-delete`.
+- **Extract all now opens zip and tar only.** It still extracts `.zip`,
+  `.tar`, `.tar.gz` and `.tgz`, and a single `.gz` file, with every check it
+  had (including the 0.11.1 fixes for a cut or multi-member gzip), and a zip
+  whose members are compressed with bzip2, LZMA, PPMd, xz or zstd. It no
+  longer extracts `.7z`, `.rar`, `.tar.bz2`/`.tbz2`/`.tbz`, `.tar.xz`/`.txz`,
+  `.tar.zst`/`.tzst` or `.tar.lz`/`.tlz`, nor a single `.bz2`, `.xz`, `.zst`
+  or `.lz` file. Those no longer get the *Extract all* row; double-clicking
+  one opens it in your system's own archive program, as it always did —
+  recent Windows 11 has one built in, and Windows 10 needs one installed,
+  such as 7-Zip. A file named `.zip` or `.tar.gz` that is really one of those
+  formats is refused in words — "Vaktari extracts zip and tar.gz archives
+  only — open this one with another app" — where it used to be extracted.
+  Icon themes can still be installed from a `.tar.xz`.
 
 ### Changed
 

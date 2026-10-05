@@ -86,8 +86,8 @@ internal sealed class Program
     ///
     /// **In the shipped binary on purpose.** A NativeAOT publish with full
     /// trimming can drop a decoder the tests never miss, because the tests run
-    /// on the JIT; only the binary itself can say it still reads a PPMd 7z or
-    /// a RAR5. See <see cref="Vaktari.Core.FileSystem.ArchiveSelfTest"/>.
+    /// on the JIT; only the binary itself can say it still reads a PPMd or
+    /// LZMA zip. See <see cref="Vaktari.Core.FileSystem.ArchiveSelfTest"/>.
     ///
     /// Separate from <see cref="Main"/> so a test can drive it, and answered
     /// before the instance mutex for the same reason as --version: it runs in

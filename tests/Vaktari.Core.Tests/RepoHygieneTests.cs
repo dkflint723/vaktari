@@ -80,7 +80,7 @@ public sealed class RepoHygieneTests
             Assert.Contains("shell: bash", step[..step.IndexOf(binary, StringComparison.Ordinal)]);
             Assert.Contains("grep -q \"archive fixtures extracted as expected\" selftest.txt", step);
             Assert.Contains("--self-test-archives ../broken-fixtures > broken.txt; then", step);
-            Assert.Contains("grep -q \"FAIL 7z-ppmd.7z\" broken.txt", step);
+            Assert.Contains("grep -q \"FAIL zip-ppmd.zip\" broken.txt", step);
         }
     }
 
@@ -136,7 +136,7 @@ public sealed class RepoHygieneTests
             .Distinct(StringComparer.Ordinal)
             .ToList();
 
-        Assert.True(named.Count > 40, $"only {named.Count} fixtures named");
+        Assert.True(named.Count > 15, $"only {named.Count} fixtures named");
 
         var missing = named.Where(n => !tracked.Contains(folder + n)).ToList();
 

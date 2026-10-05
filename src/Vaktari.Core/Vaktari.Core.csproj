@@ -43,7 +43,14 @@
          before being adopted — the exe really does decompress an xz, which is
          not something a build succeeding would have told us.
 
-         Still no platform package, which is the rule this file exists to state. -->
+         Still no platform package, which is the rule this file exists to state.
+
+         **Kept when Extract all narrowed to zip and tar.gz**, for three uses
+         that remain: the icon-theme installer's .tar.xz (still no xz in the
+         framework), the zip reader Extract all is built on (ArchivePass, with
+         its members' bzip2, LZMA, PPMd, xz and zstd methods — a zip is a
+         zip), and the CRC-32 and code-page-437 hooks beside it. -->
+
     <PackageReference Include="SharpCompress" Version="0.50.4" />
   </ItemGroup>
 

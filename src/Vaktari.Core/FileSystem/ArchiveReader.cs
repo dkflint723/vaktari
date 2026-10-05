@@ -1,18 +1,14 @@
 using System.Formats.Tar;
 using System.IO.Compression;
 using SharpCompress.Archives;
-using SharpCompress.Archives.Rar;
-using SharpCompress.Archives.SevenZip;
 using SharpCompress.Common;
-using SharpCompress.Common.Rar;
 using SharpCompress.Readers;
 using SharpZip = SharpCompress.Archives.Zip.ZipArchive;
-using SharpCompressionMode = SharpCompress.Compressors.CompressionMode;
 
 namespace Vaktari.Core.FileSystem;
 
 /// <summary>
-/// The only archive-side user of SharpCompress's readers and of
+/// The only archive-side user of SharpCompress's zip reader and of
 /// <see cref="System.Formats.Tar"/>: opens one archive for one pass.
 ///
 /// **What each format checks for itself, measured (E-25, E-33)**, which is
@@ -20,23 +16,21 @@ namespace Vaktari.Core.FileSystem;
 /// <list type="bullet">
 /// <item>zip: nothing. A stored entry and a deflated one with a wrong CRC read
 /// without complaint. Ours is the only check.</item>
-/// <item>7z: nothing. A byte flipped in a Copy-method entry read without
-/// complaint and a wrong CRC; LZMA2 happened to fail on its own. Ours is
-/// the only check.</item>
-/// <item>RAR4 and RAR5: checked — "file crc mismatch", stored and
-/// compressed alike.</item>
 /// <item>gzip: every member's CRC-32 and length checked by the runtime's
 /// GZipStream, which words a mismatch as "unsupported compression method";
 /// a file that ends before its last member does is refused by
-/// <see cref="GzipMembers"/>, since GZipStream alone ends there quietly.
-/// bzip2, xz, lzip, and zstd when the frame carries a checksum: all checked
-/// by their decoders.</item>
+/// <see cref="GzipMembers"/>, since GZipStream alone ends there quietly.</item>
+/// <item>tar: no checksum of its contents at all.</item>
 /// </list>
 ///
-/// **How each format is walked.** A tar is one forward pass. 7z, and a solid
-/// RAR, go through <c>ExtractAllEntries</c>; a zip and a non-solid RAR cannot
-/// (measured: "ExtractAllEntries can only be used on solid archives or 7Zip
-/// archives") and are read entry by entry, by random access.
+/// **How each format is walked.** A tar is one forward pass; a zip is read
+/// entry by entry, by random access.
+///
+/// **Zip and tar, plain or gzip-compressed, and nothing else** — 7z, RAR and
+/// the other tar compressors went, and are refused in words by their
+/// signatures (<see cref="ArchiveFormats.Foreign"/>). A zip's own members may
+/// still be bzip2, LZMA, PPMd, xz or zstd inside: SharpCompress decodes those,
+/// and a zip is a zip.
 ///
 /// **Every failure while READING is classified here**, so the writer can tell
 /// the archive's fault from the disk's: see <see cref="Classify"/>.
@@ -65,8 +59,17 @@ internal static class ArchiveReader
             // opened before and must open now. A file NAMED .zip that the
             // first bytes do not place is tried as one, and refused in words
             // when it has no directory either.
-            if ((ArchiveFormats.Sniff(head.AsSpan(0, got)) ?? (byName == ArchiveFormat.Zip ? ArchiveFormat.Zip : null))
-                is not { } format)
+            //
+            // **A format Vaktari does not extract is said to be one**, and
+            // before that fallback (review H2): a 7z named .zip was otherwise
+            // handed to the zip reader, and an xz tar named .tar.gz called
+            // "not a gzip file, or damaged" — an intact file, called broken.
+            var sniffed = ArchiveFormats.Sniff(head.AsSpan(0, got));
+
+            if (sniffed is null && ArchiveFormats.Foreign(head.AsSpan(0, got)) is { } foreign)
+                throw new ArchiveRefusedException(ArchiveSentences.NotSupported(leaf, foreign));
+
+            if ((sniffed ?? (byName == ArchiveFormat.Zip ? ArchiveFormat.Zip : null)) is not { } format)
                 throw new InvalidDataException(ArchiveSentences.NotThisFormat(leaf, named));
 
             if (ArchiveFormats.IsBare(format) && HoldsTar(path, format))
@@ -102,9 +105,8 @@ internal static class ArchiveReader
 
             if (e is CryptographicException) throw new ArchivePasswordRequiredException(ArchiveSentences.Password(leaf), e);
 
-            // Unreadable up front: a truncated zip has no end record, a
-            // truncated 7z "nextHeaderOffset is invalid", a truncated RAR
-            // cannot seek to its next header (E-14) — all before any entry.
+            // Unreadable up front: a truncated zip has no end record (E-14),
+            // so it fails before any entry.
             throw new InvalidDataException(ArchiveSentences.NotThisFormat(leaf, named), e);
         }
         catch
@@ -146,22 +148,20 @@ internal static class ArchiveReader
     /// buffer returns nothing — so the BCL tar reader, which issues one, made
     /// every .tar.lz fail "LZip CRC mismatch", SharpCompress's own
     /// <c>Tar.tar.lz</c> test archive included. Read directly, the same files
-    /// decode cleanly. Every decoder goes through <see cref="Decoded"/>, not
-    /// only lzip, because the next one to validate on "end" would fail the
-    /// same way.
+    /// decode cleanly. lzip went with the narrowing to zip and tar.gz; the
+    /// gzip decoder and a plain tar still go through <see cref="Decoded"/>,
+    /// because the next decoder to validate on "end" would fail the same way.
+    /// (Zip members are read by SharpCompress's own entry streams and do not
+    /// pass through here.)
     ///
-    /// **Every decoder ends after the last stream that ends cleanly**, and
+    /// **The decoder ends after the last member that ends cleanly**, and
     /// leaves what follows it unread as trailing data; bytes that begin with
-    /// the format's own signature are another stream and must be whole. The
-    /// rule, and why, is at the top of ArchiveMembers.cs.
+    /// the gzip signature are another member and must be whole. The rule, and
+    /// why, is at the top of ArchiveMembers.cs.
     /// </summary>
     internal static Stream Decompress(Stream compressed, ArchiveFormat format) => new Decoded(format switch
     {
         ArchiveFormat.Gz or ArchiveFormat.TarGz => new GzipMembers(compressed),
-        ArchiveFormat.Bz2 or ArchiveFormat.TarBz2 => new Bzip2Members(compressed),
-        ArchiveFormat.Xz or ArchiveFormat.TarXz => new XzMembers(compressed),
-        ArchiveFormat.Zst or ArchiveFormat.TarZst => new ZstdFrames(compressed),
-        ArchiveFormat.Lz or ArchiveFormat.TarLz => new LzipMembers(compressed),
         _ => new Unowned(compressed),
     });
 
@@ -360,30 +360,6 @@ internal sealed class ArchivePass : IDisposable
                 AnyEncrypted = Directory.AnyEncrypted;
                 break;
             }
-
-            case ArchiveFormat.SevenZip:
-            case ArchiveFormat.Rar:
-            {
-                _archive = Format == ArchiveFormat.Rar
-                    ? RarArchive.OpenArchive(_stream, ArchiveReader.Options)
-                    : SevenZipArchive.OpenArchive(_stream, ArchiveReader.Options);
-
-                // **The first touch of a header-encrypted archive's entries
-                // throws**, which is what the refusal needs; and it must be
-                // the only touch. Measured (E-3r): after IsEncrypted threw on
-                // a RAR4 -hp archive, the SAME object answered Entries with an
-                // empty list — an archive that "extracted" to nothing.
-                _entries = [.. _archive.Entries];
-
-                if (Format == ArchiveFormat.Rar && _archive.Volumes.FirstOrDefault() is RarVolume { IsMultiVolume: true })
-                    throw new ArchiveRefusedException(ArchiveSentences.Split(Leaf));
-
-                DeclaredTotal = Total(_entries.Where(e => !e.IsDirectory).Select(e => e.Size));
-                DeclaredCount = _entries.Count;
-                DeclaredItems = _entries.Count(e => !e.IsDirectory);
-                AnyEncrypted = _entries.Any(e => e.IsEncrypted) || _archive.IsEncrypted;
-                break;
-            }
         }
     }
 
@@ -440,8 +416,6 @@ internal sealed class ArchivePass : IDisposable
         var source = Format switch
         {
             ArchiveFormat.Zip => ZipItems(),
-            ArchiveFormat.SevenZip => ReaderItems(),
-            ArchiveFormat.Rar => _archive!.IsSolid ? ReaderItems() : EntryItems(),
             _ when ArchiveFormats.IsTar(Format) => TarItems(),
             _ => BareItems(),
         };
@@ -506,70 +480,6 @@ internal sealed class ArchivePass : IDisposable
         _ => ArchiveEntryKind.File,
     };
 
-    private IEnumerable<ArchiveItem> EntryItems()
-    {
-        for (var i = 0; i < _entries!.Count; i++)
-        {
-            var entry = _entries[i];
-
-            yield return Item(Describe(entry), () => entry.OpenEntryStream(), i);
-        }
-    }
-
-    private IEnumerable<ArchiveItem> ReaderItems()
-    {
-        using var reader = _archive!.ExtractAllEntries();
-        var i = 0;
-
-        while (reader.MoveToNextEntry())
-        {
-            var entry = reader.Entry;
-
-            yield return Item(Describe(entry), reader.OpenEntryStream, i++);
-        }
-    }
-
-    /// <summary>A 7z or RAR entry.</summary>
-    private ArchiveEntryInfo Describe(IEntry entry)
-    {
-        var kind = entry.IsDirectory ? ArchiveEntryKind.Folder : ArchiveEntryKind.File;
-        int? unix = null;
-        FileAttributes? windows = null;
-
-        if (Format == ArchiveFormat.SevenZip && entry.Attrib is { } attrib)
-        {
-            // 7-Zip's Unix extension: the mode in the high half, flagged by
-            // 0x8000. And a Windows reparse point is a link however it was
-            // stored.
-            if ((attrib & 0x8000) != 0)
-            {
-                unix = (attrib >> 16) & 0xFFFF;
-
-                kind = (unix & 0xF000) switch
-                {
-                    0xA000 => ArchiveEntryKind.SymbolicLink,
-                    0x1000 or 0x2000 or 0x6000 or 0xC000 => ArchiveEntryKind.Special,
-                    _ => kind,
-                };
-
-                unix &= 0xFFF;
-            }
-
-            if ((attrib & 0x400) != 0 && kind != ArchiveEntryKind.Folder) kind = ArchiveEntryKind.SymbolicLink;
-
-            windows = (FileAttributes)(attrib & 0xFFFF);
-        }
-
-        if (!string.IsNullOrEmpty(entry.LinkTarget)) kind = ArchiveEntryKind.SymbolicLink;
-
-        return new ArchiveEntryInfo(
-            entry.Key ?? "", kind, entry.IsDirectory ? 0 : entry.Size, entry.CompressedSize, (uint)entry.Crc,
-
-            // RAR checks its own CRC; 7z does not (E-25).
-            CrcIsOurs: Format == ArchiveFormat.SevenZip && !entry.IsDirectory,
-            When(entry.LastModifiedTime), unix, windows, entry.IsEncrypted, entry.LinkTarget);
-    }
-
     private IEnumerable<ArchiveItem> TarItems()
     {
         var decoded = ArchiveReader.Decompress(_stream, Format);
@@ -621,9 +531,9 @@ internal sealed class ArchivePass : IDisposable
     /// **A damaged .tar.gz extracted with wrong bytes and no word said** (0.11.1
     /// changelog check: 55 byte flips in 60 on one fixture). A tar keeps no
     /// checksum of its files; the compressor around it does — gzip's CRC-32
-    /// and length, the xz block check, lzip's and bzip2's CRCs, a zstd frame's
-    /// checksum — and every one of them sits at the END of the stream, past
-    /// the tar's end blocks, where the reader stopped. Each decoder checks
+    /// and length (and, while Vaktari read them, the xz, lzip, bzip2 and zstd
+    /// checks) — and it sits at the END of the stream, past the tar's end
+    /// blocks, where the reader stopped. The decoder checks
     /// when it reaches its end, so reaching it is the whole fix; what it
     /// throws there is classified as damage like any other failure while
     /// reading, and the run is discarded. What is left is the end blocks and

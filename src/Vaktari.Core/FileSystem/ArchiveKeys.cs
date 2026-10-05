@@ -3,13 +3,12 @@ namespace Vaktari.Core.FileSystem;
 /// <summary>
 /// An entry's raw name, cut into the segments it lands as.
 ///
-/// **Which separator an archive uses depends on the format, and only two of
-/// them may use a backslash.** A zip written on Windows by an old tool says
-/// <c>docs\a.txt</c>, and SharpCompress hands RAR keys over with the
-/// platform's own separator whatever the archive stored — measured (E-23) on
-/// RAR4 and RAR5 fixtures: <c>exe\test.exe</c> on Windows, <c>exe/test.exe</c>
-/// under Linux. In tar and 7z a backslash is an ordinary character of
-/// a name; on Windows it stays inside its segment and
+/// **Which separator an archive uses depends on the format, and only a zip
+/// may use a backslash.** A zip written on Windows by an old tool says
+/// <c>docs\a.txt</c>. (RAR, while Vaktari read it, was the other: SharpCompress
+/// handed its keys over with the platform's own separator, E-23.) In a tar a
+/// backslash is an ordinary character of a name; on Windows it stays inside
+/// its segment and
 /// <see cref="ArchiveNames.Land"/> turns it into <c>_</c>, so <c>a\..\b</c>
 /// from a tar becomes one file called <c>a_.._b</c> rather than a walk up a
 /// folder that was never there.
@@ -23,7 +22,7 @@ internal static class ArchiveKeys
 {
     internal static string[]? Split(string raw, ArchiveFormat format, out bool isFolder)
     {
-        if (format is ArchiveFormat.Zip or ArchiveFormat.Rar) raw = raw.Replace('\\', '/');
+        if (format is ArchiveFormat.Zip) raw = raw.Replace('\\', '/');
 
         isFolder = raw.EndsWith('/');
 

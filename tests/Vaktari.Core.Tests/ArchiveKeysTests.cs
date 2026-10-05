@@ -44,10 +44,8 @@ public sealed class ArchiveKeysTests
     /// </summary>
     [Theory]
     [InlineData(ArchiveFormat.Zip, "a|b")]
-    [InlineData(ArchiveFormat.Rar, "a|b")]
     [InlineData(ArchiveFormat.Tar, "a\\b")]
     [InlineData(ArchiveFormat.TarGz, "a\\b")]
-    [InlineData(ArchiveFormat.SevenZip, "a\\b")]
     public void A_backslash_separates_only_where_the_format_says_so(ArchiveFormat format, string segments)
         => Assert.Equal(segments.Split('|'), Split("a\\b", format));
 

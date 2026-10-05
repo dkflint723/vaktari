@@ -294,22 +294,13 @@ public sealed class ArchiveTrailerTests : IDisposable
 
     /// <summary>Honest archives of every compressor, compressed tars and
     /// bare streams, with the file they are written as.</summary>
-    private static byte[] Honest(string name) => name switch
-    {
-        "bare.txt.bz2" => Compress(ArchiveFormat.Bz2, Text[..30000]),
-        "bare.txt.zst" => Compress(ArchiveFormat.Zst, Text[..30000]),
-        _ => Fixture(name),
-    };
+    private static byte[] Honest(string name) => Fixture(name);
 
     public static TheoryData<string, string> Trailed()
     {
         var data = new TheoryData<string, string>();
 
-        foreach (var name in new[]
-                 {
-                     "tree.tar.bz2", "tree.tar.zst", "tree.tar.xz", "tree.tar.gz", "tree.tar.lz", "sc-tar.tar.zst",
-                     "bare.txt.bz2", "bare.txt.zst", "bare.txt.xz", "bare.txt.gz", "multi.txt.lz", "concat.txt.xz",
-                 })
+        foreach (var name in new[] { "tree.tar.gz", "bare.txt.gz" })
         {
             foreach (var tail in new[] { "zeros-3", "zeros-4", "zeros-512", "zeros-10240", "garbage", "pk" })
                 data.Add(name, tail);
@@ -333,20 +324,12 @@ public sealed class ArchiveTrailerTests : IDisposable
         Assert.Equal(Landed(name, honest), Landed(name, [.. honest, .. Tail(tail)]));
     }
 
-    /// <summary>Where each compressor keeps the check that ends its stream,
-    /// counted from the end: a byte there, flipped, fails it. The zstd one is
-    /// sc-tar.tar.zst because tree.tar.zst was written without a checksum.</summary>
+    /// <summary>Where gzip keeps the check that ends its stream, counted from
+    /// the end: a byte there, flipped, fails it.</summary>
     public static TheoryData<string, int> Checks() => new()
     {
-        { "tree.tar.bz2", 1 },
-        { "sc-tar.tar.zst", 1 },
-        { "tree.tar.xz", 1 },
         { "tree.tar.gz", 8 },
-        { "tree.tar.lz", 20 },
-        { "bare.txt.bz2", 1 },
-        { "bare.txt.xz", 1 },
         { "bare.txt.gz", 8 },
-        { "multi.txt.lz", 20 },
     };
 
     /// <summary>A tail after the stream does not make a failed check at its
@@ -364,13 +347,7 @@ public sealed class ArchiveTrailerTests : IDisposable
     /// <summary>And a byte changed in the middle of the stream, with a tail
     /// after it, is damage.</summary>
     [Theory]
-    [InlineData("tree.tar.bz2")]
-    [InlineData("sc-tar.tar.zst")]
-    [InlineData("tree.tar.xz")]
     [InlineData("tree.tar.gz")]
-    [InlineData("tree.tar.lz")]
-    [InlineData("bare.txt.bz2")]
-    [InlineData("multi.txt.lz")]
     public void A_changed_byte_inside_the_stream_is_still_damage(string name)
     {
         var bytes = Honest(name);
@@ -385,43 +362,12 @@ public sealed class ArchiveTrailerTests : IDisposable
     /// a multi-member file cut in its last member would land without it.
     /// </summary>
     [Theory]
-    [InlineData("bare.txt.bz2")]
-    [InlineData("bare.txt.zst")]
     [InlineData("bare.txt.gz")]
-    [InlineData("bare.txt.xz")]
-    [InlineData("multi.txt.lz")]
     public void A_second_stream_cut_short_is_damage(string name)
     {
         var one = Honest(name);
 
         AssertDamaged(name, [.. one, .. one[..(one.Length / 2)]]);
-    }
-
-    /// <summary>A zstd frame whose blocks run past the end of the file is
-    /// damage however far short it stops, and so is a skippable frame.</summary>
-    [Theory]
-    [InlineData(1)]
-    [InlineData(4)]
-    [InlineData(5)]
-    [InlineData(100)]
-    public void A_zstd_frame_cut_short_is_damage(int missing)
-        => AssertDamaged("tree.tar.zst", Fixture("tree.tar.zst")[..^missing]);
-
-    [Fact]
-    public void A_zstd_skippable_frame_cut_short_is_damage()
-    {
-        byte[] skippable = [.. BitConverter.GetBytes(0x184D2A50u), .. BitConverter.GetBytes(64u), .. new byte[10]];
-
-        AssertDamaged("skip.txt.zst", [.. Honest("bare.txt.zst"), .. skippable]);
-    }
-
-    /// <summary>Null padding BETWEEN xz streams must still come in fours.</summary>
-    [Fact]
-    public void Xz_padding_before_another_stream_that_is_not_in_fours_is_damage()
-    {
-        var one = Fixture("bare.txt.xz");
-
-        AssertDamaged("pad.txt.xz", [.. one, 0, 0, 0, .. one]);
     }
 
     // ---- 3. members as gzip(1) writes them, and where each one ends -------------------

@@ -207,10 +207,19 @@ public sealed class ArchiveExtractionTests : IDisposable
         Assert.Equal((UnixFileMode)0x1ED, File.GetUnixFileMode(Path.Combine(done.Landed, "open")));
     }
 
+    /// <summary>A zip made on Windows records Read-only, Hidden and System in
+    /// an entry's external attributes; none of them is set on what lands.
+    /// (This used a 7z fixture until 7z went; the zip carries the same
+    /// attributes the same way.)</summary>
     [WindowsFact]
     public void No_windows_attribute_an_archive_carries_is_set()
     {
-        var done = Extract(ArchiveTestData.Fixture("7z-attribs.7z"), Dir("out"));
+        var archive = At("attribs.zip");
+        File.WriteAllBytes(archive, ZipBytes.Build(
+            new ZipBytes.Entry("readme.txt") { Data = "x"u8.ToArray(), External = 0x07 },
+            new ZipBytes.Entry("other.txt") { Data = "y"u8.ToArray() }));
+
+        var done = Extract(archive, Dir("out"));
 
         var attributes = File.GetAttributes(Path.Combine(done.Landed, "readme.txt"));
 

@@ -200,12 +200,12 @@ jobs:
           # would look exactly like one that passed: one broken expectation
           # must exit non-zero and name its fixture.
           cp -r tests/Fixtures/Archives ../broken-fixtures
-          sed -i 's/^\(7z-ppmd\.7z\tfile\t7z-ppmd\/docs\/c\.txt\t21390\t\)./\1x/' ../broken-fixtures/expected.tsv
+          sed -i 's/^\(zip-ppmd\.zip\tfile\tzip-ppmd\/docs\/c\.txt\t21390\t\)./\1x/' ../broken-fixtures/expected.tsv
           if "$P/Vaktari.Ui" --self-test-archives ../broken-fixtures > broken.txt; then
             echo "::error::the archive self-test passed with a broken expected.tsv"
             exit 1
           fi
-          grep -q "FAIL 7z-ppmd.7z" broken.txt
+          grep -q "FAIL zip-ppmd.zip" broken.txt
 
       # The publish DIRECTORY is the deliverable, not the executable.
       # libSkiaSharp.so and libHarfBuzzSharp.so sit beside the binary and are
@@ -322,12 +322,12 @@ jobs:
           # would look exactly like one that passed: one broken expectation
           # must exit non-zero and name its fixture.
           cp -r tests/Fixtures/Archives ../broken-fixtures
-          sed -i 's/^\(7z-ppmd\.7z\tfile\t7z-ppmd\/docs\/c\.txt\t21390\t\)./\1x/' ../broken-fixtures/expected.tsv
+          sed -i 's/^\(zip-ppmd\.zip\tfile\tzip-ppmd\/docs\/c\.txt\t21390\t\)./\1x/' ../broken-fixtures/expected.tsv
           if "$P/Vaktari.Ui.exe" --self-test-archives ../broken-fixtures > broken.txt; then
             echo "::error::the archive self-test passed with a broken expected.tsv"
             exit 1
           fi
-          grep -q "FAIL 7z-ppmd.7z" broken.txt
+          grep -q "FAIL zip-ppmd.zip" broken.txt
 
       # Same check the Linux job makes for libSkiaSharp.so, and for the same
       # reason: these sit beside the binary and are loaded from its own

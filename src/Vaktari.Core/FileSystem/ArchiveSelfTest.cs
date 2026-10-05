@@ -9,7 +9,7 @@ namespace Vaktari.Core.FileSystem;
 ///
 /// **A NativeAOT publish with full trimming is a different program from the
 /// one the tests ran.** A decoder that is only reached through a registry
-/// the trimmer cannot see — PPMd, BCJ2, Deflate64, the RAR unpackers — is
+/// the trimmer cannot see — a zip member's PPMd, LZMA or Deflate64 — is
 /// removed without a warning and fails only when somebody opens such an
 /// archive. The unit tests run on the JIT and would never know (R1-16). So CI
 /// runs this against the published binary on both platforms, and the Fedora

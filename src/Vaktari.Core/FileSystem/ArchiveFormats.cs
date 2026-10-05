@@ -3,7 +3,7 @@ using System.Text.RegularExpressions;
 namespace Vaktari.Core.FileSystem;
 
 /// <summary>Every kind of archive Extract all reads.</summary>
-public enum ArchiveFormat { Zip, SevenZip, Rar, Tar, TarGz, TarBz2, TarXz, TarZst, TarLz, Gz, Bz2, Xz, Zst, Lz }
+public enum ArchiveFormat { Zip, Tar, TarGz, Gz }
 
 /// <summary>
 /// What an archive is, by its name and by its bytes.
@@ -12,8 +12,16 @@ public enum ArchiveFormat { Zip, SevenZip, Rar, Tar, TarGz, TarBz2, TarXz, TarZs
 /// is asked every time the selection changes and before anything is clicked,
 /// so it goes by name (<see cref="ByName"/>) and never opens the file. The
 /// extraction itself goes by the first bytes (<see cref="Sniff"/>), and the
-/// bytes win: a 7z renamed to .zip is still a 7z, and a download that arrived
-/// as an error page is not an archive whatever it is called.
+/// bytes win: a download that arrived as an error page is not an archive
+/// whatever it is called.
+///
+/// **Zip and tar, plain or gzip-compressed, and nothing else.** Extract all
+/// used to read 7z, RAR and tar compressed with bzip2, xz, zstd or lzip as
+/// well; those are left to the system's own archive tool, which a double-click
+/// already opened them in. Their signatures are still KNOWN
+/// (<see cref="Foreign"/>), so a 7z named .zip or an xz tar named .tar.gz is
+/// refused for what it is — "Vaktari extracts zip and tar.gz archives only" —
+/// rather than called a damaged zip, or read as one.
 ///
 /// **No .docx, .jar, .epub, .apk.** They are zips, and extracting one is a
 /// legitimate thing to want, but a menu row offering to take a Word document
@@ -27,26 +35,11 @@ public static partial class ArchiveFormats
     /// </summary>
     private static readonly (string Suffix, ArchiveFormat Format)[] Suffixes =
     [
-        (".tar.bz2", ArchiveFormat.TarBz2),
-        (".tar.zst", ArchiveFormat.TarZst),
         (".tar.gz", ArchiveFormat.TarGz),
-        (".tar.xz", ArchiveFormat.TarXz),
-        (".tar.lz", ArchiveFormat.TarLz),
-        (".tbz2", ArchiveFormat.TarBz2),
-        (".tzst", ArchiveFormat.TarZst),
-        (".tbz", ArchiveFormat.TarBz2),
         (".tgz", ArchiveFormat.TarGz),
-        (".txz", ArchiveFormat.TarXz),
-        (".tlz", ArchiveFormat.TarLz),
         (".zip", ArchiveFormat.Zip),
         (".tar", ArchiveFormat.Tar),
-        (".bz2", ArchiveFormat.Bz2),
-        (".zst", ArchiveFormat.Zst),
-        (".rar", ArchiveFormat.Rar),
-        (".7z", ArchiveFormat.SevenZip),
         (".gz", ArchiveFormat.Gz),
-        (".xz", ArchiveFormat.Xz),
-        (".lz", ArchiveFormat.Lz),
     ];
 
     /// <summary>
@@ -69,12 +62,13 @@ public static partial class ArchiveFormats
     /// <summary>
     /// Whether the name is one part of a set split across several files.
     ///
-    /// **Refused rather than half-read.** The first part of a split RAR opens
-    /// and lists, and then fails on the first entry that crosses into the
-    /// second part — measured with SharpCompress's own <c>Rar.multi.part01.rar</c>:
-    /// <c>IncompleteArchiveException</c> on the first read. A folder holding
-    /// the entries that happened to fit in part one is the half-written folder
-    /// Extract all exists to never leave.
+    /// **Not a menu guard any more** (review M7): none of these names is
+    /// offered Extract all — <see cref="ByName"/> answers null for every one.
+    /// It is kept for the callers that extract by path without the menu
+    /// (<see cref="ArchiveSelfTest"/>, a direct <c>Archives.Extract</c>), so a
+    /// part handed over by name is still refused in words rather than read as
+    /// a damaged whole: a folder holding the entries that happened to fit in
+    /// part one is the half-written folder Extract all exists to never leave.
     /// </summary>
     public static bool IsSplitVolume(string path) => SplitName().IsMatch(Leaf(path));
 
@@ -83,30 +77,49 @@ public static partial class ArchiveFormats
 
     /// <summary>
     /// The format the first bytes say, or null when they say none of these.
-    /// A compressed stream is answered as the bare compressor here; whether a
-    /// tar is inside is <see cref="LooksLikeTar"/>'s question, asked of the
+    /// A gzip stream is answered as the bare compressor here; whether a tar is
+    /// inside is <see cref="LooksLikeTar"/>'s question, asked of the
     /// decompressed bytes.
     /// </summary>
     internal static ArchiveFormat? Sniff(ReadOnlySpan<byte> head)
     {
-        ReadOnlySpan<byte> sevenZip = [0x37, 0x7A, 0xBC, 0xAF, 0x27, 0x1C];
         ReadOnlySpan<byte> gzip = [0x1F, 0x8B];
-        ReadOnlySpan<byte> xz = [0xFD, 0x37, 0x7A, 0x58, 0x5A, 0x00];
-        ReadOnlySpan<byte> zstd = [0x28, 0xB5, 0x2F, 0xFD];
 
         // PK00 is the marker a spanning writer leaves on an archive that
         // turned out to need one part; the runtime's own reader opened such
         // files (it reads from the end), so this does too.
         if (head.StartsWith("PK\x03\x04"u8) || head.StartsWith("PK\x05\x06"u8) || head.StartsWith("PK00PK\x03\x04"u8))
             return ArchiveFormat.Zip;
-        if (head.StartsWith(sevenZip)) return ArchiveFormat.SevenZip;
-        if (head.StartsWith("Rar!\x1A\x07\x00"u8) || head.StartsWith("Rar!\x1A\x07\x01\x00"u8)) return ArchiveFormat.Rar;
         if (head.StartsWith(gzip)) return ArchiveFormat.Gz;
-        if (head.StartsWith("BZh"u8)) return ArchiveFormat.Bz2;
-        if (head.StartsWith(xz)) return ArchiveFormat.Xz;
-        if (head.StartsWith(zstd)) return ArchiveFormat.Zst;
-        if (head.StartsWith("LZIP"u8)) return ArchiveFormat.Lz;
         if (LooksLikeTar(head)) return ArchiveFormat.Tar;
+
+        return null;
+    }
+
+    /// <summary>
+    /// The word for an archive format Vaktari recognises and does not extract,
+    /// by its first bytes, or null.
+    ///
+    /// **Asked only when <see cref="Sniff"/> found nothing**, and before a
+    /// file NAMED .zip is tried as a zip anyway (review H2). Asked first, a
+    /// tar whose first member is named "BZh…" would have been refused as
+    /// bzip2; asked never, a 7z named .zip went to the zip reader to be
+    /// searched for a directory it does not have, and an xz tar named .tar.gz
+    /// was called "not a gzip file, or damaged" — an intact file, called
+    /// broken.
+    /// </summary>
+    internal static string? Foreign(ReadOnlySpan<byte> head)
+    {
+        ReadOnlySpan<byte> sevenZip = [0x37, 0x7A, 0xBC, 0xAF, 0x27, 0x1C];
+        ReadOnlySpan<byte> xz = [0xFD, 0x37, 0x7A, 0x58, 0x5A, 0x00];
+        ReadOnlySpan<byte> zstd = [0x28, 0xB5, 0x2F, 0xFD];
+
+        if (head.StartsWith(sevenZip)) return "7z";
+        if (head.StartsWith("Rar!\x1A\x07\x00"u8) || head.StartsWith("Rar!\x1A\x07\x01\x00"u8)) return "RAR";
+        if (head.StartsWith(xz)) return "xz";
+        if (head.StartsWith("BZh"u8)) return "bzip2";
+        if (head.StartsWith(zstd)) return "zstd";
+        if (head.StartsWith("LZIP"u8)) return "lzip";
 
         return null;
     }
@@ -179,36 +192,18 @@ public static partial class ArchiveFormats
     public static string Word(ArchiveFormat format) => format switch
     {
         ArchiveFormat.Zip => "zip",
-        ArchiveFormat.SevenZip => "7z",
-        ArchiveFormat.Rar => "RAR",
         ArchiveFormat.Tar => "tar",
-        ArchiveFormat.TarGz or ArchiveFormat.Gz => "gzip",
-        ArchiveFormat.TarBz2 or ArchiveFormat.Bz2 => "bzip2",
-        ArchiveFormat.TarXz or ArchiveFormat.Xz => "xz",
-        ArchiveFormat.TarZst or ArchiveFormat.Zst => "zstd",
-        _ => "lzip",
+        _ => "gzip",
     };
 
     /// <summary>A single compressed stream with no archive of its own.</summary>
-    internal static bool IsBare(ArchiveFormat format)
-        => format is ArchiveFormat.Gz or ArchiveFormat.Bz2 or ArchiveFormat.Xz
-                  or ArchiveFormat.Zst or ArchiveFormat.Lz;
+    internal static bool IsBare(ArchiveFormat format) => format is ArchiveFormat.Gz;
 
-    /// <summary>A tar, however it was compressed.</summary>
-    internal static bool IsTar(ArchiveFormat format)
-        => format is ArchiveFormat.Tar or ArchiveFormat.TarGz or ArchiveFormat.TarBz2
-                  or ArchiveFormat.TarXz or ArchiveFormat.TarZst or ArchiveFormat.TarLz;
+    /// <summary>A tar, plain or compressed.</summary>
+    internal static bool IsTar(ArchiveFormat format) => format is ArchiveFormat.Tar or ArchiveFormat.TarGz;
 
     /// <summary>The tar that a bare compressor turns out to be holding.</summary>
-    internal static ArchiveFormat AsTar(ArchiveFormat bare) => bare switch
-    {
-        ArchiveFormat.Gz => ArchiveFormat.TarGz,
-        ArchiveFormat.Bz2 => ArchiveFormat.TarBz2,
-        ArchiveFormat.Xz => ArchiveFormat.TarXz,
-        ArchiveFormat.Zst => ArchiveFormat.TarZst,
-        ArchiveFormat.Lz => ArchiveFormat.TarLz,
-        _ => bare,
-    };
+    internal static ArchiveFormat AsTar(ArchiveFormat bare) => bare == ArchiveFormat.Gz ? ArchiveFormat.TarGz : bare;
 
     private static string Leaf(string path)
         => Path.GetFileName(path.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar));

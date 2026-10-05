@@ -32,16 +32,9 @@ public sealed class ArchiveReaderTests : IDisposable
     }
 
     [Theory]
-    [InlineData("7z-solid-lzma2.7z")]
-    [InlineData("7z-bcj2.7z")]
-    [InlineData("7z-ppmd.7z")]
     [InlineData("zip-deflate64.zip")]
     [InlineData("zip-ppmd.zip")]
     [InlineData("tree.tar.gz")]
-    [InlineData("tree.tar.bz2")]
-    [InlineData("tree.tar.xz")]
-    [InlineData("tree.tar.zst")]
-    [InlineData("tree.tar.lz")]
     public void The_fixture_tree_lists_as_four_files_and_two_folders(string fixture)
     {
         var items = List(ArchiveTestData.Fixture(fixture));
@@ -51,47 +44,18 @@ public sealed class ArchiveReaderTests : IDisposable
         Assert.Equal(21390, items.Single(i => i.RawKey.EndsWith("c.txt", StringComparison.Ordinal)).Size);
     }
 
-    /// <summary>
-    /// **SharpCompress hands RAR keys over with the platform's own
-    /// separator** (E-23, measured on both): <c>exe\test.exe</c> on Windows,
-    /// <c>exe/test.exe</c> under Linux, from the same archive. Either way the
-    /// key cuts into the same two segments.
-    /// </summary>
-    [Theory]
-    [InlineData("rar4.rar")]
-    [InlineData("rar5-solid.rar")]
-    public void A_rar_names_its_folders_with_the_platform_separator(string fixture)
-    {
-        var items = List(ArchiveTestData.Fixture(fixture));
-        var exe = items.Single(i => i.Size == 45056);
-
-        Assert.Equal($"exe{Path.DirectorySeparatorChar}test.exe", exe.RawKey);
-        Assert.Equal(["exe", "test.exe"], ArchiveKeys.Split(exe.RawKey, ArchiveFormat.Rar, out _)!);
-        Assert.False(exe.CrcIsOurs);
-        Assert.Contains(items, i => i.RawKey == "тест.txt");
-    }
-
-    /// <summary>7z checks no CRC of its own (E-25), so ours is asked for.</summary>
+    /// <summary>A zip checks no CRC of its own (E-25), so ours is asked for —
+    /// a PPMd member included, which is decoded by the same SharpCompress code
+    /// a 7z's was.</summary>
     [Fact]
-    public void A_7z_file_entry_asks_for_our_CRC()
+    public void A_zip_file_entry_asks_for_our_CRC()
         => Assert.All(
-            List(ArchiveTestData.Fixture("7z-ppmd.7z")).Where(i => i.Kind == ArchiveEntryKind.File),
+            List(ArchiveTestData.Fixture("zip-ppmd.zip")).Where(i => i.Kind == ArchiveEntryKind.File),
             i => Assert.True(i.CrcIsOurs));
 
     [Theory]
-    [InlineData("7z-mhe.7z")]
-    [InlineData("rar4-hp.rar")]
-    [InlineData("rar5-hp.rar")]
-    public void A_header_encrypted_archive_needs_its_password_to_list(string fixture)
-        => Assert.Throws<ArchivePasswordRequiredException>(
-            () => ArchiveReader.Open(ArchiveTestData.Fixture(fixture), CancellationToken.None));
-
-    [Theory]
-    [InlineData("7z-p.7z")]
     [InlineData("zip-zipcrypto.zip")]
     [InlineData("zip-aes256.zip")]
-    [InlineData("rar4-p.rar")]
-    [InlineData("rar5-p.rar")]
     public void A_file_encrypted_archive_lists_and_says_it_is_encrypted(string fixture)
     {
         using var pass = ArchiveReader.Open(ArchiveTestData.Fixture(fixture), CancellationToken.None);
@@ -184,7 +148,6 @@ public sealed class ArchiveReaderTests : IDisposable
     /// </summary>
     [Theory]
     [InlineData("tree.tar.gz")]
-    [InlineData("tree.tar.xz")]
     public void A_truncated_stream_is_damaged_after_what_it_read(string fixture)
     {
         var bytes = File.ReadAllBytes(ArchiveTestData.Fixture(fixture));
@@ -210,8 +173,6 @@ public sealed class ArchiveReaderTests : IDisposable
     /// truncated one fails before any entry (E-14).</summary>
     [Theory]
     [InlineData("zip-lzma.zip", "zip")]
-    [InlineData("7z-ppmd.7z", "7z")]
-    [InlineData("rar5.rar", "RAR")]
     public void A_truncated_archive_with_its_directory_at_the_end_is_refused_up_front(string fixture, string word)
     {
         var bytes = File.ReadAllBytes(ArchiveTestData.Fixture(fixture));
@@ -236,16 +197,10 @@ public sealed class ArchiveReaderTests : IDisposable
 
     [Theory]
     [InlineData(ArchiveFormat.Gz)]
-    [InlineData(ArchiveFormat.Bz2)]
-    [InlineData(ArchiveFormat.Zst)]
-    [InlineData(ArchiveFormat.Lz)]
     public void A_bare_stream_is_one_file_named_by_the_stem(ArchiveFormat format)
     {
         var path = ArchiveTestData.Bare(At("notes.txt.x"), format, Encoding.UTF8.GetBytes("hello"));
-        var named = At("notes.txt" + format switch
-        {
-            ArchiveFormat.Gz => ".gz", ArchiveFormat.Bz2 => ".bz2", ArchiveFormat.Zst => ".zst", _ => ".lz",
-        });
+        var named = At("notes.txt" + (format == ArchiveFormat.Gz ? ".gz" : ".unknown"));
 
         File.Move(path, named);
 
@@ -265,66 +220,22 @@ public sealed class ArchiveReaderTests : IDisposable
     /// out as <c>DataErrorException: Data Error</c>. Classified by its type
     /// it would tell somebody who pressed Stop that their archive is damaged.
     ///
-    /// Pinned directly because the end-to-end test below cannot hold it:
-    /// measured by revert-check, SharpCompress's own 7z writer produces a
-    /// stream whose decoder lets the cancellation through unwrapped, so that
-    /// test stays green with this rule removed; and a 7-Zip-made fixture that
-    /// shows the wrapping needs megabytes of input to reach a second read.
+    /// Pinned directly, and the only test of the rule (review L7): an
+    /// end-to-end cancel stayed green with this rule removed, because
+    /// SharpCompress's own writer produced streams whose decoder let the
+    /// cancellation through unwrapped. 7z and RAR went; a zip's LZMA and PPMd
+    /// members use the same decoders, so the rule stays and the pass here is
+    /// a zip's.
     /// </summary>
     [Fact]
     public void A_failure_while_cancelled_is_a_cancellation_whatever_it_says()
     {
         using var cts = new CancellationTokenSource();
-        using var pass = ArchiveReader.Open(ArchiveTestData.Fixture("7z-ppmd.7z"), cts.Token);
+        using var pass = ArchiveReader.Open(ArchiveTestData.Fixture("zip-ppmd.zip"), cts.Token);
 
         cts.Cancel();
 
         Assert.IsAssignableFrom<OperationCanceledException>(
             ArchiveReader.Classify(new InvalidDataException("Data Error"), pass, 3));
-    }
-
-    /// <summary>
-    /// **LZMA2 reports a cancellation arriving through its input as
-    /// "Data Error"** (E-7). Asked of the token first, it is still a
-    /// cancellation — not an archive somebody is told is damaged.
-    /// </summary>
-    [Fact]
-    public void Cancelling_mid_decode_of_a_7z_is_a_cancellation_not_damage()
-    {
-        var data = new byte[16 << 20];
-        uint x = 1;
-
-        for (var i = 0; i < data.Length; i++)
-        {
-            x ^= x << 13; x ^= x >> 17; x ^= x << 5;
-            data[i] = (byte)('a' + (x & 0x0F));
-        }
-
-        var path = ArchiveTestData.SevenZip(At("big.7z"), ("big.bin", data));
-
-        using var cts = new CancellationTokenSource();
-        using var pass = ArchiveReader.Open(path, cts.Token);
-
-        var watch = System.Diagnostics.Stopwatch.StartNew();
-
-        Assert.ThrowsAny<OperationCanceledException>(() =>
-        {
-            foreach (var item in pass.Items())
-            {
-                using var stream = item.OpenData();
-                var buffer = new byte[81920];
-
-                while (stream.Read(buffer, 0, buffer.Length) > 0)
-                {
-                    if (!cts.IsCancellationRequested)
-                    {
-                        cts.Cancel();
-                        watch.Restart();
-                    }
-                }
-            }
-        });
-
-        Assert.True(watch.ElapsedMilliseconds < 1000, $"{watch.ElapsedMilliseconds} ms");
     }
 }

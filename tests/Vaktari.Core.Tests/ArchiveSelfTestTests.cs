@@ -30,14 +30,14 @@ public sealed class ArchiveSelfTestTests : IDisposable
 
         Assert.True(code == 0, output.ToString());
         Assert.DoesNotContain("FAIL", output.ToString());
-        Assert.Contains("ok rar5-solid.rar", output.ToString());
+        Assert.Contains("ok zip-ppmd.zip", output.ToString());
     }
 
     [Fact]
     public void A_wrong_hash_fails_and_names_the_fixture()
     {
         var lines = CopyFixtures();
-        var at = lines.FindIndex(l => l.StartsWith("7z-ppmd.7z\tfile\t7z-ppmd/docs/c.txt\t", StringComparison.Ordinal));
+        var at = lines.FindIndex(l => l.StartsWith("zip-ppmd.zip\tfile\tzip-ppmd/docs/c.txt\t", StringComparison.Ordinal));
         var cells = lines[at].Split('\t');
 
         cells[4] = new string('0', 64);
@@ -48,7 +48,7 @@ public sealed class ArchiveSelfTestTests : IDisposable
         var output = new StringWriter();
 
         Assert.Equal(1, ArchiveSelfTest.Run(_copy, output));
-        Assert.Contains("FAIL 7z-ppmd.7z: 7z-ppmd/docs/c.txt has SHA-256", output.ToString());
+        Assert.Contains("FAIL zip-ppmd.zip: zip-ppmd/docs/c.txt has SHA-256", output.ToString());
     }
 
     [Fact]
@@ -56,21 +56,21 @@ public sealed class ArchiveSelfTestTests : IDisposable
     {
         var lines = CopyFixtures();
 
-        lines.RemoveAt(lines.FindIndex(l => l.StartsWith("rar4.rar\tfile\trar4/jpg/test.jpg\t", StringComparison.Ordinal)));
+        lines.RemoveAt(lines.FindIndex(l => l.StartsWith("zip-zstd.zip\tfile\tzip-zstd/jpg/test.jpg\t", StringComparison.Ordinal)));
 
         File.WriteAllLines(Path.Combine(_copy, "expected.tsv"), lines);
 
         var output = new StringWriter();
 
         Assert.Equal(1, ArchiveSelfTest.Run(_copy, output));
-        Assert.Contains("FAIL rar4.rar: unexpected rar4/jpg/test.jpg", output.ToString());
+        Assert.Contains("FAIL zip-zstd.zip: unexpected zip-zstd/jpg/test.jpg", output.ToString());
     }
 
     [Fact]
     public void A_refusal_in_other_words_fails()
     {
         var lines = CopyFixtures();
-        var at = lines.FindIndex(l => l.StartsWith("7z-mhe.7z\trefused\t", StringComparison.Ordinal));
+        var at = lines.FindIndex(l => l.StartsWith("zip-aes256.zip\trefused\t", StringComparison.Ordinal));
 
         lines[at] = lines[at].Replace("password-protected", "locked", StringComparison.Ordinal);
 
@@ -79,7 +79,7 @@ public sealed class ArchiveSelfTestTests : IDisposable
         var output = new StringWriter();
 
         Assert.Equal(1, ArchiveSelfTest.Run(_copy, output));
-        Assert.Contains("FAIL 7z-mhe.7z: refused with", output.ToString());
+        Assert.Contains("FAIL zip-aes256.zip: refused with", output.ToString());
     }
 
     private List<string> CopyFixtures()

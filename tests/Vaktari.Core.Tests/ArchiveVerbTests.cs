@@ -607,17 +607,17 @@ public sealed class ArchiveVerbTests : IDisposable
     [Theory]
     [InlineData("holiday.zip", true)]
     [InlineData("HOLIDAY.ZIP", true)]
-    [InlineData("holiday.7z", true)]
-    [InlineData("holiday.rar", true)]
     [InlineData("holiday.tar", true)]
     [InlineData("holiday.tar.gz", true)]
     [InlineData("holiday.TGZ", true)]
-    [InlineData("holiday.tar.bz2", true)]
-    [InlineData("holiday.tar.xz", true)]
-    [InlineData("holiday.tar.zst", true)]
-    [InlineData("holiday.tar.lz", true)]
     [InlineData("notes.txt.gz", true)]
-    [InlineData("notes.txt.xz", true)]
+    [InlineData("holiday.7z", false)]
+    [InlineData("holiday.rar", false)]
+    [InlineData("holiday.tar.bz2", false)]
+    [InlineData("holiday.tar.xz", false)]
+    [InlineData("holiday.tar.zst", false)]
+    [InlineData("holiday.tar.lz", false)]
+    [InlineData("notes.txt.xz", false)]
     [InlineData("holiday.docx", false)]
     [InlineData("holiday.jar", false)]
     [InlineData("holiday", false)]
@@ -626,21 +626,11 @@ public sealed class ArchiveVerbTests : IDisposable
         => Assert.Equal(offered, Archives.CanExtract(name));
 
     [Theory]
-    [InlineData("7z-solid-lzma2.7z")]
-    [InlineData("7z-bcj2.7z")]
-    [InlineData("7z-ppmd.7z")]
-    [InlineData("7z-bzip2.7z")]
-    [InlineData("7z-delta.7z")]
-    [InlineData("7z-arm64.7z")]
     [InlineData("zip-deflate64.zip")]
     [InlineData("zip-bzip2.zip")]
     [InlineData("zip-lzma.zip")]
     [InlineData("zip-ppmd.zip")]
     [InlineData("tree.tar.gz")]
-    [InlineData("tree.tar.bz2")]
-    [InlineData("tree.tar.xz")]
-    [InlineData("tree.tar.zst")]
-    [InlineData("tree.tar.lz")]
     public void Each_format_extracts(string fixture)
     {
         var done = Archives.Extract(ArchiveTestData.Fixture(fixture), _root);
@@ -651,10 +641,6 @@ public sealed class ArchiveVerbTests : IDisposable
     }
 
     [Theory]
-    [InlineData("rar4.rar")]
-    [InlineData("rar5.rar")]
-    [InlineData("rar4-solid.rar")]
-    [InlineData("rar5-solid.rar")]
     [InlineData("zip-zstd.zip")]
     [InlineData("zip-xz.zip")]
     public void Each_vendored_format_extracts(string fixture)
@@ -666,14 +652,8 @@ public sealed class ArchiveVerbTests : IDisposable
     }
 
     [Theory]
-    [InlineData("7z-p.7z")]
-    [InlineData("7z-mhe.7z")]
     [InlineData("zip-zipcrypto.zip")]
     [InlineData("zip-aes256.zip")]
-    [InlineData("rar4-p.rar")]
-    [InlineData("rar4-hp.rar")]
-    [InlineData("rar5-p.rar")]
-    [InlineData("rar5-hp.rar")]
     public void A_password_protected_archive_is_refused_in_words(string fixture)
     {
         var copy = At(fixture);
@@ -701,24 +681,6 @@ public sealed class ArchiveVerbTests : IDisposable
 
         Assert.Equal($"{name} is one part of a split archive — Vaktari cannot extract split archives", refused.Message);
     }
-
-    /// <summary>The flag, for a first part whose name does not give it away.</summary>
-    [Fact]
-    public void A_split_rar_renamed_to_look_whole_is_refused_by_its_flag()
-    {
-        var part = At("photos.rar");
-
-        File.WriteAllBytes(part, RarFirstVolume());
-
-        var refused = Assert.Throws<ArchiveRefusedException>(() => Archives.Extract(part, _root));
-
-        Assert.Contains("split archive", refused.Message);
-    }
-
-    /// <summary>The first part of SharpCompress's own multi-part RAR5 set,
-    /// vendored as rar5-volume1.rar (see PROVENANCE.md): only its volume flag
-    /// is read, so the rest of the set is not needed.</summary>
-    private static byte[] RarFirstVolume() => File.ReadAllBytes(ArchiveTestData.Fixture("rar5-volume1.rar"));
 
     [Fact]
     public void A_sparse_tar_is_refused_in_words()
@@ -784,15 +746,45 @@ public sealed class ArchiveVerbTests : IDisposable
         Assert.Equal(["many.tar"], Tree(_root));
     }
 
-    /// <summary>The bytes win over the name: a 7z called .zip is a 7z.</summary>
-    [Fact]
-    public void A_file_named_zip_holding_7z_bytes_extracts_as_7z()
+    /// <summary>
+    /// **A format Vaktari does not extract is refused for what it is, by its
+    /// bytes, whatever it is called** (review H2). Before the narrowing these
+    /// extracted as what they really were; after it, without the signatures,
+    /// a 7z named .zip went to the zip reader and an xz tar named .tar.gz was
+    /// called "not a gzip file, or damaged" — an intact file, called broken.
+    /// One row per signature, each under a name Extract all does offer. The
+    /// first bytes are the format's own; what follows does not matter, since
+    /// nothing past the signature is read.
+    /// </summary>
+    [Theory]
+    [InlineData("misnamed.zip", new byte[] { 0x37, 0x7A, 0xBC, 0xAF, 0x27, 0x1C }, "a 7z")]
+    [InlineData("misnamed.tar.gz", new byte[] { 0xFD, 0x37, 0x7A, 0x58, 0x5A, 0x00 }, "an xz")]
+    [InlineData("misnamed.gz", new byte[] { 0x42, 0x5A, 0x68, 0x39 }, "a bzip2")]
+    [InlineData("misnamed.tar", new byte[] { 0x28, 0xB5, 0x2F, 0xFD }, "a zstd")]
+    [InlineData("misnamed2.zip", new byte[] { 0x52, 0x61, 0x72, 0x21, 0x1A, 0x07, 0x01, 0x00 }, "a RAR")]
+    [InlineData("misnamed2.gz", new byte[] { 0x4C, 0x5A, 0x49, 0x50, 0x01 }, "an lzip")]
+    [InlineData("misnamed3.zip", new byte[] { 0x52, 0x61, 0x72, 0x21, 0x1A, 0x07, 0x00 }, "a RAR")]
+    public void Another_format_under_a_name_vaktari_extracts_is_refused_for_what_it_is(string name, byte[] head, string what)
     {
-        File.Copy(ArchiveTestData.Fixture("7z-solid-lzma2.7z"), At("misnamed.zip"));
+        File.WriteAllBytes(At(name), [.. head, .. new byte[4096]]);
 
-        var done = Archives.Extract(At("misnamed.zip"), _root);
+        var refused = Assert.Throws<ArchiveRefusedException>(() => Archives.Extract(At(name), _root));
 
-        Assert.Equal(4, done.Files);
-        Assert.True(File.Exists(Path.Combine(done.Landed, "docs", "c.txt")));
+        Assert.Equal(
+            $"{name} is {what} archive. Vaktari extracts zip and tar.gz archives only — open this one with another app",
+            refused.Message);
+        Assert.Equal([name], Tree(_root));
+    }
+
+    /// <summary>The control: bytes that are no format at all, named .zip,
+    /// are still "not a zip file", not "another format".</summary>
+    [Fact]
+    public void A_file_named_zip_that_is_no_archive_at_all_is_not_a_zip()
+    {
+        File.WriteAllText(At("page.zip"), "<html>404</html>");
+
+        var refused = Assert.Throws<InvalidDataException>(() => Archives.Extract(At("page.zip"), _root));
+
+        Assert.Equal("page.zip is not a zip file, or is damaged", refused.Message);
     }
 }

@@ -94,17 +94,11 @@ public sealed class ArchiveDrainHonestyTests : IDisposable
 
     [Theory]
     [InlineData(ArchiveFormat.TarGz, "two.tar.gz")]
-    [InlineData(ArchiveFormat.TarBz2, "two.tar.bz2")]
-    [InlineData(ArchiveFormat.TarLz, "two.tar.lz")]
-    [InlineData(ArchiveFormat.TarZst, "two.tar.zst")]
     public void A_tar_compressed_in_two_members_extracts_whole(ArchiveFormat format, string name)
         => AssertExtractsAsThePlainTar(name, TwoMembers(format, Tar()));
 
     [Theory]
     [InlineData(ArchiveFormat.TarGz, "nul.tar.gz")]
-    [InlineData(ArchiveFormat.TarBz2, "nul.tar.bz2")]
-    [InlineData(ArchiveFormat.TarLz, "nul.tar.lz")]
-    [InlineData(ArchiveFormat.TarZst, "nul.tar.zst")]
     public void Extra_nul_blocks_after_the_end_marker_are_not_damage(ArchiveFormat format, string name)
         => AssertExtractsAsThePlainTar(name, Compress(format, Tar(extraNulBlocks: 40)));
 
@@ -113,17 +107,6 @@ public sealed class ArchiveDrainHonestyTests : IDisposable
     [Fact]
     public void An_empty_gzip_member_at_the_end_is_not_damage()
         => AssertExtractsAsThePlainTar("bgzf.tar.gz", [.. Compress(ArchiveFormat.TarGz, Tar()), .. Compress(ArchiveFormat.TarGz, [])]);
-
-    /// <summary>A zstd skippable frame (magic 0x184D2A5?, a length, that many
-    /// bytes) after the data frame — where the seekable format keeps its seek
-    /// table. The format says a decoder skips it.</summary>
-    [Fact]
-    public void A_zstd_skippable_frame_after_the_data_is_not_damage()
-    {
-        byte[] skippable = [.. BitConverter.GetBytes(0x184D2A5Eu), .. BitConverter.GetBytes(12u), .. new byte[12]];
-
-        AssertExtractsAsThePlainTar("seekable.tar.zst", [.. Compress(ArchiveFormat.TarZst, Tar()), .. skippable]);
-    }
 
     // ---- a failed check in a member that is not the last ------------------------------
 
@@ -136,9 +119,6 @@ public sealed class ArchiveDrainHonestyTests : IDisposable
     [Theory]
     [InlineData(ArchiveFormat.TarGz, "bad2.tar.gz", 8, true)]
     [InlineData(ArchiveFormat.TarGz, "bad1.tar.gz", 8, false)]
-    [InlineData(ArchiveFormat.TarBz2, "bad2.tar.bz2", 1, true)]
-    [InlineData(ArchiveFormat.TarLz, "bad2.tar.lz", 20, true)]
-    [InlineData(ArchiveFormat.TarLz, "bad1.tar.lz", 20, false)]
     public void A_failed_check_in_either_member_is_damage(ArchiveFormat format, string name, int fromEnd, bool second)
     {
         var tar = Tar();
@@ -168,8 +148,6 @@ public sealed class ArchiveDrainHonestyTests : IDisposable
     /// </summary>
     [Theory]
     [InlineData(ArchiveFormat.TarGz, "tail.tar.gz", 8)]
-    [InlineData(ArchiveFormat.TarBz2, "tail.tar.bz2", 1)]
-    [InlineData(ArchiveFormat.TarLz, "tail.tar.lz", 20)]
     public void A_failed_check_past_a_long_tail_is_still_damage(ArchiveFormat format, string name, int fromEnd)
     {
         var bytes = Compress(format, Tar(extraNulBlocks: 4096));

@@ -439,9 +439,10 @@ the space and duplicate listings. See
 each opening straight into the rename box. *Compress to ZIP*
 and *Extract all* — Vaktari's own, undoable, written beside what they act on,
 and refusing any archive entry that points outside the folder it is landing
-in. *Extract all* opens zip, 7z, RAR and tar, plain or compressed as
-`.tar.gz`, `.tar.bz2`, `.tar.xz`, `.tar.zst` or `.tar.lz`, and a single
-compressed file such as `report.txt.gz`. It lands as one new thing and never
+in. *Extract all* opens zip and tar archives — `.zip`, `.tar`, `.tar.gz` or
+`.tgz` — and a single gzip-compressed file such as `report.txt.gz`. Other
+archive formats (7z, RAR, `.tar.xz` and the rest) open on a double-click in
+whatever program your system has for them, if it has one. It lands as one new thing and never
 over anything already there: an archive holding one folder becomes that
 folder, a compressed single file becomes the file, and anything else goes into
 a folder named after the archive. It runs on the transfer bar with progress,
@@ -817,29 +818,28 @@ promise yet. Worth knowing before you decide:
   under [Working with files](#working-with-files), with these limits:
   - **Password-protected archives are refused**, with a sentence saying so;
     asking for the password comes in a later version.
-  - **Split archives are not extracted.** A RAR that is one part of a set
-    (`.part1.rar` and the like) is refused with a sentence saying so. The
-    numbered parts of a split 7z or zip (`.7z.001`, `.zip.001`, `.z01`) and
-    an old-style `.r00` are not offered *Extract all*, and the last part of a
-    split zip, which is named `.zip`, is refused as damaged or not a zip
+  - **Zip and tar only.** 7z, RAR, and tar compressed with xz, bzip2, zstd or
+    lzip are not extracted by Vaktari; double-click them to open them in
+    your own archive program. Recent Windows 11 opens most of them in
+    Explorer; Windows 10 needs one installed, such as 7-Zip. A file named
+    `.zip` or `.tar.gz` whose bytes are one of those formats is refused in
+    words ("Vaktari extracts zip and tar.gz archives only"), not extracted.
+  - **Split archives are not extracted.** The numbered parts of a split zip
+    (`.zip.001`, `.z01`) are not offered *Extract all*, and the last part of
+    a split zip, which is named `.zip`, is refused as damaged or not a zip
     rather than as one part of a set.
   - **The row is offered by name.** *Extract all* appears, in an ordinary
-    folder, for one file whose name ends — in any case — in `.zip`, `.7z`,
-    `.rar`, `.tar`; `.tar.gz` or `.tgz`; `.tar.bz2`, `.tbz2` or `.tbz`;
-    `.tar.xz` or `.txz`; `.tar.zst` or `.tzst`; `.tar.lz` or `.tlz`; or, for
-    a single compressed file, `.gz`, `.bz2`, `.xz`, `.zst` or `.lz`. The
-    file's contents decide only how it is read, so a 7z renamed to `.zip`
-    opens but one renamed to `.bin` is not offered it.
+    folder, for one file whose name ends — in any case — in `.zip`, `.tar`,
+    `.tar.gz` or `.tgz`, or, for a single compressed file, `.gz`. The file's
+    contents decide only how it is read, so a zip renamed to `.bin` is not
+    offered it.
   - **A plain tar is checked only as far as its structure goes.** A tar
     keeps no checksum of its files, so a damaged byte inside a plain `.tar`
-    can arrive without a word. A compressed tar is read to its end and
-    refused when the check its compression keeps there fails (gzip's CRC,
-    the xz, bzip2 and lzip checks, a zstd frame's checksum), but a
-    `.tar.zst` or `.tar.xz` written without a checksum has nothing to check.
-    A compressed file cut short, such as an interrupted download, is
-    refused; one written as several streams and cut exactly between two of
-    them may not be noticed. Zip, 7z and RAR entries are checked against
-    their CRC.
+    can arrive without a word. A `.tar.gz` is read to its end and refused
+    when gzip's CRC fails there. A gzip file cut short, such as an
+    interrupted download, is refused; one written as several members and cut
+    exactly between two of them may not be noticed. Zip entries are checked
+    against their CRC.
   - **Only a zip whose entries overlap one another, or run into its
     directory, is refused for unpacking to far more than it holds.** An
     entry that honestly

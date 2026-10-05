@@ -1,5 +1,9 @@
 """Writes expected.tsv from an INDEPENDENT extractor.
 
+Only zip, tar, tar.gz and gz fixtures are committed since Extract all narrowed
+to them; the entries below for the formats that went are harmless, because
+only the fixtures present are listed.
+
 The oracle is 7-Zip 26.03 for zip, 7z and RAR, and Python's own gzip, bz2,
 lzma and tarfile for the tar family - never Vaktari: a self-test whose
 expectations came from the code under test would pass whatever that code did.
