@@ -634,4 +634,49 @@ public sealed class ColumnsQaTests : ColumnWindow
         Assert.Equal(sort, (pane.Sort, pane.SortDescending));
         Assert.True(PaneScale.ColumnWidth(pane.ColumnWidths, column) > (column == DetailsColumn.Name ? 380 : 0));
     }
+    /// <summary>
+    /// **A zoom while scrolled keeps rows and headings together**, pass by
+    /// pass: the column widths, the row's width and the offset all change at
+    /// once.
+    /// </summary>
+    [AvaloniaTheory]
+    [InlineData(1.0)]
+    [InlineData(1.15)]
+    [InlineData(1.25)]
+    public async Task A_zoom_while_scrolled_keeps_rows_and_headings_together(double scaling)
+    {
+        Fill(40);
+
+        var (window, shell, pane) = await Open(scaling: scaling);
+
+        Overflow(window, pane);
+
+        var rows = Rows(window, pane);
+        var worst = 0.0;
+        var mismatch = 0;
+
+        foreach (var zoom in new[] { 1.25, 0.9, 1.5, 1.0 })
+        {
+            rows.Offset = new Vector(1e6, 0);
+            window.UpdateLayout();
+
+            pane.FontScale = zoom;
+            shell.RefreshPaneScales();
+
+            for (var pass = 0; pass < 4; pass++)
+            {
+                Pump();
+                window.UpdateLayout();
+                worst = Math.Max(worst, Worst(window, pane));
+
+                if (rows.Offset.X != Headings(window, pane).Offset.X || rows.Extent.Width != Headings(window, pane).Extent.Width)
+                    mismatch++;
+            }
+        }
+
+        _out.WriteLine($"scaling {scaling}: worst {worst:N3} mismatches {mismatch}");
+
+        Assert.True(worst < 0.6, $"apart by {worst}");
+        Assert.Equal(0, mismatch);
+    }
 }
