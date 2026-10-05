@@ -176,8 +176,12 @@ internal sealed unsafe partial class DeviceNotifications : IDisposable
 
                     return 1;
 
+                // **Refused** (QA). The window lives for the process, and a
+                // WM_CLOSE posted by anything — a tool that closes every
+                // window of a process, say — used to destroy it, which left
+                // every watch believing a source was running that would never
+                // speak again. Nothing of Vaktari's own ever closes it.
                 case WM_CLOSE:
-                    DestroyWindow(hwnd);
                     return 0;
 
                 case WM_DESTROY:
@@ -249,7 +253,7 @@ internal sealed unsafe partial class DeviceNotifications : IDisposable
 
     [LibraryImport("user32.dll")]
     [return: MarshalAs(UnmanagedType.Bool)]
-    private static partial bool DestroyWindow(nint hwnd);
+    internal static partial bool IsWindow(nint hwnd);
 
     [LibraryImport("user32.dll")]
     private static partial void PostQuitMessage(int code);

@@ -442,8 +442,9 @@ and refusing any archive entry that points outside the folder it is landing
 in. *Extract all* opens zip and tar archives — `.zip`, `.tar`, `.tar.gz` or
 `.tgz` — and a single gzip-compressed file such as `report.txt.gz`. Other
 archive formats (7z, RAR, `.tar.xz` and the rest) open on a double-click in
-whatever program your system has for them, if it has one. It lands as one new thing and never
-over anything already there: an archive holding one folder becomes that
+whatever program your system has for them, if it has one. *Extract all*
+lands as one new thing and never over anything already there: an archive
+holding one folder becomes that
 folder, a compressed single file becomes the file, and anything else goes into
 a folder named after the archive. It runs on the transfer bar with progress,
 pause and cancel, and a cancelled or failed run removes what it wrote (should
@@ -820,8 +821,9 @@ promise yet. Worth knowing before you decide:
     asking for the password comes in a later version.
   - **Zip and tar only.** 7z, RAR, and tar compressed with xz, bzip2, zstd or
     lzip are not extracted by Vaktari; double-click them to open them in
-    your own archive program. Recent Windows 11 opens most of them in
-    Explorer; Windows 10 needs one installed, such as 7-Zip. A file named
+    your own archive program, if you have one. File Explorer extracts 7z,
+    RAR and compressed tars from Windows 11 version 23H2 on; earlier
+    versions, Windows 10 included, need a program such as 7-Zip. A file named
     `.zip` or `.tar.gz` whose bytes are one of those formats is refused in
     words ("Vaktari extracts zip and tar.gz archives only"), not extracted.
   - **Split archives are not extracted.** The numbered parts of a split zip
@@ -830,9 +832,11 @@ promise yet. Worth knowing before you decide:
     rather than as one part of a set.
   - **The row is offered by name.** *Extract all* appears, in an ordinary
     folder, for one file whose name ends — in any case — in `.zip`, `.tar`,
-    `.tar.gz` or `.tgz`, or, for a single compressed file, `.gz`. The file's
-    contents decide only how it is read, so a zip renamed to `.bin` is not
-    offered it.
+    `.tar.gz` or `.tgz`, or, for a single compressed file, `.gz`. The name
+    decides whether the row is offered, and the file's first bytes decide
+    whether and how it is read: a zip renamed to `.bin` is not offered it, a
+    tar named `.zip` is read as a tar, and a 7z named `.zip` is refused as
+    a 7z.
   - **A plain tar is checked only as far as its structure goes.** A tar
     keeps no checksum of its files, so a damaged byte inside a plain `.tar`
     can arrive without a word. A `.tar.gz` is read to its end and refused

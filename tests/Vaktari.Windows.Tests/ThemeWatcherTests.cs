@@ -381,6 +381,42 @@ public sealed class ThemeWatcherTests : IDisposable
         }
     }
 
+    /// <summary>
+    /// **A key whose watch ended on its own can be armed again** (QA). A
+    /// deleted key ends its watch — the re-arm fails — and the slot used to
+    /// keep the dead watch, so every later Follow saw the key as watched and
+    /// armed nothing: a desktop setting followed by nobody until a restart.
+    /// Driven on a key of this test's own through the same path Follow takes.
+    /// </summary>
+    [WindowsFact]
+    public async Task A_key_whose_watch_ended_is_armed_again_by_the_next_follow()
+    {
+        var subKey = NewKey();
+
+        try
+        {
+            Assert.True(WindowsThemeProvider.FollowKey(subKey, wanted: true));
+            Assert.Contains(subKey, WindowsThemeProvider.Watched);
+
+            Registry.CurrentUser.DeleteSubKeyTree(subKey, throwOnMissingSubKey: false);
+
+            var clock = Stopwatch.StartNew();
+            while (WindowsThemeProvider.Watched.Contains(subKey) && clock.Elapsed < Ceiling) await Task.Delay(20);
+
+            Assert.DoesNotContain(subKey, WindowsThemeProvider.Watched);
+
+            using (Registry.CurrentUser.CreateSubKey(subKey)) { }
+
+            Assert.True(WindowsThemeProvider.FollowKey(subKey, wanted: true), "the key was not armed again");
+            Assert.Contains(subKey, WindowsThemeProvider.Watched);
+        }
+        finally
+        {
+            WindowsThemeProvider.FollowKey(subKey, wanted: false);
+            await Forget(subKey, null);
+        }
+    }
+
     private static string NewKey()
     {
         var subKey = @"Software\Vaktari-tests\theme-" + Guid.NewGuid().ToString("N");

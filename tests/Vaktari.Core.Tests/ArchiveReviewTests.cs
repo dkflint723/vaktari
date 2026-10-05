@@ -382,6 +382,13 @@ public sealed class ArchiveReviewTests : IDisposable
     /// not merely before the disk is full. A look that asked for half the
     /// reserve still stopped short of a full disk, and "more than nothing"
     /// could not tell (fix-11 verification).
+    ///
+    /// **What this pins is the stream's budget, not the floor** (QA of the
+    /// streamlining): with the BelowFloor look switched off it still passes,
+    /// because a run that starts with 24 MiB free is held by the budget it was
+    /// given up front. The floor is pinned by the two tests that change what
+    /// is free as the run goes. Only the gzip row is left: the other
+    /// compressors went with Extract all's narrowing.
     /// </summary>
     [Theory]
     [InlineData(ArchiveFormat.Gz, "zeros.gz")]

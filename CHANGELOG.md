@@ -18,10 +18,10 @@ should not be trusted for compatibility yet.
   did.
   - On Windows, that mounts it, as Explorer does. A mounted image still
     appears in the sidebar as a disc drive with an eject button.
-  - On Linux, it opens in whatever your desktop uses for disk images (GNOME's
-    Disk Image Mounter, or Dolphin through udisks). Vaktari never listed a
-    mounted image in its sidebar, so put one away from the desktop's own file
-    manager or with `udisksctl unmount` and `udisksctl loop-delete`.
+  - On Linux, it opens with whatever your desktop has registered for disk
+    images, if anything (GNOME ships Disk Image Mounter for it). Vaktari never
+    listed a mounted image in its sidebar, so put one away from the desktop's
+    own file manager or with `udisksctl unmount` and `udisksctl loop-delete`.
 - **Extract all now opens zip and tar only.** It still extracts `.zip`,
   `.tar`, `.tar.gz` and `.tgz`, and a single `.gz` file, with every check it
   had (including the 0.11.1 fixes for a cut or multi-member gzip), and a zip
@@ -29,9 +29,10 @@ should not be trusted for compatibility yet.
   longer extracts `.7z`, `.rar`, `.tar.bz2`/`.tbz2`/`.tbz`, `.tar.xz`/`.txz`,
   `.tar.zst`/`.tzst` or `.tar.lz`/`.tlz`, nor a single `.bz2`, `.xz`, `.zst`
   or `.lz` file. Those no longer get the *Extract all* row; double-clicking
-  one opens it in your system's own archive program, as it always did —
-  recent Windows 11 has one built in, and Windows 10 needs one installed,
-  such as 7-Zip. A file named `.zip` or `.tar.gz` that is really one of those
+  one opens it in your system's own archive program, if it has one, as it
+  always did. On Windows, File Explorer extracts 7z, RAR and compressed tars
+  from Windows 11 version 23H2 on; earlier versions, Windows 10 included,
+  need a program such as 7-Zip. A file named `.zip` or `.tar.gz` that is really one of those
   formats is refused in words — "Vaktari extracts zip and tar.gz archives
   only — open this one with another app" — where it used to be extracted.
   Icon themes can still be installed from a `.tar.xz`.

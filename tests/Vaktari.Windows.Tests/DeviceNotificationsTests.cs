@@ -59,6 +59,33 @@ public sealed class DeviceNotificationsTests
         Assert.Equal(0, Volatile.Read(ref departed));
     }
 
+    /// <summary>
+    /// **A WM_CLOSE from outside is refused** (QA). The window lives for the
+    /// process; destroyed, it left every watch believing in a source that
+    /// would never speak again. After a close it is still a window, and it
+    /// still hears a device change.
+    /// </summary>
+    [WindowsFact]
+    public void A_close_from_outside_is_refused_and_the_window_still_hears()
+    {
+        using var heard = new SemaphoreSlim(0);
+        using var listener = DeviceNotifications.Start(() => heard.Release());
+        Assert.NotNull(listener);
+
+        const uint WM_CLOSE = 0x0010;
+        Assert.True(DeviceNotifications.PostMessageW(DeviceNotifications.Hwnd, WM_CLOSE, 0, 0));
+
+        // Time for the close to be handled on its own: a change posted in the
+        // same breath would be dispatched before a quit the close might have
+        // asked for, and hide it.
+        Thread.Sleep(300);
+
+        Assert.True(DeviceNotifications.PostMessageW(DeviceNotifications.Hwnd, DeviceNotifications.WM_DEVICECHANGE, DBT_DEVNODES_CHANGED, 0));
+
+        Assert.True(heard.Wait(TimeSpan.FromSeconds(10)), "the window stopped hearing after a WM_CLOSE");
+        Assert.True(DeviceNotifications.IsWindow(DeviceNotifications.Hwnd), "a WM_CLOSE destroyed the window");
+    }
+
     [WindowsFact]
     public void The_window_is_never_shown()
     {

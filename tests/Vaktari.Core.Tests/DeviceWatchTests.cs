@@ -268,6 +268,28 @@ public sealed class DeviceWatchTests
     }
 
     /// <summary>
+    /// **A change only in what the source never announces is not a missed
+    /// one** (QA): Windows broadcasts nothing for a network drive letter, so
+    /// the fallback look finding one is the design. The provider says which
+    /// part of a look is announced; a change outside it warns nothing, and a
+    /// change inside it still does.
+    /// </summary>
+    [Fact]
+    public void A_change_only_in_what_is_never_announced_is_not_missed()
+    {
+        static string Local(string s) => string.Join("\n", s.Split('\n').Where(l => !l.Contains("|4|")));
+
+        using var watch = new DeviceWatch(() => "") { Announced = Local };
+        watch.UseNativeSource(true);
+
+        watch.NoticeMissed("C:\\|3|1", "C:\\|3|1\nZ:\\|4|1");
+        Assert.False(watch.MissedByNative, "a mapped network letter was taken for a dead source");
+
+        watch.NoticeMissed("C:\\|3|1", "C:\\|3|1\nE:\\|2|1");
+        Assert.True(watch.MissedByNative);
+    }
+
+    /// <summary>
     /// The loop's own decision: a look after a TIMEOUT that finds a change is
     /// the missed case; the same change after a NUDGE is not.
     /// </summary>

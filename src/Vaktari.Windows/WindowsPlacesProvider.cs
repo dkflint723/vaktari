@@ -64,7 +64,7 @@ public sealed class WindowsPlacesProvider : IPlacesProvider, IDisposable
     {
         if (_watch is not null) return;
 
-        var watch = new DeviceWatch(DriveSet.Snapshot);
+        var watch = new DeviceWatch(DriveSet.Snapshot) { Announced = DriveSet.WithoutNetwork };
         watch.Changed += (_, _) => PlacesChanged?.Invoke(this, EventArgs.Empty);
 
         // The system's own announcement first; the watch's timer stays as the
@@ -84,6 +84,9 @@ public sealed class WindowsPlacesProvider : IPlacesProvider, IDisposable
 
     /// <summary>The watch's floor once started. For the tests.</summary>
     internal TimeSpan? WatchIntervalForTests => _watch?.CurrentInterval;
+
+    /// <summary>The watch's announced-part rule once started. For the tests.</summary>
+    internal Func<string, string>? WatchAnnouncedForTests => _watch?.Announced;
 
     /// <summary>Looks now — for something that happened outside any
     /// announcement, such as a drive letter mapped by another program, which

@@ -49,6 +49,16 @@ internal static class DriveSet
             }))));
 
     /// <summary>
+    /// A snapshot without its network drive letters: the part Windows
+    /// announces with WM_DEVICECHANGE. A letter mapped or dropped by
+    /// <c>net use</c> or another program is broadcast to nobody, so the
+    /// device watch's fallback look finding one is expected, not a sign the
+    /// announcement has stopped working.
+    /// </summary>
+    internal static string WithoutNetwork(string snapshot)
+        => string.Join("\n", snapshot.Split('\n').Where(line => !line.Contains($"|{(int)DriveType.Network}|", StringComparison.Ordinal)));
+
+    /// <summary>
     /// The decision, over drives described rather than discovered — which is
     /// what lets the rules below be tested without owning the hardware they
     /// describe.

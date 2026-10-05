@@ -130,12 +130,33 @@ public sealed class WindowsThemeProvider : IThemeProvider
             if (Watch(subKey) is not { } watch) return false;
 
             Armed[subKey] = watch;
+
+            // **A watch that ends on its own leaves its slot** (QA). A key
+            // deleted under it — or any re-arm that fails — ends the watch,
+            // and a slot still holding the dead one would make every later
+            // Follow think the key was watched, so it was never armed again.
+            _ = watch.Ended.ContinueWith(
+                _ =>
+                {
+                    lock (Gate)
+                        if (Armed.TryGetValue(subKey, out var current) && ReferenceEquals(current, watch))
+                            Armed.Remove(subKey);
+                },
+                CancellationToken.None, TaskContinuationOptions.ExecuteSynchronously, TaskScheduler.Default);
+
             return true;
         }
 
         if (Armed.Remove(subKey, out var armed)) _ = armed.Stop();
 
         return false;
+    }
+
+    /// <summary>What <see cref="Follow"/> does for one key, on a key of the
+    /// test's own: the three real ones are the user's settings.</summary>
+    internal static bool FollowKey(string subKey, bool wanted)
+    {
+        lock (Gate) return Want(subKey, wanted);
     }
 
     /// <summary>Raised on a watcher thread when any of the three keys

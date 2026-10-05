@@ -1802,6 +1802,17 @@ public sealed partial class PaneViewModel : ObservableObject, IDisposable
         await SayAsync(report).ConfigureAwait(false);
     }
 
+    /// <summary>Stands in for the over-the-wire question, for the test that
+    /// a remote folder is not walked — the sidebar's discovered roots are a
+    /// static another window's late answer can overwrite. Null in the
+    /// application.</summary>
+    internal static Func<string, bool>? OverTheWireOverride { get; set; }
+
+    private static bool IsOverTheWire(string path)
+        => OverTheWireOverride is { } fake
+            ? fake(path)
+            : Vaktari.Core.FileSystem.OverTheWire.IsRemote(path, Thumbnails.ThumbnailLoader.RemoteRoots);
+
     /// <summary>
     /// Fetches version-control state for a folder and publishes it if that
     /// folder is still the one being shown.
@@ -1816,20 +1827,16 @@ public sealed partial class PaneViewModel : ObservableObject, IDisposable
     /// pool thread, where the only trace is a swallowed exception and marks
     /// that stopped appearing.
     /// </summary>
-    /// <summary>Stands in for the over-the-wire question, for the test that
-    /// a remote folder is not walked — the sidebar's discovered roots are a
-    /// static another window's late answer can overwrite. Null in the
-    /// application.</summary>
-    internal static Func<string, bool>? OverTheWireOverride { get; set; }
-
-    private static bool IsOverTheWire(string path)
-        => OverTheWireOverride is { } fake
-            ? fake(path)
-            : Vaktari.Core.FileSystem.OverTheWire.IsRemote(path, Thumbnails.ThumbnailLoader.RemoteRoots);
-
     private async Task RefreshVcsAsync(string path, int generation, CancellationToken ct)
     {
         var empty = new Dictionary<string, Vaktari.Core.Vcs.VcsState>();
+
+        // **Not over a wire.** Finding the repository walks every parent
+        // asking for .git, two existence checks a level, and on a share or a
+        // remote mount each is a round trip — on every listing. A repository
+        // on a share shows no marks now; see OverTheWire for what counts,
+        // and why "\\?\C:\" does not.
+        var remote = IsOverTheWire(path);
 
         // The setting is read HERE rather than at startup, so turning it off
         // takes effect on the next folder load without a restart — and turning
@@ -1841,13 +1848,6 @@ public sealed partial class PaneViewModel : ObservableObject, IDisposable
         // swallowed the NullReferenceException, and the decorations silently
         // stopped. **A feature must not depend on a settings group being
         // non-null to work at all.**
-        // **Not over a wire.** Finding the repository walks every parent
-        // asking for .git, two existence checks a level, and on a share or a
-        // remote mount each is a round trip — on every listing. A repository
-        // on a share shows no marks now; see OverTheWire for what counts,
-        // and why "\\?\C:\" does not.
-        var remote = IsOverTheWire(path);
-
         if (Vcs is null
             || Settings.AppSettings.Current.Vcs is { ShowDecorations: false }
             || VirtualPaths.IsVirtual(path)

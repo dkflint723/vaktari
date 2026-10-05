@@ -159,4 +159,41 @@ public sealed class DriveSetTests
         // A machine always has at least one local volume.
         Assert.NotEqual("", snapshot);
     }
+
+    /// <summary>
+    /// What Windows announces is the snapshot without its network letters:
+    /// a letter mapped by <c>net use</c> is broadcast to nobody, so the device
+    /// watch must not warn when only one of those changed.
+    /// </summary>
+    [Fact]
+    public void The_announced_part_leaves_out_network_letters_only()
+    {
+        var snapshot = DriveSet.Snapshot(
+        [
+            ("C:\\", DriveType.Fixed, () => true),
+            ("E:\\", DriveType.Removable, () => true),
+            ("Z:\\", DriveType.Network, () => true),
+        ]);
+
+        Assert.Equal("C:\\|3|1\nE:\\|2|1", DriveSet.WithoutNetwork(snapshot));
+    }
+
+    /// <summary>The provider hands that rule to its watch.</summary>
+    [Fact]
+    public void A_started_provider_does_not_count_network_letters_as_missed()
+    {
+        var state = Directory.CreateTempSubdirectory("vaktari-announced").FullName;
+
+        try
+        {
+            using var places = new WindowsPlacesProvider(state);
+            places.Start();
+
+            Assert.True(places.WatchAnnouncedForTests?.Invoke("C:\\|3|1\nZ:\\|4|1") == "C:\\|3|1");
+        }
+        finally
+        {
+            Directory.Delete(state, recursive: true);
+        }
+    }
 }

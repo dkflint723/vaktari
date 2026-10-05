@@ -168,18 +168,36 @@ public sealed class DeviceWatch(Func<string> snapshot) : IDisposable
                 continue;
             }
 
-            if (Observe(now) && !nudged) NoticeMissed();
+            var before = _last;
+
+            if (Observe(now) && !nudged) NoticeMissed(before, now);
         }
     }
 
     /// <summary>
+    /// The part of a look the native source is expected to announce, or null
+    /// for all of it. **Windows never broadcasts a network drive letter**
+    /// (<c>net use</c> maps one in silence), so a change to those alone, found
+    /// by the fallback look, is the design working, not a dead source; the
+    /// Windows provider leaves them out here so the warning below is not a
+    /// false alarm (QA of the streamlining).
+    /// </summary>
+    public Func<string, string>? Announced { get; init; }
+
+    /// <summary>
     /// A change the timer found and no native source announced. Logged the
     /// first time only, and only while a native source claims to be running:
-    /// with none, every change is found this way and that is the design.
+    /// with none, every change is found this way and that is the design. A
+    /// change only in what the source never announces (<see cref="Announced"/>)
+    /// is not one.
     /// </summary>
-    internal void NoticeMissed()
+    internal void NoticeMissed(string? before = null, string? now = null)
     {
         if (!_native || MissedByNative) return;
+
+        if (Announced is { } part && before is not null && now is not null
+            && string.Equals(part(before), part(now), StringComparison.Ordinal))
+            return;
 
         MissedByNative = true;
 
