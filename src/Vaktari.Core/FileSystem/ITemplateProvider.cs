@@ -54,4 +54,12 @@ public sealed record FileTemplate(string Name, string Path)
 public interface ITemplateProvider
 {
     IReadOnlyList<FileTemplate> Discover();
+
+    /// <summary>
+    /// Reads ahead, off the calling thread, what <see cref="Discover"/> will
+    /// need — for a provider whose read is slow enough to feel on the first
+    /// right-click. Nothing by default; an XDG folder is quick to read when
+    /// the menu asks.
+    /// </summary>
+    void Warm() { }
 }

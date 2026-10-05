@@ -144,6 +144,26 @@ public static class ThemeApplier
 
     ];
 
+    /// <summary>
+    /// Which of the desktop's settings these settings follow — what the theme
+    /// provider has to watch for. The same three questions Apply and
+    /// InterfaceText ask: lightness unless ThemeMode pins it, colours when the
+    /// desktop's are layered on, and text size unless one is configured.
+    /// (The single-click setting is read with the palette but was never
+    /// watched; it arrives with the next palette read.)
+    /// </summary>
+    public static ThemeNeeds Needs(Core.Settings.SettingsState settings)
+    {
+        var views = settings.Views;
+        var needs = ThemeNeeds.None;
+
+        if (views.ThemeMode == Core.Settings.ThemeMode.FollowDesktop) needs |= ThemeNeeds.Lightness;
+        if (views.FollowDesktopColours) needs |= ThemeNeeds.Colours;
+        if (views.InterfaceTextScale <= 0) needs |= ThemeNeeds.TextSize;
+
+        return needs;
+    }
+
     public static void Apply(Window window, ThemePalette? palette)
     {
         // Application-scoped so every window — including properties — resolves

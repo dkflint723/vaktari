@@ -52,8 +52,26 @@ public sealed record ShareOptions(bool Writable, bool Announce = false);
 /// </summary>
 public interface IFileSharing
 {
-    /// <summary>False when no server is installed; the UI hides the feature.</summary>
+    /// <summary>False when no server is installed — and while the look for
+    /// one has not finished (<see cref="IsKnown"/>); the UI hides the feature.</summary>
     bool IsAvailable { get; }
+
+    /// <summary>
+    /// Whether the look for a server has finished, so <see cref="IsAvailable"/>
+    /// is an answer rather than "not yet". **The menu offers neither Share nor
+    /// Install while this is false**: offering Install on a machine that has
+    /// copyparty, for the moment the look takes, is a wrong answer shown as a
+    /// right one. True by default, for a provider that knows at once.
+    /// </summary>
+    bool IsKnown => true;
+
+    /// <summary>Starts the look, once; the task ends when it has. Every
+    /// later call returns the newest look.</summary>
+    Task EnsureKnownAsync() => Task.CompletedTask;
+
+    /// <summary>Clears up after a previous run that died, off the calling
+    /// thread. Started once per process, at startup.</summary>
+    Task SweepAsync() => Task.CompletedTask;
 
     /// <summary>What the user needs to install, when unavailable.</summary>
     string? UnavailableReason { get; }

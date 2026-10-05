@@ -195,6 +195,10 @@ public partial class MainWindow : Window
             });
 
             _theme.Changed += _onThemeChanged;
+
+            // Watch only the desktop settings the window follows; a settings
+            // save says again (MainWindow.Settings).
+            _theme.Follow(ThemeApplier.Needs(Settings.AppSettings.Current));
         }
 
         // Outside the theme block on purpose: an icon source also moves when a
@@ -550,7 +554,15 @@ public partial class MainWindow : Window
 
         // Which window a desktop request and a conflict prompt belong to. A
         // focus event, so it may never have fired — every reader falls back.
-        Activated += (_, _) => _services.Active = this;
+        Activated += (_, _) =>
+        {
+            _services.Active = this;
+
+            // One look at the drives as the window comes forward: a letter
+            // mapped in another program is not announced to the device watch,
+            // and its fallback look is half a minute apart.
+            _services.Platform.Places.Nudge();
+        };
         Resized += (_, _) => _shell.NotifyWindowChanged();
         PositionChanged += (_, _) => _shell.NotifyWindowChanged();
 

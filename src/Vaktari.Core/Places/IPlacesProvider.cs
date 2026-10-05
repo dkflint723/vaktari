@@ -197,4 +197,12 @@ public interface IPlacesProvider
     /// individual feature.
     /// </summary>
     ValueTask<int> ImportExistingAsync(CancellationToken ct);
+
+    /// <summary>
+    /// Asks the device watch to look now. Called when a window comes back to
+    /// the front: a drive mapped or a share mounted by another program while
+    /// Vaktari was behind it is announced by nothing the watch hears. Nothing
+    /// by default, for a provider with no watch.
+    /// </summary>
+    void Nudge() { }
 }

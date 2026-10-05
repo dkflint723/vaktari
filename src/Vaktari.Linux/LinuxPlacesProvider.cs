@@ -86,11 +86,33 @@ public sealed class LinuxPlacesProvider : IPlacesProvider, IDisposable
         });
 
         _watch.Changed += (_, _) => PlacesChanged?.Invoke(this, EventArgs.Empty);
+
+        // The kernel's and udev's own word first; the watch's timer stays as
+        // the floor, at thirty seconds while they are heard and at one when
+        // this host cannot hear them. See DeviceWatch and MountTableWatch.
+        // Not for a test's fake mount table: nothing would ever change it.
+        if (MountLines is null)
+        {
+            _native = MountTableWatch.Subscribe(_watch.Nudge, out var failure);
+
+            if (_native is null)
+                Vaktari.Core.Diagnostics.Log.Warn("places",
+                    $"the mount table cannot be watched ({failure}); looking every second instead");
+        }
+
+        _watch.UseNativeSource(_native is not null);
         _watch.Start();
     }
 
+    private IDisposable? _native;
+
+    /// <summary>Looks now; see IPlacesProvider.Nudge.</summary>
+    public void Nudge() => _watch?.Nudge();
+
     public void Dispose()
     {
+        _native?.Dispose();
+        _native = null;
         _watch?.Dispose();
         _watch = null;
     }

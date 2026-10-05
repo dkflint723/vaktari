@@ -64,16 +64,39 @@ public sealed class WindowsPlacesProvider : IPlacesProvider, IDisposable
     {
         if (_watch is not null) return;
 
-        _watch = new DeviceWatch(DriveSet.Snapshot);
-        _watch.Changed += (_, _) => PlacesChanged?.Invoke(this, EventArgs.Empty);
-        _watch.Start();
+        var watch = new DeviceWatch(DriveSet.Snapshot);
+        watch.Changed += (_, _) => PlacesChanged?.Invoke(this, EventArgs.Empty);
+
+        // The system's own announcement first; the watch's timer stays as the
+        // floor, at thirty seconds while the announcement is being heard and
+        // at one when it could not be set up. See DeviceWatch.
+        _notifications = DeviceNotifications.Start(watch.Nudge);
+        watch.UseNativeSource(_notifications is not null);
+
+        if (_notifications is null)
+            Vaktari.Core.Diagnostics.Log.Warn("places", "device notifications could not be set up; looking every second instead");
+
+        _watch = watch;
+        watch.Start();
     }
+
+    private DeviceNotifications? _notifications;
+
+    /// <summary>The watch's floor once started. For the tests.</summary>
+    internal TimeSpan? WatchIntervalForTests => _watch?.CurrentInterval;
+
+    /// <summary>Looks now — for something that happened outside any
+    /// announcement, such as a drive letter mapped by another program, which
+    /// the window coming back to the front is a good moment to notice.</summary>
+    public void Nudge() => _watch?.Nudge();
 
     /// <summary>Stops the watch. Nothing calls this in the running application —
     /// the process exiting is the shutdown path — but a test that starts one
     /// must be able to stop it.</summary>
     public void Dispose()
     {
+        _notifications?.Dispose();
+        _notifications = null;
         _watch?.Dispose();
         _watch = null;
     }
@@ -421,7 +444,8 @@ public sealed class WindowsPlacesProvider : IPlacesProvider, IDisposable
         // **Only a real ejection rebuilds the sidebar.** A row that vanished
         // after a vetoed eject would tell the person the drive is gone while it
         // is still mounted — and the watch will notice a genuine departure on
-        // its own within the second regardless.
+        // its own regardless: the system announces it, and the fallback look
+        // finds it within half a minute if the announcement never comes.
         if (result.VolumeIsGone) PlacesChanged?.Invoke(this, EventArgs.Empty);
 
         return result;

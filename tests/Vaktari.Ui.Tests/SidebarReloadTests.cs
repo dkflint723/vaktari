@@ -89,12 +89,61 @@ public sealed class SidebarReloadTests : OwnedViewModels
             => ValueTask.CompletedTask;
         public ValueTask ReorderAsync(IReadOnlyList<string> orderedIds, CancellationToken ct) => ValueTask.CompletedTask;
 
+        public int Imports;
+
         public ValueTask<int> ImportExistingAsync(CancellationToken ct)
-            => ImportThrows
+        {
+            Interlocked.Increment(ref Imports);
+
+            return ImportThrows
                 ? throw new InvalidOperationException("the bookmarks file would not parse")
                 : ValueTask.FromResult(0);
+        }
 
         public void Raise() => PlacesChanged?.Invoke(this, EventArgs.Empty);
+    }
+
+    /// <summary>
+    /// **The import ran once per window, and the provider is one per
+    /// process.** Every new window's sidebar walked Quick Access through the
+    /// shell again (160-350 ms) to add nothing. Two windows over one provider
+    /// import once; a second provider — a test's, a fresh one — imports its own.
+    /// </summary>
+    [AvaloniaFact]
+    public async Task Two_windows_over_one_provider_import_once()
+    {
+        var places = new Changing();
+        var other = new Changing();
+
+        await Own(new ShellViewModel(new Inert(), places: places)).Sidebar.InitializeAsync();
+        await Own(new ShellViewModel(new Inert(), places: places)).Sidebar.InitializeAsync();
+        await Own(new ShellViewModel(new Inert(), places: other)).Sidebar.InitializeAsync();
+
+        Assert.Equal(1, places.Imports);
+        Assert.Equal(1, other.Imports);
+    }
+
+    /// <summary>
+    /// **A failed import is not kept** (review L1): a shell that would not
+    /// answer, or a bookmarks file caught mid-write, is tried again by the
+    /// next window, as every window did before the import was shared.
+    /// </summary>
+    [AvaloniaFact]
+    public async Task A_failed_import_is_tried_again_by_the_next_window()
+    {
+        var places = new Changing { ImportThrows = true };
+
+        var first = Own(new ShellViewModel(new Inert(), places: places));
+        await first.Sidebar.InitializeAsync();
+        Assert.NotNull(first.Sidebar.LastImportError);
+
+        places.ImportThrows = false;
+
+        var second = Own(new ShellViewModel(new Inert(), places: places));
+        await second.Sidebar.InitializeAsync();
+
+        Assert.Equal(2, places.Imports);
+        Assert.Null(second.Sidebar.LastImportError);
     }
 
     private (ShellViewModel Shell, Changing Places) Fresh()

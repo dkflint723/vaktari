@@ -120,8 +120,39 @@ internal sealed class FreedesktopFileManager : IFileManagerService, IPathMethodH
 
     // ---- claiming and giving up the role ------------------------------------
 
+    /// <summary>
+    /// **Off the calling thread, and one at a time.** The first thing this
+    /// asks is whether Vaktari is the desktop's file manager, and the answer
+    /// is an <c>xdg-mime</c> run — measured at 380 ms on Fedora — which this
+    /// asked synchronously on the UI thread just after the first window
+    /// opened, before its first await. Now the whole reconcile runs on the
+    /// pool, and because the startup one and a settings save can now overlap,
+    /// a gate keeps two from claiming or releasing the bus name at once.
+    /// </summary>
     public async Task<FileManagerServiceState> ReconcileAsync()
     {
+        await _reconciling.WaitAsync().ConfigureAwait(false);
+
+        try
+        {
+            return await Task.Run(ReconcileCoreAsync).ConfigureAwait(false);
+        }
+        finally
+        {
+            _reconciling.Release();
+        }
+    }
+
+    private readonly SemaphoreSlim _reconciling = new(1, 1);
+
+    /// <summary>The thread that last asked the desktop whether Vaktari is
+    /// its file manager. For the test that it is never the caller's.</summary>
+    internal int AskedOnThread { get; private set; }
+
+    private async Task<FileManagerServiceState> ReconcileCoreAsync()
+    {
+        AskedOnThread = Environment.CurrentManagedThreadId;
+
         if (!_defaults.IsDefault())
         {
             Release();

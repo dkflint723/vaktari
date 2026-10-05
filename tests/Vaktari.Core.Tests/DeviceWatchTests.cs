@@ -205,4 +205,105 @@ public sealed class DeviceWatchTests
     }
 
     private int _nudges;
+
+    /// <summary>
+    /// **The floor slows to half a minute only once a native source says it is
+    /// running**, and goes back to a second when it says it stopped. The wait
+    /// the loop asks for is what decides how often an idle machine wakes —
+    /// the whole cost this change removes.
+    /// </summary>
+    [Fact]
+    public async Task A_live_native_source_slows_the_floor_and_a_dead_one_restores_it()
+    {
+        var asked = new List<TimeSpan>();
+        var parked = new TaskCompletionSource();
+        DeviceWatch? watch = null;
+
+        watch = new DeviceWatch(() => "C:\\|3|1")
+        {
+            WaitOverride = async (delay, ct) =>
+            {
+                lock (asked) asked.Add(delay);
+
+                var n = asked.Count;
+
+                if (n == 1) watch!.UseNativeSource(true);
+                if (n == 2) watch!.UseNativeSource(false);
+
+                if (n >= 3)
+                {
+                    parked.TrySetResult();
+                    await Task.Delay(Timeout.Infinite, ct).ConfigureAwait(false);
+                }
+
+                return false;
+            },
+        };
+
+        watch.Start();
+        await parked.Task.WaitAsync(TimeSpan.FromSeconds(10));
+        watch.Dispose();
+
+        lock (asked)
+            Assert.Equal([TimeSpan.FromSeconds(1), TimeSpan.FromSeconds(30), TimeSpan.FromSeconds(1)], asked.Take(3));
+    }
+
+    /// <summary>
+    /// **A native source that has gone quiet says so in the log** (review M5):
+    /// a fallback look that finds a change no nudge announced is the only sign
+    /// of it. Once, and only while a native source claims to be running — with
+    /// none, the timer finding every change is the design.
+    /// </summary>
+    [Fact]
+    public void A_change_the_fallback_found_is_noticed_only_while_a_native_source_runs()
+    {
+        using var polled = new DeviceWatch(() => "");
+        polled.NoticeMissed();
+        Assert.False(polled.MissedByNative);
+
+        using var native = new DeviceWatch(() => "");
+        native.UseNativeSource(true);
+        native.NoticeMissed();
+        Assert.True(native.MissedByNative);
+    }
+
+    /// <summary>
+    /// The loop's own decision: a look after a TIMEOUT that finds a change is
+    /// the missed case; the same change after a NUDGE is not.
+    /// </summary>
+    [Theory]
+    [InlineData(false, true)]
+    [InlineData(true, false)]
+    public async Task Only_an_unannounced_change_counts_as_missed(bool nudged, bool missed)
+    {
+        var looks = 0;
+        var done = new TaskCompletionSource();
+
+        var watch = new DeviceWatch(() => Interlocked.Increment(ref looks) == 1 ? "C:\\|3|1" : "C:\\|3|1\nE:\\|2|1")
+        {
+            Settle = TimeSpan.Zero,
+            WaitOverride = async (delay, ct) =>
+            {
+                var seen = Volatile.Read(ref looks);
+
+                if (seen >= 2)
+                {
+                    done.TrySetResult();
+                    await Task.Delay(Timeout.Infinite, ct).ConfigureAwait(false);
+                }
+
+                // The second look's wait: answered as a nudge or a timeout. The
+                // drain after a nudge is told the burst is over at once.
+                return seen == 1 && nudged && delay != TimeSpan.Zero;
+            },
+        };
+
+        watch.UseNativeSource(true);
+        watch.Start();
+
+        await done.Task.WaitAsync(TimeSpan.FromSeconds(10));
+        watch.Dispose();
+
+        Assert.Equal(missed, watch.MissedByNative);
+    }
 }

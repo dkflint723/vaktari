@@ -11,7 +11,25 @@ should not be trusted for compatibility yet.
 
 ## [Unreleased]
 
-Nothing yet.
+### Changed
+
+- **Vaktari starts sooner and stays idle when nothing is happening.** The
+  first window no longer waits, on its own thread, for the check for
+  copyparty, the list behind *New from template* (about 0.2 s on Windows) or,
+  on Linux, the question of whether Vaktari is your default file manager
+  (about 0.4 s). Those now run in the background once the window is up.
+  Drives and sticks arriving or leaving are heard from the system instead of
+  being looked for every second: a hidden window that hears Windows' device
+  messages, and the kernel's own notice of a changed mount table on Linux.
+  A look every thirty seconds stays as a safety net. The desktop colour,
+  accent and text-size settings are watched only while a setting follows
+  them, and without a thread each. A second window no longer re-imports Quick
+  Access and your bookmarks.
+- **Git marks are not shown for folders over a network.** A folder on a
+  share, a mapped network drive or a remote mount, or a WSL folder reached
+  through `\\wsl$` or `\\wsl.localhost`, shows no version-control marks.
+  Finding the repository there asked the network about every parent folder on
+  every listing. A local folder opened through `\\?\` keeps its marks.
 
 ## [0.11.3] — 2026-10-03
 

@@ -79,6 +79,6 @@ public sealed class TextSizeFactorTests
             @"TextScale = ScaleFromPercent(Native.ReadDword(AccessibilityKey, ""TextScaleFactor""))",
             source, StringComparison.Ordinal);
 
-        Assert.Contains("Watch(AccessibilityKey);", source, StringComparison.Ordinal);
+        Assert.Contains("Want(AccessibilityKey, (needs & ThemeNeeds.TextSize) != 0)", source, StringComparison.Ordinal);
     }
 }

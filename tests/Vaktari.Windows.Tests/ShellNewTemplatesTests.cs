@@ -124,6 +124,51 @@ public sealed class ShellNewTemplatesTests : IDisposable
     }
 
     /// <summary>
+    /// **Warmed off the thread, then read once.** The walk used to run in the
+    /// first pane's constructor, on the UI thread; the application now warms
+    /// it in the background after startup, and the first menu takes the
+    /// warmed walk rather than starting another. And a test override stands
+    /// in front of the warm as it does of the read, so no test starts a real
+    /// walk by building a window.
+    /// </summary>
+    [WindowsFact]
+    public async Task Warming_walks_once_and_the_menu_takes_that_walk()
+    {
+        WindowsTemplates.Override = null;
+        WindowsTemplates.Forget();
+
+        try
+        {
+            new WindowsTemplates().Warm();
+
+            Assert.Equal(1, WindowsTemplates.Walks);
+
+            var clock = System.Diagnostics.Stopwatch.StartNew();
+            while (WindowsTemplates.Cached is null && clock.Elapsed < TimeSpan.FromSeconds(30)) await Task.Delay(10);
+
+            var warmed = WindowsTemplates.Cached;
+            Assert.NotNull(warmed);
+
+            new WindowsTemplates().Discover();
+
+            Assert.Equal(1, WindowsTemplates.Walks);
+            Assert.Same(warmed, WindowsTemplates.Cached);
+
+            WindowsTemplates.Forget();
+            WindowsTemplates.Override = () => [];
+
+            new WindowsTemplates().Warm();
+
+            Assert.Equal(0, WindowsTemplates.Walks);
+        }
+        finally
+        {
+            WindowsTemplates.Override = null;
+            WindowsTemplates.Forget();
+        }
+    }
+
+    /// <summary>
     /// The walk itself, against keys this test writes under
     /// <c>HKCU\Software\Classes</c> — which HKEY_CLASSES_ROOT merges, so the
     /// walk sees them exactly as it sees an installer's. The same trick

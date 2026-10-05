@@ -259,7 +259,13 @@ public sealed partial class PaneViewModel : ObservableObject, IDisposable
         SyncTextScale();
 
         RefreshScripts();
-        RefreshTemplates();
+
+        // **No RefreshTemplates here.** The New-from-template rows are read by
+        // nothing but the listing menus, and PrepareListingMenu refreshes them
+        // as either menu opens, by mouse or by keyboard. Reading them here put
+        // the Windows registry walk — 0.2 s — on the UI thread inside the
+        // first window's constructor. WindowServices warms it in the
+        // background instead.
     }
 
     /// <summary>The store this pane's menu listens to, remembered so the
@@ -1810,6 +1816,17 @@ public sealed partial class PaneViewModel : ObservableObject, IDisposable
     /// pool thread, where the only trace is a swallowed exception and marks
     /// that stopped appearing.
     /// </summary>
+    /// <summary>Stands in for the over-the-wire question, for the test that
+    /// a remote folder is not walked — the sidebar's discovered roots are a
+    /// static another window's late answer can overwrite. Null in the
+    /// application.</summary>
+    internal static Func<string, bool>? OverTheWireOverride { get; set; }
+
+    private static bool IsOverTheWire(string path)
+        => OverTheWireOverride is { } fake
+            ? fake(path)
+            : Vaktari.Core.FileSystem.OverTheWire.IsRemote(path, Thumbnails.ThumbnailLoader.RemoteRoots);
+
     private async Task RefreshVcsAsync(string path, int generation, CancellationToken ct)
     {
         var empty = new Dictionary<string, Vaktari.Core.Vcs.VcsState>();
@@ -1824,9 +1841,17 @@ public sealed partial class PaneViewModel : ObservableObject, IDisposable
         // swallowed the NullReferenceException, and the decorations silently
         // stopped. **A feature must not depend on a settings group being
         // non-null to work at all.**
+        // **Not over a wire.** Finding the repository walks every parent
+        // asking for .git, two existence checks a level, and on a share or a
+        // remote mount each is a round trip — on every listing. A repository
+        // on a share shows no marks now; see OverTheWire for what counts,
+        // and why "\\?\C:\" does not.
+        var remote = IsOverTheWire(path);
+
         if (Vcs is null
             || Settings.AppSettings.Current.Vcs is { ShowDecorations: false }
-            || VirtualPaths.IsVirtual(path))
+            || VirtualPaths.IsVirtual(path)
+            || remote)
         {
             VcsStates = empty;
 
@@ -1850,6 +1875,7 @@ public sealed partial class PaneViewModel : ObservableObject, IDisposable
                 + (Vcs is null ? "no provider (is git installed?)"
                    : Settings.AppSettings.Current.Vcs is { ShowDecorations: false }
                        ? "disabled in settings"
+                   : remote ? "remote folder"
                    : "virtual listing")
                 + $" · {path}");
 

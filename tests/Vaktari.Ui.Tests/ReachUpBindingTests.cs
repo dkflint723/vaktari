@@ -165,6 +165,96 @@ public sealed class ReachUpBindingTests : OwnedViewModels
     }
 
     /// <summary>A shown, laid-out window with its pane ready.</summary>
+    private sealed class Inert : Vaktari.Core.FileSystem.IFileSystemProvider
+    {
+        public async IAsyncEnumerable<IReadOnlyList<Vaktari.Core.FileSystem.FileEntry>> EnumerateAsync(
+            string path, Vaktari.Core.FileSystem.ListingOptions options,
+            [System.Runtime.CompilerServices.EnumeratorCancellation] CancellationToken ct)
+        {
+            await Task.CompletedTask;
+            yield break;
+        }
+
+        public ValueTask<Vaktari.Core.FileSystem.FileEntry?> GetEntryAsync(string path, CancellationToken ct)
+            => ValueTask.FromResult<Vaktari.Core.FileSystem.FileEntry?>(null);
+
+        public IDisposable Watch(string path, Action<Vaktari.Core.FileSystem.FileSystemChange> onChange) => new Nothing();
+
+        public ValueTask<bool> IsReachableAsync(string path, TimeSpan timeout, CancellationToken ct)
+            => ValueTask.FromResult(true);
+
+        public string Combine(string basePath, string name) => Path.Combine(basePath, name);
+        public string? GetParent(string path) => Path.GetDirectoryName(path);
+        public bool IsCaseSensitive => false;
+
+        private sealed class Nothing : IDisposable { public void Dispose() { } }
+    }
+
+    /// <summary>A template list the test owns, counting its reads.</summary>
+    private sealed class Counting : Vaktari.Core.FileSystem.ITemplateProvider
+    {
+        public int Reads;
+
+        public IReadOnlyList<Vaktari.Core.FileSystem.FileTemplate> Discover()
+        {
+            Interlocked.Increment(ref Reads);
+            return [new Vaktari.Core.FileSystem.FileTemplate("Notes", "notes.txt") { Content = [] }];
+        }
+    }
+
+    /// <summary>
+    /// **The template rows are read as the menu opens, by keyboard too.** The
+    /// pane's constructor no longer reads them — on Windows that was the
+    /// registry walk, 0.2 s on the UI thread inside the first window's
+    /// constructor — so the menu's own refresh is now the only thing that
+    /// fills "New from template", and Shift+F10 must reach it as a click does.
+    /// </summary>
+    [AvaloniaFact]
+    public void The_template_rows_are_read_as_the_menu_opens_by_keyboard()
+    {
+        var (window, _, pane) = Open();
+
+        var counting = new Counting();
+        typeof(PaneViewModel)
+            .GetField("_templates", System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic)!
+            .SetValue(pane, counting);
+
+        pane.Templates.Clear();
+        Assert.False(pane.HasTemplates);
+
+        var menu = OpenListingMenu(window, pane);
+
+        try
+        {
+            Assert.Equal(1, counting.Reads);
+            Assert.True(pane.HasTemplates, "the menu opened by keyboard did not read the templates");
+            Assert.True(Row(Row(menu, "New"), "New from template").IsVisible);
+        }
+        finally
+        {
+            menu.Close();
+            Dispatcher.UIThread.RunJobs();
+        }
+    }
+
+    /// <summary>
+    /// And a pane built with a template provider does not read it: nothing
+    /// shows the rows until a menu opens.
+    /// </summary>
+    [AvaloniaFact]
+    public void A_new_pane_does_not_read_its_templates()
+    {
+        var counting = new Counting();
+
+        var pane = Own(new PaneViewModel(new Inert(), templates: counting));
+
+        Assert.Equal(0, counting.Reads);
+
+        pane.RefreshTemplates();
+
+        Assert.Equal(1, counting.Reads);
+    }
+
     private (MainWindow Window, ShellViewModel Shell, PaneViewModel Pane) Open()
     {
         // The constructor assigns the platform's real search backend to

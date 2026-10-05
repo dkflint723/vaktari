@@ -35,27 +35,78 @@ public sealed class CopypartyShare : IFileSharing
     private readonly ConcurrentDictionary<Guid, Running> _running = new();
     private readonly CopypartyBackend _backend;
 
-    private string? _command;
-    private string[] _prefixArgs;
-
+    /// <summary>
+    /// **Nothing is looked for here any more.** Building the provider used
+    /// to run <see cref="CopypartyBackend.Locate"/> — up to three Python
+    /// launches on Windows, each allowed ten seconds — and the leftover sweep,
+    /// on the UI thread, inside the first window's constructor, for a feature
+    /// most sessions never use. Measured 16-135 ms on a warm machine. The look
+    /// now starts when something asks (<see cref="EnsureKnownAsync"/>, which the
+    /// application calls once at background priority after startup) and the
+    /// sweep is <see cref="SweepAsync"/>, which the application starts at once,
+    /// off the thread.
+    /// </summary>
     public CopypartyShare(CopypartyBackend backend)
     {
         _backend = backend;
-        (_command, _prefixArgs) = _backend.Locate();
+    }
 
-        SweepLeftovers();
+    private readonly Lock _locateGate = new();
+
+    /// <summary>The newest look, and only the newest: <see cref="Rescan"/>
+    /// replaces it under the lock, so a startup look finishing after an
+    /// install's cannot publish the older answer last.</summary>
+    private Task<(string? Command, string[] Prefix)>? _locating;
+
+    /// <summary>How many looks have been started. For the tests.</summary>
+    internal int Looks => Volatile.Read(ref _looks);
+
+    private int _looks;
+
+    private Task<(string? Command, string[] Prefix)> StartLook()
+    {
+        Interlocked.Increment(ref _looks);
+
+        var look = Task.Run(() => _backend.Locate());
+
+        // Announced when it lands, so a menu gate waiting on it re-reads.
+        _ = look.ContinueWith(
+            finished =>
+            {
+                if (finished.IsCompletedSuccessfully && ReferenceEquals(Volatile.Read(ref _locating), finished))
+                    Changed?.Invoke(this, EventArgs.Empty);
+            },
+            CancellationToken.None, TaskContinuationOptions.ExecuteSynchronously, TaskScheduler.Default);
+
+        return look;
+    }
+
+    public Task EnsureKnownAsync()
+    {
+        lock (_locateGate) return _locating ??= StartLook();
     }
 
     /// <summary>Re-runs discovery, so an install takes effect without a restart.</summary>
-    private void Rescan()
+    internal async Task RescanAsync()
     {
-        (_command, _prefixArgs) = _backend.Locate();
-        Changed?.Invoke(this, EventArgs.Empty);
+        Task look;
+
+        lock (_locateGate) look = _locating = StartLook();
+
+        await look.ConfigureAwait(false);
     }
 
-    public bool IsAvailable => _command is not null;
+    /// <summary>The current look's answer, or nothing while it runs.</summary>
+    private (string? Command, string[] Prefix) Found
+        => Volatile.Read(ref _locating) is { IsCompletedSuccessfully: true } done ? done.Result : (null, []);
+
+    public bool IsKnown => Volatile.Read(ref _locating) is { IsCompleted: true };
+
+    public bool IsAvailable => Found.Command is not null;
 
     public string? UnavailableReason => IsAvailable ? null : _backend.NotInstalledHint;
+
+    public Task SweepAsync() => Task.Run(SweepLeftovers);
 
     public IReadOnlyList<ShareSession> Active =>
         _running.Values.Select(r => r.Session).ToList();
@@ -68,6 +119,8 @@ public sealed class CopypartyShare : IFileSharing
     /// </summary>
     public async Task<bool> InstallAsync(IProgress<string> progress, CancellationToken ct)
     {
+        await EnsureKnownAsync().ConfigureAwait(false);
+
         if (IsAvailable) return true;
 
         var attempts = _backend.InstallAttempts();
@@ -90,7 +143,7 @@ public sealed class CopypartyShare : IFileSharing
 
             if (code == 0)
             {
-                Rescan();
+                await RescanAsync().ConfigureAwait(false);
 
                 if (IsAvailable)
                 {
@@ -399,7 +452,9 @@ public sealed class CopypartyShare : IFileSharing
 
     /// <summary>
     /// Stops what a Vaktari that is no longer running left serving, and
-    /// clears its files. Runs once, as the provider is built.
+    /// clears its files. Started once per process, off the UI thread, by
+    /// <see cref="SweepAsync"/> — not deferred to the first share, because it
+    /// is the only thing that stops a server a crashed Vaktari left serving.
     ///
     /// **A share kept serving after Vaktari crashed or was killed,** and the
     /// next start had no way to find it: which servers were running lived
@@ -525,7 +580,11 @@ public sealed class CopypartyShare : IFileSharing
 
     public async Task<ShareSession> StartAsync(string path, ShareOptions options, CancellationToken ct)
     {
-        if (_command is not { } command)
+        await EnsureKnownAsync().ConfigureAwait(false);
+
+        var (found, prefix) = Found;
+
+        if (found is not { } command)
             throw new InvalidOperationException(UnavailableReason);
 
         // **Not a folder whose name Windows folds.** Resolving "…\photos "
@@ -573,7 +632,7 @@ public sealed class CopypartyShare : IFileSharing
             if (Volatile.Read(ref _stops) != stops)
                 throw new OperationCanceledException("sharing was stopped while this share was starting");
 
-            session = Launch(command, path, options, warning);
+            session = Launch(command, prefix, path, options, warning);
         }
 
         Changed?.Invoke(this, EventArgs.Empty);
@@ -588,7 +647,7 @@ public sealed class CopypartyShare : IFileSharing
     /// it move was overtaken by a stop.</summary>
     private int _stops;
 
-    private ShareSession Launch(string command, string path, ShareOptions options, string? warning)
+    private ShareSession Launch(string command, string[] prefix, string path, ShareOptions options, string? warning)
     {
         var port = FreePort();
         var address = LocalAddress();
@@ -609,7 +668,7 @@ public sealed class CopypartyShare : IFileSharing
             WorkingDirectory = Path.GetTempPath(),
         };
 
-        foreach (var arg in _prefixArgs) info.ArgumentList.Add(arg);
+        foreach (var arg in prefix) info.ArgumentList.Add(arg);
 
         info.ArgumentList.Add("-c");
         info.ArgumentList.Add(configPath);

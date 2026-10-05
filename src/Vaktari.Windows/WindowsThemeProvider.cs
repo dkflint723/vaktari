@@ -45,24 +45,98 @@ public sealed class WindowsThemeProvider : IThemeProvider
     /// run ended near 740 (0.11.1 QA). The keys are the user's, not the
     /// window's, so one wait per key answers for every window there is.
     ///
-    /// So the threads are started once, by the first provider, and live as
-    /// long as the process — background threads, so they never hold it open.
-    /// <see cref="Changed"/> is the shared event: subscribing through any
-    /// provider is subscribing to every key, and a window that closes takes
-    /// its handler back off it (MainWindow.OnClosed) — the static event holds
-    /// no window that has said goodbye.
+    /// So the watches are one per key for the process, and <see cref="Changed"/>
+    /// is the shared event: subscribing through any provider is subscribing to
+    /// every key, and a window that closes takes its handler back off it
+    /// (MainWindow.OnClosed) — the static event holds no window that has said
+    /// goodbye.
+    ///
+    /// **And no thread at all now, and only the keys a setting follows.** Each
+    /// watch is an asynchronous, thread-agnostic notification on an event
+    /// that the thread pool's one shared wait thread waits on (<see cref="KeyWatch"/>),
+    /// so a key can be stopped as well as started — which a blocked wait could
+    /// not be. <see cref="Follow"/> arms the keys the window's settings defer
+    /// to the desktop on, and disarms the rest.
     /// </summary>
     private static readonly Lock Gate = new();
 
     private static EventHandler? _changed;
 
-    private static bool _watching;
+    /// <summary>The armed watch on each of the three keys, by key.</summary>
+    private static readonly Dictionary<string, KeyWatch> Armed = new(StringComparer.Ordinal);
 
-    /// <summary>How many watcher threads this process has started — three,
-    /// once, however many providers are made. For the tests.</summary>
+    /// <summary>Whether <see cref="Follow"/> has been called before: a key
+    /// armed on a later call may have changed while it was not watched.</summary>
+    private static bool _followed;
+
+    /// <summary>How many key watches this process has started — one per key
+    /// that a setting follows, however many providers are made. For the tests.</summary>
     internal static int WatchersStarted => Volatile.Read(ref _watchersStarted);
 
     private static int _watchersStarted;
+
+    /// <summary>The keys armed now. For the tests.</summary>
+    internal static IReadOnlyCollection<string> Watched
+    {
+        get { lock (Gate) return [.. Armed.Keys]; }
+    }
+
+    /// <summary>
+    /// Watches the keys behind what the window follows, and stops watching
+    /// the rest:
+    ///
+    /// - **Personalize** (AppsUseLightTheme) while the lightness follows the
+    ///   desktop — the default — or the desktop's colours are layered on,
+    ///   since those bring the desktop's lightness with them;
+    /// - **DWM** (the accent) only while the desktop's colours are on;
+    /// - **Accessibility** (TextScaleFactor) while the text size follows the
+    ///   desktop — moving that slider is a scheme change as far as the window
+    ///   is concerned, and fires none of the events the other two keys do.
+    ///
+    /// Process-wide, like the watches: the first window's call and a second
+    /// window's land on the same three slots. A key armed after the first call
+    /// raises <see cref="Changed"/> once, because it may have changed while
+    /// nothing watched it.
+    ///
+    /// **Armed against the key as it exists at the time**, which is the
+    /// measured limit: a key that cannot be opened is not watched, and the
+    /// value arrives at the next palette read instead — never missed, only
+    /// late. On the machine this was written on all three are present.
+    /// </summary>
+    public void Follow(ThemeNeeds needs)
+    {
+        var raise = false;
+
+        lock (Gate)
+        {
+            raise |= Want(PersonalizeKey, (needs & (ThemeNeeds.Lightness | ThemeNeeds.Colours)) != 0);
+            raise |= Want(DwmKey, (needs & ThemeNeeds.Colours) != 0);
+            raise |= Want(AccessibilityKey, (needs & ThemeNeeds.TextSize) != 0);
+
+            raise &= _followed;
+            _followed = true;
+        }
+
+        if (raise) Notify();
+    }
+
+    /// <summary>Arms or disarms one key; true when it was newly armed.</summary>
+    private static bool Want(string subKey, bool wanted)
+    {
+        if (wanted)
+        {
+            if (Armed.ContainsKey(subKey)) return false;
+
+            if (Watch(subKey) is not { } watch) return false;
+
+            Armed[subKey] = watch;
+            return true;
+        }
+
+        if (Armed.Remove(subKey, out var armed)) _ = armed.Stop();
+
+        return false;
+    }
 
     /// <summary>Raised on a watcher thread when any of the three keys
     /// changes, for every subscriber of every provider.</summary>
@@ -70,37 +144,6 @@ public sealed class WindowsThemeProvider : IThemeProvider
     {
         add { lock (Gate) _changed += value; }
         remove { lock (Gate) _changed -= value; }
-    }
-
-    public WindowsThemeProvider()
-    {
-        // Started by the first provider, under the lock, so a second one made
-        // at the same moment finds all three running rather than some.
-        lock (Gate)
-        {
-            if (_watching) return;
-            _watching = true;
-
-            Watch(PersonalizeKey);
-            Watch(DwmKey);
-
-            // Third watcher, one background thread like the other two. Moving
-            // the text-size slider is a scheme change as far as this window is
-            // concerned — every metric derived from the font size has to be
-            // recomputed — and it fires none of the events the other two keys
-            // do.
-            //
-            // **Armed once, here, against the key as it exists at startup**,
-            // which is the measured limit of all three: Watch returns without
-            // starting a thread when RegOpenKeyEx fails, and nothing calls it
-            // again. On the machine this was measured on the key is present
-            // with the slider untouched — HKCU\Software\Microsoft\Accessibility
-            // holds TextScaleFactor 0x64 — so the live wake-up works there.
-            // Where the key is absent this is silent, and the new size arrives
-            // at the next palette read instead: a colour-scheme change, a
-            // settings save, or the next start. It is never missed, only late.
-            Watch(AccessibilityKey);
-        }
     }
 
     /// <summary>
@@ -314,64 +357,23 @@ public sealed class WindowsThemeProvider : IThemeProvider
     }
 
     /// <summary>
-    /// One background thread per key, each blocked in RegNotifyChangeKeyValue
-    /// until something changes. Blocking is the simple form of this API and
-    /// costs a thread that is asleep rather than spinning; the alternative is an
-    /// event handle and a wait loop for no behavioural gain.
-    ///
-    /// **Background threads**, so a wait that never returns cannot keep the
-    /// process alive at exit — there is no way to cancel a blocking wait on a
-    /// registry key from outside it. Which is why there is one per key per
-    /// process, not per window: see <see cref="Gate"/>.
+    /// Starts a watch on one HKCU key: <see cref="Notify"/> each time a value
+    /// under it is written, until <see cref="KeyWatch.Stop"/> or until the key
+    /// is deleted. No thread of its own — see <see cref="KeyWatch"/>.
     ///
     /// Internal so a test can watch a key of its own, which it can change and
-    /// delete — the three real ones are the user's settings. A deleted key
-    /// ends the wait with an error, and the thread with it.
-    ///
-    /// Returns the thread, or null when the key cannot be opened, so such a
-    /// test can wait for it to end: deleting a watched key wakes the wait once
-    /// or twice before it fails, and each wake raises the process's event — a
-    /// raise that would otherwise land in whatever test runs next.
+    /// delete — the three real ones are the user's settings. Returns null when
+    /// the key cannot be opened. The watch's <see cref="KeyWatch.Ended"/> lets
+    /// such a test wait it out: deleting a watched key wakes the wait before
+    /// it fails, and a raise from that must not land in whatever test runs
+    /// next.
     /// </summary>
-    internal static Thread? Watch(string subKey)
+    internal static KeyWatch? Watch(string subKey)
     {
-        if (Native.RegOpenKeyEx(
-                Native.HKEY_CURRENT_USER, subKey, 0, Native.KEY_READ, out var key)
-            != Native.ERROR_SUCCESS)
-            return null;
+        var watch = KeyWatch.Start(subKey, Notify);
 
-        var thread = new Thread(() =>
-        {
-            try
-            {
-                while (true)
-                {
-                    var status = Native.RegNotifyChangeKeyValue(
-                        key, watchSubtree: false, Native.REG_NOTIFY_CHANGE_LAST_SET,
-                        eventHandle: 0, asynchronous: false);
+        if (watch is not null) Interlocked.Increment(ref _watchersStarted);
 
-                    if (status != Native.ERROR_SUCCESS) break;
-
-                    Notify();
-                }
-            }
-            catch (Exception ex)
-            {
-                Quiet.Swallowed("theme", ex);
-            }
-            finally
-            {
-                Native.RegCloseKey(key);
-            }
-        })
-        {
-            IsBackground = true,
-            Name = "vaktari-theme-watch",
-        };
-
-        thread.Start();
-        Interlocked.Increment(ref _watchersStarted);
-
-        return thread;
+        return watch;
     }
 }

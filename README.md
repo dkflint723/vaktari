@@ -527,7 +527,11 @@ file, and when you commit or switch branch. Status is read once per folder
 rather than once per file, so it stays cheap on a large repository. The letters
 carry the meaning and the colours are decoration, so the marks stay readable if
 you cannot tell the colours apart. Needs `git` on the machine; without it the
-marks simply never appear, and nothing in the interface explains why.
+marks simply never appear, and nothing in the interface explains why. Folders
+on a network share, a mapped network drive or a remote mount (sshfs, NFS, SMB)
+show no marks, and neither do WSL folders reached through `\\wsl$` or
+`\\wsl.localhost`: finding the repository there costs a round trip for every
+parent folder on every listing.
 
 ## Fitting your desktop
 
@@ -897,6 +901,9 @@ promise yet. Worth knowing before you decide:
   come back.
 - Inside a git submodule or a linked worktree, the version-control marks wait
   for `F5` after a commit rather than updating on their own.
+- No version-control marks are shown for a repository on a network share, a
+  mapped network drive, a remote mount or a WSL distribution reached through
+  `\\wsl$`. A local folder opened through `\\?\` still has them.
 - Accessibility is partial. A test holds every dialog to naming each box,
   dropdown, list and button for a screen reader. The main window is not held
   to it: the rows of its file lists are named, but its lists and its search,

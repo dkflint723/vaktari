@@ -286,8 +286,17 @@ public sealed partial class ShellViewModel
 
     public bool CanShare => _sharing?.IsAvailable == true;
 
-    /// <summary>A backend exists for this platform, but is not installed yet.</summary>
-    public bool CanInstallSharing => _sharing is { IsAvailable: false } && !IsInstalling;
+    /// <summary>
+    /// A backend exists for this platform, it has been looked for, and it is
+    /// not installed yet.
+    ///
+    /// **Not while the look is still running.** The look moved off startup
+    /// and into the background, and "not available" is also what a look that
+    /// has not finished says — so without <c>IsKnown</c> this offered
+    /// "Install copyparty" on a machine that has it, for as long as the look
+    /// took.
+    /// </summary>
+    public bool CanInstallSharing => _sharing is { IsKnown: true, IsAvailable: false } && !IsInstalling;
 
     /// <summary>
     /// Whether sharing has any presence in the menu at all.
@@ -401,6 +410,11 @@ public sealed partial class ShellViewModel
     {
         if (ActiveTab is not { } pane) return;
 
+        // A keyboard or palette route can arrive before the background look
+        // has: wait for it rather than answering "not available" for a share
+        // that is.
+        if (_sharing is { } sharing) await sharing.EnsureKnownAsync().ConfigureAwait(true);
+
         if (_sharing is not { IsAvailable: true })
         {
             pane.Status = _sharing?.UnavailableReason ?? "sharing is not available";
@@ -443,9 +457,11 @@ public sealed partial class ShellViewModel
     /// Starts at the folder currently open, which is usually the answer.
     /// </summary>
     [RelayCommand]
-    private void RequestShare()
+    private async Task RequestShareAsync()
     {
         if (_sharing is null) return;
+
+        await _sharing.EnsureKnownAsync().ConfigureAwait(true);
 
         if (!_sharing.IsAvailable)
         {

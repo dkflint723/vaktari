@@ -22,6 +22,7 @@ namespace Vaktari.Core.Tests;
 /// most of this pins that text; the start itself is pinned through a launch
 /// seam that reads the file copyparty would have been handed.
 /// </summary>
+[Collection(CopypartyConfig.Name)]
 public sealed class CopypartyShareTests : IDisposable
 {
     private readonly string _root =
@@ -411,7 +412,7 @@ public sealed class CopypartyShareTests : IDisposable
             Assert.True(File.Exists(CopypartyShare.RecordPathFor(configPath!)));
 
             // No StopAllAsync: nothing ran that a crash would have skipped.
-            _ = new CopypartyShare(new Stub());
+            await new CopypartyShare(new Stub()).SweepAsync();
 
             Assert.True(server!.WaitForExit(5_000), "the orphaned server is still serving");
             Assert.False(File.Exists(configPath), "the config and its password were left behind");
@@ -445,7 +446,7 @@ public sealed class CopypartyShareTests : IDisposable
 
             await running.StartAsync(_photos, ReadOnly, CancellationToken.None);
 
-            _ = new CopypartyShare(new Stub());
+            await new CopypartyShare(new Stub()).SweepAsync();
 
             Assert.False(server!.WaitForExit(1_000), "another copy's live share was stopped");
             Assert.True(File.Exists(configPath));
@@ -484,7 +485,7 @@ public sealed class CopypartyShareTests : IDisposable
     /// it again. While anything holds the id, the record stays.
     /// </summary>
     [Fact]
-    public void A_record_whose_server_is_still_running_but_does_not_match_is_kept()
+    public async Task A_record_whose_server_is_still_running_but_does_not_match_is_kept()
     {
         var server = Linger();
 
@@ -493,7 +494,7 @@ public sealed class CopypartyShareTests : IDisposable
             var config = Record("0123456789abcdef0123456789abcdef",
                 server.Id, NeverStarted, Environment.ProcessId, NeverStarted);
 
-            _ = new CopypartyShare(new Stub());
+            await new CopypartyShare(new Stub()).SweepAsync();
 
             Assert.False(server.HasExited, "a server the record could not prove was ours was killed");
             Assert.True(File.Exists(CopypartyShare.RecordPathFor(config)), "the only record of a live server was deleted");
@@ -562,7 +563,7 @@ public sealed class CopypartyShareTests : IDisposable
     /// after the rest: no order of listing puts all ten behind all twenty.
     /// </summary>
     [Fact]
-    public void A_record_that_cannot_be_read_does_not_stop_the_sweep()
+    public async Task A_record_that_cannot_be_read_does_not_stop_the_sweep()
     {
         var held = new List<FileStream>();
 
@@ -591,7 +592,7 @@ public sealed class CopypartyShareTests : IDisposable
 
             for (var i = 5; i < 10; i++) Unreadable(i);
 
-            _ = new CopypartyShare(new Stub());
+            await new CopypartyShare(new Stub()).SweepAsync();
 
             Assert.All(dead, config =>
             {
@@ -609,7 +610,7 @@ public sealed class CopypartyShareTests : IDisposable
     /// but it holds a password: an old one goes, and one written a moment
     /// ago — a share another copy is starting right now — stays.</summary>
     [Fact]
-    public void An_old_config_with_no_record_is_cleared_and_a_new_one_is_not()
+    public async Task An_old_config_with_no_record_is_cleared_and_a_new_one_is_not()
     {
         var old = Path.Combine(_root, "vaktari-share-0123456789abcdef0123456789abcdef.conf");
         var fresh = Path.Combine(_root, "vaktari-share-fedcba9876543210fedcba9876543210.conf");
@@ -618,7 +619,7 @@ public sealed class CopypartyShareTests : IDisposable
         File.WriteAllText(fresh, "[accounts]\n  vaktari: hunter2hunter2xx\n");
         File.SetLastWriteTimeUtc(old, DateTime.UtcNow.AddHours(-1));
 
-        _ = new CopypartyShare(new Stub());
+        await new CopypartyShare(new Stub()).SweepAsync();
 
         Assert.False(File.Exists(old));
         Assert.True(File.Exists(fresh));

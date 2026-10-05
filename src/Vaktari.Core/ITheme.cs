@@ -73,4 +73,33 @@ public interface IThemeProvider
 
     /// <summary>Raised when the desktop's scheme changes, so the UI can repaint.</summary>
     event EventHandler? Changed;
+
+    /// <summary>
+    /// Says which of the desktop's settings the window currently follows, so
+    /// a provider can watch only those. Called as the window is built and
+    /// after every settings save. Nothing by default — a provider whose one
+    /// watch covers everything (kdeglobals holds colours, font, text size and
+    /// click mode together) has nothing to narrow.
+    /// </summary>
+    void Follow(ThemeNeeds needs) { }
+}
+
+/// <summary>
+/// Which of the desktop's settings the application is following right now.
+/// </summary>
+[Flags]
+public enum ThemeNeeds
+{
+    None = 0,
+
+    /// <summary>Light or dark: the theme mode follows the desktop.</summary>
+    Lightness = 1,
+
+    /// <summary>The desktop's own colours and accent are layered on.</summary>
+    Colours = 2,
+
+    /// <summary>The interface text size follows the desktop's.</summary>
+    TextSize = 4,
+
+    All = Lightness | Colours | TextSize,
 }

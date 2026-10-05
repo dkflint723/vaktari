@@ -389,6 +389,9 @@ public partial class MainWindow
         // nothing at all.
         ThemeApplier.Apply(this, _theme?.Read());
 
+        // And the desktop keys watched follow what the settings now follow.
+        _theme?.Follow(ThemeApplier.Needs(AppSettings.Current));
+
         // Icon spacing lands in the SAME kind of place — a resource that
         // only the markup reads — so it needs the same treatment. Without
         // this the setting saves, the file records it, and absolutely

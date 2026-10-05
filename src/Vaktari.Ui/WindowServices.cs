@@ -437,6 +437,8 @@ internal sealed class WindowServices
 
         var session = new JsonSessionStore(JsonSessionStore.DefaultDirectory());
 
+        StartBackgroundLooks(platform);
+
         return new WindowServices(
             platform, settingsStore, session, folderViews, recents,
             searches, driveLinks, driveLinkStore,
@@ -444,6 +446,34 @@ internal sealed class WindowServices
         {
             FirstRun = firstRun,
         };
+    }
+
+    /// <summary>
+    /// What used to be asked on the UI thread while the first window was being
+    /// built, and is now asked off it — once per application, because only the
+    /// founder runs Create.
+    ///
+    /// - **The share sweep, at once.** It is the only thing that stops a
+    ///   server a crashed Vaktari left serving, so it is not deferred to the
+    ///   first share; it is only moved off the thread.
+    /// - **Whether copyparty is installed, at background priority** — after the
+    ///   window has drawn. Until it lands the menu offers neither Share nor
+    ///   Install (ShellViewModel.CanInstallSharing says why).
+    /// - **The New-from-template list**, at the same priority, so the first
+    ///   right-click does not pay the registry walk (~0.2 s on Windows).
+    /// </summary>
+    private static void StartBackgroundLooks(IPlatform platform)
+    {
+        if (platform.Sharing is { } sharing)
+        {
+            _ = sharing.SweepAsync();
+
+            Dispatcher.UIThread.Post(() => _ = sharing.EnsureKnownAsync(), DispatcherPriority.Background);
+        }
+
+        var templates = platform.Templates;
+
+        Dispatcher.UIThread.Post(templates.Warm, DispatcherPriority.Background);
     }
 
     /// <summary>

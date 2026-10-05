@@ -486,4 +486,59 @@ public sealed class TrailingNameReadsTests : OwnedViewModels
         await pane.NavigateAsync(Path.Combine(_root, "album"));
         await Until(() => { lock (repository.Asked) return repository.Asked.Count > 0; }, "git was never asked about the ordinary folder");
     }
+
+    /// <summary>
+    /// **A local folder opened through \\?\ is not over a wire** (review H1).
+    /// Git is now skipped for folders on a share, and the first rule written
+    /// for that — anything starting with \\ — also matched \\?\C:\, silently
+    /// undoing 0.11.2's "git marks folders in a folder opened through \\?\".
+    /// </summary>
+    [AvaloniaFact(Skip = OnlyOn.Windows, SkipUnless = nameof(OnlyOn.IsWindows), SkipType = typeof(OnlyOn))]
+    public async Task Git_is_asked_about_a_local_folder_opened_through_the_extended_prefix()
+    {
+        var plain = Folder("repo");
+        var repository = new Repository();
+        PaneViewModel.Vcs = repository;
+
+        var pane = Own(new PaneViewModel(Windows<IFileSystemProvider>("WindowsFileSystemProvider")) { ViewportWidth = 1400 });
+
+        await pane.NavigateAsync(Raw(plain));
+
+        await Until(() => { lock (repository.Asked) return repository.Asked.Count > 0; },
+            "git was never asked about a local folder opened through \\\\?\\");
+    }
+
+    /// <summary>
+    /// **A folder over a wire is not walked for a repository.** Finding the
+    /// root asks every parent for .git — two round trips a level on a share,
+    /// on every listing. The question is the seam's, not the sidebar's
+    /// discovered roots, which another window's late answer can overwrite.
+    /// </summary>
+    [AvaloniaFact(Skip = OnlyOn.Windows, SkipUnless = nameof(OnlyOn.IsWindows), SkipType = typeof(OnlyOn))]
+    public async Task Git_is_not_asked_about_a_folder_over_the_wire()
+    {
+        var remote = Folder("on-a-share");
+        var local = Folder("on-the-disk");
+        var repository = new Repository();
+        PaneViewModel.Vcs = repository;
+        PaneViewModel.OverTheWireOverride = path => path.Contains("on-a-share", StringComparison.Ordinal);
+
+        try
+        {
+            var pane = Own(new PaneViewModel(Windows<IFileSystemProvider>("WindowsFileSystemProvider")) { ViewportWidth = 1400 });
+
+            await pane.NavigateAsync(remote);
+            await Settle();
+            await Task.Delay(200);
+
+            lock (repository.Asked) Assert.Empty(repository.Asked);
+
+            await pane.NavigateAsync(local);
+            await Until(() => { lock (repository.Asked) return repository.Asked.Count > 0; }, "git was never asked about the local folder");
+        }
+        finally
+        {
+            PaneViewModel.OverTheWireOverride = null;
+        }
+    }
 }

@@ -35,6 +35,10 @@ internal static partial class Native
     internal const uint RRF_RT_REG_BINARY = 0x00000008;
     internal const uint KEY_READ = 0x00020019;
     internal const uint REG_NOTIFY_CHANGE_LAST_SET = 0x00000004;
+
+    /// <summary>Windows 8 and later: the registration does not end when the
+    /// thread that made it does.</summary>
+    internal const uint REG_NOTIFY_THREAD_AGNOSTIC = 0x10000000;
     internal const int ERROR_SUCCESS = 0;
 
     [LibraryImport("advapi32.dll", EntryPoint = "RegGetValueW",
@@ -55,10 +59,11 @@ internal static partial class Native
         nint hkey, string subKey, uint options, uint desired, out nint result);
 
     /// <summary>
-    /// Called with <c>asynchronous: false</c>, which blocks the calling thread
-    /// until the key changes. That is why the theme provider gives it a thread
-    /// of its own — and a background one, so a blocked wait cannot hold the
-    /// process open at exit.
+    /// Called with <c>asynchronous: true</c> and an event, plus
+    /// <see cref="REG_NOTIFY_THREAD_AGNOSTIC"/>: the theme provider waits on
+    /// the event from the thread pool's shared wait thread rather than
+    /// blocking a thread of its own per key, and the flag keeps the
+    /// registration alive after the pool thread that armed it retires.
     /// </summary>
     [LibraryImport("advapi32.dll", EntryPoint = "RegNotifyChangeKeyValue")]
     internal static partial int RegNotifyChangeKeyValue(

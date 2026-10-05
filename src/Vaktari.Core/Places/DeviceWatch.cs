@@ -4,22 +4,31 @@ namespace Vaktari.Core.Places;
 /// Notices volumes arriving and leaving, so a stick plugged in appears on its
 /// own rather than whenever something else happens to rebuild the sidebar.
 ///
-/// **A poll, deliberately, and not because the event-driven route was too much
-/// work.** Both platforms offer one, and both fail INVISIBLY when they fail:
-/// Avalonia's <c>AddWndProcHookCallback</c> returns void and quietly does
-/// nothing when the top level is not a Win32 one, and <c>inotify</c> on
-/// /proc/mounts hands back a valid watch descriptor that then never fires,
-/// because procfs content is generated at read time. A mechanism that reports
-/// success and does nothing is the worst failure available — the feature would
-/// look shipped and be absent.
+/// **The system says when; the timer is only the floor.** Both platforms'
+/// native routes can fail invisibly — Avalonia's <c>AddWndProcHookCallback</c>
+/// returns void and does nothing on a top level that is not Win32, and
+/// <c>inotify</c> on /proc/mounts hands back a watch that never fires — and a
+/// mechanism that reports success and does nothing is the worst failure
+/// available. So a native source can only ever make a look FASTER, by calling
+/// <see cref="Nudge"/>, and the timer stays. What changed is its period: one
+/// second when no native source is running, <see cref="FallbackInterval"/>
+/// once one has said it is (<see cref="UseNativeSource"/>).
 ///
-/// So the timer is the floor, always present, and a native notification can
-/// only ever make it FASTER by calling <see cref="Nudge"/>. Degrading to
-/// "slower" beats degrading to "gone".
+/// **The one-second floor was not the 34 µs a tick this comment used to
+/// claim.** The look itself is that cheap; the wake around it is not.
+/// Measured over 120 s of an idle process: 234 ms of CPU with the watch
+/// running against 0 without (a cycle counter put it at 216 ms against 6), so
+/// about 2 ms a wake, every second, forever. The platform sources (a hidden
+/// window that hears WM_DEVICECHANGE on Windows, a poll() on
+/// /proc/self/mountinfo on Linux) cost nothing until something changes.
 ///
-/// The cost is a measured 34µs per tick on Windows — a 0.003% duty cycle at one
-/// second — because <see cref="snapshot"/> is required to be cheap and, above
-/// all, non-blocking. See the platform snapshots for what they must never ask.
+/// **A fallback look that finds a change no nudge announced is logged, once.**
+/// That is the one sign a native source has gone quiet — the failure this
+/// class was written to survive — and without it a dead source would look
+/// exactly like a slow machine.
+///
+/// <see cref="snapshot"/> is required to be cheap and, above all,
+/// non-blocking. See the platform snapshots for what they must never ask.
 ///
 /// Nothing here knows what a drive is. The whole platform surface is one
 /// <see cref="Func{TResult}"/> returning a string, which is what lets the
@@ -37,6 +46,30 @@ public sealed class DeviceWatch(Func<string> snapshot) : IDisposable
     /// mean at half of that, which is inside the window where a result still
     /// feels caused by the thing the person just did.</summary>
     public TimeSpan Interval { get; init; } = TimeSpan.FromSeconds(1);
+
+    /// <summary>
+    /// How long between looks once a native source is running. Thirty
+    /// seconds: a native route that misses an event, or one Windows never
+    /// broadcasts (a drive letter mapped by another program), still shows up
+    /// inside half a minute, at a thirtieth of the wakes.
+    /// </summary>
+    public TimeSpan FallbackInterval { get; init; } = TimeSpan.FromSeconds(30);
+
+    private volatile bool _native;
+
+    /// <summary>
+    /// Says whether a native source is now nudging this watch. True stretches
+    /// the floor to <see cref="FallbackInterval"/>; false — a source that
+    /// could not start, or stopped — puts it back to <see cref="Interval"/>.
+    /// </summary>
+    public void UseNativeSource(bool live) => _native = live;
+
+    /// <summary>The wait the loop asks for next: the floor in force now.</summary>
+    public TimeSpan CurrentInterval => _native ? FallbackInterval : Interval;
+
+    /// <summary>Whether a fallback look has found a change no nudge
+    /// announced — said once in the log. For the tests.</summary>
+    internal bool MissedByNative { get; private set; }
 
     /// <summary>How long to keep draining nudges before looking.
     ///
@@ -103,9 +136,11 @@ public sealed class DeviceWatch(Func<string> snapshot) : IDisposable
     {
         while (!ct.IsCancellationRequested)
         {
+            bool nudged;
+
             try
             {
-                var nudged = await Wait(Interval, ct).ConfigureAwait(false);
+                nudged = await Wait(CurrentInterval, ct).ConfigureAwait(false);
 
                 // Drain the burst: one device arriving can nudge once per
                 // partition, and each extra look is a whole sidebar rebuild.
@@ -133,8 +168,23 @@ public sealed class DeviceWatch(Func<string> snapshot) : IDisposable
                 continue;
             }
 
-            Observe(now);
+            if (Observe(now) && !nudged) NoticeMissed();
         }
+    }
+
+    /// <summary>
+    /// A change the timer found and no native source announced. Logged the
+    /// first time only, and only while a native source claims to be running:
+    /// with none, every change is found this way and that is the design.
+    /// </summary>
+    internal void NoticeMissed()
+    {
+        if (!_native || MissedByNative) return;
+
+        MissedByNative = true;
+
+        Diagnostics.Log.Warn("places",
+            "a device change was found by the fallback look, not announced by the system — the native device notification may not be working");
     }
 
     private Task<bool> Wait(TimeSpan delay, CancellationToken ct)

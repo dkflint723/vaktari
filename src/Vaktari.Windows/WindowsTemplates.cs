@@ -70,12 +70,52 @@ public sealed class WindowsTemplates : ITemplateProvider
     /// <summary>
     /// The registry walk, replaced by the tests. Null in the application.
     ///
-    /// It stands in front of <see cref="_read"/> rather than filling it, so a
+    /// It stands in front of <see cref="_reading"/> rather than filling it, so a
     /// test can never leave synthetic keys cached for whatever runs next.
     /// </summary>
     internal static Func<IReadOnlyList<ShellNewKey>>? Override { get; set; }
 
-    private static IReadOnlyList<ShellNewKey>? _read;
+    private static readonly Lock ReadGate = new();
+
+    /// <summary>The one walk of the registry, started by <see cref="Warm"/>
+    /// or by the first <see cref="Discover"/>, whichever comes first.</summary>
+    private static Task<IReadOnlyList<ShellNewKey>>? _reading;
+
+    /// <summary>How many walks have been started since the last
+    /// <see cref="Forget"/>. For the tests.</summary>
+    internal static int Walks => Volatile.Read(ref _walks);
+
+    private static int _walks;
+
+    private static Task<IReadOnlyList<ShellNewKey>> Reading(bool background)
+    {
+        lock (ReadGate)
+        {
+            if (_reading is { } started) return started;
+
+            Interlocked.Increment(ref _walks);
+
+            return _reading = background
+                ? Task.Run(Read)
+                : Task.FromResult(Read());
+        }
+    }
+
+    /// <summary>
+    /// **Off the thread, before anyone asks.** The walk used to happen in the
+    /// first pane's constructor, on the UI thread, while the window was being
+    /// built — measured 173-208 ms on the machine this was written on — for a
+    /// submenu nobody had opened yet. The menu refreshes the list as it
+    /// opens, so nothing needs it sooner; this only stops the first
+    /// right-click paying for the walk instead. A test override stands in
+    /// front of it as it does of the read, so no test starts a real walk.
+    /// </summary>
+    public void Warm()
+    {
+        if (Override is not null) return;
+
+        _ = Reading(background: true);
+    }
 
     /// <summary>
     /// Where a bare <c>FileName</c> lives. Legacy: every FileName measured on
@@ -90,10 +130,14 @@ public sealed class WindowsTemplates : ITemplateProvider
     {
         try
         {
-            return Offer(Override?.Invoke() ?? (_read ??= Read()), SeedFolder);
+            return Offer(Override?.Invoke() ?? Reading(background: false).GetAwaiter().GetResult(), SeedFolder);
         }
         catch (Exception ex)
         {
+            // A walk that failed is not kept: the next menu tries again, as
+            // it did when the cache was a field that stayed null on a throw.
+            lock (ReadGate) if (_reading is { IsFaulted: true }) _reading = null;
+
             // A registry this process cannot read is a machine with no
             // templates, not a menu that fails to open.
             Quiet.Swallowed("templates", ex);
@@ -104,10 +148,18 @@ public sealed class WindowsTemplates : ITemplateProvider
     /// <summary>The cached walk, and null until one has happened. For the test
     /// that pins the caching, and nothing else — a window on it rather than a
     /// way to set it, so no test can leave synthetic keys behind.</summary>
-    internal static IReadOnlyList<ShellNewKey>? Cached => _read;
+    internal static IReadOnlyList<ShellNewKey>? Cached
+        => Volatile.Read(ref _reading) is { IsCompletedSuccessfully: true } done ? done.Result : null;
 
     /// <summary>Drops the cached walk. For the same test, and nothing else.</summary>
-    internal static void Forget() => _read = null;
+    internal static void Forget()
+    {
+        lock (ReadGate)
+        {
+            _reading = null;
+            _walks = 0;
+        }
+    }
 
     /// <summary>
     /// What the menu offers, given what the registry holds.

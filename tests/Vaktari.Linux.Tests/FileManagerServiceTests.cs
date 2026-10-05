@@ -102,6 +102,33 @@ public sealed class FileManagerServiceTests : IDisposable
             FileManagerServiceState.NotDefault,
             await new FreedesktopFileManager(new Chosen(false), address: null).ReconcileAsync());
 
+    /// <summary>
+    /// **The desktop is never asked on the caller's thread.** Whether Vaktari is
+    /// the default is an xdg-mime run, 380 ms on Fedora, and the startup
+    /// reconcile asked it synchronously on the UI thread before its first
+    /// await. Called here from a dedicated thread — one the pool cannot hand
+    /// the work back to — and the question must be put on another.
+    /// </summary>
+    [Fact]
+    public async Task The_desktop_is_asked_off_the_calling_thread()
+    {
+        var service = new FreedesktopFileManager(new Chosen(false), address: null);
+
+        var caller = await Task.Factory.StartNew(
+            () => CallFromHere(service),
+            CancellationToken.None, TaskCreationOptions.LongRunning, TaskScheduler.Default);
+
+        Assert.NotEqual(0, service.AskedOnThread);
+        Assert.NotEqual(caller, service.AskedOnThread);
+    }
+
+    private static int CallFromHere(FreedesktopFileManager service)
+    {
+        var me = Environment.CurrentManagedThreadId;
+        service.ReconcileAsync().Wait(TimeSpan.FromSeconds(30));
+        return me;
+    }
+
     /// <summary>And with no bus to reach, that is said as its own thing rather
     /// than folded into a shared "unavailable".</summary>
     [Fact]

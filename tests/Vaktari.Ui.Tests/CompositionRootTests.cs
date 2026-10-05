@@ -167,6 +167,22 @@ public sealed class CompositionRootTests : IDisposable
             // it, so its own identity is all there is to check.
             Assert.IsType<GitVersionControl>(PaneViewModel.Vcs);
 
+            // **The look for copyparty is started, once, after startup** — it
+            // left the provider's constructor (review H3). Without this start,
+            // Share and Install would stay hidden until someone asked.
+            if (platform.Sharing is Vaktari.Core.Sharing.CopypartyShare share)
+            {
+                Assert.Equal(0, share.Looks);
+
+                for (var i = 0; i < 50 && share.Looks == 0; i++)
+                {
+                    Avalonia.Threading.Dispatcher.UIThread.RunJobs();
+                    await Task.Delay(10);
+                }
+
+                Assert.Equal(1, share.Looks);
+            }
+
             // **The folder hand-over, on the one engine every window shares.**
             // Every pane finds it through that engine, and an engine without
             // one renames exactly as before — which on Windows means refused

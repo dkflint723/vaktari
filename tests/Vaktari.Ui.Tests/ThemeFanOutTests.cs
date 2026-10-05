@@ -67,7 +67,7 @@ public sealed class ThemeFanOutTests : OwnedViewModels
         using var woke = new SemaphoreSlim(0);
         EventHandler probe = (_, _) => woke.Release();
         object? provider = null;
-        Thread? watcher = null;
+        object? watcher = null;
         var ended = true;
 
         try
@@ -119,7 +119,7 @@ public sealed class ThemeFanOutTests : OwnedViewModels
 
             using (Registry.CurrentUser.CreateSubKey(subKey)) { }
 
-            watcher = (Thread?)type.GetMethod("Watch", Any)!.Invoke(null, [subKey]);
+            watcher = type.GetMethod("Watch", Any)!.Invoke(null, [subKey]);
             Assert.NotNull(watcher);
 
             // The watcher arms its wait a moment after it starts, and a write
@@ -184,13 +184,26 @@ public sealed class ThemeFanOutTests : OwnedViewModels
 
             Registry.CurrentUser.DeleteSubKeyTree(subKey, throwOnMissingSubKey: false);
 
-            ended = watcher?.Join(Ceiling) ?? true;
+            ended = await Ended(watcher);
             using var parent = Registry.CurrentUser.OpenSubKey(@"Software\Vaktari-tests", writable: true);
             if (parent is { SubKeyCount: 0, ValueCount: 0 })
                 Registry.CurrentUser.DeleteSubKey(@"Software\Vaktari-tests", throwOnMissingSubKey: false);
         }
 
         Assert.True(ended, "the watcher outlived its deleted key");
+    }
+
+    /// <summary>Stops the key watch and waits for it to end. A KeyWatch,
+    /// reached by reflection because this assembly also builds on Linux; its
+    /// deleted key may already have ended it.</summary>
+    private static async Task<bool> Ended(object? watcher)
+    {
+        if (watcher is null) return true;
+
+        _ = watcher.GetType().GetMethod("Stop", Any)!.Invoke(watcher, null);
+        var ended = (Task)watcher.GetType().GetProperty("Ended", Any)!.GetValue(watcher)!;
+
+        return await Task.WhenAny(ended, Task.Delay(Ceiling)) == ended;
     }
 
     /// <summary>The provider's static handler list, as the watcher threads

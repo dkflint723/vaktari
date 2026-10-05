@@ -589,6 +589,45 @@ public sealed partial class SidebarViewModel : ObservableObject, IDisposable
         }
     }
 
+    /// <summary>
+    /// Each provider's import, started by the first sidebar that asks and
+    /// awaited by every other one.
+    ///
+    /// **It ran once per WINDOW, and the provider is one per process.** Each
+    /// new window's sidebar walked Quick Access through the shell again —
+    /// measured 160 ms a time, 350 the first — and re-read every .lnk, to add
+    /// nothing the first window had not. Keyed by the provider rather than
+    /// held in a plain static, so a test's fresh fake still imports and no
+    /// answer outlives its provider; not inside the provider, whose own
+    /// contract (QuickAccessImportTests) is that a second import is harmless
+    /// and reports zero.
+    ///
+    /// **A failed import is not kept.** One that threw — a shell that would
+    /// not answer, a bookmarks file mid-write — leaves the table, so the next
+    /// window tries again, as every window did before.
+    /// </summary>
+    private static readonly System.Runtime.CompilerServices.ConditionalWeakTable<IPlacesProvider, Task> Imports = new();
+
+    private static Task ImportOnce(IPlacesProvider places)
+    {
+        var import = Imports.GetValue(places,
+            p => Task.Run(() => p.ImportExistingAsync(CancellationToken.None).AsTask()));
+
+        _ = import.ContinueWith(
+            failed =>
+            {
+                // Only the entry that failed: a later caller may already
+                // have started a fresh one in its place.
+                if (Imports.TryGetValue(places, out var current) && ReferenceEquals(current, failed))
+                    Imports.Remove(places);
+            },
+            CancellationToken.None,
+            TaskContinuationOptions.OnlyOnFaulted | TaskContinuationOptions.ExecuteSynchronously,
+            TaskScheduler.Default);
+
+        return import;
+    }
+
     public async Task InitializeAsync()
     {
         if (_places is not { } places) return;
@@ -599,8 +638,7 @@ public sealed partial class SidebarViewModel : ObservableObject, IDisposable
         // the window has drawn anything.
         try
         {
-            await Task.Run(() => places.ImportExistingAsync(CancellationToken.None).AsTask())
-                      .ConfigureAwait(false);
+            await ImportOnce(places).ConfigureAwait(false);
         }
         catch (Exception ex)
         {
