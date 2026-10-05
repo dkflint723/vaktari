@@ -15,14 +15,10 @@ namespace Vaktari.Ui.Tests;
 /// QA of columns part two (qa/columns2, on 1e54c79): the states the
 /// implementer's own tests did not reach. Each case says what it is after.
 ///
-/// **Red on 4328b4c, each a QA finding rather than a broken test:**
-/// - Right_then_Down_at_once_keeps_selection_and_keyboard_together: ↓ pressed
-///   before the folder's read lands moves the selection, and the keyboard is
-///   then put back on the folder's row, so the two are apart.
-/// - A_click_on_a_heading_straight_after_a_drag_sorts: within the double-click
-///   time of a grip press that then DRAGGED, a click where the edge was is
-///   taken as the second half of a double-click and fits the column,
-///   undoing the drag, instead of sorting.
+/// All green on 8bded28. Earlier rounds' findings, each now held here: the
+/// keyboard after a folder opens (and an arrow during the read), a fit's
+/// background finish after a later choice, up/down in the rename box, and a
+/// click on a heading straight after a drag.
 /// </summary>
 public sealed class ColumnsQaTests : ColumnWindow
 {
@@ -757,5 +753,73 @@ public sealed class ColumnsQaTests : ColumnWindow
 
         Assert.Equal(dragged, PaneScale.ColumnWidth(pane.ColumnWidths, DetailsColumn.Size));
         Assert.True(pane.IsSortedBySize, $"sorted by {pane.Sort}");
+    }
+    // ---- 9. the keyboard following the selection (round 3) ------------------------
+
+    /// <summary>
+    /// **What the keyboard does when the selection changes while → is
+    /// opening a folder**: to nothing, to every row (Ctrl+A), or away from
+    /// the listing to a text box. The keyboard must end on a selected row, on
+    /// nothing, or where it was taken — never on an unselected row pulled into
+    /// view.
+    /// </summary>
+    [AvaloniaTheory]
+    [InlineData("nothing")]
+    [InlineData("ctrl-a")]
+    [InlineData("filter-box")]
+    public async Task The_keyboard_after_an_opening_goes_only_where_it_belongs(string then)
+    {
+        Fill(60);
+
+        var (window, _, pane) = await Open();
+        var list = List(window, pane);
+        var rows = Rows(window, pane);
+        var folder = pane.DetailsEntries.Single(e => e.Name == "folder0");
+
+        pane.SelectedEntry = folder;
+        Settle(window);
+        list.ContainerFromItem(folder)!.Focus(NavigationMethod.Directional);
+        Settle(window);
+
+        Key1(window, Key.Right, PhysicalKey.ArrowRight);
+
+        TextBox? box = null;
+
+        switch (then)
+        {
+            case "nothing":
+                pane.SelectedEntry = null;
+                list.SelectedItems?.Clear();
+                break;
+            case "ctrl-a":
+                Key1(window, Key.A, PhysicalKey.A, RawInputModifiers.Control);
+                break;
+            default:
+                pane.IsFilterVisible = true;
+                Settle(window, 1);
+                box = window.GetVisualDescendants().OfType<TextBox>()
+                            .First(b => b.PlaceholderText == "Filter — esc to clear" && b.IsEffectivelyVisible);
+                box.Focus(NavigationMethod.Tab);
+                break;
+        }
+
+        var y = rows.Offset.Y;
+
+        for (var i = 0; i < 100; i++) { Settle(window, 1); await Task.Delay(5); }
+
+        var focused = window.FocusManager?.GetFocusedElement();
+        var row = (focused as ListBoxItem)?.DataContext as FileEntry?;
+        var selected = list.SelectedItems?.Cast<object>().ToList() ?? [];
+
+        _out.WriteLine($"{then}: expanded {pane.IsExpanded(folder.FullPath)}, focused {focused?.GetType().Name} {row?.Name}, selected {selected.Count}, y {y} -> {rows.Offset.Y}");
+
+        if (box is not null)
+            Assert.Same(box, focused);
+        else if (row is { } r && selected.Count > 0)
+            Assert.Contains(r, selected.OfType<FileEntry>());
+        else if (row is { } alone)
+            Assert.Equal(folder.FullPath, alone.FullPath);
+
+        Assert.Equal(y, rows.Offset.Y);
     }
 }
