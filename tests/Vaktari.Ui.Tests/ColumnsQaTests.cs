@@ -15,13 +15,14 @@ namespace Vaktari.Ui.Tests;
 /// QA of columns part two (qa/columns2, on 1e54c79): the states the
 /// implementer's own tests did not reach. Each case says what it is after.
 ///
-/// **Red on 1e54c79, each a QA finding rather than a broken test:**
-/// - Right_then_Left_on_a_folder_row_opens_and_shuts_it (both cases): after →
-///   opens a folder the keyboard is on nothing, so ← moves it to the sidebar.
-/// - A_later_choice_is_not_undone_by_the_background_finish (reset, drag): the
-///   background finish of a fit re-widens columns chosen after it.
-/// - The_rename_box_keeps_the_name_being_typed (Down, Up): ↑ and ↓ in the rename
-///   box still end the rename, as ← and → did (pre-existing, same cause).
+/// **Red on 4328b4c, each a QA finding rather than a broken test:**
+/// - Right_then_Down_at_once_keeps_selection_and_keyboard_together: ↓ pressed
+///   before the folder's read lands moves the selection, and the keyboard is
+///   then put back on the folder's row, so the two are apart.
+/// - A_click_on_a_heading_straight_after_a_drag_sorts: within the double-click
+///   time of a grip press that then DRAGGED, a click where the edge was is
+///   taken as the second half of a double-click and fits the column,
+///   undoing the drag, instead of sorting.
 /// </summary>
 public sealed class ColumnsQaTests : ColumnWindow
 {
@@ -678,5 +679,83 @@ public sealed class ColumnsQaTests : ColumnWindow
 
         Assert.True(worst < 0.6, $"apart by {worst}");
         Assert.Equal(0, mismatch);
+    }
+    // ---- 8. the fixes' edges (round 2) ------------------------------------------
+
+    /// <summary>
+    /// **→ and then ↓ at once**, before the folder's read has landed: the
+    /// keyboard handed back to the folder's row must not leave the selection
+    /// and the focused row apart.
+    /// </summary>
+    [AvaloniaFact]
+    public async Task Right_then_Down_at_once_keeps_selection_and_keyboard_together()
+    {
+        Fill(10);
+
+        var (window, _, pane) = await Open();
+        var list = List(window, pane);
+        var folder = pane.DetailsEntries.Single(e => e.Name == "folder0");
+
+        pane.SelectedEntry = folder;
+        Settle(window);
+        list.ContainerFromItem(folder)!.Focus(NavigationMethod.Directional);
+        Settle(window);
+
+        Key1(window, Key.Right, PhysicalKey.ArrowRight);
+        Key1(window, Key.Down, PhysicalKey.ArrowDown);
+
+        for (var i = 0; i < 100; i++) { Settle(window, 1); await Task.Delay(5); }
+
+        var focused = window.FocusManager?.GetFocusedElement() as ListBoxItem;
+
+        _out.WriteLine($"selected {pane.SelectedEntry?.Name}, keyboard on {(focused?.DataContext as FileEntry?)?.Name}, expanded {pane.IsExpanded(folder.FullPath)}");
+
+        Assert.NotNull(focused);
+        Assert.Equal(pane.SelectedEntry, focused!.DataContext);
+    }
+
+    /// <summary>
+    /// **A deliberate click on a heading straight after a drag sorts.** The
+    /// double-click claim takes a heading press within the double-click time
+    /// and distance of the grip's last press; after a real drag the grip has
+    /// moved away from that press, so a quick click where the edge used to
+    /// be lands on a heading, and must sort rather than fit.
+    /// </summary>
+    [AvaloniaFact]
+    public async Task A_click_on_a_heading_straight_after_a_drag_sorts()
+    {
+        Fill(10);
+
+        var (window, _, pane) = await Open();
+        var heading = Heading(window, pane);
+        var edge = Edges(heading, window)[Cell(DetailsColumn.Size)];
+        var y = heading.TranslatePoint(new Point(0, heading.Bounds.Height / 2), window)!.Value.Y;
+        var press = new Point(edge, y);
+
+        // A quick drag of Size's edge 40 to the right, then a click where it was.
+        window.MouseMove(press);
+        window.MouseDown(press, MouseButton.Left);
+        window.MouseMove(press + new Point(20, 0));
+        window.MouseMove(press + new Point(40, 0));
+        window.MouseUp(press + new Point(40, 0), MouseButton.Left);
+        Pump();
+        window.UpdateLayout();
+
+        var dragged = PaneScale.ColumnWidth(pane.ColumnWidths, DetailsColumn.Size);
+        var under = window.InputHitTest(press) as Visual;
+        var button = under as Button ?? under?.FindAncestorOfType<Button>();
+
+        _out.WriteLine($"after the drag Size is {dragged}; under the old edge: {button?.CommandParameter}");
+
+        Assert.Equal("size", button?.CommandParameter as string);
+
+        window.MouseDown(press, MouseButton.Left);
+        window.MouseUp(press, MouseButton.Left);
+        Settle(window);
+
+        _out.WriteLine($"sort {pane.Sort} desc {pane.SortDescending}; Size {PaneScale.ColumnWidth(pane.ColumnWidths, DetailsColumn.Size)}");
+
+        Assert.Equal(dragged, PaneScale.ColumnWidth(pane.ColumnWidths, DetailsColumn.Size));
+        Assert.True(pane.IsSortedBySize, $"sorted by {pane.Sort}");
     }
 }
