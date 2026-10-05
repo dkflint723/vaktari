@@ -67,7 +67,7 @@ public sealed class CopypartyShare : IFileSharing
     {
         Interlocked.Increment(ref _looks);
 
-        var look = Task.Run(() => _backend.Locate());
+        var look = OnItsOwnThread(_backend.Locate, CancellationToken.None);
 
         // Announced when it lands, so a menu gate waiting on it re-reads.
         _ = look.ContinueWith(
@@ -106,7 +106,29 @@ public sealed class CopypartyShare : IFileSharing
 
     public string? UnavailableReason => IsAvailable ? null : _backend.NotInstalledHint;
 
-    public Task SweepAsync() => Task.Run(SweepLeftovers);
+    public Task SweepAsync() => OnItsOwnThread(() => { SweepLeftovers(); return true; }, CancellationToken.None);
+
+    /// <summary>
+    /// Runs <paramref name="work"/> on a thread made for it, never the pool's.
+    ///
+    /// **Everything handed here waits on another program**: the look launches
+    /// Python up to three times, ten seconds each; the sweep kills and waits
+    /// for servers; the warning runs a command; an install runs pip for up to
+    /// five minutes. On the pool each of those held a worker for as long as
+    /// it took, and the look and the sweep both start at startup — when the
+    /// listing, the places import and every store's WriteBehind want the pool
+    /// too. The pool adds a worker for a blocked one only after half a second,
+    /// and on a busy machine after a second per worker it already has: CI run
+    /// 37256500633 saw a trivial pool continuation wait more than ten seconds
+    /// while the look tests held workers on their gates (the same rule as
+    /// FolderReturnWatch's looks).
+    /// </summary>
+    private static Task<T> OnItsOwnThread<T>(Func<T> work, CancellationToken ct)
+        => Task.Factory.StartNew(
+            work,
+            ct,
+            TaskCreationOptions.LongRunning | TaskCreationOptions.DenyChildAttach,
+            TaskScheduler.Default);
 
     public IReadOnlyList<ShareSession> Active =>
         _running.Values.Select(r => r.Session).ToList();
@@ -138,7 +160,7 @@ public sealed class CopypartyShare : IFileSharing
             var attempt = attempts[i];
             progress.Report($"running {attempt.Describe}…");
 
-            var (code, output) = await Task.Run(() => Capture(attempt.File, attempt.Args, ct), ct)
+            var (code, output) = await OnItsOwnThread(() => Capture(attempt.File, attempt.Args, ct), ct)
                                            .ConfigureAwait(false);
 
             if (code == 0)
@@ -612,7 +634,7 @@ public sealed class CopypartyShare : IFileSharing
         // What the platform has to say about the network, first and off the
         // caller's thread: on Windows it runs a command, and the caller is a
         // click.
-        var warning = await Task.Run(() => _backend.StartWarning(), ct).ConfigureAwait(false);
+        var warning = await OnItsOwnThread(_backend.StartWarning, ct).ConfigureAwait(false);
 
         ShareSession session;
 

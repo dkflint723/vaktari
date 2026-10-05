@@ -50,11 +50,14 @@ public sealed class CopypartyLookTests : IDisposable
     private sealed class Gated : CopypartyBackend
     {
         public int Looks;
+        public int LooksOnThePool;
         public readonly List<(ManualResetEventSlim Gate, string? Command)> Answers = [];
 
         public override (string? Command, string[] Prefix) Locate()
         {
             var n = Interlocked.Increment(ref Looks) - 1;
+
+            if (Thread.CurrentThread.IsThreadPoolThread) Interlocked.Increment(ref LooksOnThePool);
 
             (ManualResetEventSlim gate, string? command) answer;
             lock (Answers) answer = n < Answers.Count ? Answers[n] : (new ManualResetEventSlim(true), "copyparty-stub");
@@ -141,6 +144,27 @@ public sealed class CopypartyLookTests : IDisposable
 
         Assert.True(share.IsAvailable, "the older look's answer replaced the newer one");
         Assert.Equal(1, Volatile.Read(ref announced));
+    }
+
+    /// <summary>
+    /// **The look held a pool worker for as long as Python took to answer**
+    /// — three launches, ten seconds each — and it starts at startup, beside
+    /// the listing and every store's WriteBehind. CI run 37256500633: with
+    /// this class's gates holding workers on a busy four-core runner, a
+    /// trivial pool continuation waited more than ten seconds. Both the
+    /// startup look and an install's re-look must run off the pool.
+    /// </summary>
+    [Fact]
+    public async Task A_look_holds_no_pool_worker()
+    {
+        var backend = new Gated();
+        var share = new CopypartyShare(backend);
+
+        await share.EnsureKnownAsync().WaitAsync(TimeSpan.FromSeconds(30));
+        await share.RescanAsync().WaitAsync(TimeSpan.FromSeconds(30));
+
+        Assert.Equal(2, backend.Looks);
+        Assert.Equal(0, Volatile.Read(ref backend.LooksOnThePool));
     }
 
     private static ProcessStartInfo Quick()

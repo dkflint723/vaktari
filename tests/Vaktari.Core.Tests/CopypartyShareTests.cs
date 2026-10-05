@@ -251,8 +251,11 @@ public sealed class CopypartyShareTests : IDisposable
     /// go, so a stop can be made to land in the middle of a start.</summary>
     private sealed class Held : CopypartyBackend, IDisposable
     {
-        public readonly ManualResetEventSlim Entered = new();
+        /// <summary>Awaited, not waited on: a test that blocks here holds the
+        /// thread its own start may need to get this far.</summary>
+        public readonly TaskCompletionSource Entered = new(TaskCreationOptions.RunContinuationsAsynchronously);
         public readonly ManualResetEventSlim Release = new();
+        public bool? WarnedOnThePool;
 
         public override (string? Command, string[] Prefix) Locate() => ("copyparty-stub", []);
         public override IReadOnlyList<InstallAttempt> InstallAttempts() => [];
@@ -263,7 +266,8 @@ public sealed class CopypartyShareTests : IDisposable
 
         public override string? StartWarning()
         {
-            Entered.Set();
+            WarnedOnThePool = Thread.CurrentThread.IsThreadPoolThread;
+            Entered.TrySetResult();
             Release.Wait(TimeSpan.FromSeconds(30));
             return null;
         }
@@ -271,8 +275,31 @@ public sealed class CopypartyShareTests : IDisposable
         public void Dispose()
         {
             Release.Set();
-            Entered.Dispose();
         }
+    }
+
+    /// <summary>Whether <paramref name="step"/> finished within thirty
+    /// seconds, awaited rather than blocked on.</summary>
+    private static async Task<bool> Reached(Task step)
+        => await Task.WhenAny(step, Task.Delay(TimeSpan.FromSeconds(30))) == step;
+
+    /// <summary>The platform's warning runs a command on Windows, and the
+    /// start waits for it: on a thread of its own, so a slow command holds
+    /// no pool worker (see CopypartyLookTests.A_look_holds_no_pool_worker).</summary>
+    [Fact]
+    public async Task The_warning_holds_no_pool_worker()
+    {
+        using var backend = new Held();
+        var share = new CopypartyShare(backend) { LaunchOverride = Stand };
+
+        var starting = share.StartAsync(_photos, ReadOnly, CancellationToken.None);
+
+        Assert.True(await Reached(backend.Entered.Task), "the start never reached the platform's warning");
+        Assert.False(backend.WarnedOnThePool, "the warning ran on a pool worker");
+
+        backend.Release.Set();
+
+        await share.StopAsync(await starting.WaitAsync(TimeSpan.FromSeconds(30)));
     }
 
     /// <summary>
@@ -303,7 +330,7 @@ public sealed class CopypartyShareTests : IDisposable
         {
             var starting = share.StartAsync(_photos, ReadOnly, CancellationToken.None);
 
-            Assert.True(backend.Entered.Wait(TimeSpan.FromSeconds(10)), "the start never reached the platform's warning");
+            Assert.True(await Reached(backend.Entered.Task), "the start never reached the platform's warning");
 
             await share.StopAllAsync();
 
