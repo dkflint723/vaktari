@@ -64,4 +64,46 @@ public sealed class StreamlineQaArchiveTests : IDisposable
         Assert.Equal("content of " + first, File.ReadAllText(Path.Combine(done.Landed, first)));
         Assert.Equal("content of second.txt", File.ReadAllText(Path.Combine(done.Landed, "second.txt")));
     }
+
+    /// <summary>
+    /// **The README says a tar named .zip is read as a tar** (b6184a8): the
+    /// name decides whether the row is offered, the first bytes how the file
+    /// is read. Nothing tested it. A plain tar, and a gzip-compressed one,
+    /// each named .zip, land as the tar they are, in a folder named after the
+    /// archive without its ".zip".
+    /// </summary>
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void A_tar_named_zip_is_read_as_a_tar(bool gzipped)
+    {
+        var archive = Path.Combine(_root, "backup.zip");
+
+        using (var file = File.Create(archive))
+        using (Stream body = gzipped
+                   ? new System.IO.Compression.GZipStream(file, System.IO.Compression.CompressionLevel.Fastest, leaveOpen: true)
+                   : file)
+        using (var tar = new TarWriter(body, TarEntryFormat.Ustar, leaveOpen: true))
+        {
+            foreach (var name in new[] { "one.txt", "two.txt" })
+            {
+                var entry = new UstarTarEntry(TarEntryType.RegularFile, name)
+                {
+                    DataStream = new MemoryStream(Encoding.UTF8.GetBytes("content of " + name)),
+                };
+
+                tar.WriteEntry(entry);
+            }
+        }
+
+        Assert.True(Archives.CanExtract(archive), "the row is offered by name");
+
+        var into = Directory.CreateDirectory(Path.Combine(_root, "out")).FullName;
+        var done = Archives.Extract(archive, into);
+
+        Assert.False(done.IsFile);
+        Assert.Equal(Path.Combine(into, "backup"), done.Landed);
+        Assert.Equal("content of one.txt", File.ReadAllText(Path.Combine(done.Landed, "one.txt")));
+        Assert.Equal("content of two.txt", File.ReadAllText(Path.Combine(done.Landed, "two.txt")));
+    }
 }
