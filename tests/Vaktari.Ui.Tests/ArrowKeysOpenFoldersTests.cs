@@ -356,4 +356,37 @@ public sealed class ArrowKeysOpenFoldersTests : OwnedViewModels
         Assert.True(box.IsFocused, $"{key} took the keyboard out of the rename box");
         Assert.Equal(file.FullPath, pane.RenamingPath);
     }
+
+    /// <summary>
+    /// **A row chosen while the folder was being read keeps the keyboard.**
+    /// The keyboard goes back to the opened folder's row only if the selection
+    /// is still there: moved on meanwhile — by an arrow pressed straight after
+    /// →, or as here from code before the read lands — the keyboard stays
+    /// with the selection, or the two are left apart (QA: selection on a
+    /// file, keyboard on the folder). Deterministic where a second key press
+    /// is a race with the disk.
+    /// </summary>
+    [AvaloniaFact]
+    public async Task A_row_chosen_while_the_folder_opens_keeps_the_keyboard()
+    {
+        var (window, pane, folder) = await Open();
+
+        await FocusRow(window, pane, folder);
+
+        Press(window, Key.Right);
+
+        // Before the dispatcher runs again, so before the toggle's own finish.
+        var file = pane.DetailsEntries.Single(e => e.Name == "b-file.txt");
+
+        pane.SelectedEntry = file;
+        Listing(window, pane).ContainerFromItem(file)!.Focus(NavigationMethod.Directional);
+
+        await Wait(window, () => pane.IsExpanded(folder.FullPath));
+        await Settle(window);
+
+        var focused = window.FocusManager?.GetFocusedElement() as ListBoxItem;
+
+        Assert.Equal(file, pane.SelectedEntry);
+        Assert.Equal(file.FullPath, (focused?.DataContext as FileEntry?)?.FullPath);
+    }
 }

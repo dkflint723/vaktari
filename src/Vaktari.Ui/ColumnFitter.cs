@@ -200,10 +200,12 @@ internal static class ColumnFitter
 
             Dispatcher.UIThread.Post(() =>
             {
-                // **Nothing chosen since is undone.** A Reset or a drag made
-                // while this ran is the person's later word; the pair also
-                // cancels the fit on any change it did not make, and this
-                // catches the one that lands between the task's end and here.
+                // **Nothing chosen since is undone — defence in depth.** The
+                // pair cancels the fit on any width change it did not make,
+                // and this refuses a finish if the widths are not what the fit
+                // left. Either alone keeps a later Reset or drag (each
+                // mutation alone stays green; both together redden
+                // A_later_choice_is_not_undone_by_the_background_finish).
                 if (token.IsCancellationRequested || !Equals(pane.ColumnWidths, wrote)) return;
 
                 Choose(pane, heading, headingScroller, done.Result, scale, widenOnly: true);
@@ -254,6 +256,11 @@ internal static class ColumnFitter
             var fitted = ColumnFit.Fitted(Math.Max(job.Heading, job.Search.Widest), scale);
             var current = PaneScale.ColumnWidth(pane.ColumnWidths, job.Column);
 
+            // **Cannot be reached today, and kept as the rule.** The finish
+            // measures every row and the UI thread a subset of them, so its
+            // answer is never narrower (QA confirmed; a mutation of this line
+            // alone stays green, and only reddens together with a finish that
+            // measures fewer rows). It states that a finish only ever widens.
             if (widenOnly && fitted <= current) continue;
 
             widths[job.Column] = fitted;

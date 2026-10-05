@@ -204,6 +204,7 @@ public static class ColumnScroll
             _heading.PropertyChanged += OnHeadingChanged;
             _heading.DataContextChanged += OnContext;
             _heading.AddHandler(InputElement.PointerPressedEvent, OnHeadingPressed, RoutingStrategies.Tunnel);
+            _heading.AddHandler(InputElement.PointerMovedEvent, OnHeadingMoved, RoutingStrategies.Tunnel, handledEventsToo: true);
             _list.TemplateApplied += OnTemplate;
 
 
@@ -216,6 +217,7 @@ public static class ColumnScroll
             _heading.PropertyChanged -= OnHeadingChanged;
             _heading.DataContextChanged -= OnContext;
             _heading.RemoveHandler(InputElement.PointerPressedEvent, OnHeadingPressed);
+            _heading.RemoveHandler(InputElement.PointerMovedEvent, OnHeadingMoved);
             _list.TemplateApplied -= OnTemplate;
 
             UseRows(null);
@@ -287,6 +289,27 @@ public static class ColumnScroll
             pane.FitColumn(Enum.Parse<DetailsColumn>(last.Column));
         }
 
+        /// <summary>
+        /// **A grip press that became a real drag is no longer half of a
+        /// double-click.** Once the pointer has gone further from the press
+        /// than a double-click may, the press is forgotten, so a deliberate
+        /// click on a heading straight after a drag sorts as it should (QA:
+        /// Size dragged to 140, then a click on its heading at the old edge
+        /// fitted it back instead of sorting).
+        /// </summary>
+        private void OnHeadingMoved(object? sender, PointerEventArgs e)
+        {
+            if (_gripPress is not { } last || TopLevel.GetTopLevel(_heading) is not { } top) return;
+
+            var at = e.GetPosition(top);
+            var size = Application.Current?.PlatformSettings?.GetDoubleTapSize(e.Pointer.Type) ?? new Size(4, 4);
+
+            // The whole double-click box, not half of it as for the second
+            // press: a first click that wobbles a few pixels is still the start
+            // of a double-click (the case the claim exists for).
+            if (Math.Abs(at.X - last.At.X) > size.Width || Math.Abs(at.Y - last.At.Y) > size.Height)
+                _gripPress = null;
+        }
         private void OnContext(object? sender, EventArgs e) => UsePane(_heading.DataContext as PaneViewModel);
 
         private void UsePane(PaneViewModel? pane)
@@ -377,7 +400,9 @@ public static class ColumnScroll
             // **A width chosen while a fit is finishing ends the fit**: a Reset,
             // a drag, a zoom's rewrite — anything but the fit's own change. Its
             // background finish would otherwise widen columns the person has
-            // just put back (QA: Reset, then the finish undid it).
+            // just put back (QA: Reset, then the finish undid it). Defence in
+            // depth with the finish's own check in ColumnFitter: either alone
+            // keeps the later choice.
             if (e.PropertyName == nameof(PaneViewModel.ColumnWidths) && !ColumnFitter.Writing)
             {
                 StopFitting();

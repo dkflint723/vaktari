@@ -738,7 +738,14 @@ public partial class MainWindow : ICommandHost
             && !(focused is Avalonia.Visual visual && Avalonia.VisualTree.VisualExtensions.IsVisualAncestorOf(list, visual)))
             return;
 
-        var now = pane.DetailsEntries.FirstOrDefault(e => e.FullPath == row.FullPath);
+        // **To the row selected NOW, which need not be the folder.** An arrow
+        // pressed while the folder was being read has moved the selection on,
+        // and the rebuild then recycled that row's container too; taking the
+        // keyboard back to the folder left the two apart (QA: selection on a
+        // file, keyboard on the folder), and doing nothing left it on nothing.
+        // The keyboard goes where the selection is.
+        var wanted = pane.SelectedEntry?.FullPath ?? row.FullPath;
+        var now = pane.DetailsEntries.FirstOrDefault(e => e.FullPath == wanted);
 
         if (now.FullPath is null) return;
 
