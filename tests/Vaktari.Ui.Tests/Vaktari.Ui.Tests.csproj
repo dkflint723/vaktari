@@ -38,9 +38,9 @@
        uses. Move when Avalonia ships a Headless.XUnit built on xunit.v3 4;
        .github/dependabot.yml holds the major bump back until then. -->
   <ItemGroup>
-    <PackageReference Include="Microsoft.NET.Test.Sdk" Version="18.10.1" />
+    <PackageReference Include="Microsoft.NET.Test.Sdk" Version="18.11.0" />
     <PackageReference Include="xunit.v3" Version="3.2.2" />
-    <PackageReference Include="xunit.runner.visualstudio" Version="3.1.0" />
+    <PackageReference Include="xunit.runner.visualstudio" Version="3.1.5" />
     <PackageReference Include="Avalonia.Headless.XUnit" Version="12.1.2" />
     <!-- Loads a binding expression at runtime, so the one form the row
          templates depend on can be proved rather than assumed. -->
