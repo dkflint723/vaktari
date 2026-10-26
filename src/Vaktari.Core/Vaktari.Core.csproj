@@ -51,7 +51,7 @@
          its members' bzip2, LZMA, PPMd, xz and zstd methods — a zip is a
          zip), and the CRC-32 and code-page-437 hooks beside it. -->
 
-    <PackageReference Include="SharpCompress" Version="0.50.4" />
+    <PackageReference Include="SharpCompress" Version="0.50.7" />
   </ItemGroup>
 
 </Project>
